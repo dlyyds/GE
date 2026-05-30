@@ -1,0 +1,25 @@
+# 基础样式
+BasedOnStyle: LLVM
+ColumnLimit: 150
+IndentWidth: 4
+UseTab: Never
+
+
+# 预处理指令缩进
+IndentPPDirectives: AfterHash
+
+# 函数大括号 同行（不换行）
+BreakBeforeBraces: Attach
+# 强制函数体换行，即使只有一行代码，绝不压缩成一行
+#AllowShortFunctionsOnASingleLine: None
+#AllowShortBlocksOnASingleLine: Never
+#AllowShortIfStatementsOnASingleLine: Never
+#短case不换行
+AllowShortCaseLabelsOnASingleLine: true
+
+
+# 数组内部对齐，让坐标/颜色数值列对齐
+AlignArrayOfStructures: Left
+# 数组大括号不单独换行
+BreakArrays: false
+

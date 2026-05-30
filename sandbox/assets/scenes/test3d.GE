@@ -1,0 +1,53 @@
+Scene: Untitled
+Entities:
+  - Entity: 12837192831273
+    TagComponent:
+      Tag: square
+    TransformComponent:
+      Translation: [0.3582599, 0.030099215, -111.2]
+      Rotation: [0, 0, 0]
+      Scale: [40.76, 46.24, 1.8104612]
+    SpriteRendererComponent:
+      Color: [1, 1, 1, 1]
+      Texture_Path: assets\textures\Checkerboard.png
+      TilingFactor: 3.5
+  - Entity: 12837192831273
+    TagComponent:
+      Tag: square2
+    TransformComponent:
+      Translation: [-2.934305, 0.15485609, -13.93]
+      Rotation: [0, 0.033161256, 0]
+      Scale: [3.3, 6.5, 1]
+    SpriteRendererComponent:
+      Color: [0.2776125, 0.8130081, 0.8130081, 1]
+      Texture_Path: ""
+      TilingFactor: 1
+  - Entity: 12837192831273
+    TagComponent:
+      Tag: camera
+    TransformComponent:
+      Translation: [0, 0, 6.7]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1.1, 1]
+    CameraComponent:
+      Camera:
+        ProjectionType: 0
+        PerspectiveFOV: 0.7853982
+        PerspectiveNear: 3.01
+        PerspectiveFar: 1000
+        OrthographicSize: 10
+        OrthographicNear: -1
+        OrthographicFar: 1
+      Primary: true
+      FixedAspectRatio: false
+  - Entity: 12837192831273
+    TagComponent:
+      Tag: back
+    TransformComponent:
+      Translation: [0, 0, 0.4]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    SpriteRendererComponent:
+      Color: [1, 1, 1, 1]
+      Texture_Path: assets\textures\ChernoLogo.png
+      TilingFactor: 1

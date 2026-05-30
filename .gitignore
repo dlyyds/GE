@@ -1,0 +1,57 @@
+# Game Engine Project - .gitignore
+
+# Build directories and output files
+**/bin/
+**/bin-int/
+**/build/
+**/int/
+**/.cache
+*.exe
+*.dll
+*.dll.a
+*.obj
+*.o
+*.out
+engin/vendor/
+# CMake generated files
+CMakeCache.txt
+CMakeFiles/
+Makefile
+Makefile2
+cmake_install.cmake
+install_manifest.txt
+CTestTestfile.cmake
+*.cmake
+*.rsp
+*.d
+*.marks
+
+# IDE and editor files
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Log files
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+
+# Clangd
+.clangd
+
+# Specific project exclusions
+sandbox/sandbox.exe
+sandbox/libGameEngine.dll
+sandbox/libGameEngine.dll.a
+bin-int/compile_commands.json
+*.log

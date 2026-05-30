@@ -1,0 +1,7 @@
+#pragma once
+
+#ifdef BGFX_CONFIG_MAX_VIEWS
+    #define CGIMBGFX_CONFIG_MAX_VIEWS BGFX_CONFIG_MAX_VIEWS
+#else
+    #define CGIMBGFX_CONFIG_MAX_VIEWS 256
+#endif

@@ -43,6 +43,7 @@ file(GLOB GE_SRC
         ${CMAKE_SOURCE_DIR}/GE/src/Platform/Windows/*.cpp
         ${CMAKE_SOURCE_DIR}/GE/src/Core/*.cpp
         ${CMAKE_SOURCE_DIR}/GE/src/ImGui/*.cpp
+        ${CMAKE_SOURCE_DIR}/GE/src/Render/*.cpp
 )
 
 set(BGFX_DIR "F:/yxy/c++lib/bgfx")

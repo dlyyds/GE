@@ -8,6 +8,7 @@
 #include "Core/Timestep.h"
 #include "Debug/Assert.h"
 #include "ImGui/ImGuiLayer.h"
+#include "Render/Render.h"
 
 #include <Events/ApplicationEvent.h>
 
@@ -29,6 +30,8 @@ Application::Application(const std::string &name, ApplicationCommandLineArgs arg
     m_Window = Window::Create(WindowProps(name, 1600, 900));
     m_Window->SetEventCallback(GE_BIND_EVENT_FN(Application::OnEvent));
 
+    Render::Init();
+
     m_ImGuiLayer = CreateRef<ImGuiLayer>();
     PushOverlay(m_ImGuiLayer);
 
@@ -36,8 +39,8 @@ Application::Application(const std::string &name, ApplicationCommandLineArgs arg
 
 Application::~Application() {
     GE_PROFILE_FUNCTION();
-
     GE_CORE_INFO("Application Shoutdown");
+    Render::Destroy();
 }
 
 void Application::Run() {
@@ -75,7 +78,6 @@ void Application::Run() {
         for (auto &layer : m_LayerStack)
             layer->OnImGuiRender();
         ImGuiLayer::End();
-
         m_Window->OnUpdate();
     }
 }

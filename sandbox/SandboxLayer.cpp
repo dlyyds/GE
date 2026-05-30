@@ -5,48 +5,29 @@
 #include "logo.h"
 #include "imgui.h"
 
-#include "GLFW/glfw3.h"
-#define GLFW_EXPOSE_NATIVE_WIN32
-#include <GLFW/glfw3native.h>
 
 namespace GE {
 
 static bool s_showStats = false;
 
-constexpr bgfx::ViewId kClearView = 0;
-
 
 SandboxLayer::SandboxLayer() : Layer("SandboxLayer") {
     GE_PROFILE_FUNCTION();
 
-    auto &window = Application::Get().GetWindow();
-
-    bgfx::renderFrame();
-    bgfx::Init init;
-    init.platformData.nwh = glfwGetWin32Window((GLFWwindow *)Application::Get().GetWindow().GetNativeWindow());
-    m_Width = Application::Get().GetWindow().GetWidth();
-    m_Height = Application::Get().GetWindow().GetHeight();
-    init.resolution.width = m_Width;
-    init.resolution.height = m_Height;
-    init.resolution.reset = BGFX_RESET_VSYNC;
-    init.type = bgfx::RendererType::OpenGL;
-
-    GE_ASSERT(bgfx::init(init));
-
-    bgfx::setViewClear(kClearView, BGFX_CLEAR_COLOR);
-    bgfx::setViewRect(kClearView, 0, 0, bgfx::BackbufferRatio::Equal);
 }
 
 
 void SandboxLayer::OnAttach() {
     GE_PROFILE_FUNCTION();
-
+    m_Width = Application::Get().GetWindow().GetWidth();
+    m_Height = Application::Get().GetWindow().GetHeight();
 }
 
 void SandboxLayer::OnDetach() {
 
-    bgfx::shutdown();
 }
+
+constexpr bgfx::ViewId kClearView = 0;
 
 void SandboxLayer::OnUpdate(GE::Timestep &ts) {
     bgfx::touch(kClearView);

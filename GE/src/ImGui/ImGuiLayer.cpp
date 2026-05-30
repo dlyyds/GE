@@ -56,7 +56,7 @@ void ImGuiLayer::OnAttach() {
     SetDarkThemeColors();
 
     Application &app = Application::Get();
-    auto *window = static_cast<GLFWwindow *>(app.GetWindow().GetNativeWindow());
+    auto *window = static_cast<GLFWwindow *>(app.GetWindow().GetGlfwWindow());
 
     ImGui_ImplGlfw_InitForOther(window, true);
 

@@ -41,6 +41,8 @@ public:
 
     [[nodiscard]] virtual void *GetNativeWindow() const = 0;
 
+    [[nodiscard]] virtual void *GetGlfwWindow() const = 0;
+
 
     static Scope<Window> Create(const WindowProps &props = WindowProps());
 };

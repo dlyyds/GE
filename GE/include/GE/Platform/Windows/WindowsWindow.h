@@ -2,6 +2,10 @@
 
 #include "Core/GEWindow.h"
 
+#include "GLFW/glfw3.h"
+#define GLFW_EXPOSE_NATIVE_WIN32
+#include <GLFW/glfw3native.h>
+
 
 struct GLFWwindow {
 };
@@ -20,9 +24,12 @@ public:
     [[nodiscard]] uint32_t GetWidth() const override { return m_Data.Width; }
     [[nodiscard]] uint32_t GetHeight() const override { return m_Data.Height; }
 
-    [[nodiscard]] void *GetNativeWindow() const override {
+    [[nodiscard]] void *GetGlfwWindow() const override {
         return m_Window;
+    }
 
+    [[nodiscard]] void *GetNativeWindow() const override {
+        return glfwGetWin32Window(m_Window);
     }
 
     // Window attributes

@@ -9,7 +9,7 @@ class bgfxtest : public Application {
 public:
     explicit bgfxtest(ApplicationCommandLineArgs args)
         : Application("GEEditor", args) {
-        PushLayer(new EditorLayer());
+        PushLayer(CreateRef<EditorLayer>());
     }
 
     ~bgfxtest() override = default;

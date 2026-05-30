@@ -29,8 +29,8 @@ Application::Application(const std::string &name, ApplicationCommandLineArgs arg
     m_Window = Window::Create(WindowProps(name, 1600, 900));
     m_Window->SetEventCallback(GE_BIND_EVENT_FN(Application::OnEvent));
 
-    // m_ImGuiLayer = new ImGuiLayer();
-    // PushOverlay(m_ImGuiLayer);
+    m_ImGuiLayer = CreateRef<ImGuiLayer>();
+    PushOverlay(m_ImGuiLayer);
 
 }
 
@@ -44,7 +44,7 @@ void Application::Run() {
     GE_PROFILE_FUNCTION();
 
     while (m_Running) {
-        float time = (float)glfwGetTime();
+        const auto time = static_cast<float>(glfwGetTime());
         Timestep timestep = time - m_LastFrameTime;
 
         // 帧率计算
@@ -67,14 +67,14 @@ void Application::Run() {
         m_LastFrameTime = time;
 
         if (!m_Minimized) {
-            for (Layer *layer : m_LayerStack)
+            for (auto &layer : m_LayerStack)
                 layer->OnUpdate(timestep);
         }
 
-        // //   GE::ImGuiLayer::Begin();
-        for (Layer *layer : m_LayerStack)
+        ImGuiLayer::Begin();
+        for (auto &layer : m_LayerStack)
             layer->OnImGuiRender();
-        //  //  GE::ImGuiLayer::End();
+        ImGuiLayer::End();
 
         m_Window->OnUpdate();
     }
@@ -109,13 +109,13 @@ bool Application::OnWindowClose(WindowCloseEvent &e) {
     return true;
 }
 
-void Application::PushLayer(Layer *layer) {
+void Application::PushLayer(const Ref<Layer> &layer) {
     GE_PROFILE_FUNCTION();
     m_LayerStack.PushLayer(layer);
     layer->OnAttach();
 }
 
-void Application::PushOverlay(Layer *layer) {
+void Application::PushOverlay(const Ref<Layer> &layer) {
     GE_PROFILE_FUNCTION();
     m_LayerStack.PushOverlay(layer);
     layer->OnAttach();

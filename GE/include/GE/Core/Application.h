@@ -37,9 +37,9 @@ public:
 
     void OnEvent(Event &e);
 
-    void PushLayer(Layer *layer);
+    void PushLayer(const Ref<Layer> &layer);
 
-    void PushOverlay(Layer *layer);
+    void PushOverlay(const Ref<Layer> &layer);
 
     [[nodiscard]] Window &GetWindow() const { return *m_Window; }
 
@@ -63,7 +63,7 @@ private:
 private:
     ApplicationCommandLineArgs m_CommandLineArgs;
 
-    ImGuiLayer *m_ImGuiLayer;
+    Ref<ImGuiLayer> m_ImGuiLayer;
 
     bool m_Running = true;
     Scope<Window> m_Window;

@@ -12,7 +12,7 @@ class Sandbox : public Application {
 public:
     explicit Sandbox(ApplicationCommandLineArgs args) : Application("Sandbox", args) {
         GE_PROFILE_FUNCTION();
-        PushLayer(new SandboxLayer());
+        PushLayer(CreateRef<SandboxLayer>());
     }
 
     ~Sandbox() override = default;

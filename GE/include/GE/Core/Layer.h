@@ -7,18 +7,24 @@
 namespace GE {
 
 class Layer {
-  public:
+public:
     Layer(const std::string &name = "Layer");
+
     virtual ~Layer();
 
-    virtual void OnAttach() {}
-    virtual void OnDetach() {}
-    virtual void OnUpdate(Timestep &ts) {}
-    virtual void OnEvent(Event &event) {}
-    virtual void OnImGuiRender() {}
+    virtual void OnAttach() = 0;
+
+    virtual void OnDetach() = 0;
+
+    virtual void OnUpdate(Timestep &ts) = 0;
+
+    virtual void OnEvent(Event &event) = 0;
+
+    virtual void OnImGuiRender() = 0;
+
     inline const std::string &GetName() const { return m_DebugName; }
 
-  protected:
+protected:
     std::string m_DebugName;
 };
 

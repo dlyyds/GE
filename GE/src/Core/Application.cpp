@@ -8,7 +8,7 @@
 #include "Core/Timestep.h"
 #include "Debug/Assert.h"
 #include "ImGui/ImGuiLayer.h"
-#include "Render/Render.h"
+//#include "Render/Render.h"
 
 #include <Events/ApplicationEvent.h>
 
@@ -26,21 +26,24 @@ Application::Application(const std::string &name, ApplicationCommandLineArgs arg
 
     GE_CORE_ASSERT(!s_Instance, "Application already exists!");
     s_Instance = this;
-    //  WindowProps p("title", 1000, 700);
+
     m_Window = Window::Create(WindowProps(name, 1600, 900));
     m_Window->SetEventCallback(GE_BIND_EVENT_FN(Application::OnEvent));
 
-    Render::Init();
+    m_RenderSystem.Init(*m_Window);
 
-    m_ImGuiLayer = CreateRef<ImGuiLayer>();
-    PushOverlay(m_ImGuiLayer);
+    // m_ImGuiLayer = CreateRef<ImGuiLayer>();
+    //PushOverlay(m_ImGuiLayer);
 
 }
 
 Application::~Application() {
     GE_PROFILE_FUNCTION();
     GE_CORE_INFO("Application Shoutdown");
-    Render::Destroy();
+
+    // Detach all layers before render system shuts down.
+    m_LayerStack.Clear();
+    m_RenderSystem.Shutdown();
 }
 
 void Application::Run() {
@@ -74,10 +77,10 @@ void Application::Run() {
                 layer->OnUpdate(timestep);
         }
 
-        ImGuiLayer::Begin();
+        //ImGuiLayer::Begin();
         for (auto &layer : m_LayerStack)
             layer->OnImGuiRender();
-        ImGuiLayer::End();
+        //ImGuiLayer::End();
         m_Window->OnUpdate();
     }
 }

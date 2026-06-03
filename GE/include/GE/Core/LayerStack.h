@@ -21,6 +21,8 @@ public:
 
     void PopOverlay(Layer *overlay);
 
+    void Clear();
+
     std::vector<Ref<Layer>>::iterator begin() { return m_Layers.begin(); }
     std::vector<Ref<Layer>>::iterator end() { return m_Layers.end(); }
     std::vector<Ref<Layer>>::reverse_iterator rbegin() { return m_Layers.rbegin(); }

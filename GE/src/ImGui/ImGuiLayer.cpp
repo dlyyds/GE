@@ -60,11 +60,6 @@ void ImGuiLayer::OnAttach() {
 
     ImGui_ImplGlfw_InitForOther(window, true);
 
-    // CGIMBGFX::InitConfig initConfig;
-    // initConfig.autoShaderSampler = true;
-    // initConfig.startingViewId = 1; // 从哪个 view ID 开始用，默认1（避免占用0）
-    // initConfig.maxViews = 16;
-    // GE_CORE_ASSERT(ImGui_Implbgfx_Init(initConfig));
     ImGui_ImplOpenGL3_Init("#version 410");
 }
 

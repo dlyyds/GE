@@ -39,4 +39,10 @@ void LayerStack::PopOverlay(Layer *overlay) {
         m_Layers.erase(it);
 }
 
+void LayerStack::Clear() {
+    for (auto &layer : m_Layers)
+        layer->OnDetach();
+    m_Layers.clear();
+}
+
 } // namespace GE

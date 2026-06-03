@@ -2,6 +2,7 @@
 
 #include "Core/GEWindow.h"
 
+#define GLFW_INCLUDE_VULKAN
 #include "GLFW/glfw3.h"
 #define GLFW_EXPOSE_NATIVE_WIN32
 #include <GLFW/glfw3native.h>
@@ -13,11 +14,11 @@ struct GLFWwindow {
 namespace GE {
 
 
-class WindowsWindow final : public Window {
+class GlfwWindow final : public Window {
 public:
-    explicit WindowsWindow(const WindowProps &props);
+    explicit GlfwWindow(const WindowProps &props);
 
-    ~WindowsWindow() override;
+    ~GlfwWindow() override;
 
     void OnUpdate() override;
 
@@ -31,6 +32,8 @@ public:
     [[nodiscard]] void *GetNativeWindow() const override {
         return glfwGetWin32Window(m_Window);
     }
+
+    VkSurfaceKHR CreateSurface(VkInstance instance, VkPhysicalDevice physicalDevice) override;
 
     // Window attributes
     void SetEventCallback(const EventCallbackFn &callback) override {

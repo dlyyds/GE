@@ -4,6 +4,8 @@
 #include "Base.h"
 #include "Events/Event.h"
 
+#include <Vulkan/vulkan.h>
+
 
 namespace GE {
 class GraphicsContext;
@@ -42,6 +44,9 @@ public:
     [[nodiscard]] virtual void *GetNativeWindow() const = 0;
 
     [[nodiscard]] virtual void *GetGlfwWindow() const = 0;
+
+    // Vulkan surface creation
+    virtual VkSurfaceKHR CreateSurface(VkInstance instance, VkPhysicalDevice physicalDevice) = 0;
 
 
     static Scope<Window> Create(const WindowProps &props = WindowProps());

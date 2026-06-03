@@ -5,9 +5,9 @@
 #include "Events/MouseEvent.h"
 
 #include "Core/Log.h"
-#include "Platform/Windows/WindowsWindow.h"
+#include "Platform/Windows/GlfwWindow.h"
 
-
+#define GLFW_INCLUDE_VULKAN
 #include "GLFW/glfw3.h"
 
 #include "Core/GEInput.h"
@@ -18,18 +18,18 @@ namespace GE {
 
 static uint8_t s_GLFWWindowCount = 0;
 
-WindowsWindow::WindowsWindow(const WindowProps &props) {
+GlfwWindow::GlfwWindow(const WindowProps &props) {
     GE_PROFILE_FUNCTION();
     Init(props);
 }
 
-WindowsWindow::~WindowsWindow() { Shutdown(); }
+GlfwWindow::~GlfwWindow() { Shutdown(); }
 
 static void GLFWErrorCallback(int error, const char *description) {
     GE_CORE_ERROR("GLFW Error ({0}): {1}", error, description);
 }
 
-void WindowsWindow::Init(const WindowProps &props) {
+void GlfwWindow::Init(const WindowProps &props) {
     GE_PROFILE_FUNCTION();
     m_Data.Title = props.Title;
     m_Data.Width = props.Width;
@@ -48,7 +48,7 @@ void WindowsWindow::Init(const WindowProps &props) {
         GE_PROFILE_SCOPE("glfwCreateWindow");
 
         //glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GLFW_TRUE);
-
+        glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
         m_Window = glfwCreateWindow((int)props.Width, (int)props.Height, m_Data.Title.c_str(),
                                     nullptr, nullptr);
 
@@ -136,7 +136,7 @@ void WindowsWindow::Init(const WindowProps &props) {
     });
 }
 
-void WindowsWindow::Shutdown() {
+void GlfwWindow::Shutdown() {
     glfwDestroyWindow(m_Window);
     if (--s_GLFWWindowCount == 0) {
         GE_CORE_INFO("Terminating GLFW");
@@ -144,16 +144,30 @@ void WindowsWindow::Shutdown() {
     }
 }
 
-void WindowsWindow::OnUpdate() {
+void GlfwWindow::OnUpdate() {
     glfwPollEvents();
 }
 
-void WindowsWindow::SetVSync(bool enabled) {
+void GlfwWindow::SetVSync(bool enabled) {
     m_Data.VSync = enabled;
 }
 
-bool WindowsWindow::IsVSync() const {
+bool GlfwWindow::IsVSync() const {
     return m_Data.VSync;
+}
+
+VkSurfaceKHR GlfwWindow::CreateSurface(VkInstance instance, VkPhysicalDevice /*physicalDevice*/) {
+    if (instance == VK_NULL_HANDLE || !m_Window) {
+        return VK_NULL_HANDLE;
+    }
+
+    VkSurfaceKHR surface;
+    VkResult err = glfwCreateWindowSurface(instance, m_Window, nullptr, &surface);
+    if (err != VK_SUCCESS) {
+        return VK_NULL_HANDLE;
+    }
+
+    return surface;
 }
 
 } // namespace GE

@@ -35,6 +35,8 @@ add_subdirectory(GE/third_party/yaml-cpp)
 add_subdirectory(GE/third_party/imgui)
 add_subdirectory(GE/third_party/ImGuizmo)
 
+find_package(Vulkan REQUIRED)
+
 
 #GE lib
 # ==============================================
@@ -42,6 +44,7 @@ file(GLOB GE_SRC
         ${CMAKE_SOURCE_DIR}/GE/src/*.cpp
         ${CMAKE_SOURCE_DIR}/GE/src/Platform/Windows/*.cpp
         ${CMAKE_SOURCE_DIR}/GE/src/Core/*.cpp
+        ${CMAKE_SOURCE_DIR}/GE/src/FileSystem/*.cpp
         ${CMAKE_SOURCE_DIR}/GE/src/ImGui/*.cpp
         ${CMAKE_SOURCE_DIR}/GE/src/Render/*.cpp
 )
@@ -57,15 +60,13 @@ target_include_directories(${GE_NAME} PUBLIC
         ${CMAKE_SOURCE_DIR}/GE/third_party/entt
         ${CMAKE_SOURCE_DIR}/GE/third_party
         ${CMAKE_SOURCE_DIR}/GE/third_party/GLFW/include
-        ${CMAKE_SOURCE_DIR}/GE/third_party/bx
-        ${CMAKE_SOURCE_DIR}/GE/third_party/imgui_impl_bgfx
+        ${Vulkan_INCLUDE_DIRS}
 )
 
 target_compile_definitions(${GE_NAME} PUBLIC
         GLFW_INCLUDE_NONE
         GE_DEBUG
-        $<$<CONFIG:Debug>:BX_CONFIG_DEBUG=1>
-        $<$<CONFIG:Release>:BX_CONFIG_DEBUG=0>
+        VK_USE_PLATFORM_WIN32_KHR
 )
 
 set(BGFX_BUILD_DIR "${BGFX_DIR}/.build/win64_vs2022/bin")
@@ -76,17 +77,8 @@ target_link_libraries(${GE_NAME} PUBLIC
         glfw
         imgui
         yaml-cpp::yaml-cpp
-        # Debug
-        debug ${BGFX_BUILD_DIR}/bgfxDebug.lib
-        debug ${BGFX_BUILD_DIR}/bxDebug.lib
-        debug ${BGFX_BUILD_DIR}/bimgDebug.lib
-        debug ${BGFX_BUILD_DIR}/bimg_decodeDebug.lib
+        ${Vulkan_LIBRARIES}
 
-        # Release
-        optimized ${BGFX_BUILD_DIR}/bgfxRelease.lib
-        optimized ${BGFX_BUILD_DIR}/bxRelease.lib
-        optimized ${BGFX_BUILD_DIR}/bimgRelease.lib
-        optimized ${BGFX_BUILD_DIR}/bimg_decodeRelease.lib
 )
 
 
@@ -97,15 +89,19 @@ target_precompile_headers(${GE_NAME} PRIVATE GE/include/GE/pch.h)
 #Sandbox EXE
 # ==============================================
 
-
-file(GLOB Sandbox_SRC
-        ${CMAKE_SOURCE_DIR}/sandbox/*.cpp
+set(Sandbox_SRC
+        ${CMAKE_SOURCE_DIR}/sandbox/SandboxApp.cpp
+        ${CMAKE_SOURCE_DIR}/sandbox/VulkanLayer.cpp
 )
 
 add_executable(${Sandbox_NAME} ${Sandbox_SRC})
 target_include_directories(${Sandbox_NAME} PRIVATE
         ${CMAKE_SOURCE_DIR}/GE/include
 
+)
+target_compile_definitions(${Sandbox_NAME} PRIVATE
+
+        VKB_DEBUG
 )
 
 

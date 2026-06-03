@@ -2,7 +2,7 @@
 #include "pch.h"
 
 #ifdef GE_PLATFORM_WINDOWS
-#    include "Platform/Windows/WindowsWindow.h"
+#    include "Platform/Windows/GlfwWindow.h"
 #endif
 
 namespace GE {
@@ -11,7 +11,7 @@ Scope<Window> Window::Create(const WindowProps &props) {
     GE_PROFILE_FUNCTION();
 
 #ifdef GE_PLATFORM_WINDOWS
-    return CreateScope<WindowsWindow>(props);
+    return CreateScope<GlfwWindow>(props);
 #else
     GE_CORE_ASSERT(false, "Unknown platform!");
     return nullptr;

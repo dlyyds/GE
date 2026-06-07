@@ -156,11 +156,10 @@ bool GlfwWindow::IsVSync() const {
     return m_Data.VSync;
 }
 
-VkSurfaceKHR GlfwWindow::CreateSurface(VkInstance instance, VkPhysicalDevice /*physicalDevice*/) {
+VkSurfaceKHR GlfwWindow::CreateVulkanSurface(VkInstance instance) {
     if (instance == VK_NULL_HANDLE || !m_Window) {
         return VK_NULL_HANDLE;
     }
-
     VkSurfaceKHR surface;
     VkResult err = glfwCreateWindowSurface(instance, m_Window, nullptr, &surface);
     if (err != VK_SUCCESS) {

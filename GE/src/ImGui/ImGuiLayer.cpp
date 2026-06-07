@@ -2,20 +2,17 @@
 
 #include "ImGui/ImGuiLayer.h"
 
-#include "GLFW/glfw3.h"
-
 #include "Core/Application.h"
+#include "Core/Log.h"
+#include "Render/Renderer2D.h"
+#include "Render/VulkanRenderingInfo.h"
 
 #include "GLFW/glfw3.h"
 
 #include <backends/imgui_impl_glfw.h>
-#include <backends/imgui_impl_opengl3.h>
+#include <backends/imgui_impl_vulkan.h>
 
 #include "imgui.h"
-//#include "ImGuizmo.h"
-
-#include "Core/Log.h"
-#define IMGUI_ENABLE_DOCKING
 
 namespace GE {
 
@@ -30,22 +27,17 @@ void ImGuiLayer::OnAttach() {
     ImGui::CreateContext();
     ImGuiIO &io = ImGui::GetIO();
     (void)io;
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
-    //io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad; // Enable Gamepad Controls
-    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable; // Enable Docking
-    // io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable; // Enable Multi-Viewport / Platform Windows
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+    // io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
 
     ImFontConfig config;
     config.MergeMode = false;
 
-    float fontSize = 24.0f; // *2.0f;
+    float fontSize = 24.0f;
     io.Fonts->AddFontFromFileTTF("assets/fonts/opensans/OpenSans-Bold.ttf", fontSize);
     io.FontDefault = io.Fonts->AddFontFromFileTTF("assets/fonts/opensans/OpenSans-Regular.ttf", fontSize);
 
-    //  io.FontDefault = io.Fonts->AddFontFromFileTTF("C:/Windows/Fonts/msyh.ttc", 28.0f, &config,
-    //                              io.Fonts->GetGlyphRangesChineseFull());
-
-    // Setup Dear ImGui style
     ImGui::StyleColorsDark();
 
     ImGuiStyle &style = ImGui::GetStyle();
@@ -55,19 +47,69 @@ void ImGuiLayer::OnAttach() {
     }
     SetDarkThemeColors();
 
+    // ---- GLFW platform backend ----
     Application &app = Application::Get();
     auto *window = static_cast<GLFWwindow *>(app.GetWindow().GetGlfwWindow());
-
     ImGui_ImplGlfw_InitForOther(window, true);
 
-    ImGui_ImplOpenGL3_Init("#version 410");
-}
+    // ---- Vulkan renderer backend ----
+    auto &swapchain = Renderer2D::Get().GetSwapchain();
 
+    auto color_format = static_cast<VkFormat>(swapchain.GetDimensions().format);
+
+    VkPipelineRenderingCreateInfoKHR pipeline_rendering_info{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR,
+        .colorAttachmentCount = 1,
+        .pColorAttachmentFormats = &color_format,
+    };
+
+    auto &r = Renderer2D::Get();
+    ImGui_ImplVulkan_InitInfo init_info{
+        .ApiVersion = VK_API_VERSION_1_3,
+        .Instance = static_cast<VkInstance>(r.GetVkInstance()),
+        .PhysicalDevice = static_cast<VkPhysicalDevice>(r.GetVkGpu()),
+        .Device = static_cast<VkDevice>(r.GetVkDevice()),
+        .QueueFamily = static_cast<uint32_t>(r.GetGraphicsQueueIndex()),
+        .Queue = static_cast<VkQueue>(r.GetVkQueue()),
+        .DescriptorPoolSize = 1024,
+        .MinImageCount = swapchain.GetImageCount(),
+        .ImageCount = swapchain.GetImageCount(),
+        .PipelineInfoMain = {
+            .PipelineRenderingCreateInfo = pipeline_rendering_info,
+        },
+        .UseDynamicRendering = true,
+        .CheckVkResultFn = [](VkResult err) {
+            if (err != VK_SUCCESS)
+                GE_CORE_ERROR("ImGui Vulkan error: {}", static_cast<int>(err));
+        },
+
+    };
+
+    // ---- Load Vulkan function pointers for ImGui ----
+    // VK_NO_PROTOTYPES (set globally in CMake) forces the ImGui backend into
+    // IMGUI_IMPL_VULKAN_NO_PROTOTYPES mode, so we must populate its function
+    // pointer table before it can do anything.
+    {
+        auto vkGetInstanceProcAddr = r.GetInstance().GetVkGetInstanceProcAddr();
+        VkInstance vk_instance = static_cast<VkInstance>(r.GetVkInstance());
+        struct LoaderCtx {
+            PFN_vkGetInstanceProcAddr get;
+            VkInstance inst;
+        } ctx{vkGetInstanceProcAddr, vk_instance};
+        ImGui_ImplVulkan_LoadFunctions(VK_API_VERSION_1_3,
+                                       [](const char *name, void *user_data) -> PFN_vkVoidFunction {
+                                           auto &d = *static_cast<LoaderCtx *>(user_data);
+                                           return d.get(d.inst, name);
+                                       },
+                                       &ctx);
+    }
+
+    ImGui_ImplVulkan_Init(&init_info);
+}
 
 void ImGuiLayer::OnDetach() {
     GE_CORE_INFO("ImGui Shutdown");
-    ImGui_ImplOpenGL3_Shutdown();
-    //ImGui_Implbgfx_Shutdown();
+    ImGui_ImplVulkan_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
 }
@@ -80,13 +122,10 @@ void ImGuiLayer::OnEvent(Event &e) {
     }
 }
 
-
 void ImGuiLayer::Begin() {
-
-    ImGui_ImplOpenGL3_NewFrame();
+    ImGui_ImplVulkan_NewFrame();
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
-    //   ImGuizmo::BeginFrame();
 }
 
 void ImGuiLayer::End() {
@@ -95,17 +134,20 @@ void ImGuiLayer::End() {
     io.DisplaySize = ImVec2(static_cast<float>(app.GetWindow().GetWidth()),
                             static_cast<float>(app.GetWindow().GetHeight()));
 
-    // Rendering
     ImGui::Render();
-    //ImGui_Implbgfx_RenderDrawData(ImGui::GetDrawData());
-    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
-    // if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) {
-    //     GLFWwindow *backup_current_context = glfwGetCurrentContext();
-    //     ImGui::UpdatePlatformWindows();
-    //     ImGui::RenderPlatformWindowsDefault();
-    //     glfwMakeContextCurrent(backup_current_context);
-    // }
+    auto &swapchain = Renderer2D::Get().GetSwapchain();
+    auto cmd = swapchain.GetCurrentCmd();
+
+    // Render ImGui on top with loadOp = eLoad to preserve the scene.
+    VulkanRenderingInfo render_info;
+    render_info.SetRenderArea(0, 0, swapchain.GetDimensions().width, swapchain.GetDimensions().height);
+    render_info.AddColorAttachment(swapchain.GetCurrentImageView(),
+                                   vk::AttachmentLoadOp::eLoad,
+                                   vk::AttachmentStoreOp::eStore);
+    render_info.Begin(cmd);
+    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), static_cast<VkCommandBuffer>(cmd));
+    VulkanRenderingInfo::End(cmd);
 }
 
 void ImGuiLayer::OnImGuiRender() {
@@ -142,6 +184,5 @@ void ImGuiLayer::SetDarkThemeColors() {
     colors[ImGuiCol_TitleBgActive] = ImVec4{0.15f, 0.1505f, 0.151f, 1.0f};
     colors[ImGuiCol_TitleBgCollapsed] = ImVec4{0.15f, 0.1505f, 0.151f, 1.0f};
 }
-
 
 } // namespace GE

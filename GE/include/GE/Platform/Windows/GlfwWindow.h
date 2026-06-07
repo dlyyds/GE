@@ -33,7 +33,7 @@ public:
         return glfwGetWin32Window(m_Window);
     }
 
-    VkSurfaceKHR CreateSurface(VkInstance instance, VkPhysicalDevice physicalDevice) override;
+    VkSurfaceKHR CreateVulkanSurface(VkInstance instance) override;
 
     // Window attributes
     void SetEventCallback(const EventCallbackFn &callback) override {

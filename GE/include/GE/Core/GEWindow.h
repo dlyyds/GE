@@ -1,6 +1,5 @@
 #pragma once
 
-
 #include "Base.h"
 #include "Events/Event.h"
 
@@ -45,8 +44,8 @@ public:
 
     [[nodiscard]] virtual void *GetGlfwWindow() const = 0;
 
-    // Vulkan surface creation
-    virtual VkSurfaceKHR CreateSurface(VkInstance instance, VkPhysicalDevice physicalDevice) = 0;
+    /// Create a Vulkan surface from this window. Returns VK_NULL_HANDLE on failure.
+    virtual VkSurfaceKHR CreateVulkanSurface(VkInstance instance) = 0;
 
 
     static Scope<Window> Create(const WindowProps &props = WindowProps());

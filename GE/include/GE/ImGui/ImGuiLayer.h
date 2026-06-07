@@ -9,8 +9,6 @@
 
 namespace GE {
 
-class GraphicsContext;
-
 class ImGuiLayer : public Layer {
 public:
     ImGuiLayer();
@@ -21,7 +19,8 @@ public:
 
     void OnDetach() override;
 
-    void OnUpdate(Timestep &ts) override {}
+    void OnUpdate(Timestep &ts) override {
+    }
 
     void OnImGuiRender() override;
 

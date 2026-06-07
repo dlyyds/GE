@@ -8,7 +8,6 @@
 #include "Core/Timestep.h"
 #include "Debug/Assert.h"
 #include "ImGui/ImGuiLayer.h"
-//#include "Render/Render.h"
 
 #include <Events/ApplicationEvent.h>
 
@@ -30,10 +29,10 @@ Application::Application(const std::string &name, ApplicationCommandLineArgs arg
     m_Window = Window::Create(WindowProps(name, 1600, 900));
     m_Window->SetEventCallback(GE_BIND_EVENT_FN(Application::OnEvent));
 
-    m_RenderSystem.Init(*m_Window);
+    Renderer2D::Get().Init(*m_Window);
 
-    // m_ImGuiLayer = CreateRef<ImGuiLayer>();
-    //PushOverlay(m_ImGuiLayer);
+    m_ImGuiLayer = CreateRef<ImGuiLayer>();
+    PushOverlay(m_ImGuiLayer);
 
 }
 
@@ -41,9 +40,13 @@ Application::~Application() {
     GE_PROFILE_FUNCTION();
     GE_CORE_INFO("Application Shoutdown");
 
-    // Detach all layers before render system shuts down.
+    // Wait for GPU to finish before destroying resources.
+    Renderer2D::Get().GetVkDevice().waitIdle();
+
+    // Detach all layers before renderer shuts down.
     m_LayerStack.Clear();
-    m_RenderSystem.Shutdown();
+
+    Renderer2D::Get().Shutdown();
 }
 
 void Application::Run() {
@@ -73,14 +76,19 @@ void Application::Run() {
         m_LastFrameTime = time;
 
         if (!m_Minimized) {
-            for (auto &layer : m_LayerStack)
-                layer->OnUpdate(timestep);
-        }
+            auto &swapchain = Renderer2D::Get().GetSwapchain();
+            if (swapchain.BeginFrame()) {
+                for (auto &layer : m_LayerStack)
+                    layer->OnUpdate(timestep);
 
-        //ImGuiLayer::Begin();
-        for (auto &layer : m_LayerStack)
-            layer->OnImGuiRender();
-        //ImGuiLayer::End();
+                ImGuiLayer::Begin();
+                for (auto &layer : m_LayerStack)
+                    layer->OnImGuiRender();
+                ImGuiLayer::End();
+
+                swapchain.EndFrame();
+            }
+        }
         m_Window->OnUpdate();
     }
 }

@@ -47,6 +47,8 @@ file(GLOB GE_SRC
         ${CMAKE_SOURCE_DIR}/GE/src/FileSystem/*.cpp
         ${CMAKE_SOURCE_DIR}/GE/src/ImGui/*.cpp
         ${CMAKE_SOURCE_DIR}/GE/src/Render/*.cpp
+        ${CMAKE_SOURCE_DIR}/GE/third_party/stb/stb_image.cpp
+
 )
 
 set(BGFX_DIR "F:/yxy/c++lib/bgfx")
@@ -60,6 +62,7 @@ target_include_directories(${GE_NAME} PUBLIC
         ${CMAKE_SOURCE_DIR}/GE/third_party/entt
         ${CMAKE_SOURCE_DIR}/GE/third_party
         ${CMAKE_SOURCE_DIR}/GE/third_party/GLFW/include
+        ${CMAKE_SOURCE_DIR}/GE/third_party/stb
         ${Vulkan_INCLUDE_DIRS}
 )
 
@@ -67,6 +70,9 @@ target_compile_definitions(${GE_NAME} PUBLIC
         GLFW_INCLUDE_NONE
         GE_DEBUG
         VK_USE_PLATFORM_WIN32_KHR
+        VKB_DEBUG
+        VK_NO_PROTOTYPES
+        VULKAN_HPP_NO_STRUCT_CONSTRUCTORS
 )
 
 set(BGFX_BUILD_DIR "${BGFX_DIR}/.build/win64_vs2022/bin")
@@ -101,11 +107,12 @@ target_include_directories(${Sandbox_NAME} PRIVATE
 )
 target_compile_definitions(${Sandbox_NAME} PRIVATE
 
-        VKB_DEBUG
 )
 
 
 target_link_libraries(${Sandbox_NAME} PRIVATE ${GE_NAME})
+
+add_subdirectory(sandbox/assets/shaders/glsl)
 
 
 #Editor

@@ -12,7 +12,7 @@
 #include "Core/Timestep.h"
 #include "Debug/Assert.h"
 #include "ImGui/ImGuiLayer.h"
-#include "Render/RenderSystem.h"
+#include "Render/Renderer2D.h"
 
 int main(int argc, char **argv);
 
@@ -44,8 +44,6 @@ public:
 
     [[nodiscard]] Window &GetWindow() const { return *m_Window; }
 
-    [[nodiscard]] RenderSystem &GetRenderSystem() { return m_RenderSystem; }
-
     void Close();
 
     static Application &Get() { return *s_Instance; }
@@ -65,8 +63,6 @@ private:
 
 private:
     ApplicationCommandLineArgs m_CommandLineArgs;
-
-    RenderSystem m_RenderSystem;
 
     Ref<ImGuiLayer> m_ImGuiLayer;
 

@@ -2,9 +2,10 @@
 
 #include "GE/GE.h"
 #include "GE/Render/Camera.h"
-#include "../GE/include/GE/Render/VulkanBase/VulkanImage.h"
-#include "../GE/include/GE/Render/VulkanBase/VulkanSampler.h"
+#include "GE/Render/VulkanBase/VulkanImage.h"
+#include "GE/Render/VulkanBase/VulkanSampler.h"
 #include "GE/Render/Mesh.h"
+#include "GE/Render/Material.h"
 
 namespace GE {
 
@@ -25,7 +26,6 @@ private:
 private:
     glm::vec4 m_TriangleColor{0.3f, 0.6f, 0.9f, 1.0f};
 
-    // Model controls
     float m_Rotation = 0.0f;
     glm::vec2 m_Position{0.0f, 0.0f};
     glm::vec2 m_Scale{1.0f, 1.0f};
@@ -34,6 +34,7 @@ private:
     VulkanImage m_Texture;
     VulkanSampler m_Sampler;
     Mesh m_Mesh;
+    Material m_Material;
 };
 
 } // namespace GE

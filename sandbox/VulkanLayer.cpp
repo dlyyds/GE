@@ -5,7 +5,6 @@
 #include "VulkanLayer.h"
 
 #include "GE/Render/Renderer2D.h"
-#include "GE/Render/VulkanBase/VulkanDevice.h"
 
 #include "imgui.h"
 #include "glm/gtc/type_ptr.hpp"
@@ -31,14 +30,20 @@ void VulkanLayer::OnAttach() {
     // Texture
     m_Texture.LoadFromFile(device, gpu, queue, qfi, "assets/textures/Checkerboard.png");
     m_Sampler.Init(device, vk::Filter::eNearest, vk::Filter::eNearest);
-    r.SetTexture(m_Texture.GetView(), m_Sampler.Get());
 
     // Quad mesh
     m_Mesh.Init(device, gpu, Mesh::kVertices, sizeof(Mesh::kVertices),
                 Mesh::kIndices, sizeof(Mesh::kIndices), 6);
+
+    // Material
+    auto fmt = swapchain.GetDimensions().format;
+    m_Material.Init(device, r.CreateDefaultPipeline(device, fmt),
+                    r.GetUniformBufferInfo(),
+                    m_Texture.GetView(), m_Sampler.Get());
 }
 
 void VulkanLayer::OnDetach() {
+    m_Material.Cleanup();
     m_Mesh.Destroy();
     m_Sampler.Cleanup();
     m_Texture.Cleanup();
@@ -115,7 +120,6 @@ void VulkanLayer::OnImGuiRender() {
 }
 
 void VulkanLayer::RenderFrame() {
-    // Compute model matrix
     auto model = glm::mat4(1.0f);
     model = glm::translate(model, glm::vec3(m_Position, 0.0f));
     model = glm::rotate(model, glm::radians(m_Rotation), glm::vec3(0.0f, 0.0f, 1.0f));
@@ -123,7 +127,7 @@ void VulkanLayer::RenderFrame() {
 
     Renderer2D::Get().BeginScene(m_Camera.GetView(), m_Camera.GetProj(), m_Camera.GetPosition(),
                                   {0.01f, 0.01f, 0.033f, 1.0f});
-    Renderer2D::Get().Draw(m_Mesh, model, m_TriangleColor);
+    Renderer2D::Get().Draw(m_Mesh, m_Material, model, m_TriangleColor);
     Renderer2D::Get().EndScene();
 }
 

@@ -4,7 +4,7 @@
 
 #define VULKAN_HPP_DISPATCH_LOADER_DYNAMIC 1
 #include "Render/Renderer2D.h"
-#include "../../include/GE/Render/VulkanBase/VulkanRenderingInfo.h"
+#include "Render/VulkanBase/VulkanRenderingInfo.h"
 #include "Core/GEWindow.h"
 
 #include <array>
@@ -18,51 +18,26 @@ Renderer2D &Renderer2D::Get() {
 }
 
 void Renderer2D::Init(Window &window) {
-    // 1. VulkanInstance → VulkanDevice (creates surface) → swapchain
     m_Instance.Init("GE App");
     m_Device.Init(m_Instance, window);
 
     m_VkDevice = m_Device.GetDevice();
 
-    // 2. Init swapchain
     auto width = window.GetWidth();
     auto height = window.GetHeight();
     m_Swapchain.Init(m_VkDevice, m_Device.GetGpu(), m_Device.GetSurface(),
                      m_Device.GetQueue(), m_Device.GetGraphicsQueueIndex(), width, height);
 
-    auto color_format = m_Swapchain.GetDimensions().format;
     auto dev = m_VkDevice;
     auto gpu = m_Device.GetGpu();
 
-    // -- Uniform buffer --
     m_UniformBuffer.Init(dev, gpu, sizeof(UniformData),
                          vk::BufferUsageFlagBits::eUniformBuffer,
                          vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
-
-    // -- Pipeline (via factory) --
-    m_Pipeline = CreateDefaultPipeline(dev, color_format);
-
-    // -- Descriptor pool --
-    m_DescriptorPool.Init(dev, 1,
-                          {vk::DescriptorPoolSize{.type = vk::DescriptorType::eUniformBuffer, .descriptorCount = 1},
-                           vk::DescriptorPoolSize{.type = vk::DescriptorType::eCombinedImageSampler, .descriptorCount = 1}});
-
-    // -- Descriptor set + UBO write --
-    vk::DescriptorBufferInfo buffer_info{
-        .buffer = m_UniformBuffer.GetBuffer(),
-        .offset = 0,
-        .range = sizeof(UniformData)
-    };
-
-    m_DescriptorSet.Init(dev, m_DescriptorPool, m_Pipeline.GetDescriptorSetLayout());
-    m_DescriptorSet.WriteBuffer(0, vk::DescriptorType::eUniformBuffer, buffer_info);
 }
 
 void Renderer2D::Shutdown() {
-    m_DescriptorSet.Destroy();
-    m_DescriptorPool.Cleanup();
     m_UniformBuffer.Destroy();
-    m_Pipeline.Cleanup();
     m_VkDevice = nullptr;
 
     m_Swapchain.Destroy();
@@ -71,7 +46,6 @@ void Renderer2D::Shutdown() {
 }
 
 VulkanPipeline Renderer2D::CreateDefaultPipeline(vk::Device dev, vk::Format color_format) {
-    // -- Descriptor set layout (binding 0 = UBO, binding 1 = texture) --
     std::array<vk::DescriptorSetLayoutBinding, 2> bindings{{
         {.binding = 0,
          .descriptorType = vk::DescriptorType::eUniformBuffer,
@@ -136,9 +110,7 @@ void Renderer2D::BeginScene(const glm::mat4 &view, const glm::mat4 &projection,
                                    clear_value);
     render_info.Begin(cmd);
 
-    // Bind pipeline & dynamic states
-    m_Pipeline.Bind(cmd);
-
+    // Dynamic state (shared across all draws in this frame)
     vk::Viewport vp;
     vp.width = static_cast<float>(dim.width);
     vp.height = static_cast<float>(dim.height);
@@ -150,21 +122,9 @@ void Renderer2D::BeginScene(const glm::mat4 &view, const glm::mat4 &projection,
     scissor.extent.width = dim.width;
     scissor.extent.height = dim.height;
     cmd.setScissor(0, scissor);
-
-    cmd.setCullMode(vk::CullModeFlagBits::eNone);
-    cmd.setFrontFace(vk::FrontFace::eClockwise);
-    cmd.setPrimitiveTopology(vk::PrimitiveTopology::eTriangleList);
 }
 
-void Renderer2D::SetTexture(vk::ImageView image_view, vk::Sampler sampler) {
-    vk::DescriptorImageInfo image_info;
-    image_info.sampler = sampler;
-    image_info.imageView = image_view;
-    image_info.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
-    m_DescriptorSet.WriteImage(1, image_info);
-}
-
-void Renderer2D::Draw(Mesh &mesh, const glm::mat4 &model, const glm::vec4 &color) {
+void Renderer2D::Draw(Mesh &mesh, Material &material, const glm::mat4 &model, const glm::vec4 &color) {
     UniformData data{};
     data.projection = m_Projection;
     data.view = m_View;
@@ -175,11 +135,19 @@ void Renderer2D::Draw(Mesh &mesh, const glm::mat4 &model, const glm::vec4 &color
 
     vk::CommandBuffer cmd = m_ActiveCmd;
 
-    cmd.bindVertexBuffers(0, mesh.vertices.GetBuffer(), {0});
+    // Bind per-material pipeline + descriptor set
+    material.pipeline.Bind(cmd);
+
+    cmd.setCullMode(vk::CullModeFlagBits::eNone);
+    cmd.setFrontFace(vk::FrontFace::eClockwise);
+    cmd.setPrimitiveTopology(vk::PrimitiveTopology::eTriangleList);
+
+    vk::Buffer vb = mesh.vertices.GetBuffer();
+    cmd.bindVertexBuffers(0, vb, {0});
     cmd.bindIndexBuffer(mesh.indices.GetBuffer(), 0, vk::IndexType::eUint16);
 
-    cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, m_Pipeline.GetLayout(),
-                           0, m_DescriptorSet.Get(), nullptr);
+    cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, material.pipeline.GetLayout(),
+                           0, material.descriptorSet.Get(), nullptr);
 
     cmd.drawIndexed(mesh.indexCount, 1, 0, 0, 0);
 }

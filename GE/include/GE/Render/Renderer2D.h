@@ -3,21 +3,21 @@
 #include "glm/glm.hpp"
 #include <string>
 
-#include "VulkanBase/VulkanPipeline.h"
-#include "VulkanBase/VulkanBuffer.h"
-#include "VulkanBase/VulkanDescriptorPool.h"
-#include "VulkanBase/VulkanDescriptorSet.h"
+#include "Render/VulkanBase/VulkanPipeline.h"
+#include "Render/VulkanBase/VulkanBuffer.h"
 #include "Render/Mesh.h"
-#include "VulkanBase/VulkanSwapchain.h"
-#include "VulkanBase/VulkanInstance.h"
-#include "VulkanBase/VulkanDevice.h"
+#include "Render/Material.h"
+#include "Render/VulkanBase/VulkanSwapchain.h"
+#include "Render/VulkanBase/VulkanInstance.h"
+#include "Render/VulkanBase/VulkanDevice.h"
 
 namespace GE {
 
 class Window;
 
 /// Instance-based 2D/3D mesh renderer singleton.
-/// Owns VulkanInstance, VulkanDevice, and all rendering resources.
+/// Owns VulkanInstance, VulkanDevice, swapchain, and a shared UBO buffer.
+/// Pipelines and descriptor sets live in Material — one per unique surface.
 class Renderer2D {
 public:
     static Renderer2D &Get();
@@ -25,7 +25,7 @@ public:
     /// Full bootstrap: instance → surface → device → swapchain → renderer resources.
     void Init(Window &window);
 
-    /// Full teardown: renderer resources → swapchain → device → surface → instance.
+    /// Full teardown.
     void Shutdown();
 
     void BeginScene(const glm::mat4 &view, const glm::mat4 &projection,
@@ -33,19 +33,24 @@ public:
                     const glm::vec4 &clear_color = {0.01f, 0.01f, 0.033f, 1.0f});
     void EndScene();
 
-    void SetTexture(vk::ImageView image_view, vk::Sampler sampler);
+    /// Draw a mesh with the given material.
+    void Draw(Mesh &mesh, Material &material, const glm::mat4 &model, const glm::vec4 &color);
 
-    void Draw(Mesh &mesh, const glm::mat4 &model, const glm::vec4 &color);
-
-    /// Factory: create a pipeline with default vertex layout
-    /// (MeshVertex: position/uv/normal) and the given shaders.
-    /// The pipeline includes a built-in descriptor set layout
-    /// (binding 0 = UBO, binding 1 = combined image sampler).
+    /// Factory: create a default pipeline (MeshVertex layout, UBO+texture descriptor).
     VulkanPipeline CreateDefaultPipeline(vk::Device dev, vk::Format color_format);
+
+    /// Expose the shared UBO descriptor info so Material can bind to it.
+    [[nodiscard]] vk::DescriptorBufferInfo GetUniformBufferInfo() const {
+        return vk::DescriptorBufferInfo{
+            .buffer = m_UniformBuffer.GetBuffer(),
+            .offset = 0,
+            .range = sizeof(UniformData),
+        };
+    }
 
     [[nodiscard]] VulkanSwapchain &GetSwapchain() { return m_Swapchain; }
 
-    // -- Forwarding accessors for VulkanInstance / VulkanDevice --
+    // -- Forwarding accessors --
     [[nodiscard]] VulkanInstance &GetInstance() { return m_Instance; }
     [[nodiscard]] VulkanDevice  &GetDevice()   { return m_Device; }
     [[nodiscard]] vk::Instance   GetVkInstance()   const { return m_Instance.Get(); }
@@ -70,16 +75,12 @@ private:
         float _padding[3];
     };
 
-    // Declaration order = destruction order: Instance outlives Device.
     VulkanInstance m_Instance;
     VulkanDevice  m_Device;
 
     vk::Device m_VkDevice = nullptr;
 
-    VulkanPipeline m_Pipeline;
     VulkanBuffer m_UniformBuffer;
-    VulkanDescriptorPool m_DescriptorPool;
-    VulkanDescriptorSet m_DescriptorSet;
     VulkanSwapchain m_Swapchain;
 
     // Scene state

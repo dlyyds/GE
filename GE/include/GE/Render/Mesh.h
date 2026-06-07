@@ -3,7 +3,7 @@
 #include <vulkan/vulkan.hpp>
 
 #include "glm/glm.hpp"
-#include "VulkanBase/VulkanBuffer.h"
+#include "Render/VulkanBase/VulkanBuffer.h"
 
 namespace GE {
 

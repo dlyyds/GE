@@ -5,7 +5,7 @@
 #include "Core/Application.h"
 #include "Core/Log.h"
 #include "Render/Renderer2D.h"
-#include "Render/VulkanRenderingInfo.h"
+#include "../../include/GE/Render/VulkanBase/VulkanRenderingInfo.h"
 
 #include "GLFW/glfw3.h"
 
@@ -146,8 +146,8 @@ void ImGuiLayer::End() {
                                    vk::AttachmentLoadOp::eLoad,
                                    vk::AttachmentStoreOp::eStore);
     render_info.Begin(cmd);
-    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), static_cast<VkCommandBuffer>(cmd));
-    VulkanRenderingInfo::End(cmd);
+    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
+    render_info.End(cmd);
 }
 
 void ImGuiLayer::OnImGuiRender() {

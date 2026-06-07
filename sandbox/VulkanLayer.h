@@ -2,8 +2,9 @@
 
 #include "GE/GE.h"
 #include "GE/Render/Camera.h"
-#include "GE/Render/VulkanImage.h"
-#include "GE/Render/VulkanSampler.h"
+#include "../GE/include/GE/Render/VulkanBase/VulkanImage.h"
+#include "../GE/include/GE/Render/VulkanBase/VulkanSampler.h"
+#include "GE/Render/Mesh.h"
 
 namespace GE {
 
@@ -32,6 +33,7 @@ private:
     Camera m_Camera;
     VulkanImage m_Texture;
     VulkanSampler m_Sampler;
+    Mesh m_Mesh;
 };
 
 } // namespace GE

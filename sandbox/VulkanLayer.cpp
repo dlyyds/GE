@@ -23,16 +23,23 @@ void VulkanLayer::OnAttach() {
     auto queue = r.GetVkQueue();
     auto qfi = r.GetGraphicsQueueIndex();
     auto &swapchain = r.GetSwapchain();
+
+    // Camera
     m_Camera.SetAspect(static_cast<float>(swapchain.GetDimensions().width) /
                        static_cast<float>(swapchain.GetDimensions().height));
 
     // Texture
     m_Texture.LoadFromFile(device, gpu, queue, qfi, "assets/textures/Checkerboard.png");
     m_Sampler.Init(device, vk::Filter::eNearest, vk::Filter::eNearest);
-    Renderer2D::Get().SetTexture(m_Texture.GetView(), m_Sampler.Get());
+    r.SetTexture(m_Texture.GetView(), m_Sampler.Get());
+
+    // Quad mesh
+    m_Mesh.Init(device, gpu, Mesh::kVertices, sizeof(Mesh::kVertices),
+                Mesh::kIndices, sizeof(Mesh::kIndices), 6);
 }
 
 void VulkanLayer::OnDetach() {
+    m_Mesh.Destroy();
     m_Sampler.Cleanup();
     m_Texture.Cleanup();
 }
@@ -116,7 +123,7 @@ void VulkanLayer::RenderFrame() {
 
     Renderer2D::Get().BeginScene(m_Camera.GetView(), m_Camera.GetProj(), m_Camera.GetPosition(),
                                   {0.01f, 0.01f, 0.033f, 1.0f});
-    Renderer2D::Get().DrawRect(model, m_TriangleColor);
+    Renderer2D::Get().Draw(m_Mesh, model, m_TriangleColor);
     Renderer2D::Get().EndScene();
 }
 

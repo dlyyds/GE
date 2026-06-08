@@ -23,22 +23,23 @@ void VulkanLayer::OnAttach() {
     auto qfi = r.GetGraphicsQueueIndex();
     auto &swapchain = r.GetSwapchain();
 
-    // Camera
+    // 相机
     m_Camera.SetAspect(static_cast<float>(swapchain.GetDimensions().width) /
                        static_cast<float>(swapchain.GetDimensions().height));
 
-    // Texture
+    // 纹理
     m_Texture.LoadFromFile(allocator, queue, qfi, "assets/textures/Checkerboard.png");
     m_Sampler.Init(device, vk::Filter::eNearest, vk::Filter::eNearest);
 
-    // Quad mesh
+    // 四边形网格
     m_Mesh.Init(allocator, Mesh::kVertices, sizeof(Mesh::kVertices),
                 Mesh::kIndices, sizeof(Mesh::kIndices), 6);
 
-    // Material
+    // 材质（为每个 swapchain image 创建独立的 descriptor set）
     auto fmt = swapchain.GetDimensions().format;
+    auto bufferInfos = r.GetUniformBufferInfos();
     m_Material.Init(device, r.CreateDefaultPipeline(device, fmt),
-                    r.GetUniformBufferInfo(),
+                    r.GetSwapchainImageCount(), bufferInfos.data(),
                     m_Texture.GetView(), m_Sampler.Get());
 }
 
@@ -120,15 +121,22 @@ void VulkanLayer::OnImGuiRender() {
 }
 
 void VulkanLayer::RenderFrame() {
-    auto model = glm::mat4(1.0f);
-    model = glm::translate(model, glm::vec3(m_Position, 0.0f));
-    model = glm::rotate(model, glm::radians(m_Rotation), glm::vec3(0.0f, 0.0f, 1.0f));
-    model = glm::scale(model, glm::vec3(m_Scale, 1.0f));
+    auto &r = Renderer2D::Get();
 
-    Renderer2D::Get().BeginScene(m_Camera.GetView(), m_Camera.GetProj(), m_Camera.GetPosition(),
-                                  {0.01f, 0.01f, 0.033f, 1.0f});
-    Renderer2D::Get().Draw(m_Mesh, m_Material, model, m_TriangleColor);
-    Renderer2D::Get().EndScene();
+    r.BeginScene(m_Camera.GetView(), m_Camera.GetProj(), m_Camera.GetPosition(),
+                 {0.01f, 0.01f, 0.033f, 1.0f});
+
+    // 画 5 个四边形，排成一行
+    // 现在 Ring Buffer 保证每个 Draw 有自己的 UBO 空间，不会相互覆盖
+    for (int i = 0; i < 5; i++) {
+        float x = -0.8f + i * 0.4f;  // -0.8, -0.4, 0.0, 0.4, 0.8
+        auto model = glm::mat4(1.0f);
+        model = glm::translate(model, glm::vec3(x, 0.0f, 0.0f));
+        model = glm::scale(model, glm::vec3(0.35f, 0.35f, 1.0f));
+        r.Draw(m_Mesh, m_Material, model, m_TriangleColor);
+    }
+
+    r.EndScene();
 }
 
 } // namespace GE

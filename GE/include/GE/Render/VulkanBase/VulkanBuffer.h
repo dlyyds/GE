@@ -20,6 +20,10 @@ public:
 
     VulkanBuffer &operator=(const VulkanBuffer &) = delete;
 
+    VulkanBuffer(VulkanBuffer &&) = default;
+
+    VulkanBuffer &operator=(VulkanBuffer &&) = default;
+
     /// Create a buffer and allocate memory via VMA.
     /// @param allocator    the VMA allocator (from VulkanDevice).
     /// @param size         buffer size in bytes.
@@ -44,6 +48,7 @@ public:
 
     [[nodiscard]] vk::Buffer GetBuffer() const { return m_Buffer; }
     [[nodiscard]] vk::DeviceSize GetSize() const { return m_Size; }
+    [[nodiscard]] void *GetMappedData() const { return m_MappedData; }
 
 private:
     VmaAllocator m_Allocator = nullptr;

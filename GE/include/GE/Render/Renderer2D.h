@@ -5,6 +5,7 @@
 
 #include "Render/VulkanBase/VulkanPipeline.h"
 #include "Render/VulkanBase/VulkanBuffer.h"
+#include "Render/VulkanBase/VulkanRingBuffer.h"
 #include "Render/Mesh.h"
 #include "Render/Material.h"
 #include "Render/VulkanBase/VulkanSwapchain.h"
@@ -15,17 +16,17 @@ namespace GE {
 
 class Window;
 
-/// Instance-based 2D/3D mesh renderer singleton.
-/// Owns VulkanInstance, VulkanDevice, swapchain, and a shared UBO buffer.
-/// Pipelines and descriptor sets live in Material — one per unique surface.
+/// 基于实例的 2D/3D 网格渲染器单例。
+/// 拥有 VulkanInstance、VulkanDevice、swapchain 和环形 UBO buffer。
+/// 管线和 descriptor set 存在于 Material 中，每个材质一套。
 class Renderer2D {
 public:
     static Renderer2D &Get();
 
-    /// Full bootstrap: instance → surface → device → swapchain → renderer resources.
+    /// 完整初始化：instance → surface → device → swapchain → 渲染资源。
     void Init(Window &window);
 
-    /// Full teardown.
+    /// 完整销毁。
     void Shutdown();
 
     void BeginScene(const glm::mat4 &view, const glm::mat4 &projection,
@@ -34,20 +35,33 @@ public:
 
     void EndScene();
 
-    /// Draw a mesh with the given material.
+    /// 用指定材质绘制网格。
     void Draw(const Mesh &mesh, const Material &material, const glm::mat4 &model, const glm::vec4 &color);
 
-    /// Factory: create a default pipeline (MeshVertex layout, UBO+texture descriptor).
+    /// 工厂方法：创建默认管线（MeshVertex 布局，UBO+纹理 descriptor）。
     VulkanPipeline CreateDefaultPipeline(vk::Device dev, vk::Format color_format);
 
-    /// Expose the shared UBO descriptor info so Material can bind to it.
-    [[nodiscard]] vk::DescriptorBufferInfo GetUniformBufferInfo() const {
+    /// 每个 swapchain image 的 ring buffer 大小（4 MB，约 16000 次 Draw）
+    static constexpr vk::DeviceSize RING_BUFFER_SIZE = 4 * 1024 * 1024;
+
+    /// 返回当前帧的 UBO descriptor 信息，用于更新 Material。
+    [[nodiscard]] vk::DescriptorBufferInfo GetUniformBufferInfo(uint32_t imageIndex) const {
         return vk::DescriptorBufferInfo{
-            .buffer = m_UniformBuffer.GetBuffer(),
+            .buffer = m_RingBuffers[imageIndex].GetBuffer(),
             .offset = 0,
             .range = sizeof(UniformData),
         };
     }
+
+    /// 返回所有 swapchain image 的 UBO descriptor 信息数组（给 Material::Init 用）。
+    [[nodiscard]] std::vector<vk::DescriptorBufferInfo> GetUniformBufferInfos() const {
+        std::vector<vk::DescriptorBufferInfo> infos(m_RingBuffers.size());
+        for (uint32_t i = 0; i < m_RingBuffers.size(); i++)
+            infos[i] = GetUniformBufferInfo(i);
+        return infos;
+    }
+
+    [[nodiscard]] uint32_t GetSwapchainImageCount() const { return static_cast<uint32_t>(m_RingBuffers.size()); }
 
     [[nodiscard]] VulkanSwapchain &GetSwapchain() { return m_Swapchain; }
 
@@ -84,7 +98,7 @@ private:
 
     vk::Device m_VkDevice = nullptr;
 
-    VulkanBuffer m_UniformBuffer;
+    std::vector<VulkanRingBuffer> m_RingBuffers;
     VulkanSwapchain m_Swapchain;
 
     // Scene state

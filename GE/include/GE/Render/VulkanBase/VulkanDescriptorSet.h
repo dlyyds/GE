@@ -19,6 +19,10 @@ public:
 
     VulkanDescriptorSet &operator=(const VulkanDescriptorSet &) = delete;
 
+    VulkanDescriptorSet(VulkanDescriptorSet &&) = default;
+
+    VulkanDescriptorSet &operator=(VulkanDescriptorSet &&) = default;
+
     /// Allocate descriptor set from pool.
     void Init(vk::Device device, VulkanDescriptorPool &pool,
               vk::DescriptorSetLayout layout);

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vulkan/vulkan.hpp>
+#include <vector>
 
 #include "Render/VulkanBase/VulkanPipeline.h"
 #include "Render/VulkanBase/VulkanDescriptorPool.h"
@@ -8,22 +9,22 @@
 
 namespace GE {
 
-/// Material = pipeline + descriptor set with texture.
-/// The UBO binding always points to the renderer's uniform buffer
-/// (the buffer is written per-draw by Renderer2D, no per-material update needed).
+/// Material = pipeline + N 个 descriptor set（每个 swapchain image 一个）。
+/// UBO binding 指向对应 image 的 ring buffer，避免更新冲突。
 struct Material {
     VulkanPipeline pipeline;
     VulkanDescriptorPool descriptorPool;
-    VulkanDescriptorSet descriptorSet;
+    std::vector<VulkanDescriptorSet> descriptorSets;
 
-    /// Take ownership of a pipeline and create a descriptor set with texture.
-    /// uniformBufferInfo points to the renderer's shared UBO (binding 0).
+    /// 接管管线所有权，为每个 swapchain image 创建一个 descriptor set。
+    /// uniformBufferInfos 长度必须等于 imageCount。
     void Init(vk::Device device,
               VulkanPipeline &&pipeline,
-              const vk::DescriptorBufferInfo &uniformBufferInfo,
+              uint32_t imageCount,
+              const vk::DescriptorBufferInfo *uniformBufferInfos,
               vk::ImageView textureView, vk::Sampler sampler);
 
-    /// Update just the texture binding without recreating the whole material.
+    /// 更新所有 descriptor set 的纹理 binding。
     void SetTexture(vk::ImageView textureView, vk::Sampler sampler);
 
     void Cleanup();

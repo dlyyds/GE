@@ -26,7 +26,7 @@ add_library(imguizmo::imguizmo ALIAS imguizmo)
 target_include_directories(imguizmo PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/src
         $<INSTALL_INTERFACE:include>
-        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/GE/vendor/imgui>
+        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/GE/third_party/imgui>
 )
 
 if (IMGUIZMO_BUILD_EXAMPLE)

@@ -27,12 +27,20 @@ void Renderer2D::Init(Window &window) {
     m_Swapchain.Init(m_VkDevice, m_Device.GetGpu(), m_Device.GetSurface(),
                      m_Device.GetQueue(), m_Device.GetGraphicsQueueIndex(), width, height);
 
-    m_UniformBuffer.Init(m_Device.GetVmaAllocator(), sizeof(UniformData),
-                         vk::BufferUsageFlagBits::eUniformBuffer);
+    // 为每个 swapchain image 创建 ring buffer（三重缓冲）
+    uint32_t imageCount = m_Swapchain.GetImageCount();
+    m_RingBuffers.reserve(imageCount);
+    for (uint32_t i = 0; i < imageCount; i++) {
+        m_RingBuffers.emplace_back();
+        m_RingBuffers.back().Init(m_Device.GetVmaAllocator(), RING_BUFFER_SIZE);
+    }
 }
 
 void Renderer2D::Shutdown() {
-    m_UniformBuffer.Destroy();
+    for (auto &rb : m_RingBuffers)
+        rb.Destroy();
+    m_RingBuffers.clear();
+
     m_VkDevice = nullptr;
 
     m_Swapchain.Destroy();
@@ -43,7 +51,7 @@ void Renderer2D::Shutdown() {
 VulkanPipeline Renderer2D::CreateDefaultPipeline(vk::Device dev, vk::Format color_format) {
     std::array<vk::DescriptorSetLayoutBinding, 2> bindings{{
         {.binding = 0,
-         .descriptorType = vk::DescriptorType::eUniformBuffer,
+         .descriptorType = vk::DescriptorType::eUniformBufferDynamic,
          .descriptorCount = 1,
          .stageFlags = vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment},
         {.binding = 1,
@@ -88,12 +96,15 @@ void Renderer2D::BeginScene(const glm::mat4 &view, const glm::mat4 &projection,
     auto dim = m_Swapchain.GetDimensions();
     uint32_t image_index = m_Swapchain.GetCurrentImageIndex();
 
+    // 重置当前帧的 ring buffer
+    m_RingBuffers[image_index].Reset();
+
     m_ActiveCmd = cmd;
     m_View = view;
     m_Projection = projection;
     m_ViewPos = view_pos;
 
-    // Begin render pass
+    // 开始渲染 pass
     vk::ClearValue clear_value;
     clear_value.color = std::array<float, 4>{{clear_color.r, clear_color.g, clear_color.b, clear_color.a}};
 
@@ -105,7 +116,7 @@ void Renderer2D::BeginScene(const glm::mat4 &view, const glm::mat4 &projection,
                                    clear_value);
     render_info.Begin(cmd);
 
-    // Dynamic state (shared across all draws in this frame)
+    // 动态状态（本帧内所有 Draw 共享）
     vk::Viewport vp;
     vp.width = static_cast<float>(dim.width);
     vp.height = static_cast<float>(dim.height);
@@ -120,17 +131,24 @@ void Renderer2D::BeginScene(const glm::mat4 &view, const glm::mat4 &projection,
 }
 
 void Renderer2D::Draw(const Mesh &mesh, const Material &material, const glm::mat4 &model, const glm::vec4 &color) {
+    uint32_t image_index = m_Swapchain.GetCurrentImageIndex();
+    VulkanRingBuffer &ringBuffer = m_RingBuffers[image_index];
+
+    // 将本次 Draw 的 UBO 数据写入 ring buffer
     UniformData data{};
     data.projection = m_Projection;
     data.view = m_View;
     data.model = model;
     data.viewPos = glm::vec4(m_ViewPos, 1.0f);
     data.lodBias = 0.0f;
-    m_UniformBuffer.Upload(&data, sizeof(data));
+
+    vk::DeviceSize offset = ringBuffer.Allocate(sizeof(UniformData));
+    std::memcpy(static_cast<char *>(ringBuffer.GetMappedData()) + offset,
+                &data, sizeof(data));
 
     vk::CommandBuffer cmd = m_ActiveCmd;
 
-    // Bind per-material pipeline + descriptor set
+    // 绑定材质的管线
     material.pipeline.Bind(cmd);
 
     cmd.setCullMode(vk::CullModeFlagBits::eNone);
@@ -141,8 +159,10 @@ void Renderer2D::Draw(const Mesh &mesh, const Material &material, const glm::mat
     cmd.bindVertexBuffers(0, vb, {0});
     cmd.bindIndexBuffer(mesh.indices.GetBuffer(), 0, vk::IndexType::eUint16);
 
+    // 绑定当前 image 对应的 descriptor set，用动态偏移指定 UBO 数据
+    uint32_t dynamicOffset = static_cast<uint32_t>(offset);
     cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, material.pipeline.GetLayout(),
-                           0, material.descriptorSet.Get(), nullptr);
+                           0, material.descriptorSets[image_index].Get(), dynamicOffset);
 
     cmd.drawIndexed(mesh.indexCount, 1, 0, 0, 0);
 }

@@ -2,7 +2,6 @@
 // Created by Lenovo on 2026/6/5.
 //
 
-#define VULKAN_HPP_DISPATCH_LOADER_DYNAMIC 1
 #include "Render/Renderer2D.h"
 #include "Render/VulkanBase/VulkanRenderingInfo.h"
 #include "Core/GEWindow.h"
@@ -124,7 +123,7 @@ void Renderer2D::BeginScene(const glm::mat4 &view, const glm::mat4 &projection,
     cmd.setScissor(0, scissor);
 }
 
-void Renderer2D::Draw(Mesh &mesh, Material &material, const glm::mat4 &model, const glm::vec4 &color) {
+void Renderer2D::Draw(const Mesh &mesh, const Material &material, const glm::mat4 &model, const glm::vec4 &color) {
     UniformData data{};
     data.projection = m_Projection;
     data.view = m_View;

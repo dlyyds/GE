@@ -3,7 +3,7 @@
 //
 
 #define VULKAN_HPP_DISPATCH_LOADER_DYNAMIC 1
-#include "../../include/GE/Render/VulkanBase/VulkanSampler.h"
+#include "../../../include/GE/Render/VulkanBase/VulkanSampler.h"
 
 namespace GE {
 

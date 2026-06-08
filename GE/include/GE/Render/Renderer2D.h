@@ -31,10 +31,11 @@ public:
     void BeginScene(const glm::mat4 &view, const glm::mat4 &projection,
                     const glm::vec3 &view_pos,
                     const glm::vec4 &clear_color = {0.01f, 0.01f, 0.033f, 1.0f});
+
     void EndScene();
 
     /// Draw a mesh with the given material.
-    void Draw(Mesh &mesh, Material &material, const glm::mat4 &model, const glm::vec4 &color);
+    void Draw(const Mesh &mesh, const Material &material, const glm::mat4 &model, const glm::vec4 &color);
 
     /// Factory: create a default pipeline (MeshVertex layout, UBO+texture descriptor).
     VulkanPipeline CreateDefaultPipeline(vk::Device dev, vk::Format color_format);
@@ -52,18 +53,20 @@ public:
 
     // -- Forwarding accessors --
     [[nodiscard]] VulkanInstance &GetInstance() { return m_Instance; }
-    [[nodiscard]] VulkanDevice  &GetDevice()   { return m_Device; }
-    [[nodiscard]] vk::Instance   GetVkInstance()   const { return m_Instance.Get(); }
-    [[nodiscard]] vk::Device     GetVkDevice()     const { return m_Device.GetDevice(); }
-    [[nodiscard]] vk::PhysicalDevice GetVkGpu()    const { return m_Device.GetGpu(); }
-    [[nodiscard]] vk::Queue      GetVkQueue()      const { return m_Device.GetQueue(); }
-    [[nodiscard]] int32_t        GetGraphicsQueueIndex() const { return m_Device.GetGraphicsQueueIndex(); }
+    [[nodiscard]] VulkanDevice &GetDevice() { return m_Device; }
+    [[nodiscard]] vk::Instance GetVkInstance() const { return m_Instance.Get(); }
+    [[nodiscard]] vk::Device GetVkDevice() const { return m_Device.GetDevice(); }
+    [[nodiscard]] vk::PhysicalDevice GetVkGpu() const { return m_Device.GetGpu(); }
+    [[nodiscard]] vk::Queue GetVkQueue() const { return m_Device.GetQueue(); }
+    [[nodiscard]] int32_t GetGraphicsQueueIndex() const { return m_Device.GetGraphicsQueueIndex(); }
 
 private:
     Renderer2D() = default;
+
     ~Renderer2D() = default;
 
     Renderer2D(const Renderer2D &) = delete;
+
     Renderer2D &operator=(const Renderer2D &) = delete;
 
     struct UniformData {
@@ -76,7 +79,7 @@ private:
     };
 
     VulkanInstance m_Instance;
-    VulkanDevice  m_Device;
+    VulkanDevice m_Device;
 
     vk::Device m_VkDevice = nullptr;
 

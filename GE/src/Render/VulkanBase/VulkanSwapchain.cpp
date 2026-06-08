@@ -3,8 +3,8 @@
 //
 
 #define VULKAN_HPP_DISPATCH_LOADER_DYNAMIC 1
-#include "../../include/GE/Render/VulkanBase/VulkanSwapchain.h"
-#include "../../include/GE/Render/VulkanBase/VulkanImage.h"
+#include "../../../include/GE/Render/VulkanBase/VulkanSwapchain.h"
+#include "../../../include/GE/Render/VulkanBase/VulkanImage.h"
 
 #include "Core/Log.h"
 

@@ -2,10 +2,8 @@
 // Created by Lenovo on 2026/6/5.
 //
 
-#define VULKAN_HPP_DISPATCH_LOADER_DYNAMIC 1
 #include "../../../include/GE/Render/VulkanBase/VulkanImage.h"
 #include "../../../include/GE/Render/VulkanBase/VulkanBuffer.h"
-#include "Render/VulkanBase/VulkanDevice.h"
 
 #include "Core/Log.h"
 #include "stb_image.h"
@@ -15,74 +13,79 @@
 
 namespace GE {
 
-void VulkanImage::LoadFromFile(vk::Device device, vk::PhysicalDevice gpu,
+void VulkanImage::LoadFromFile(VmaAllocator allocator,
                                vk::Queue queue, uint32_t queue_family_index,
                                const std::string &filepath) {
-    m_Device = device;
     int tex_width, tex_height, tex_channels;
     stbi_uc *pixels = stbi_load(filepath.c_str(), &tex_width, &tex_height, &tex_channels, STBI_rgb_alpha);
     if (!pixels) {
         throw std::runtime_error("Failed to load texture: " + filepath);
     }
 
-    LoadFromMemory(device, gpu, queue, queue_family_index,
+    LoadFromMemory(allocator, queue, queue_family_index,
                    pixels, static_cast<uint32_t>(tex_width), static_cast<uint32_t>(tex_height));
     stbi_image_free(pixels);
 }
 
-void VulkanImage::LoadFromMemory(vk::Device device, vk::PhysicalDevice gpu,
+void VulkanImage::LoadFromMemory(VmaAllocator allocator,
                                  vk::Queue queue, uint32_t queue_family_index,
                                  const void *data, uint32_t width, uint32_t height,
                                  vk::Format format) {
-    m_Device = device;
+    m_Allocator = allocator;
+
+    VmaAllocatorInfo allocator_info;
+    vmaGetAllocatorInfo(allocator, &allocator_info);
+    m_Device = allocator_info.device;
+
     m_Width = width;
     m_Height = height;
 
     vk::DeviceSize image_size = static_cast<vk::DeviceSize>(width * height * 4);
 
-    // --- Staging buffer (using VulkanBuffer) ---
+    // --- Staging buffer (using VMA-backed VulkanBuffer) ---
     VulkanBuffer staging_buffer;
-    staging_buffer.Init(device, gpu, image_size,
+    staging_buffer.Init(allocator, image_size,
                         vk::BufferUsageFlagBits::eTransferSrc,
-                        vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+                        VMA_MEMORY_USAGE_AUTO,
+                        VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+                        VMA_ALLOCATION_CREATE_MAPPED_BIT);
     staging_buffer.Upload(data, image_size);
 
     // --- Final image ---
-    vk::ImageCreateInfo image_info{
-        .imageType = vk::ImageType::e2D,
-        .format = format,
-        .extent = {width, height, 1},
-        .mipLevels = 1,
-        .arrayLayers = 1,
-        .samples = vk::SampleCountFlagBits::e1,
-        .tiling = vk::ImageTiling::eOptimal,
-        .usage = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled,
-        .sharingMode = vk::SharingMode::eExclusive,
-        .initialLayout = vk::ImageLayout::eUndefined,
-    };
-    m_Image = device.createImage(image_info);
+    VkImageCreateInfo image_info{};
+    image_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    image_info.imageType = VK_IMAGE_TYPE_2D;
+    image_info.format = static_cast<VkFormat>(format);
+    image_info.extent = {width, height, 1};
+    image_info.mipLevels = 1;
+    image_info.arrayLayers = 1;
+    image_info.samples = VK_SAMPLE_COUNT_1_BIT;
+    image_info.tiling = VK_IMAGE_TILING_OPTIMAL;
+    image_info.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+    image_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    image_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
-    vk::MemoryRequirements mem_req = device.getImageMemoryRequirements(m_Image);
-    uint32_t mem_type = VulkanDevice::FindMemoryType(gpu, mem_req.memoryTypeBits,
-                                                     vk::MemoryPropertyFlagBits::eDeviceLocal);
+    VmaAllocationCreateInfo img_alloc_info{};
+    img_alloc_info.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
 
-    vk::MemoryAllocateInfo alloc_info{.allocationSize = mem_req.size, .memoryTypeIndex = mem_type};
-    m_Memory = device.allocateMemory(alloc_info);
-    device.bindImageMemory(m_Image, m_Memory, 0);
+    VmaAllocationInfo vma_alloc_info;
+    VkImage image;
+    vmaCreateImage(allocator, &image_info, &img_alloc_info, &image, &m_Allocation, &vma_alloc_info);
+    m_Image = image;
 
     // --- One-time command buffer ---
     vk::CommandPoolCreateInfo pool_info{
         .flags = vk::CommandPoolCreateFlagBits::eTransient,
         .queueFamilyIndex = queue_family_index,
     };
-    vk::CommandPool cmd_pool = device.createCommandPool(pool_info);
+    vk::CommandPool cmd_pool = m_Device.createCommandPool(pool_info);
 
     vk::CommandBufferAllocateInfo alloc_info_cmd{
         .commandPool = cmd_pool,
         .level = vk::CommandBufferLevel::ePrimary,
         .commandBufferCount = 1,
     };
-    vk::CommandBuffer cmd_buf = device.allocateCommandBuffers(alloc_info_cmd)[0];
+    vk::CommandBuffer cmd_buf = m_Device.allocateCommandBuffers(alloc_info_cmd)[0];
 
     cmd_buf.begin(vk::CommandBufferBeginInfo{.flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
 
@@ -110,42 +113,47 @@ void VulkanImage::LoadFromMemory(vk::Device device, vk::PhysicalDevice gpu,
 
     // Clean up staging and temp pool
     staging_buffer.Destroy();
-    device.freeCommandBuffers(cmd_pool, cmd_buf);
-    device.destroyCommandPool(cmd_pool);
+    m_Device.freeCommandBuffers(cmd_pool, cmd_buf);
+    m_Device.destroyCommandPool(cmd_pool);
 
     // Create view
     m_View = CreateView(m_Device, m_Image, vk::ImageViewType::e2D, format);
 }
 
-void VulkanImage::Init(vk::Device device, vk::PhysicalDevice gpu,
+void VulkanImage::Init(VmaAllocator allocator,
                        uint32_t width, uint32_t height, vk::Format format,
                        vk::ImageTiling tiling, vk::ImageUsageFlags usage,
-                       vk::MemoryPropertyFlags memory_properties) {
-    m_Device = device;
+                       VmaMemoryUsage memory_usage, VmaAllocationCreateFlags flags) {
+    m_Allocator = allocator;
+
+    VmaAllocatorInfo allocator_info;
+    vmaGetAllocatorInfo(allocator, &allocator_info);
+    m_Device = allocator_info.device;
+
     m_Width = width;
     m_Height = height;
 
-    vk::ImageCreateInfo image_info{
-        .imageType = vk::ImageType::e2D,
-        .format = format,
-        .extent = {width, height, 1},
-        .mipLevels = 1,
-        .arrayLayers = 1,
-        .samples = vk::SampleCountFlagBits::e1,
-        .tiling = tiling,
-        .usage = usage,
-        .sharingMode = vk::SharingMode::eExclusive,
-        .initialLayout = vk::ImageLayout::eUndefined,
-    };
-    m_Image = device.createImage(image_info);
+    VkImageCreateInfo image_info{};
+    image_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    image_info.imageType = VK_IMAGE_TYPE_2D;
+    image_info.format = static_cast<VkFormat>(format);
+    image_info.extent = {width, height, 1};
+    image_info.mipLevels = 1;
+    image_info.arrayLayers = 1;
+    image_info.samples = VK_SAMPLE_COUNT_1_BIT;
+    image_info.tiling = static_cast<VkImageTiling>(tiling);
+    image_info.usage = static_cast<VkImageUsageFlags>(usage);
+    image_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    image_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
-    vk::MemoryRequirements mem_req = device.getImageMemoryRequirements(m_Image);
-    uint32_t mem_type = VulkanDevice::FindMemoryType(gpu, mem_req.memoryTypeBits, memory_properties);
+    VmaAllocationCreateInfo img_alloc_info{};
+    img_alloc_info.usage = memory_usage;
+    img_alloc_info.flags = flags;
 
-    vk::MemoryAllocateInfo alloc_info{.allocationSize = mem_req.size, .memoryTypeIndex = mem_type};
-    m_Memory = device.allocateMemory(alloc_info);
-
-    device.bindImageMemory(m_Image, m_Memory, 0);
+    VmaAllocationInfo vma_alloc_info;
+    VkImage image;
+    vmaCreateImage(allocator, &image_info, &img_alloc_info, &image, &m_Allocation, &vma_alloc_info);
+    m_Image = image;
 }
 
 vk::ImageView VulkanImage::CreateView(vk::Device device, vk::Image image,
@@ -222,20 +230,19 @@ void VulkanImage::TransitionLayout(vk::CommandBuffer cmd, vk::Image image,
 }
 
 void VulkanImage::Cleanup() {
-    if (m_Device) {
+    if (m_Allocator) {
         if (m_View)
             m_Device.destroyImageView(m_View);
-        if (m_Memory)
-            m_Device.freeMemory(m_Memory);
         if (m_Image)
-            m_Device.destroyImage(m_Image);
+            vmaDestroyImage(m_Allocator, static_cast<VkImage>(m_Image), m_Allocation);
     }
-    m_View = nullptr;
-    m_Memory = nullptr;
+    m_Allocator = nullptr;
+    m_Device = nullptr;
+    m_Allocation = nullptr;
     m_Image = nullptr;
+    m_View = nullptr;
     m_Width = 0;
     m_Height = 0;
-    m_Device = nullptr;
 }
 
 } // namespace GE

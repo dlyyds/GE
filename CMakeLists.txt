@@ -62,6 +62,7 @@ target_include_directories(${GE_NAME} PUBLIC
         ${CMAKE_SOURCE_DIR}/GE/third_party/glm
         ${CMAKE_SOURCE_DIR}/GE/third_party/entt
         ${CMAKE_SOURCE_DIR}/GE/third_party
+        ${CMAKE_SOURCE_DIR}/GE/third_party/vma
         ${CMAKE_SOURCE_DIR}/GE/third_party/GLFW/include
         ${CMAKE_SOURCE_DIR}/GE/third_party/stb
         ${Vulkan_INCLUDE_DIRS}
@@ -74,6 +75,7 @@ target_compile_definitions(${GE_NAME} PUBLIC
         VKB_DEBUG
         VK_NO_PROTOTYPES
         VULKAN_HPP_NO_STRUCT_CONSTRUCTORS
+        VMA_DYNAMIC_VULKAN_FUNCTIONS=1
 )
 
 set(BGFX_BUILD_DIR "${BGFX_DIR}/.build/win64_vs2022/bin")

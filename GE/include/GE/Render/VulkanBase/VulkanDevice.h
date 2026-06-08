@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vulkan/vulkan.hpp>
+#include "vk_mem_alloc.h"
 
 #include <string>
 #include <vector>
@@ -38,6 +39,9 @@ public:
     [[nodiscard]] int32_t GetGraphicsQueueIndex() const { return m_GraphicsQueueIndex; }
     [[nodiscard]] VkSurfaceKHR GetSurface() const { return m_Surface; }
 
+    /// Return the VMA allocator. Valid after InitDevice().
+    [[nodiscard]] VmaAllocator GetVmaAllocator() const { return m_VmaAllocator; }
+
     /// Utility: find a memory type matching type_filter with the given properties.
     static uint32_t FindMemoryType(vk::PhysicalDevice gpu, uint32_t type_filter,
                                    vk::MemoryPropertyFlags properties);
@@ -53,6 +57,7 @@ private:
     vk::PhysicalDevice m_Gpu = nullptr;
     int32_t m_GraphicsQueueIndex = -1;
     VkSurfaceKHR m_Surface = VK_NULL_HANDLE;
+    VmaAllocator m_VmaAllocator = nullptr;
 
     // Non-owning pointer — VulkanInstance must outlive this device.
     VulkanInstance *m_Instance = nullptr;

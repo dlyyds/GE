@@ -59,6 +59,7 @@ public:
     [[nodiscard]] vk::PhysicalDevice GetVkGpu() const { return m_Device.GetGpu(); }
     [[nodiscard]] vk::Queue GetVkQueue() const { return m_Device.GetQueue(); }
     [[nodiscard]] int32_t GetGraphicsQueueIndex() const { return m_Device.GetGraphicsQueueIndex(); }
+    [[nodiscard]] VmaAllocator GetVmaAllocator() const { return m_Device.GetVmaAllocator(); }
 
 private:
     Renderer2D() = default;

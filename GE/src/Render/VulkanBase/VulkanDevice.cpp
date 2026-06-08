@@ -13,6 +13,11 @@
 namespace GE {
 
 void VulkanDevice::Destroy() {
+    if (m_VmaAllocator) {
+        vmaDestroyAllocator(m_VmaAllocator);
+        m_VmaAllocator = nullptr;
+    }
+
     m_Queue = nullptr;
     if (m_Device)
         m_Device.destroy();
@@ -136,6 +141,22 @@ void VulkanDevice::InitDevice() {
     m_Device = m_Gpu.createDevice(device_info);
 
     VULKAN_HPP_DEFAULT_DISPATCHER.init(m_Device);
+
+    // Init VMA allocator
+    {
+        VmaVulkanFunctions vk_funcs{};
+        vk_funcs.vkGetInstanceProcAddr = VULKAN_HPP_DEFAULT_DISPATCHER.vkGetInstanceProcAddr;
+        vk_funcs.vkGetDeviceProcAddr = VULKAN_HPP_DEFAULT_DISPATCHER.vkGetDeviceProcAddr;
+
+        VmaAllocatorCreateInfo alloc_info{};
+        alloc_info.vulkanApiVersion = VK_API_VERSION_1_3;
+        alloc_info.instance = m_Instance->Get();
+        alloc_info.physicalDevice = m_Gpu;
+        alloc_info.device = m_Device;
+        alloc_info.pVulkanFunctions = &vk_funcs;
+
+        vmaCreateAllocator(&alloc_info, &m_VmaAllocator);
+    }
 
     m_Queue = m_Device.getQueue(static_cast<uint32_t>(m_GraphicsQueueIndex), 0);
 }

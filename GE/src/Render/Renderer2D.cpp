@@ -27,12 +27,8 @@ void Renderer2D::Init(Window &window) {
     m_Swapchain.Init(m_VkDevice, m_Device.GetGpu(), m_Device.GetSurface(),
                      m_Device.GetQueue(), m_Device.GetGraphicsQueueIndex(), width, height);
 
-    auto dev = m_VkDevice;
-    auto gpu = m_Device.GetGpu();
-
-    m_UniformBuffer.Init(dev, gpu, sizeof(UniformData),
-                         vk::BufferUsageFlagBits::eUniformBuffer,
-                         vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+    m_UniformBuffer.Init(m_Device.GetVmaAllocator(), sizeof(UniformData),
+                         vk::BufferUsageFlagBits::eUniformBuffer);
 }
 
 void Renderer2D::Shutdown() {

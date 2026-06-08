@@ -17,8 +17,8 @@ VulkanLayer::VulkanLayer() : Layer("VulkanLayer") {
 
 void VulkanLayer::OnAttach() {
     auto &r = Renderer2D::Get();
+    auto allocator = r.GetVmaAllocator();
     auto device = r.GetVkDevice();
-    auto gpu = r.GetVkGpu();
     auto queue = r.GetVkQueue();
     auto qfi = r.GetGraphicsQueueIndex();
     auto &swapchain = r.GetSwapchain();
@@ -28,11 +28,11 @@ void VulkanLayer::OnAttach() {
                        static_cast<float>(swapchain.GetDimensions().height));
 
     // Texture
-    m_Texture.LoadFromFile(device, gpu, queue, qfi, "assets/textures/Checkerboard.png");
+    m_Texture.LoadFromFile(allocator, queue, qfi, "assets/textures/Checkerboard.png");
     m_Sampler.Init(device, vk::Filter::eNearest, vk::Filter::eNearest);
 
     // Quad mesh
-    m_Mesh.Init(device, gpu, Mesh::kVertices, sizeof(Mesh::kVertices),
+    m_Mesh.Init(allocator, Mesh::kVertices, sizeof(Mesh::kVertices),
                 Mesh::kIndices, sizeof(Mesh::kIndices), 6);
 
     // Material

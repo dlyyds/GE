@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vulkan/vulkan.hpp>
+#include "vk_mem_alloc.h"
 
 #include "glm/glm.hpp"
 #include "Render/VulkanBase/VulkanBuffer.h"
@@ -28,7 +29,7 @@ struct Mesh {
     };
     static constexpr uint16_t kIndices[6] = {0, 1, 2, 0, 2, 3};
 
-    void Init(vk::Device device, vk::PhysicalDevice gpu,
+    void Init(VmaAllocator allocator,
               const void *vertexData, vk::DeviceSize vertexSize,
               const void *indexData, vk::DeviceSize indexSize,
               uint32_t indexCount);

@@ -10,9 +10,11 @@
 namespace GE {
 
 void VulkanPipeline::Init(vk::Device device, vk::Format color_format,
-                          const VertexInputState &vertex_input,
                           const VulkanShader &vertShader, const VulkanShader &fragShader) {
     m_Device = device;
+
+    // 从 vertex shader 自动反射 vertex input layout
+    VertexInputState vertex_input = vertShader.ReflectVertexInput();
 
     // DescriptorSetLayout must be set by the caller before Init
     GE_ASSERT(m_DescriptorSetLayout, "DescriptorSetLayout must be set before Init");

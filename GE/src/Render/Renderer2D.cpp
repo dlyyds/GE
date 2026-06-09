@@ -64,26 +64,15 @@ VulkanPipeline Renderer2D::CreateDefaultPipeline(vk::Device dev, vk::Format colo
     VulkanPipeline pipeline;
     pipeline.SetDescriptorSetLayout(layout);
 
-    VertexInputState vertex_input;
-    vertex_input.stride = sizeof(MeshVertex);
-    vertex_input.attributes = {
-        {.location = 0, .binding = 0,
-         .format = vk::Format::eR32G32B32Sfloat,
-         .offset = offsetof(MeshVertex, position)},
-        {.location = 1, .binding = 0,
-         .format = vk::Format::eR32G32Sfloat,
-         .offset = offsetof(MeshVertex, uv)},
-        {.location = 2, .binding = 0,
-         .format = vk::Format::eR32G32B32Sfloat,
-         .offset = offsetof(MeshVertex, normal)},
-    };
-
     // 创建着色器（ShaderModule 在管线创建后可安全销毁）
     VulkanShader vertShader, fragShader;
     vertShader.Init(dev, "assets/shaders/glsl/mesh.vert.spv", vk::ShaderStageFlagBits::eVertex);
     fragShader.Init(dev, "assets/shaders/glsl/mesh.frag.spv", vk::ShaderStageFlagBits::eFragment);
 
-    pipeline.Init(dev, color_format, vertex_input, vertShader, fragShader);
+    // 从 vertex shader 反射获取 input layout，不再手动写死
+    VertexInputState reflected_input = vertShader.ReflectVertexInput();
+
+    pipeline.Init(dev, color_format, vertShader, fragShader);
     return pipeline;
 }
 

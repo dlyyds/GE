@@ -3,12 +3,18 @@
 #include <vulkan/vulkan.hpp>
 
 #include <string>
+#include <vector>
 
 namespace GE {
 
+struct VertexInputState {
+    uint32_t stride;
+    std::vector<vk::VertexInputAttributeDescription> attributes;
+};
+
 /// Vulkan 着色器封装。
 /// 从 .spv 文件加载 SPIR-V 二进制数据，创建并拥有 vk::ShaderModule。
-/// 可用于创建 vk::PipelineShaderStageCreateInfo 供管线创建使用。
+/// 支持 SPIRV-Cross 反射获取 vertex input 属性。
 class VulkanShader {
 public:
     VulkanShader() = default;
@@ -22,19 +28,29 @@ public:
     VulkanShader &operator=(VulkanShader &&) = default;
 
     /// 从 .spv 文件加载着色器。
-    /// @param device    Vulkan 逻辑设备
-    /// @param filepath  .spv 文件的完整路径
-    /// @param stage     着色器阶段（顶点、片元等）
     void Init(vk::Device device, const std::string &filepath, vk::ShaderStageFlagBits stage);
 
     /// 销毁 ShaderModule。
     void Cleanup();
 
     /// 获取用于管线创建的 ShaderStageCreateInfo。
-    /// @param entryPoint 入口函数名（默认 "main"）
     [[nodiscard]] vk::PipelineShaderStageCreateInfo GetStageCreateInfo(
         const char *entryPoint = "main") const;
 
+    /// --- 反射接口 ---
+
+    /// 反射 vertex shader 的输入属性列表。
+    /// 仅对 vertex stage 有意义，其他 stage 返回空列表。
+    [[nodiscard]] std::vector<vk::VertexInputAttributeDescription> ReflectVertexAttributes() const;
+
+    /// 计算 vertex shader 输入属性的总 stride。
+    /// 将所有 attribute 的 size 累加计算。
+    [[nodiscard]] uint32_t ReflectVertexStride() const;
+
+    /// 便捷方法：反射 VertexInputState（attributes + stride）。
+    [[nodiscard]] VertexInputState ReflectVertexInput() const;
+
+    // -- 访问器 --
     [[nodiscard]] vk::ShaderModule GetModule() const { return m_Module; }
     [[nodiscard]] vk::ShaderStageFlagBits GetStage() const { return m_Stage; }
     [[nodiscard]] const std::string &GetFilepath() const { return m_Filepath; }
@@ -44,6 +60,7 @@ private:
     vk::ShaderModule m_Module = nullptr;
     vk::ShaderStageFlagBits m_Stage = vk::ShaderStageFlagBits::eVertex;
     std::string m_Filepath;
+    std::vector<uint32_t> m_SPIRV;  // 保留 SPIR-V 数据，供反射使用
 };
 
 } // namespace GE

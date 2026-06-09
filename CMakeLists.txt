@@ -49,6 +49,10 @@ file(GLOB GE_SRC
         ${CMAKE_SOURCE_DIR}/GE/src/Render/*.cpp
         ${CMAKE_SOURCE_DIR}/GE/src/Render/VulkanBase/*.cpp
         ${CMAKE_SOURCE_DIR}/GE/third_party/stb/stb_image.cpp
+        ${CMAKE_SOURCE_DIR}/GE/third_party/SPIRV-Cross/spirv_cross.cpp
+        ${CMAKE_SOURCE_DIR}/GE/third_party/SPIRV-Cross/spirv_cross_parsed_ir.cpp
+        ${CMAKE_SOURCE_DIR}/GE/third_party/SPIRV-Cross/spirv_parser.cpp
+        ${CMAKE_SOURCE_DIR}/GE/third_party/SPIRV-Cross/spirv_cfg.cpp
 
 )
 
@@ -65,7 +69,9 @@ target_include_directories(${GE_NAME} PUBLIC
         ${CMAKE_SOURCE_DIR}/GE/third_party/vma
         ${CMAKE_SOURCE_DIR}/GE/third_party/GLFW/include
         ${CMAKE_SOURCE_DIR}/GE/third_party/stb
+        ${CMAKE_SOURCE_DIR}/GE/third_party/SPIRV-Cross
         ${Vulkan_INCLUDE_DIRS}
+        ${Vulkan_INCLUDE_DIRS}/spirv_cross
 )
 
 target_compile_definitions(${GE_NAME} PUBLIC
@@ -87,7 +93,6 @@ target_link_libraries(${GE_NAME} PUBLIC
         imgui
         yaml-cpp::yaml-cpp
         ${Vulkan_LIBRARIES}
-
 )
 
 

@@ -11,11 +11,6 @@
 
 namespace GE {
 
-struct VertexInputState {
-    uint32_t stride;
-    std::vector<vk::VertexInputAttributeDescription> attributes;
-};
-
 /// Vulkan 图形管线封装。
 /// 通过 VulkanShader 对象提供着色器阶段，着色器模块由调用方管理生命周期。
 class VulkanPipeline {
@@ -30,13 +25,12 @@ public:
     VulkanPipeline(VulkanPipeline &&) = default;
     VulkanPipeline &operator=(VulkanPipeline &&) = default;
 
-    /// 创建图形管线。
+    /// 创建图形管线。vertex input layout 从 vertex shader 自动反射获取。
     /// @param device        Vulkan 逻辑设备
     /// @param color_format  颜色附件格式
-    /// @param vertex_input  顶点输入状态描述
-    /// @param vertShader    顶点着色器（调用方管理生命周期）
-    /// @param fragShader    片元着色器（调用方管理生命周期）
-    void Init(vk::Device device, vk::Format color_format, const VertexInputState &vertex_input,
+    /// @param vertShader    顶点着色器（内部自动反射 vertex input）
+    /// @param fragShader    片元着色器
+    void Init(vk::Device device, vk::Format color_format,
               const VulkanShader &vertShader, const VulkanShader &fragShader);
 
     void Cleanup();

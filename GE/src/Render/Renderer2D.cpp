@@ -83,17 +83,17 @@ VulkanPipeline Renderer2D::CreateDefaultPipeline(vk::Device dev, vk::Format colo
     return pipeline;
 }
 
-void Renderer2D::BeginScene(const glm::mat4 &view, const glm::mat4 &projection,
+void Renderer2D::BeginScene(vk::CommandBuffer cmd, uint32_t imageIndex,
+                            vk::Extent2D dim,
+                            const glm::mat4 &view, const glm::mat4 &projection,
                             const glm::vec3 &view_pos,
                             const glm::vec4 &clear_color) {
-    auto cmd = m_Swapchain->GetCurrentCmd();
-    auto dim = m_Swapchain->GetDimensions();
-    uint32_t image_index = m_Swapchain->GetCurrentImageIndex();
-
     // 重置当前帧的 ring buffer
-    m_RingBuffers[image_index].Reset();
+    m_RingBuffers[imageIndex].Reset();
 
     m_ActiveCmd = cmd;
+    m_CurrentImageIndex = imageIndex;
+    m_ActiveDim = dim;
     m_View = view;
     m_Projection = projection;
     m_ViewPos = view_pos;
@@ -104,7 +104,7 @@ void Renderer2D::BeginScene(const glm::mat4 &view, const glm::mat4 &projection,
 
     VulkanRenderingInfo render_info;
     render_info.SetRenderArea(0, 0, dim.width, dim.height);
-    render_info.AddColorAttachment(m_Swapchain->GetImageView(image_index),
+    render_info.AddColorAttachment(m_Swapchain->GetImageView(imageIndex),
                                    vk::AttachmentLoadOp::eClear,
                                    vk::AttachmentStoreOp::eStore,
                                    clear_value);
@@ -125,7 +125,7 @@ void Renderer2D::BeginScene(const glm::mat4 &view, const glm::mat4 &projection,
 }
 
 void Renderer2D::Draw(const Mesh &mesh, const Material &material, const glm::mat4 &model, const glm::vec4 &color) {
-    uint32_t image_index = m_Swapchain->GetCurrentImageIndex();
+    uint32_t image_index = m_CurrentImageIndex;
     VulkanRingBuffer &ringBuffer = m_RingBuffers[image_index];
 
     // 将本次 Draw 的 UBO 数据写入 ring buffer

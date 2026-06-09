@@ -28,7 +28,13 @@ public:
     /// 完整销毁：清理 ring buffers。
     void Shutdown();
 
-    void BeginScene(const glm::mat4 &view, const glm::mat4 &projection,
+    /// 开始一帧的场景渲染。
+    /// @param cmd 当前帧的 command buffer（从 swapchain 获取）
+    /// @param imageIndex 当前帧的 swapchain image 索引
+    /// @param dimensions 当前帧的渲染尺寸（来自 swapchain）
+    void BeginScene(vk::CommandBuffer cmd, uint32_t imageIndex,
+                    vk::Extent2D dimensions,
+                    const glm::mat4 &view, const glm::mat4 &projection,
                     const glm::vec3 &view_pos,
                     const glm::vec4 &clear_color = {0.01f, 0.01f, 0.033f, 1.0f});
 
@@ -91,6 +97,8 @@ private:
 
     // Scene state
     vk::CommandBuffer m_ActiveCmd{nullptr};
+    uint32_t m_CurrentImageIndex = 0;
+    vk::Extent2D m_ActiveDim{};
     glm::mat4 m_View{1.0f};
     glm::mat4 m_Projection{1.0f};
     glm::vec3 m_ViewPos{0.0f};

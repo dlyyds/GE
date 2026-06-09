@@ -124,8 +124,12 @@ void VulkanLayer::OnImGuiRender() {
 
 void VulkanLayer::RenderFrame() {
     auto &r = Renderer2D::Get();
+    auto &swapchain = r.GetSwapchain();
 
-    r.BeginScene(m_Camera.GetView(), m_Camera.GetProj(), m_Camera.GetPosition(),
+    r.BeginScene(swapchain.GetCurrentCmd(),
+                 swapchain.GetCurrentImageIndex(),
+                 vk::Extent2D{swapchain.GetDimensions().width, swapchain.GetDimensions().height},
+                 m_Camera.GetView(), m_Camera.GetProj(), m_Camera.GetPosition(),
                  {0.01f, 0.01f, 0.033f, 1.0f});
 
     // 画 5 个四边形，排成一行

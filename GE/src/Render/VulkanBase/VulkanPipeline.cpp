@@ -5,19 +5,16 @@
 #define VULKAN_HPP_DISPATCH_LOADER_DYNAMIC 1
 #include "../../../include/GE/Render/VulkanBase/VulkanPipeline.h"
 
-#include "FileSystem/FileSystem.h"
-
 #include "Debug/Assert.h"
 
 namespace GE {
 
 void VulkanPipeline::Init(vk::Device device, vk::Format color_format,
-                          const VertexInputState &vertex_input, const std::string &vert_shader,
-                          const std::string &frag_shader, const std::string &shader_folder) {
+                          const VertexInputState &vertex_input,
+                          const VulkanShader &vertShader, const VulkanShader &fragShader) {
     m_Device = device;
 
-    // DescriptorSetLayout must be set by the caller (via SetDescriptorSetLayout)
-    // before calling Init.
+    // DescriptorSetLayout must be set by the caller before Init
     GE_ASSERT(m_DescriptorSetLayout, "DescriptorSetLayout must be set before Init");
 
     vk::PipelineLayoutCreateInfo layout_info{
@@ -55,13 +52,10 @@ void VulkanPipeline::Init(vk::Device device, vk::Format color_format,
         .dynamicStateCount = static_cast<uint32_t>(dynamic_states.size()),
         .pDynamicStates = dynamic_states.data()};
 
+    // 使用 VulkanShader 提供的 stage create info
     std::array<vk::PipelineShaderStageCreateInfo, 2> shader_stages = {{
-        {.stage = vk::ShaderStageFlagBits::eVertex,
-         .module = LoadShaderModule(device, shader_folder + "/" + vert_shader),
-         .pName = "main"},
-        {.stage = vk::ShaderStageFlagBits::eFragment,
-         .module = LoadShaderModule(device, shader_folder + "/" + frag_shader),
-         .pName = "main"},
+        vertShader.GetStageCreateInfo(),
+        fragShader.GetStageCreateInfo(),
     }};
 
     vk::PipelineRenderingCreateInfo pipeline_rendering_info{.colorAttachmentCount = 1,
@@ -89,10 +83,6 @@ void VulkanPipeline::Init(vk::Device device, vk::Format color_format,
         throw std::runtime_error("Failed to create graphics pipeline");
     }
     m_Pipeline = result.value;
-
-    for (auto &shader_stage : shader_stages) {
-        device.destroyShaderModule(shader_stage.module);
-    }
 }
 
 void VulkanPipeline::Cleanup() {
@@ -115,12 +105,6 @@ void VulkanPipeline::SetDescriptorSetLayout(vk::DescriptorSetLayout layout) {
         m_Device.destroyDescriptorSetLayout(m_DescriptorSetLayout);
     }
     m_DescriptorSetLayout = layout;
-}
-
-vk::ShaderModule VulkanPipeline::LoadShaderModule(vk::Device device, const std::string &path) {
-    auto spirv = FileSystem::ReadBinaryU32(path);
-    vk::ShaderModuleCreateInfo module_info{.codeSize = spirv.size() * sizeof(uint32_t), .pCode = spirv.data()};
-    return device.createShaderModule(module_info);
 }
 
 } // namespace GE

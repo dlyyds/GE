@@ -7,6 +7,8 @@
 #include <string>
 #include <vector>
 
+#include "Render/VulkanBase/VulkanShader.h"
+
 namespace GE {
 
 struct VertexInputState {
@@ -14,6 +16,8 @@ struct VertexInputState {
     std::vector<vk::VertexInputAttributeDescription> attributes;
 };
 
+/// Vulkan 图形管线封装。
+/// 通过 VulkanShader 对象提供着色器阶段，着色器模块由调用方管理生命周期。
 class VulkanPipeline {
 public:
     VulkanPipeline() = default;
@@ -26,10 +30,14 @@ public:
     VulkanPipeline(VulkanPipeline &&) = default;
     VulkanPipeline &operator=(VulkanPipeline &&) = default;
 
+    /// 创建图形管线。
+    /// @param device        Vulkan 逻辑设备
+    /// @param color_format  颜色附件格式
+    /// @param vertex_input  顶点输入状态描述
+    /// @param vertShader    顶点着色器（调用方管理生命周期）
+    /// @param fragShader    片元着色器（调用方管理生命周期）
     void Init(vk::Device device, vk::Format color_format, const VertexInputState &vertex_input,
-              const std::string &vert_shader = "triangle.vert.spv",
-              const std::string &frag_shader = "triangle.frag.spv",
-              const std::string &shader_folder = "assets/shaders/glsl");
+              const VulkanShader &vertShader, const VulkanShader &fragShader);
 
     void Cleanup();
 
@@ -43,8 +51,6 @@ public:
     void SetDescriptorSetLayout(vk::DescriptorSetLayout layout);
 
 private:
-    static vk::ShaderModule LoadShaderModule(vk::Device device, const std::string &path);
-
     vk::Device m_Device = nullptr;
     vk::DescriptorSetLayout m_DescriptorSetLayout = nullptr;
     vk::PipelineLayout m_PipelineLayout = nullptr;

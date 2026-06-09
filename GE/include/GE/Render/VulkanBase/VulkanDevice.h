@@ -11,16 +11,18 @@ namespace GE {
 class VulkanInstance;
 class Window;
 
-/// Non-static Vulkan logical device. Two-phase init: default construct, then Init().
-/// Owns a surface created from Window.
+/// Vulkan logical device. Two-phase init: default construct, then Init().
+/// Owns the VMA allocator. Does NOT own the surface (managed by VulkanContext).
 class VulkanDevice {
 public:
     VulkanDevice() = default;
 
-    /// Creates surface from window, selects GPU, creates device.
-    void Init(VulkanInstance &instance, Window &window);
+    /// Creates device from the given instance and surface.
+    /// @param instance  the Vulkan instance (must outlive this device)
+    /// @param surface   the window surface (used for queue family selection)
+    void Init(VulkanInstance &instance, vk::SurfaceKHR surface);
 
-    /// Destroy device and surface. Safe to call even if not initialized.
+    /// Destroy device, VMA allocator. Safe to call even if not initialized.
     void Destroy();
 
     ~VulkanDevice();
@@ -37,9 +39,8 @@ public:
     [[nodiscard]] vk::Device GetDevice() const { return m_Device; }
     [[nodiscard]] vk::Queue GetQueue() const { return m_Queue; }
     [[nodiscard]] int32_t GetGraphicsQueueIndex() const { return m_GraphicsQueueIndex; }
-    [[nodiscard]] VkSurfaceKHR GetSurface() const { return m_Surface; }
 
-    /// Return the VMA allocator. Valid after InitDevice().
+    /// Return the VMA allocator. Valid after Init().
     [[nodiscard]] VmaAllocator GetVmaAllocator() const { return m_VmaAllocator; }
 
     /// Utility: find a memory type matching type_filter with the given properties.
@@ -47,8 +48,9 @@ public:
                                    vk::MemoryPropertyFlags properties);
 
 private:
-    void SelectPhysicalDevice(VkSurfaceKHR surface);
+    void SelectPhysicalDevice(vk::SurfaceKHR surface);
     void InitDevice();
+
     bool ValidateExtensions(const std::vector<const char *> &required,
                             const std::vector<vk::ExtensionProperties> &available);
 
@@ -56,7 +58,6 @@ private:
     vk::Queue m_Queue = nullptr;
     vk::PhysicalDevice m_Gpu = nullptr;
     int32_t m_GraphicsQueueIndex = -1;
-    VkSurfaceKHR m_Surface = VK_NULL_HANDLE;
     VmaAllocator m_VmaAllocator = nullptr;
 
     // Non-owning pointer — VulkanInstance must outlive this device.

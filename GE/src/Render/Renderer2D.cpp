@@ -78,8 +78,12 @@ VulkanPipeline Renderer2D::CreateDefaultPipeline(vk::Device dev, vk::Format colo
          .offset = offsetof(MeshVertex, normal)},
     };
 
-    pipeline.Init(dev, color_format, vertex_input,
-                  "mesh.vert.spv", "mesh.frag.spv", "assets/shaders/glsl");
+    // 创建着色器（ShaderModule 在管线创建后可安全销毁）
+    VulkanShader vertShader, fragShader;
+    vertShader.Init(dev, "assets/shaders/glsl/mesh.vert.spv", vk::ShaderStageFlagBits::eVertex);
+    fragShader.Init(dev, "assets/shaders/glsl/mesh.frag.spv", vk::ShaderStageFlagBits::eFragment);
+
+    pipeline.Init(dev, color_format, vertex_input, vertShader, fragShader);
     return pipeline;
 }
 

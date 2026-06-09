@@ -33,7 +33,7 @@ Application::Application(const std::string &name, ApplicationCommandLineArgs arg
 
     // 2. 创建 Swapchain
     auto &dev = m_VulkanContext.GetDevice();
-    m_Swapchain.Init(dev.GetDevice(), dev.GetGpu(), dev.GetSurface(),
+    m_Swapchain.Init(dev.GetDevice(), dev.GetGpu(), m_VulkanContext.GetSurface(),
                      dev.GetQueue(), dev.GetGraphicsQueueIndex(),
                      m_Window->GetWidth(), m_Window->GetHeight());
 

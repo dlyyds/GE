@@ -5,7 +5,6 @@
 #define VULKAN_HPP_DISPATCH_LOADER_DYNAMIC 1
 #include "Render/VulkanBase/VulkanDevice.h"
 #include "Render/VulkanBase/VulkanInstance.h"
-#include "Core/GEWindow.h"
 #include "Core/Log.h"
 
 #include <cstring>
@@ -25,10 +24,6 @@ void VulkanDevice::Destroy() {
     m_Gpu = nullptr;
     m_GraphicsQueueIndex = -1;
 
-    if (m_Surface && m_Instance) {
-        m_Instance->Get().destroySurfaceKHR(vk::SurfaceKHR(m_Surface));
-    }
-    m_Surface = VK_NULL_HANDLE;
     m_Instance = nullptr;
 }
 
@@ -36,20 +31,14 @@ VulkanDevice::~VulkanDevice() {
     Destroy();
 }
 
-void VulkanDevice::Init(VulkanInstance &instance, Window &window) {
+void VulkanDevice::Init(VulkanInstance &instance, vk::SurfaceKHR surface) {
     m_Instance = &instance;
 
-    VkSurfaceKHR raw_surface = window.CreateVulkanSurface(instance.Get());
-    if (!raw_surface) {
-        throw std::runtime_error("Failed to create window surface.");
-    }
-    m_Surface = raw_surface;
-
-    SelectPhysicalDevice(m_Surface);
+    SelectPhysicalDevice(surface);
     InitDevice();
 }
 
-void VulkanDevice::SelectPhysicalDevice(VkSurfaceKHR surface) {
+void VulkanDevice::SelectPhysicalDevice(vk::SurfaceKHR surface) {
     auto gpus = m_Instance->Get().enumeratePhysicalDevices();
 
     for (auto &gpu : gpus) {

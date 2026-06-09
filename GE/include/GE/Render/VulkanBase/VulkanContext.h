@@ -10,7 +10,7 @@ namespace GE {
 
 class Window;
 
-/// Vulkan 全局上下文，持有 Instance 和 Device。
+/// Vulkan 全局上下文，持有 Instance、Surface 和 Device。
 /// 负责 Vulkan 运行时生命周期，提供所有底层 Vulkan 句柄访问。
 /// 由 Application 创建和管理，渲染器/层通过引用使用它。
 class VulkanContext {
@@ -28,7 +28,7 @@ public:
     /// 初始化：创建 Instance → Surface → Device → VMA
     void Init(Window &window);
 
-    /// 销毁：VMA → Device → Surface → Instance
+    /// 销毁：Device → Surface → Instance
     void Destroy();
 
     [[nodiscard]] bool IsInitialized() const { return m_Device.IsInitialized(); }
@@ -37,6 +37,7 @@ public:
     [[nodiscard]] VulkanInstance &GetInstance() { return m_Instance; }
     [[nodiscard]] VulkanDevice &GetDevice() { return m_Device; }
     [[nodiscard]] vk::Instance GetVkInstance() const { return m_Instance.Get(); }
+    [[nodiscard]] vk::SurfaceKHR GetSurface() const { return m_Surface; }
     [[nodiscard]] vk::Device GetVkDevice() const { return m_Device.GetDevice(); }
     [[nodiscard]] vk::PhysicalDevice GetVkGpu() const { return m_Device.GetGpu(); }
     [[nodiscard]] vk::Queue GetVkQueue() const { return m_Device.GetQueue(); }
@@ -45,6 +46,7 @@ public:
 
 private:
     VulkanInstance m_Instance;
+    vk::SurfaceKHR m_Surface = nullptr;
     VulkanDevice m_Device;
 };
 

@@ -9,24 +9,23 @@
 #include "Render/Mesh.h"
 #include "Render/Material.h"
 #include "Render/VulkanBase/VulkanSwapchain.h"
-#include "Render/VulkanBase/VulkanInstance.h"
-#include "Render/VulkanBase/VulkanDevice.h"
 
 namespace GE {
 
 class Window;
+class VulkanContext;
 
 /// 基于实例的 2D/3D 网格渲染器单例。
-/// 拥有 VulkanInstance、VulkanDevice、swapchain 和环形 UBO buffer。
+/// 持有 ring buffers 用于 UBO 分配，通过 VulkanContext 访问 Vulkan 全局对象。
 /// 管线和 descriptor set 存在于 Material 中，每个材质一套。
 class Renderer2D {
 public:
     static Renderer2D &Get();
 
-    /// 完整初始化：instance → surface → device → swapchain → 渲染资源。
-    void Init(Window &window);
+    /// 完整初始化：从 VulkanContext 获取设备、从 swapchain 获取 image 数量，创建 ring buffers。
+    void Init(VulkanContext &ctx, VulkanSwapchain &swapchain);
 
-    /// 完整销毁。
+    /// 完整销毁：清理 ring buffers。
     void Shutdown();
 
     void BeginScene(const glm::mat4 &view, const glm::mat4 &projection,
@@ -63,17 +62,9 @@ public:
 
     [[nodiscard]] uint32_t GetSwapchainImageCount() const { return static_cast<uint32_t>(m_RingBuffers.size()); }
 
-    [[nodiscard]] VulkanSwapchain &GetSwapchain() { return m_Swapchain; }
+    [[nodiscard]] VulkanSwapchain &GetSwapchain() { return *m_Swapchain; }
 
-    // -- Forwarding accessors --
-    [[nodiscard]] VulkanInstance &GetInstance() { return m_Instance; }
-    [[nodiscard]] VulkanDevice &GetDevice() { return m_Device; }
-    [[nodiscard]] vk::Instance GetVkInstance() const { return m_Instance.Get(); }
-    [[nodiscard]] vk::Device GetVkDevice() const { return m_Device.GetDevice(); }
-    [[nodiscard]] vk::PhysicalDevice GetVkGpu() const { return m_Device.GetGpu(); }
-    [[nodiscard]] vk::Queue GetVkQueue() const { return m_Device.GetQueue(); }
-    [[nodiscard]] int32_t GetGraphicsQueueIndex() const { return m_Device.GetGraphicsQueueIndex(); }
-    [[nodiscard]] VmaAllocator GetVmaAllocator() const { return m_Device.GetVmaAllocator(); }
+    [[nodiscard]] VulkanContext &GetContext() { return *m_Context; }
 
 private:
     Renderer2D() = default;
@@ -93,13 +84,10 @@ private:
         float _padding[3];
     };
 
-    VulkanInstance m_Instance;
-    VulkanDevice m_Device;
-
-    vk::Device m_VkDevice = nullptr;
+    VulkanContext *m_Context = nullptr;        // 非拥有指针
+    VulkanSwapchain *m_Swapchain = nullptr;    // 非拥有指针
 
     std::vector<VulkanRingBuffer> m_RingBuffers;
-    VulkanSwapchain m_Swapchain;
 
     // Scene state
     vk::CommandBuffer m_ActiveCmd{nullptr};

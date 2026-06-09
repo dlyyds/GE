@@ -14,7 +14,6 @@
 #include <GLFW/glfw3.h>
 #include <functional>
 #include <memory>
-#include <regex>
 
 namespace GE {
 Application *Application::s_Instance = nullptr;
@@ -29,7 +28,17 @@ Application::Application(const std::string &name, ApplicationCommandLineArgs arg
     m_Window = Window::Create(WindowProps(name, 1600, 900));
     m_Window->SetEventCallback(GE_BIND_EVENT_FN(Application::OnEvent));
 
-    Renderer2D::Get().Init(*m_Window);
+    // 1. 初始化 Vulkan 上下文（Instance → Surface → Device → VMA）
+    m_VulkanContext.Init(*m_Window);
+
+    // 2. 创建 Swapchain
+    auto &dev = m_VulkanContext.GetDevice();
+    m_Swapchain.Init(dev.GetDevice(), dev.GetGpu(), dev.GetSurface(),
+                     dev.GetQueue(), dev.GetGraphicsQueueIndex(),
+                     m_Window->GetWidth(), m_Window->GetHeight());
+
+    // 3. 初始化渲染器（RingBuffer 等）
+    Renderer2D::Get().Init(m_VulkanContext, m_Swapchain);
 
     m_ImGuiLayer = CreateRef<ImGuiLayer>();
     PushOverlay(m_ImGuiLayer);
@@ -40,13 +49,23 @@ Application::~Application() {
     GE_PROFILE_FUNCTION();
     GE_CORE_INFO("Application Shoutdown");
 
-    // Wait for GPU to finish before destroying resources.
-    Renderer2D::Get().GetVkDevice().waitIdle();
+    // 1. 等待 GPU 完成所有未完成的工作，然后才能安全释放资源
+    m_VulkanContext.GetVkDevice().waitIdle();
 
-    // Detach all layers before renderer shuts down.
+    // 2. Detach 所有层（层中的 Material/Mesh/Texture 持有 GPU 资源）
     m_LayerStack.Clear();
+    m_ImGuiLayer.reset();
 
+    // 3. 关闭渲染器（释放 RingBuffer）
     Renderer2D::Get().Shutdown();
+
+    // 4. 销毁 Swapchain
+    m_Swapchain.Destroy();
+
+    // 5. 销毁 Vulkan 上下文
+    m_VulkanContext.Destroy();
+
+    s_Instance = nullptr;
 }
 
 void Application::Run() {
@@ -76,8 +95,7 @@ void Application::Run() {
         m_LastFrameTime = time;
 
         if (!m_Minimized) {
-            auto &swapchain = Renderer2D::Get().GetSwapchain();
-            if (swapchain.BeginFrame()) {
+            if (m_Swapchain.BeginFrame()) {
                 for (auto &layer : m_LayerStack)
                     layer->OnUpdate(timestep);
 
@@ -86,7 +104,7 @@ void Application::Run() {
                     layer->OnImGuiRender();
                 ImGuiLayer::End();
 
-                swapchain.EndFrame();
+                m_Swapchain.EndFrame();
             }
         }
         m_Window->OnUpdate();

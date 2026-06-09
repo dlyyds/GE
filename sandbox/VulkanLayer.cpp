@@ -5,6 +5,7 @@
 #include "VulkanLayer.h"
 
 #include "GE/Render/Renderer2D.h"
+#include "GE/Core/Application.h"
 
 #include "imgui.h"
 #include "glm/gtc/type_ptr.hpp"
@@ -16,11 +17,12 @@ VulkanLayer::VulkanLayer() : Layer("VulkanLayer") {
 }
 
 void VulkanLayer::OnAttach() {
+    auto &ctx = Application::GetVulkanContext();
+    auto allocator = ctx.GetVmaAllocator();
+    auto device = ctx.GetVkDevice();
+    auto queue = ctx.GetVkQueue();
+    auto qfi = ctx.GetGraphicsQueueIndex();
     auto &r = Renderer2D::Get();
-    auto allocator = r.GetVmaAllocator();
-    auto device = r.GetVkDevice();
-    auto queue = r.GetVkQueue();
-    auto qfi = r.GetGraphicsQueueIndex();
     auto &swapchain = r.GetSwapchain();
 
     // 相机

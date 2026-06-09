@@ -13,6 +13,8 @@
 #include "Debug/Assert.h"
 #include "ImGui/ImGuiLayer.h"
 #include "Render/Renderer2D.h"
+#include "Render/VulkanBase/VulkanContext.h"
+#include "Render/VulkanBase/VulkanSwapchain.h"
 
 int main(int argc, char **argv);
 
@@ -54,6 +56,9 @@ public:
 
     [[nodiscard]] float GetFPS() const { return m_FPS; }
 
+    /// 访问 Vulkan 全局上下文（提供给 Layer 等创建 Vulkan 资源用）。
+    static VulkanContext &GetVulkanContext() { return Get().m_VulkanContext; }
+
 private:
     void Run();
 
@@ -75,6 +80,10 @@ private:
     float m_FPS = 0.0f;
     float m_FrameTimeAccumulator = 0.0f;
     int m_FrameCount = 0;
+
+    // -- Vulkan 资源 --
+    VulkanContext m_VulkanContext;
+    VulkanSwapchain m_Swapchain;
 
 private:
     static Application *s_Instance;

@@ -140,7 +140,7 @@ void VulkanSwapchain::EndFrame(uint32_t imageIndex) {
     cmd.end();
 
     auto &per_frame = m_PerFrame[imageIndex];
-    vk::PipelineStageFlags wait_stage = {vk::PipelineStageFlagBits::eTopOfPipe};
+    vk::PipelineStageFlags wait_stage = {vk::PipelineStageFlagBits::eColorAttachmentOutput};
     vk::Semaphore acquire = per_frame.GetAcquireSemaphore();
     vk::Semaphore release = per_frame.GetReleaseSemaphore();
     vk::Fence fence = per_frame.GetSubmitFence();

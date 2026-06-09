@@ -54,6 +54,7 @@ void ImGuiLayer::OnAttach() {
 
     // ---- Vulkan renderer backend ----
     auto &swapchain = Renderer2D::Get().GetSwapchain();
+    auto &ctx = Application::GetVulkanContext();
 
     auto color_format = static_cast<VkFormat>(swapchain.GetDimensions().format);
 
@@ -63,14 +64,13 @@ void ImGuiLayer::OnAttach() {
         .pColorAttachmentFormats = &color_format,
     };
 
-    auto &r = Renderer2D::Get();
     ImGui_ImplVulkan_InitInfo init_info{
         .ApiVersion = VK_API_VERSION_1_3,
-        .Instance = static_cast<VkInstance>(r.GetVkInstance()),
-        .PhysicalDevice = static_cast<VkPhysicalDevice>(r.GetVkGpu()),
-        .Device = static_cast<VkDevice>(r.GetVkDevice()),
-        .QueueFamily = static_cast<uint32_t>(r.GetGraphicsQueueIndex()),
-        .Queue = static_cast<VkQueue>(r.GetVkQueue()),
+        .Instance = static_cast<VkInstance>(ctx.GetVkInstance()),
+        .PhysicalDevice = static_cast<VkPhysicalDevice>(ctx.GetVkGpu()),
+        .Device = static_cast<VkDevice>(ctx.GetVkDevice()),
+        .QueueFamily = static_cast<uint32_t>(ctx.GetGraphicsQueueIndex()),
+        .Queue = static_cast<VkQueue>(ctx.GetVkQueue()),
         .DescriptorPoolSize = 1024,
         .MinImageCount = swapchain.GetImageCount(),
         .ImageCount = swapchain.GetImageCount(),
@@ -90,18 +90,18 @@ void ImGuiLayer::OnAttach() {
     // IMGUI_IMPL_VULKAN_NO_PROTOTYPES mode, so we must populate its function
     // pointer table before it can do anything.
     {
-        auto vkGetInstanceProcAddr = r.GetInstance().GetVkGetInstanceProcAddr();
-        VkInstance vk_instance = static_cast<VkInstance>(r.GetVkInstance());
+        auto vkGetInstanceProcAddr = ctx.GetInstance().GetVkGetInstanceProcAddr();
+        VkInstance vk_instance = static_cast<VkInstance>(ctx.GetVkInstance());
         struct LoaderCtx {
             PFN_vkGetInstanceProcAddr get;
             VkInstance inst;
-        } ctx{vkGetInstanceProcAddr, vk_instance};
+        } loader_ctx{vkGetInstanceProcAddr, vk_instance};
         ImGui_ImplVulkan_LoadFunctions(VK_API_VERSION_1_3,
                                        [](const char *name, void *user_data) -> PFN_vkVoidFunction {
                                            auto &d = *static_cast<LoaderCtx *>(user_data);
                                            return d.get(d.inst, name);
                                        },
-                                       &ctx);
+                                       &loader_ctx);
     }
 
     ImGui_ImplVulkan_Init(&init_info);

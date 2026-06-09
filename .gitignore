@@ -1,32 +1,44 @@
 # Game Engine Project - .gitignore
 
-# Build directories and output files
+# ============================================
+# Build outputs
+# ============================================
 **/bin/
 **/bin-int/
 **/build/
+**/build_*/
 **/int/
 **/.cache
+cmake-build-*/
 *.exe
 *.dll
 *.dll.a
 *.obj
 *.o
 *.out
-engin/vendor/
+*.lib
+*.a
+*.so
+
+# ============================================
 # CMake generated files
+# ============================================
 CMakeCache.txt
 CMakeFiles/
+CMakeScripts/
 Makefile
 Makefile2
 cmake_install.cmake
 install_manifest.txt
 CTestTestfile.cmake
-*.cmake
 *.rsp
 *.d
 *.marks
+compile_commands.json
 
+# ============================================
 # IDE and editor files
+# ============================================
 .idea/
 *.iml
 *.ipr
@@ -38,20 +50,36 @@ CTestTestfile.cmake
 .DS_Store
 Thumbs.db
 
+# Visual Studio user files
+*.user
+*.suo
+*.sdf
+*.opensdf
+*.vcxproj.user
+
+# ============================================
 # Log files
+# ============================================
 *.log
 logs/
 
+# ============================================
 # Temporary files
+# ============================================
 *.tmp
 *.temp
 
+# ============================================
 # Clangd
+# ============================================
 .clangd
 
-# Specific project exclusions
+# ============================================
+# Sandbox specific
+# ============================================
 sandbox/sandbox.exe
-sandbox/libGameEngine.dll
-sandbox/libGameEngine.dll.a
-bin-int/compile_commands.json
-*.log
+
+# ============================================
+# Old/outdated paths (kept for safety)
+# ============================================
+engin/vendor/

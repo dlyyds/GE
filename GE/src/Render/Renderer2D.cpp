@@ -3,6 +3,7 @@
 //
 
 #include "Render/Renderer2D.h"
+#include "Render/VulkanBase/VulkanContext.h"
 #include "Render/VulkanBase/VulkanRenderingInfo.h"
 #include "Core/GEWindow.h"
 
@@ -16,23 +17,19 @@ Renderer2D &Renderer2D::Get() {
     return instance;
 }
 
-void Renderer2D::Init(Window &window) {
-    m_Instance.Init("GE App");
-    m_Device.Init(m_Instance, window);
+void Renderer2D::Init(VulkanContext &ctx, VulkanSwapchain &swapchain) {
+    m_Context = &ctx;
+    m_Swapchain = &swapchain;
 
-    m_VkDevice = m_Device.GetDevice();
-
-    auto width = window.GetWidth();
-    auto height = window.GetHeight();
-    m_Swapchain.Init(m_VkDevice, m_Device.GetGpu(), m_Device.GetSurface(),
-                     m_Device.GetQueue(), m_Device.GetGraphicsQueueIndex(), width, height);
+    auto vkDevice = ctx.GetVkDevice();
+    auto vmaAllocator = ctx.GetVmaAllocator();
 
     // 为每个 swapchain image 创建 ring buffer（三重缓冲）
-    uint32_t imageCount = m_Swapchain.GetImageCount();
+    uint32_t imageCount = swapchain.GetImageCount();
     m_RingBuffers.reserve(imageCount);
     for (uint32_t i = 0; i < imageCount; i++) {
         m_RingBuffers.emplace_back();
-        m_RingBuffers.back().Init(m_Device.GetVmaAllocator(), RING_BUFFER_SIZE);
+        m_RingBuffers.back().Init(vmaAllocator, RING_BUFFER_SIZE);
     }
 }
 
@@ -41,11 +38,8 @@ void Renderer2D::Shutdown() {
         rb.Destroy();
     m_RingBuffers.clear();
 
-    m_VkDevice = nullptr;
-
-    m_Swapchain.Destroy();
-    m_Device.Destroy();
-    m_Instance.Destroy();
+    m_Context = nullptr;
+    m_Swapchain = nullptr;
 }
 
 VulkanPipeline Renderer2D::CreateDefaultPipeline(vk::Device dev, vk::Format color_format) {
@@ -92,9 +86,9 @@ VulkanPipeline Renderer2D::CreateDefaultPipeline(vk::Device dev, vk::Format colo
 void Renderer2D::BeginScene(const glm::mat4 &view, const glm::mat4 &projection,
                             const glm::vec3 &view_pos,
                             const glm::vec4 &clear_color) {
-    auto cmd = m_Swapchain.GetCurrentCmd();
-    auto dim = m_Swapchain.GetDimensions();
-    uint32_t image_index = m_Swapchain.GetCurrentImageIndex();
+    auto cmd = m_Swapchain->GetCurrentCmd();
+    auto dim = m_Swapchain->GetDimensions();
+    uint32_t image_index = m_Swapchain->GetCurrentImageIndex();
 
     // 重置当前帧的 ring buffer
     m_RingBuffers[image_index].Reset();
@@ -110,7 +104,7 @@ void Renderer2D::BeginScene(const glm::mat4 &view, const glm::mat4 &projection,
 
     VulkanRenderingInfo render_info;
     render_info.SetRenderArea(0, 0, dim.width, dim.height);
-    render_info.AddColorAttachment(m_Swapchain.GetImageView(image_index),
+    render_info.AddColorAttachment(m_Swapchain->GetImageView(image_index),
                                    vk::AttachmentLoadOp::eClear,
                                    vk::AttachmentStoreOp::eStore,
                                    clear_value);
@@ -131,7 +125,7 @@ void Renderer2D::BeginScene(const glm::mat4 &view, const glm::mat4 &projection,
 }
 
 void Renderer2D::Draw(const Mesh &mesh, const Material &material, const glm::mat4 &model, const glm::vec4 &color) {
-    uint32_t image_index = m_Swapchain.GetCurrentImageIndex();
+    uint32_t image_index = m_Swapchain->GetCurrentImageIndex();
     VulkanRingBuffer &ringBuffer = m_RingBuffers[image_index];
 
     // 将本次 Draw 的 UBO 数据写入 ring buffer

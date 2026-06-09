@@ -1,12 +1,20 @@
 #pragma once
 
 #include <vulkan/vulkan.hpp>
-#include <vector>
+#include <array>
+#include <cstdint>
+
+#include "Debug/Assert.h"
 
 namespace GE {
 
+/// Dynamic rendering 辅助类。
+/// 封装 vk::RenderingInfo，用固定数组替代 vector 避免每帧堆分配。
+/// 最大支持 4 个 color attachment（1 color + 3 resolve 的典型场景）。
 class VulkanRenderingInfo {
 public:
+    static constexpr uint32_t MAX_COLOR_ATTACHMENTS = 4;
+
     VulkanRenderingInfo() = default;
 
     void SetRenderArea(vk::Offset2D offset, vk::Extent2D extent) {
@@ -24,20 +32,23 @@ public:
                             vk::AttachmentStoreOp storeOp,
                             vk::ClearValue clearValue = {},
                             vk::ImageLayout layout = vk::ImageLayout::eColorAttachmentOptimal) {
-        m_ColorAttachments.push_back(vk::RenderingAttachmentInfo{
+        GE_CORE_ASSERT(m_ColorAttachmentCount < MAX_COLOR_ATTACHMENTS,
+                       "Exceeded max color attachments (max 4)");
+        m_ColorAttachments[m_ColorAttachmentCount] = vk::RenderingAttachmentInfo{
             .imageView = imageView,
             .imageLayout = layout,
             .loadOp = loadOp,
             .storeOp = storeOp,
             .clearValue = clearValue,
-        });
+        };
+        m_ColorAttachmentCount++;
     }
 
     void Begin(vk::CommandBuffer cmd) const {
         vk::RenderingInfo info{
             .renderArea = m_RenderArea,
             .layerCount = m_LayerCount,
-            .colorAttachmentCount = static_cast<uint32_t>(m_ColorAttachments.size()),
+            .colorAttachmentCount = m_ColorAttachmentCount,
             .pColorAttachments = m_ColorAttachments.data(),
         };
         cmd.beginRendering(info);
@@ -45,10 +56,14 @@ public:
 
     static void End(vk::CommandBuffer cmd) { cmd.endRendering(); }
 
+    /// 重置 attachment 计数器，允许对象重用。
+    void Reset() { m_ColorAttachmentCount = 0; }
+
 private:
     vk::Rect2D m_RenderArea{{0, 0}, {0, 0}};
     uint32_t m_LayerCount = 1;
-    std::vector<vk::RenderingAttachmentInfo> m_ColorAttachments;
+    std::array<vk::RenderingAttachmentInfo, MAX_COLOR_ATTACHMENTS> m_ColorAttachments{};
+    uint32_t m_ColorAttachmentCount = 0;
 };
 
 } // namespace GE

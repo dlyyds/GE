@@ -43,7 +43,10 @@ public:
     [[nodiscard]] vk::Pipeline GetPipeline() const { return m_Pipeline; }
     [[nodiscard]] vk::PipelineLayout GetLayout() const { return m_PipelineLayout; }
     [[nodiscard]] vk::DescriptorSetLayout GetDescriptorSetLayout() const { return m_DescriptorSetLayout; }
-    [[nodiscard]] const std::vector<vk::DescriptorSetLayoutBinding> &GetDescriptorBindings() const { return m_DescriptorBindings; }
+    [[nodiscard]] const std::vector<DescriptorBindingInfo> &GetDescriptorBindings() const { return m_DescriptorBindings; }
+
+    /// 通过着色器变量名查找 descriptor binding 编号，未找到返回 UINT32_MAX。
+    [[nodiscard]] uint32_t GetBindingByName(const std::string &name) const;
 
     /// Takes ownership of the layout handle. Destroys any previously owned layout.
     void SetDescriptorSetLayout(vk::DescriptorSetLayout layout);
@@ -53,7 +56,7 @@ private:
     vk::DescriptorSetLayout m_DescriptorSetLayout = nullptr;
     vk::PipelineLayout m_PipelineLayout = nullptr;
     vk::Pipeline m_Pipeline = nullptr;
-    std::vector<vk::DescriptorSetLayoutBinding> m_DescriptorBindings;
+    std::vector<DescriptorBindingInfo> m_DescriptorBindings;
 };
 
 } // namespace GE

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vulkan/vulkan.hpp>
+#include <string>
 #include <vector>
 
 #include "Render/VulkanBase/VulkanPipeline.h"
@@ -25,8 +26,11 @@ struct Material {
               const vk::DescriptorBufferInfo *uniformBufferInfos,
               vk::ImageView textureView, vk::Sampler sampler);
 
-    /// 更新所有 descriptor set 的纹理 binding（自动查找 CombinedImageSampler 类型的 binding）。
-    void SetTexture(vk::ImageView textureView, vk::Sampler sampler);
+    /// 按 binding 编号更新纹理。
+    void SetTexture(uint32_t binding, vk::ImageView textureView, vk::Sampler sampler);
+
+    /// 按着色器变量名更新纹理（如 "texSampler", "albedo"）。
+    void SetTexture(const std::string &name, vk::ImageView textureView, vk::Sampler sampler);
 
     void Cleanup();
 };

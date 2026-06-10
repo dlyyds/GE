@@ -268,8 +268,8 @@ VertexInputState VulkanShader::ReflectVertexInput() const {
     return state;
 }
 
-std::vector<vk::DescriptorSetLayoutBinding> VulkanShader::ReflectDescriptorBindings() const {
-    std::vector<vk::DescriptorSetLayoutBinding> bindings;
+std::vector<DescriptorBindingInfo> VulkanShader::ReflectDescriptorBindings() const {
+    std::vector<DescriptorBindingInfo> bindings;
     if (m_SPIRV.empty())
         return bindings;
 
@@ -289,11 +289,12 @@ std::vector<vk::DescriptorSetLayoutBinding> VulkanShader::ReflectDescriptorBindi
                 if (!spir_type.array.empty() && spir_type.array[0] > 0)
                     count = spir_type.array[0];
 
-                bindings.push_back(vk::DescriptorSetLayoutBinding{
+                bindings.push_back(DescriptorBindingInfo{
                     .binding = binding,
                     .descriptorType = type,
                     .descriptorCount = count,
                     .stageFlags = m_Stage,
+                    .name = res.name,
                 });
             }
         };
@@ -310,30 +311,33 @@ std::vector<vk::DescriptorSetLayoutBinding> VulkanShader::ReflectDescriptorBindi
     return bindings;
 }
 
-std::vector<vk::DescriptorSetLayoutBinding> VulkanShader::MergeDescriptorBindings(
-    std::initializer_list<std::vector<vk::DescriptorSetLayoutBinding> > stages) {
+std::vector<DescriptorBindingInfo> VulkanShader::MergeDescriptorBindings(
+    std::initializer_list<std::vector<DescriptorBindingInfo> > stages) {
 
-    std::unordered_map<uint32_t, vk::DescriptorSetLayoutBinding> merged;
+    std::unordered_map<uint32_t, DescriptorBindingInfo> merged;
     for (auto &stage : stages) {
         for (auto &b : stage) {
             auto it = merged.find(b.binding);
             if (it != merged.end()) {
                 it->second.stageFlags |= b.stageFlags;
+                // 如果现有 name 为空则用新 name 补上（同一个 binding 可能只在一个 stage 有名字）
+                if (it->second.name.empty())
+                    it->second.name = b.name;
             } else {
                 merged[b.binding] = b;
             }
         }
     }
 
-    std::vector<vk::DescriptorSetLayoutBinding> result;
+    std::vector<DescriptorBindingInfo> result;
     for (auto &[_, b] : merged)
         result.push_back(b);
 
     // 日志输出合并结果
     GE_CORE_TRACE("MergeDescriptorBindings: {} bindings merged", result.size());
     for (auto &b : result) {
-        GE_CORE_TRACE("  binding={} type={} count={} stageFlags={}",
-                      b.binding, vk::to_string(b.descriptorType),
+        GE_CORE_TRACE("  binding={} name=\"{}\" type={} count={} stageFlags={}",
+                      b.binding, b.name, vk::to_string(b.descriptorType),
                       b.descriptorCount, vk::to_string(b.stageFlags));
     }
 

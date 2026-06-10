@@ -12,6 +12,15 @@ struct VertexInputState {
     std::vector<vk::VertexInputAttributeDescription> attributes;
 };
 
+/// Descriptor binding 信息（扩展 vk::DescriptorSetLayoutBinding，增加反射名称）。
+struct DescriptorBindingInfo {
+    uint32_t binding = 0;
+    vk::DescriptorType descriptorType = vk::DescriptorType::eCombinedImageSampler;
+    uint32_t descriptorCount = 0;
+    vk::ShaderStageFlags stageFlags;
+    std::string name;  // 着色器变量名, 如 "albedo", "normal"
+};
+
 /// Vulkan 着色器封装。
 /// 从 .spv 文件加载 SPIR-V 二进制数据，创建并拥有 vk::ShaderModule。
 /// 支持 SPIRV-Cross 反射获取 vertex input 属性。
@@ -52,12 +61,12 @@ public:
 
     /// 反射当前阶段的所有 descriptor set layout bindings。
     /// 包括 uniform buffer、sampled image、storage buffer、storage image。
-    [[nodiscard]] std::vector<vk::DescriptorSetLayoutBinding> ReflectDescriptorBindings() const;
+    [[nodiscard]] std::vector<DescriptorBindingInfo> ReflectDescriptorBindings() const;
 
     /// 合并来自多个 shader stage 的 descriptor bindings。
-    /// 相同 binding 编号的 stageFlags 取并集。
-    [[nodiscard]] static std::vector<vk::DescriptorSetLayoutBinding> MergeDescriptorBindings(
-        std::initializer_list<std::vector<vk::DescriptorSetLayoutBinding>> stages);
+    /// 相同 binding 编号的 stageFlags 取并集，name 取非空的那个。
+    [[nodiscard]] static std::vector<DescriptorBindingInfo> MergeDescriptorBindings(
+        std::initializer_list<std::vector<DescriptorBindingInfo>> stages);
 
     // -- 访问器 --
     [[nodiscard]] vk::ShaderModule GetModule() const { return m_Module; }

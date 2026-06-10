@@ -62,22 +62,25 @@ void Material::Init(vk::Device device,
     }
 }
 
-void Material::SetTexture(vk::ImageView textureView, vk::Sampler sampler) {
-    // 自动查找 CombinedImageSampler 类型的 binding 并更新
+void Material::SetTexture(uint32_t binding, vk::ImageView textureView, vk::Sampler sampler) {
     vk::DescriptorImageInfo imageInfo{
         .sampler = sampler,
         .imageView = textureView,
         .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
     };
 
-    auto &bindings = pipeline.GetDescriptorBindings();
-    for (auto &b : bindings) {
-        if (b.descriptorType == vk::DescriptorType::eCombinedImageSampler) {
-            for (auto &ds : descriptorSets) {
-                ds.WriteImage(b.binding, imageInfo, b.descriptorType);
-            }
-        }
+    for (auto &ds : descriptorSets) {
+        ds.WriteImage(binding, imageInfo);
     }
+}
+
+void Material::SetTexture(const std::string &name, vk::ImageView textureView, vk::Sampler sampler) {
+    uint32_t binding = pipeline.GetBindingByName(name);
+    if (binding == UINT32_MAX) {
+        GE_CORE_WARN("Material::SetTexture: 未找到名为 \"{}\" 的纹理 binding", name);
+        return;
+    }
+    SetTexture(binding, textureView, sampler);
 }
 
 void Material::Cleanup() {

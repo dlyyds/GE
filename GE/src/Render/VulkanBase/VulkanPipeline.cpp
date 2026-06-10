@@ -29,10 +29,20 @@ void VulkanPipeline::Init(vk::Device device, vk::Format color_format,
         }
     }
 
-    // 从反射结果创建 DescriptorSetLayout
+    // 从反射结果创建 DescriptorSetLayout（转为 vk 原生类型）
+    std::vector<vk::DescriptorSetLayoutBinding> raw_bindings;
+    raw_bindings.reserve(m_DescriptorBindings.size());
+    for (auto &b : m_DescriptorBindings) {
+        raw_bindings.push_back(vk::DescriptorSetLayoutBinding{
+            .binding = b.binding,
+            .descriptorType = b.descriptorType,
+            .descriptorCount = b.descriptorCount,
+            .stageFlags = b.stageFlags,
+        });
+    }
     vk::DescriptorSetLayoutCreateInfo layout_info{
-        .bindingCount = static_cast<uint32_t>(m_DescriptorBindings.size()),
-        .pBindings = m_DescriptorBindings.data(),
+        .bindingCount = static_cast<uint32_t>(raw_bindings.size()),
+        .pBindings = raw_bindings.data(),
     };
     m_DescriptorSetLayout = device.createDescriptorSetLayout(layout_info);
 
@@ -121,6 +131,14 @@ void VulkanPipeline::Cleanup() {
     m_PipelineLayout = nullptr;
     m_DescriptorSetLayout = nullptr;
     m_Device = nullptr;
+}
+
+uint32_t VulkanPipeline::GetBindingByName(const std::string &name) const {
+    for (auto &b : m_DescriptorBindings) {
+        if (b.name == name)
+            return b.binding;
+    }
+    return UINT32_MAX;
 }
 
 void VulkanPipeline::SetDescriptorSetLayout(vk::DescriptorSetLayout layout) {

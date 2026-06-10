@@ -50,6 +50,15 @@ public:
     /// 便捷方法：反射 VertexInputState（attributes + stride）。
     [[nodiscard]] VertexInputState ReflectVertexInput() const;
 
+    /// 反射当前阶段的所有 descriptor set layout bindings。
+    /// 包括 uniform buffer、sampled image、storage buffer、storage image。
+    [[nodiscard]] std::vector<vk::DescriptorSetLayoutBinding> ReflectDescriptorBindings() const;
+
+    /// 合并来自多个 shader stage 的 descriptor bindings。
+    /// 相同 binding 编号的 stageFlags 取并集。
+    [[nodiscard]] static std::vector<vk::DescriptorSetLayoutBinding> MergeDescriptorBindings(
+        std::initializer_list<std::vector<vk::DescriptorSetLayoutBinding>> stages);
+
     // -- 访问器 --
     [[nodiscard]] vk::ShaderModule GetModule() const { return m_Module; }
     [[nodiscard]] vk::ShaderStageFlagBits GetStage() const { return m_Stage; }

@@ -5,25 +5,46 @@
 #define VULKAN_HPP_DISPATCH_LOADER_DYNAMIC 1
 #include "../../../include/GE/Render/VulkanBase/VulkanPipeline.h"
 
-#include "Debug/Assert.h"
+#include <algorithm>
 
 namespace GE {
 
 void VulkanPipeline::Init(vk::Device device, vk::Format color_format,
-                          const VulkanShader &vertShader, const VulkanShader &fragShader) {
+                          const VulkanShader &vertShader, const VulkanShader &fragShader,
+                          const std::vector<uint32_t> &dynamicBindings) {
     m_Device = device;
 
     // 从 vertex shader 自动反射 vertex input layout
     VertexInputState vertex_input = vertShader.ReflectVertexInput();
 
-    // DescriptorSetLayout must be set by the caller before Init
-    GE_ASSERT(m_DescriptorSetLayout, "DescriptorSetLayout must be set before Init");
+    // 反射 descriptor bindings 并合并 vertex + fragment
+    auto vert_bindings = vertShader.ReflectDescriptorBindings();
+    auto frag_bindings = fragShader.ReflectDescriptorBindings();
+    m_DescriptorBindings = VulkanShader::MergeDescriptorBindings({vert_bindings, frag_bindings});
 
-    vk::PipelineLayoutCreateInfo layout_info{
+    // 将指定的 binding 转为 Dynamic 类型
+    for (auto &b : m_DescriptorBindings) {
+        if (std::ranges::find(dynamicBindings, b.binding) != dynamicBindings.end()) {
+            if (b.descriptorType == vk::DescriptorType::eUniformBuffer)
+                b.descriptorType = vk::DescriptorType::eUniformBufferDynamic;
+            else if (b.descriptorType == vk::DescriptorType::eStorageBuffer)
+                b.descriptorType = vk::DescriptorType::eStorageBufferDynamic;
+        }
+    }
+
+    // 从反射结果创建 DescriptorSetLayout
+    vk::DescriptorSetLayoutCreateInfo layout_info{
+        .bindingCount = static_cast<uint32_t>(m_DescriptorBindings.size()),
+        .pBindings = m_DescriptorBindings.data(),
+    };
+    m_DescriptorSetLayout = device.createDescriptorSetLayout(layout_info);
+
+    // 创建 PipelineLayout
+    vk::PipelineLayoutCreateInfo pipeline_layout_info{
         .setLayoutCount = 1,
         .pSetLayouts = &m_DescriptorSetLayout,
     };
-    m_PipelineLayout = device.createPipelineLayout(layout_info);
+    m_PipelineLayout = device.createPipelineLayout(pipeline_layout_info);
 
     vk::VertexInputBindingDescription binding_description{
         .binding = 0, .stride = vertex_input.stride, .inputRate = vk::VertexInputRate::eVertex};

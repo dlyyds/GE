@@ -5,7 +5,10 @@
 #define VULKAN_HPP_DISPATCH_LOADER_DYNAMIC 1
 #include "Render/Material.h"
 
+#include "Core/Log.h"
+
 #include <array>
+#include <unordered_map>
 
 namespace GE {
 
@@ -15,41 +18,65 @@ void Material::Init(vk::Device device,
                     const vk::DescriptorBufferInfo *uniformBufferInfos,
                     vk::ImageView textureView, vk::Sampler sampler) {
     this->pipeline = std::move(pipeline);
+    auto &bindings = this->pipeline.GetDescriptorBindings();
 
-    // 创建 descriptor pool（imageCount 组，每组：UBO + 纹理）
-    descriptorPool.Init(device, imageCount,
-                        {vk::DescriptorPoolSize{.type = vk::DescriptorType::eUniformBufferDynamic,
-                                                .descriptorCount = imageCount},
-                         vk::DescriptorPoolSize{.type = vk::DescriptorType::eCombinedImageSampler,
-                                                .descriptorCount = imageCount}});
+    // 从反射的 bindings 构建 pool sizes
+    std::vector<vk::DescriptorPoolSize> poolSizes;
+    for (auto &b : bindings) {
+        poolSizes.push_back(vk::DescriptorPoolSize{
+            .type = b.descriptorType,
+            .descriptorCount = b.descriptorCount * imageCount,
+        });
+    }
+    descriptorPool.Init(device, imageCount, poolSizes);
 
     // 为每个 swapchain image 分配 descriptor set
     descriptorSets.resize(imageCount);
     for (uint32_t i = 0; i < imageCount; i++) {
         descriptorSets[i].Init(device, descriptorPool, this->pipeline.GetDescriptorSetLayout());
 
-        // 写入 binding 0 = 第 i 个 ring buffer 的动态 UBO
-        descriptorSets[i].WriteBuffer(0, vk::DescriptorType::eUniformBufferDynamic,
-                                      uniformBufferInfos[i]);
-
-        // 写入 binding 1 = 纹理
-        vk::DescriptorImageInfo imageInfo;
-        imageInfo.sampler = sampler;
-        imageInfo.imageView = textureView;
-        imageInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
-        descriptorSets[i].WriteImage(1, imageInfo);
+        // 遍历反射的 bindings，按类型写入
+        for (auto &b : bindings) {
+            switch (b.descriptorType) {
+            case vk::DescriptorType::eUniformBuffer:
+            case vk::DescriptorType::eUniformBufferDynamic: {
+                descriptorSets[i].WriteBuffer(b.binding, b.descriptorType,
+                                              uniformBufferInfos[i]);
+                break;
+            }
+            case vk::DescriptorType::eCombinedImageSampler: {
+                vk::DescriptorImageInfo imageInfo{
+                    .sampler = sampler,
+                    .imageView = textureView,
+                    .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
+                };
+                descriptorSets[i].WriteImage(b.binding, imageInfo, b.descriptorType);
+                break;
+            }
+            default:
+                GE_CORE_WARN("Material::Init: unhandled descriptor type {} at binding {}",
+                             static_cast<int>(b.descriptorType), b.binding);
+                break;
+            }
+        }
     }
 }
 
 void Material::SetTexture(vk::ImageView textureView, vk::Sampler sampler) {
-    // 更新所有 descriptor set 的纹理 binding
-    vk::DescriptorImageInfo imageInfo;
-    imageInfo.sampler = sampler;
-    imageInfo.imageView = textureView;
-    imageInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+    // 自动查找 CombinedImageSampler 类型的 binding 并更新
+    vk::DescriptorImageInfo imageInfo{
+        .sampler = sampler,
+        .imageView = textureView,
+        .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
+    };
 
-    for (auto &ds : descriptorSets) {
-        ds.WriteImage(1, imageInfo);
+    auto &bindings = pipeline.GetDescriptorBindings();
+    for (auto &b : bindings) {
+        if (b.descriptorType == vk::DescriptorType::eCombinedImageSampler) {
+            for (auto &ds : descriptorSets) {
+                ds.WriteImage(b.binding, imageInfo, b.descriptorType);
+            }
+        }
     }
 }
 

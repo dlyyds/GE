@@ -43,33 +43,15 @@ void Renderer2D::Shutdown() {
 }
 
 VulkanPipeline Renderer2D::CreateDefaultPipeline(vk::Device dev, vk::Format color_format) {
-    std::array<vk::DescriptorSetLayoutBinding, 2> bindings{{
-        {.binding = 0,
-         .descriptorType = vk::DescriptorType::eUniformBufferDynamic,
-         .descriptorCount = 1,
-         .stageFlags = vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment},
-        {.binding = 1,
-         .descriptorType = vk::DescriptorType::eCombinedImageSampler,
-         .descriptorCount = 1,
-         .stageFlags = vk::ShaderStageFlagBits::eFragment},
-    }};
-
-    vk::DescriptorSetLayoutCreateInfo layout_info{
-        .bindingCount = static_cast<uint32_t>(bindings.size()),
-        .pBindings = bindings.data()
-    };
-
-    vk::DescriptorSetLayout layout = dev.createDescriptorSetLayout(layout_info);
-
-    VulkanPipeline pipeline;
-    pipeline.SetDescriptorSetLayout(layout);
-
     // 创建着色器（ShaderModule 在管线创建后可安全销毁）
     VulkanShader vertShader, fragShader;
     vertShader.Init(dev, "assets/shaders/glsl/mesh.vert.spv", vk::ShaderStageFlagBits::eVertex);
     fragShader.Init(dev, "assets/shaders/glsl/mesh.frag.spv", vk::ShaderStageFlagBits::eFragment);
 
-    pipeline.Init(dev, color_format, vertShader, fragShader);
+    // descriptor layout 在 VulkanPipeline::Init 内部通过反射自动创建，
+    // 同时从 vertex shader 反射获取 input layout
+    VulkanPipeline pipeline;
+    pipeline.Init(dev, color_format, vertShader, fragShader, /*dynamicBindings=*/{0});
     return pipeline;
 }
 

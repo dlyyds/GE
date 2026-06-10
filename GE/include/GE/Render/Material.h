@@ -16,7 +16,8 @@ struct Material {
     VulkanDescriptorPool descriptorPool;
     std::vector<VulkanDescriptorSet> descriptorSets;
 
-    /// 接管管线所有权，为每个 swapchain image 创建一个 descriptor set。
+    /// 接管管线所有权，为每个 swapchain image 创建一个 descriptor set，
+    /// 从 pipeline 的反射绑定信息驱动 pool 创建和 descriptor 写入。
     /// uniformBufferInfos 长度必须等于 imageCount。
     void Init(vk::Device device,
               VulkanPipeline &&pipeline,
@@ -24,7 +25,7 @@ struct Material {
               const vk::DescriptorBufferInfo *uniformBufferInfos,
               vk::ImageView textureView, vk::Sampler sampler);
 
-    /// 更新所有 descriptor set 的纹理 binding。
+    /// 更新所有 descriptor set 的纹理 binding（自动查找 CombinedImageSampler 类型的 binding）。
     void SetTexture(vk::ImageView textureView, vk::Sampler sampler);
 
     void Cleanup();

@@ -25,13 +25,16 @@ public:
     VulkanPipeline(VulkanPipeline &&) = default;
     VulkanPipeline &operator=(VulkanPipeline &&) = default;
 
-    /// 创建图形管线。vertex input layout 从 vertex shader 自动反射获取。
-    /// @param device        Vulkan 逻辑设备
-    /// @param color_format  颜色附件格式
-    /// @param vertShader    顶点着色器（内部自动反射 vertex input）
-    /// @param fragShader    片元着色器
+    /// 创建图形管线。vertex input layout 从 vertex shader 自动反射获取，
+    /// descriptor set layout 从两个 shader 的反射结果合并创建。
+    /// @param device           Vulkan 逻辑设备
+    /// @param color_format     颜色附件格式
+    /// @param vertShader       顶点着色器（内部自动反射 vertex input）
+    /// @param fragShader       片元着色器
+    /// @param dynamicBindings  需要改为 Dynamic 类型的 binding 编号列表
     void Init(vk::Device device, vk::Format color_format,
-              const VulkanShader &vertShader, const VulkanShader &fragShader);
+              const VulkanShader &vertShader, const VulkanShader &fragShader,
+              const std::vector<uint32_t> &dynamicBindings = {});
 
     void Cleanup();
 
@@ -40,6 +43,7 @@ public:
     [[nodiscard]] vk::Pipeline GetPipeline() const { return m_Pipeline; }
     [[nodiscard]] vk::PipelineLayout GetLayout() const { return m_PipelineLayout; }
     [[nodiscard]] vk::DescriptorSetLayout GetDescriptorSetLayout() const { return m_DescriptorSetLayout; }
+    [[nodiscard]] const std::vector<vk::DescriptorSetLayoutBinding> &GetDescriptorBindings() const { return m_DescriptorBindings; }
 
     /// Takes ownership of the layout handle. Destroys any previously owned layout.
     void SetDescriptorSetLayout(vk::DescriptorSetLayout layout);
@@ -49,6 +53,7 @@ private:
     vk::DescriptorSetLayout m_DescriptorSetLayout = nullptr;
     vk::PipelineLayout m_PipelineLayout = nullptr;
     vk::Pipeline m_Pipeline = nullptr;
+    std::vector<vk::DescriptorSetLayoutBinding> m_DescriptorBindings;
 };
 
 } // namespace GE

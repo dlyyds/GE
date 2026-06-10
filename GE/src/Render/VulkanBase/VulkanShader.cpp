@@ -10,6 +10,7 @@
 #include <spirv_cross.hpp>
 
 #include <map>
+#include <unordered_map>
 
 namespace GE {
 
@@ -265,6 +266,78 @@ VertexInputState VulkanShader::ReflectVertexInput() const {
     state.stride = offset;
 
     return state;
+}
+
+std::vector<vk::DescriptorSetLayoutBinding> VulkanShader::ReflectDescriptorBindings() const {
+    std::vector<vk::DescriptorSetLayoutBinding> bindings;
+    if (m_SPIRV.empty())
+        return bindings;
+
+    try {
+        spirv_cross::Compiler compiler(m_SPIRV);
+        auto resources = compiler.get_shader_resources();
+
+        // 映射 SPIRV-Cross 资源 → Vulkan descriptor type
+        auto add_resources = [&](const spirv_cross::SmallVector<spirv_cross::Resource> &res_list,
+                                 vk::DescriptorType type) {
+            for (auto &res : res_list) {
+                uint32_t binding = compiler.get_decoration(res.id, spv::DecorationBinding);
+                auto &spir_type = compiler.get_type(res.type_id);
+
+                // 数组长度：无数组 → 1, 固定数组 → array[0], runtime 数组 → 1
+                uint32_t count = 1;
+                if (!spir_type.array.empty() && spir_type.array[0] > 0)
+                    count = spir_type.array[0];
+
+                bindings.push_back(vk::DescriptorSetLayoutBinding{
+                    .binding = binding,
+                    .descriptorType = type,
+                    .descriptorCount = count,
+                    .stageFlags = m_Stage,
+                });
+            }
+        };
+
+        add_resources(resources.uniform_buffers, vk::DescriptorType::eUniformBuffer);
+        add_resources(resources.sampled_images, vk::DescriptorType::eCombinedImageSampler);
+        add_resources(resources.storage_buffers, vk::DescriptorType::eStorageBuffer);
+        add_resources(resources.storage_images, vk::DescriptorType::eStorageImage);
+
+    } catch (const std::exception &e) {
+        GE_CORE_ERROR("SPIRV-Cross descriptor reflection failed: {}", e.what());
+    }
+
+    return bindings;
+}
+
+std::vector<vk::DescriptorSetLayoutBinding> VulkanShader::MergeDescriptorBindings(
+    std::initializer_list<std::vector<vk::DescriptorSetLayoutBinding> > stages) {
+
+    std::unordered_map<uint32_t, vk::DescriptorSetLayoutBinding> merged;
+    for (auto &stage : stages) {
+        for (auto &b : stage) {
+            auto it = merged.find(b.binding);
+            if (it != merged.end()) {
+                it->second.stageFlags |= b.stageFlags;
+            } else {
+                merged[b.binding] = b;
+            }
+        }
+    }
+
+    std::vector<vk::DescriptorSetLayoutBinding> result;
+    for (auto &[_, b] : merged)
+        result.push_back(b);
+
+    // 日志输出合并结果
+    GE_CORE_TRACE("MergeDescriptorBindings: {} bindings merged", result.size());
+    for (auto &b : result) {
+        GE_CORE_TRACE("  binding={} type={} count={} stageFlags={}",
+                      b.binding, vk::to_string(b.descriptorType),
+                      b.descriptorCount, vk::to_string(b.stageFlags));
+    }
+
+    return result;
 }
 
 } // namespace GE

@@ -72,6 +72,7 @@ private:
     struct CachedTexture {
         std::unique_ptr<VulkanImage> image;
         uint32_t refCount = 0;
+        ~CachedTexture();   // 定义在 .cpp 中，确保完整类型
     };
 
     VmaAllocator m_Allocator = nullptr;

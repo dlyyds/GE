@@ -8,7 +8,6 @@
 #include "Render/VulkanBase/VulkanRingBuffer.h"
 #include "Render/Mesh.h"
 #include "Render/Material.h"
-#include "Render/TextureLib.h"
 #include "Render/VulkanBase/VulkanSwapchain.h"
 
 namespace GE {
@@ -73,9 +72,6 @@ public:
 
     [[nodiscard]] VulkanContext &GetContext() { return *m_Context; }
 
-    /// 全局纹理库，按路径去重管理 GPU 纹理。
-    [[nodiscard]] TextureLib &GetTextureLib() { return m_TextureLib; }
-
 private:
     Renderer() = default;
 
@@ -98,8 +94,6 @@ private:
     VulkanSwapchain *m_Swapchain = nullptr;    // 非拥有指针
 
     std::vector<VulkanRingBuffer> m_RingBuffers;
-
-    TextureLib m_TextureLib;
 
     // Scene state
     vk::CommandBuffer m_ActiveCmd{nullptr};

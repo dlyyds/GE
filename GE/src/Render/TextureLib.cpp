@@ -14,6 +14,8 @@
 
 namespace GE {
 
+TextureLib::CachedTexture::~CachedTexture() = default;
+
 std::string TextureLib::NormalizePath(const std::string &path) {
     namespace fs = std::filesystem;
     auto normalized = fs::absolute(path).lexically_normal().string();

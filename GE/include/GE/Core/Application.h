@@ -13,6 +13,7 @@
 #include "Debug/Assert.h"
 #include "ImGui/ImGuiLayer.h"
 #include "Render/Renderer.h"
+#include "Render/ResourceManager.h"
 #include "Render/VulkanBase/VulkanContext.h"
 #include "Render/VulkanBase/VulkanSwapchain.h"
 
@@ -59,6 +60,9 @@ public:
     /// 访问 Vulkan 全局上下文（提供给 Layer 等创建 Vulkan 资源用）。
     static VulkanContext &GetVulkanContext() { return Get().m_VulkanContext; }
 
+    /// 访问资源管理器（纹理、着色器、网格等 GPU 缓存）。
+    static ResourceManager &GetResourceManager() { return Get().m_ResourceManager; }
+
 private:
     void Run();
 
@@ -84,6 +88,7 @@ private:
     // -- Vulkan 资源 --
     VulkanContext m_VulkanContext;
     VulkanSwapchain m_Swapchain;
+    ResourceManager m_ResourceManager;
 
 private:
     static Application *s_Instance;

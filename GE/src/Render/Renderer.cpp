@@ -4,7 +4,6 @@
 
 #include "Render/Renderer.h"
 #include "Render/VulkanBase/VulkanContext.h"
-#include "Render/VulkanBase/VulkanImage.h"
 #include "Render/VulkanBase/VulkanRenderingInfo.h"
 #include "Core/GEWindow.h"
 
@@ -27,9 +26,6 @@ void Renderer::Init(VulkanContext &ctx, VulkanSwapchain &swapchain) {
     auto vkDevice = ctx.GetVkDevice();
     auto vmaAllocator = ctx.GetVmaAllocator();
 
-    // 初始化纹理库
-    m_TextureLib.Init(vmaAllocator, ctx.GetVkQueue(), ctx.GetGraphicsQueueIndex());
-
     // 为每个 swapchain image 创建 ring buffer（三重缓冲）
     uint32_t imageCount = swapchain.GetImageCount();
     m_RingBuffers.reserve(imageCount);
@@ -40,8 +36,6 @@ void Renderer::Init(VulkanContext &ctx, VulkanSwapchain &swapchain) {
 }
 
 void Renderer::Shutdown() {
-    m_TextureLib.Clear();
-
     for (auto &rb : m_RingBuffers)
         rb.Destroy();
     m_RingBuffers.clear();

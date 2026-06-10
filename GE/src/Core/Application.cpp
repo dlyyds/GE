@@ -37,7 +37,12 @@ Application::Application(const std::string &name, ApplicationCommandLineArgs arg
                      dev.GetQueue(), dev.GetGraphicsQueueIndex(),
                      m_Window->GetWidth(), m_Window->GetHeight());
 
-    // 3. 初始化渲染器（RingBuffer 等）
+    // 3. 初始化资源管理器（纹理缓存等）
+    m_ResourceManager.Init(m_VulkanContext.GetVmaAllocator(),
+                           m_VulkanContext.GetVkQueue(),
+                           m_VulkanContext.GetGraphicsQueueIndex());
+
+    // 4. 初始化渲染器（RingBuffer 等）
     Renderer::Get().Init(m_VulkanContext, m_Swapchain);
 
     m_ImGuiLayer = CreateRef<ImGuiLayer>();
@@ -56,13 +61,16 @@ Application::~Application() {
     m_LayerStack.Clear();
     m_ImGuiLayer.reset();
 
-    // 3. 关闭渲染器（释放 RingBuffer）
+    // 3. 关闭资源管理器（释放纹理等 GPU 资源）
+    m_ResourceManager.Shutdown();
+
+    // 4. 关闭渲染器（释放 RingBuffer）
     Renderer::Get().Shutdown();
 
-    // 4. 销毁 Swapchain
+    // 5. 销毁 Swapchain
     m_Swapchain.Destroy();
 
-    // 5. 销毁 Vulkan 上下文
+    // 6. 销毁 Vulkan 上下文
     m_VulkanContext.Destroy();
 
     s_Instance = nullptr;

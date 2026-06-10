@@ -69,9 +69,6 @@ VulkanPipeline Renderer2D::CreateDefaultPipeline(vk::Device dev, vk::Format colo
     vertShader.Init(dev, "assets/shaders/glsl/mesh.vert.spv", vk::ShaderStageFlagBits::eVertex);
     fragShader.Init(dev, "assets/shaders/glsl/mesh.frag.spv", vk::ShaderStageFlagBits::eFragment);
 
-    // 从 vertex shader 反射获取 input layout，不再手动写死
-    VertexInputState reflected_input = vertShader.ReflectVertexInput();
-
     pipeline.Init(dev, color_format, vertShader, fragShader);
     return pipeline;
 }

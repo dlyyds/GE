@@ -54,7 +54,7 @@ void VulkanSwapchain::Destroy() {
     m_GraphicsQueueIndex = -1;
 }
 
-void VulkanSwapchain::CheckResize() {
+void VulkanSwapchain::Resize() {
     auto surface_properties = m_Gpu.getSurfaceCapabilitiesKHR(m_Surface);
     if (surface_properties.currentExtent.width == m_Dimensions.width &&
         surface_properties.currentExtent.height == m_Dimensions.height) {
@@ -79,12 +79,12 @@ void VulkanSwapchain::CheckResize() {
     GE_CORE_TRACE("SwapChain resize {} {}", m_Dimensions.width, m_Dimensions.height);
 
     CreateSwapchain(surface_properties.currentExtent.width, surface_properties.currentExtent.height, old_swapchain);
+    if (old_swapchain)
+        m_Device.destroySwapchainKHR(old_swapchain);
     CreateImageViews();
 }
 
 vk::Result VulkanSwapchain::AcquireNextImage(uint32_t *image) {
-    CheckResize();
-
     vk::Semaphore acquire_semaphore;
     if (m_RecycledSemaphores.empty()) {
         acquire_semaphore = m_Device.createSemaphore(vk::SemaphoreCreateInfo{});
@@ -97,6 +97,7 @@ vk::Result VulkanSwapchain::AcquireNextImage(uint32_t *image) {
     try {
         std::tie(result, *image) = m_Device.acquireNextImageKHR(m_Swapchain, UINT64_MAX, acquire_semaphore);
     } catch (vk::OutOfDateKHRError &) {
+        m_NeedsResize = true;
         result = vk::Result::eErrorOutOfDateKHR;
     }
 
@@ -159,6 +160,11 @@ void VulkanSwapchain::EndFrame(uint32_t imageIndex) {
 }
 
 bool VulkanSwapchain::BeginFrame() {
+    if (m_NeedsResize) {
+        Resize();
+        m_NeedsResize = false;
+    }
+
     uint32_t index;
     auto res = AcquireNextImage(&index);
 
@@ -197,6 +203,7 @@ vk::Result VulkanSwapchain::Present(uint32_t index) {
     try {
         result = m_Queue.presentKHR(present);
     } catch (vk::OutOfDateKHRError &) {
+        m_NeedsResize = true;
         result = vk::Result::eErrorOutOfDateKHR;
     }
     return result;

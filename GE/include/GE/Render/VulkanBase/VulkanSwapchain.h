@@ -47,7 +47,7 @@ public:
     [[nodiscard]] vk::ImageView GetCurrentImageView() const { return GetImageView(m_CurrentImageIndex); }
 
 private:
-    void CheckResize();
+    void Resize();
 
     void CreateSwapchain(uint32_t width, uint32_t height, vk::SwapchainKHR old_swapchain);
 
@@ -76,6 +76,8 @@ private:
 
     uint32_t m_CurrentImageIndex = ~0u;
     vk::CommandBuffer m_CurrentCmd = nullptr;
+
+    bool m_NeedsResize = false;
 };
 
 } // namespace GE

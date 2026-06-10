@@ -4,7 +4,7 @@
 
 #include "Core/Application.h"
 #include "Core/Log.h"
-#include "Render/Renderer2D.h"
+#include "Render/Renderer.h"
 #include "../../include/GE/Render/VulkanBase/VulkanRenderingInfo.h"
 
 #include "GLFW/glfw3.h"
@@ -53,7 +53,7 @@ void ImGuiLayer::OnAttach() {
     ImGui_ImplGlfw_InitForOther(window, true);
 
     // ---- Vulkan renderer backend ----
-    auto &swapchain = Renderer2D::Get().GetSwapchain();
+    auto &swapchain = Renderer::Get().GetSwapchain();
     auto &ctx = Application::GetVulkanContext();
 
     auto color_format = static_cast<VkFormat>(swapchain.GetDimensions().format);
@@ -136,7 +136,7 @@ void ImGuiLayer::End() {
 
     ImGui::Render();
 
-    auto &swapchain = Renderer2D::Get().GetSwapchain();
+    auto &swapchain = Renderer::Get().GetSwapchain();
     auto cmd = swapchain.GetCurrentCmd();
 
     // Render ImGui on top with loadOp = eLoad to preserve the scene.

@@ -4,7 +4,7 @@
 
 #include "VulkanLayer.h"
 
-#include "GE/Render/Renderer2D.h"
+#include "GE/Render/Renderer.h"
 #include "GE/Core/Application.h"
 
 #include "imgui.h"
@@ -22,7 +22,7 @@ void VulkanLayer::OnAttach() {
     auto device = ctx.GetVkDevice();
     auto queue = ctx.GetVkQueue();
     auto qfi = ctx.GetGraphicsQueueIndex();
-    auto &r = Renderer2D::Get();
+    auto &r = Renderer::Get();
     auto &swapchain = r.GetSwapchain();
 
     // 相机
@@ -109,7 +109,7 @@ void VulkanLayer::OnImGuiRender() {
 
     if (ImGui::Button("Reset Camera")) {
         m_Camera = Camera{};
-        auto &swapchain = Renderer2D::Get().GetSwapchain();
+        auto &swapchain = Renderer::Get().GetSwapchain();
         m_Camera.SetAspect(static_cast<float>(swapchain.GetDimensions().width) /
                            static_cast<float>(swapchain.GetDimensions().height));
     }
@@ -123,7 +123,7 @@ void VulkanLayer::OnImGuiRender() {
 }
 
 void VulkanLayer::RenderFrame() {
-    auto &r = Renderer2D::Get();
+    auto &r = Renderer::Get();
     auto &swapchain = r.GetSwapchain();
 
     r.BeginScene(swapchain.GetCurrentCmd(),
@@ -135,7 +135,7 @@ void VulkanLayer::RenderFrame() {
     // 画 5 个四边形，排成一行
     // 现在 Ring Buffer 保证每个 Draw 有自己的 UBO 空间，不会相互覆盖
     for (int i = 0; i < 5; i++) {
-        float x = -0.8f + i * 0.4f;  // -0.8, -0.4, 0.0, 0.4, 0.8
+        float x = -0.8f + i * 0.4f; // -0.8, -0.4, 0.0, 0.4, 0.8
         auto model = glm::mat4(1.0f);
         model = glm::translate(model, glm::vec3(x, 0.0f, 0.0f));
         model = glm::scale(model, glm::vec3(0.35f, 0.35f, 1.0f));

@@ -12,7 +12,7 @@
 #include "Core/Timestep.h"
 #include "Debug/Assert.h"
 #include "ImGui/ImGuiLayer.h"
-#include "Render/Renderer2D.h"
+#include "Render/Renderer.h"
 #include "Render/VulkanBase/VulkanContext.h"
 #include "Render/VulkanBase/VulkanSwapchain.h"
 

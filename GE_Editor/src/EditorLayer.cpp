@@ -97,7 +97,7 @@ void EditorLayer::OnUpdate(Timestep &ts) {
 
     m_EditorCamera.OnUpdate(ts);
     // Render
-    Renderer2D::ResetStats();
+    Renderer::ResetStats();
 
     const FramebufferSpecification spec = m_Framebuffer->GetSpecification();
     if (m_ViewportSize.x > 0.0f && m_ViewportSize.y > 0.0f &&
@@ -118,9 +118,9 @@ void EditorLayer::OnUpdate(Timestep &ts) {
 
     m_Framebuffer->ClearAttachment(1, -1);
 
-    //  Renderer2D::BeginScene(m_CameraController.GetCamera());
+    //  Renderer::BeginScene(m_CameraController.GetCamera());
     m_ActiveScene->OnUpdateEditor(ts, m_EditorCamera);
-    //   Renderer2D::EndScene();
+    //   Renderer::EndScene();
 
     auto [mx, my] = ImGui::GetMousePos();
     mx -= m_ViewportBounds[0].x;
@@ -213,8 +213,8 @@ void EditorLayer::OnImGuiRender() {
 
     ImGui::Begin("Settings");
 
-    auto stats = Renderer2D::GetStats();
-    ImGui::Text("Renderer2D Stats:");
+    auto stats = Renderer::GetStats();
+    ImGui::Text("Renderer Stats:");
     ImGui::Text("Draw Calls: %d", stats.DrawCalls);
     ImGui::Text("Quads: %d", stats.QuadCount);
     ImGui::Text("Vertices: %d", stats.GetTotalVertexCount());

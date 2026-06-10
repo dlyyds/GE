@@ -2,8 +2,9 @@
 // Created by Lenovo on 2026/6/5.
 //
 
-#include "Render/Renderer2D.h"
+#include "Render/Renderer.h"
 #include "Render/VulkanBase/VulkanContext.h"
+#include "Render/VulkanBase/VulkanImage.h"
 #include "Render/VulkanBase/VulkanRenderingInfo.h"
 #include "Core/GEWindow.h"
 
@@ -12,17 +13,22 @@
 
 namespace GE {
 
-Renderer2D &Renderer2D::Get() {
-    static Renderer2D instance;
+Renderer &Renderer::Get() {
+    static Renderer instance;
     return instance;
 }
 
-void Renderer2D::Init(VulkanContext &ctx, VulkanSwapchain &swapchain) {
+Renderer::~Renderer() = default;
+
+void Renderer::Init(VulkanContext &ctx, VulkanSwapchain &swapchain) {
     m_Context = &ctx;
     m_Swapchain = &swapchain;
 
     auto vkDevice = ctx.GetVkDevice();
     auto vmaAllocator = ctx.GetVmaAllocator();
+
+    // 初始化纹理库
+    m_TextureLib.Init(vmaAllocator, ctx.GetVkQueue(), ctx.GetGraphicsQueueIndex());
 
     // 为每个 swapchain image 创建 ring buffer（三重缓冲）
     uint32_t imageCount = swapchain.GetImageCount();
@@ -33,7 +39,9 @@ void Renderer2D::Init(VulkanContext &ctx, VulkanSwapchain &swapchain) {
     }
 }
 
-void Renderer2D::Shutdown() {
+void Renderer::Shutdown() {
+    m_TextureLib.Clear();
+
     for (auto &rb : m_RingBuffers)
         rb.Destroy();
     m_RingBuffers.clear();
@@ -42,7 +50,7 @@ void Renderer2D::Shutdown() {
     m_Swapchain = nullptr;
 }
 
-VulkanPipeline Renderer2D::CreateDefaultPipeline(vk::Device dev, vk::Format color_format) {
+VulkanPipeline Renderer::CreateDefaultPipeline(vk::Device dev, vk::Format color_format) {
     // 创建着色器（ShaderModule 在管线创建后可安全销毁）
     VulkanShader vertShader, fragShader;
     vertShader.Init(dev, "assets/shaders/glsl/mesh.vert.spv", vk::ShaderStageFlagBits::eVertex);
@@ -55,11 +63,11 @@ VulkanPipeline Renderer2D::CreateDefaultPipeline(vk::Device dev, vk::Format colo
     return pipeline;
 }
 
-void Renderer2D::BeginScene(vk::CommandBuffer cmd, uint32_t imageIndex,
-                            vk::Extent2D dim,
-                            const glm::mat4 &view, const glm::mat4 &projection,
-                            const glm::vec3 &view_pos,
-                            const glm::vec4 &clear_color) {
+void Renderer::BeginScene(vk::CommandBuffer cmd, uint32_t imageIndex,
+                          vk::Extent2D dim,
+                          const glm::mat4 &view, const glm::mat4 &projection,
+                          const glm::vec3 &view_pos,
+                          const glm::vec4 &clear_color) {
     // 重置当前帧的 ring buffer
     m_RingBuffers[imageIndex].Reset();
 
@@ -96,7 +104,7 @@ void Renderer2D::BeginScene(vk::CommandBuffer cmd, uint32_t imageIndex,
     cmd.setScissor(0, scissor);
 }
 
-void Renderer2D::Draw(const Mesh &mesh, const Material &material, const glm::mat4 &model, const glm::vec4 &color) {
+void Renderer::Draw(const Mesh &mesh, const Material &material, const glm::mat4 &model, const glm::vec4 &color) {
     uint32_t image_index = m_CurrentImageIndex;
     VulkanRingBuffer &ringBuffer = m_RingBuffers[image_index];
 
@@ -133,7 +141,7 @@ void Renderer2D::Draw(const Mesh &mesh, const Material &material, const glm::mat
     cmd.drawIndexed(mesh.indexCount, 1, 0, 0, 0);
 }
 
-void Renderer2D::EndScene() {
+void Renderer::EndScene() {
     VulkanRenderingInfo::End(m_ActiveCmd);
     m_ActiveCmd = vk::CommandBuffer{nullptr};
 }

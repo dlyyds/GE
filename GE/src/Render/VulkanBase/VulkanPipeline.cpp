@@ -14,9 +14,6 @@ void VulkanPipeline::Init(vk::Device device, vk::Format color_format,
                           const std::vector<uint32_t> &dynamicBindings) {
     m_Device = device;
 
-    // 从 vertex shader 自动反射 vertex input layout
-    VertexInputState vertex_input = vertShader.ReflectVertexInput();
-
     // 反射 descriptor bindings 并合并 vertex + fragment
     auto vert_bindings = vertShader.ReflectDescriptorBindings();
     auto frag_bindings = fragShader.ReflectDescriptorBindings();
@@ -45,6 +42,9 @@ void VulkanPipeline::Init(vk::Device device, vk::Format color_format,
         .pSetLayouts = &m_DescriptorSetLayout,
     };
     m_PipelineLayout = device.createPipelineLayout(pipeline_layout_info);
+
+    // 从 vertex shader 自动反射 vertex input layout
+    VertexInputState vertex_input = vertShader.ReflectVertexInput();
 
     vk::VertexInputBindingDescription binding_description{
         .binding = 0, .stride = vertex_input.stride, .inputRate = vk::VertexInputRate::eVertex};

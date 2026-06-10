@@ -38,7 +38,7 @@ Application::Application(const std::string &name, ApplicationCommandLineArgs arg
                      m_Window->GetWidth(), m_Window->GetHeight());
 
     // 3. 初始化渲染器（RingBuffer 等）
-    Renderer2D::Get().Init(m_VulkanContext, m_Swapchain);
+    Renderer::Get().Init(m_VulkanContext, m_Swapchain);
 
     m_ImGuiLayer = CreateRef<ImGuiLayer>();
     PushOverlay(m_ImGuiLayer);
@@ -57,7 +57,7 @@ Application::~Application() {
     m_ImGuiLayer.reset();
 
     // 3. 关闭渲染器（释放 RingBuffer）
-    Renderer2D::Get().Shutdown();
+    Renderer::Get().Shutdown();
 
     // 4. 销毁 Swapchain
     m_Swapchain.Destroy();

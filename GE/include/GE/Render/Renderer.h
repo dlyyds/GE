@@ -8,6 +8,7 @@
 #include "Render/VulkanBase/VulkanRingBuffer.h"
 #include "Render/Mesh.h"
 #include "Render/Material.h"
+#include "Render/TextureLib.h"
 #include "Render/VulkanBase/VulkanSwapchain.h"
 
 namespace GE {
@@ -18,9 +19,9 @@ class VulkanContext;
 /// 基于实例的 2D/3D 网格渲染器单例。
 /// 持有 ring buffers 用于 UBO 分配，通过 VulkanContext 访问 Vulkan 全局对象。
 /// 管线和 descriptor set 存在于 Material 中，每个材质一套。
-class Renderer2D {
+class Renderer {
 public:
-    static Renderer2D &Get();
+    static Renderer &Get();
 
     /// 完整初始化：从 VulkanContext 获取设备、从 swapchain 获取 image 数量，创建 ring buffers。
     void Init(VulkanContext &ctx, VulkanSwapchain &swapchain);
@@ -72,14 +73,17 @@ public:
 
     [[nodiscard]] VulkanContext &GetContext() { return *m_Context; }
 
+    /// 全局纹理库，按路径去重管理 GPU 纹理。
+    [[nodiscard]] TextureLib &GetTextureLib() { return m_TextureLib; }
+
 private:
-    Renderer2D() = default;
+    Renderer() = default;
 
-    ~Renderer2D() = default;
+    ~Renderer();
 
-    Renderer2D(const Renderer2D &) = delete;
+    Renderer(const Renderer &) = delete;
 
-    Renderer2D &operator=(const Renderer2D &) = delete;
+    Renderer &operator=(const Renderer &) = delete;
 
     struct UniformData {
         glm::mat4 projection;
@@ -94,6 +98,8 @@ private:
     VulkanSwapchain *m_Swapchain = nullptr;    // 非拥有指针
 
     std::vector<VulkanRingBuffer> m_RingBuffers;
+
+    TextureLib m_TextureLib;
 
     // Scene state
     vk::CommandBuffer m_ActiveCmd{nullptr};

@@ -62,30 +62,30 @@ void Scene::OnUpdateRuntime(const Timestep ts) {
     }
     warnOnce = false;
 
-    Renderer2D::BeginScene(*mainCamera, cameraTransform);
+    Renderer::BeginScene(*mainCamera, cameraTransform);
 
     const auto group = m_Registry.group<TransformComponent>(entt::get<SpriteRendererComponent>);
     for (const auto entity : group) {
         const auto [transform, sprite] = group.get<TransformComponent, SpriteRendererComponent>(entity);
 
-        Renderer2D::DrawSprite(transform.GetTransform(), sprite, static_cast<int>(entity));
+        Renderer::DrawSprite(transform.GetTransform(), sprite, static_cast<int>(entity));
     }
 
-    Renderer2D::EndScene();
+    Renderer::EndScene();
 
 }
 
 void Scene::OnUpdateEditor(Timestep ts, EditorCamera &camera) {
-    Renderer2D::BeginScene(camera);
+    Renderer::BeginScene(camera);
 
     auto group = m_Registry.group<TransformComponent>(entt::get<SpriteRendererComponent>);
     for (auto entity : group) {
         auto [transform, sprite] = group.get<TransformComponent, SpriteRendererComponent>(entity);
 
-        Renderer2D::DrawSprite(transform.GetTransform(), sprite, static_cast<int>(entity));
+        Renderer::DrawSprite(transform.GetTransform(), sprite, static_cast<int>(entity));
     }
 
-    Renderer2D::EndScene();
+    Renderer::EndScene();
 }
 
 

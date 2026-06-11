@@ -31,11 +31,47 @@ void Renderer::Init(VulkanContext &ctx, VulkanSwapchain &swapchain) {
     vk::DeviceSize uboAlignment = props.limits.minUniformBufferOffsetAlignment;
     if (uboAlignment == 0) uboAlignment = 64;
 
-    // 创建单 ring buffer（使用设备对齐值）
+    // set=0: 创建 per-frame UBO buffer（静态大小，每帧 memcpy 覆盖）
+    m_FrameBuffer.Init(vmaAllocator, sizeof(FrameUniformData),
+                       vk::BufferUsageFlagBits::eUniformBuffer);
+
+    // set=2: 创建 per-object ring buffer
     m_RingBuffer.Init(vmaAllocator, RING_BUFFER_SIZE, uboAlignment);
 }
 
+void Renderer::InitDescriptorSets(vk::Device device,
+                                   vk::DescriptorSetLayout frameLayout,
+                                   vk::DescriptorSetLayout objectLayout) {
+    // 共用 pool：frame（1 个 eUniformBuffer）+ object（1 个 eUniformBufferDynamic）
+    m_GlobalPool.Init(device, 2, {
+        {vk::DescriptorType::eUniformBuffer, 1},
+        {vk::DescriptorType::eUniformBufferDynamic, 1},
+    });
+
+    // set=0: frame descriptor set
+    m_FrameSet.Init(device, m_GlobalPool, frameLayout);
+    m_FrameSet.WriteBuffer(0, vk::DescriptorType::eUniformBuffer,
+        vk::DescriptorBufferInfo{
+            .buffer = m_FrameBuffer.GetBuffer(),
+            .offset = 0,
+            .range = sizeof(FrameUniformData),
+        });
+
+    // set=2: object descriptor set（指向 ring buffer，dynamic offset 在 Bind 时传入）
+    m_ObjectSet.Init(device, m_GlobalPool, objectLayout);
+    m_ObjectSet.WriteBuffer(0, vk::DescriptorType::eUniformBufferDynamic,
+        vk::DescriptorBufferInfo{
+            .buffer = m_RingBuffer.GetBuffer(),
+            .offset = 0,
+            .range = sizeof(ObjectUniformData),
+        });
+}
+
 void Renderer::Shutdown() {
+    m_ObjectSet.Destroy();
+    m_FrameSet.Destroy();
+    m_GlobalPool.Cleanup();
+    m_FrameBuffer.Destroy();
     m_RingBuffer.Destroy();
 
     m_Context = nullptr;
@@ -51,7 +87,7 @@ VulkanPipeline Renderer::CreateDefaultPipeline(vk::Device dev, vk::Format color_
     // descriptor layout 在 VulkanPipeline::Init 内部通过反射自动创建，
     // 同时从 vertex shader 反射获取 input layout
     VulkanPipeline pipeline;
-    pipeline.Init(dev, color_format, vertShader, fragShader, /*dynamicBindings=*/{0});
+    pipeline.Init(dev, color_format, vertShader, fragShader, /*dynamicBindings=*/{{2, 0}});
     return pipeline;
 }
 
@@ -69,6 +105,13 @@ void Renderer::BeginScene(vk::CommandBuffer cmd, uint32_t imageIndex,
     m_View = view;
     m_Projection = projection;
     m_ViewPos = view_pos;
+
+    // 写入 set=0 的 frame UBO 数据（每帧覆盖，无 dynamic offset）
+    FrameUniformData frameData{};
+    frameData.projection = projection;
+    frameData.view = view;
+    frameData.viewPos = glm::vec4(view_pos, 1.0f);
+    m_FrameBuffer.Upload(&frameData, sizeof(FrameUniformData));
 
     // 开始渲染 pass
     vk::ClearValue clear_value;
@@ -97,17 +140,14 @@ void Renderer::BeginScene(vk::CommandBuffer cmd, uint32_t imageIndex,
 }
 
 void Renderer::Draw(const Mesh &mesh, const Material &material, const glm::mat4 &model, const glm::vec4 &color) {
-    // 将本次 Draw 的 UBO 数据写入 ring buffer
-    UniformData data{};
-    data.projection = m_Projection;
-    data.view = m_View;
-    data.model = model;
-    data.viewPos = glm::vec4(m_ViewPos, 1.0f);
-    data.lodBias = 0.0f;
+    // 将本次 Draw 的 ObjectUBO 数据写入 ring buffer
+    ObjectUniformData objData{};
+    objData.model = model;
+    objData.lodBias = 0.0f;
 
-    vk::DeviceSize offset = m_RingBuffer.Allocate(sizeof(UniformData));
+    vk::DeviceSize offset = m_RingBuffer.Allocate(sizeof(ObjectUniformData));
     std::memcpy(static_cast<char *>(m_RingBuffer.GetMappedData()) + offset,
-                &data, sizeof(data));
+                &objData, sizeof(objData));
 
     vk::CommandBuffer cmd = m_ActiveCmd;
 
@@ -118,14 +158,23 @@ void Renderer::Draw(const Mesh &mesh, const Material &material, const glm::mat4 
     cmd.setFrontFace(vk::FrontFace::eClockwise);
     cmd.setPrimitiveTopology(vk::PrimitiveTopology::eTriangleList);
 
+    // 绑定顶点/索引 buffer
     vk::Buffer vb = mesh.vertices.GetBuffer();
     cmd.bindVertexBuffers(0, vb, {0});
     cmd.bindIndexBuffer(mesh.indices.GetBuffer(), 0, vk::IndexType::eUint16);
 
-    // 绑定材质的 descriptor set，用动态偏移指定 UBO 数据
+    // 绑定所有 3 个 descriptor set：
+    //   set=0: FrameUBO（per-frame，静态）
+    //   set=1: Material 纹理
+    //   set=2: ObjectUBO（per-draw，dynamic offset）
+    vk::DescriptorSet sets[] = {
+        m_FrameSet.Get(),
+        material.descriptorSet.Get(),
+        m_ObjectSet.Get(),
+    };
     uint32_t dynamicOffset = static_cast<uint32_t>(offset);
     cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, material.pipeline.GetLayout(),
-                           0, material.descriptorSet.Get(), dynamicOffset);
+                           0, 3, sets, 1, &dynamicOffset);
 
     cmd.drawIndexed(mesh.indexCount, 1, 0, 0, 0);
 }

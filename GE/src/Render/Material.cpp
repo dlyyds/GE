@@ -7,6 +7,7 @@
 
 #include "Core/Log.h"
 
+#include <algorithm>
 #include <array>
 #include <unordered_map>
 
@@ -17,9 +18,10 @@ void Material::Init(vk::Device device,
     this->pipeline = std::move(pipeline);
     auto &bindings = this->pipeline.GetDescriptorBindings();
 
-    // 从反射的 bindings 构建 pool sizes
+    // 只过滤 set=1 的 bindings（材质纹理）
     std::vector<vk::DescriptorPoolSize> poolSizes;
     for (auto &b : bindings) {
+        if (b.set != 1) continue;
         poolSizes.push_back(vk::DescriptorPoolSize{
             .type = b.descriptorType,
             .descriptorCount = b.descriptorCount,
@@ -27,35 +29,8 @@ void Material::Init(vk::Device device,
     }
     descriptorPool.Init(device, 1, poolSizes);
 
-    // 分配单个 descriptor set
-    descriptorSet.Init(device, descriptorPool, this->pipeline.GetDescriptorSetLayout());
-}
-
-void Material::SetUniformBuffer(uint32_t binding, const vk::DescriptorBufferInfo &bufferInfo) {
-    auto &bindings = pipeline.GetDescriptorBindings();
-    for (auto &b : bindings) {
-        if (b.binding == binding) {
-            if (b.descriptorType == vk::DescriptorType::eUniformBuffer ||
-                b.descriptorType == vk::DescriptorType::eUniformBufferDynamic ||
-                b.descriptorType == vk::DescriptorType::eStorageBuffer ||
-                b.descriptorType == vk::DescriptorType::eStorageBufferDynamic) {
-                descriptorSet.WriteBuffer(binding, b.descriptorType, bufferInfo);
-                return;
-            }
-            GE_CORE_WARN("Material::SetUniformBuffer: binding {} 不是 buffer 类型", binding);
-            return;
-        }
-    }
-    GE_CORE_WARN("Material::SetUniformBuffer: 未找到 binding {}", binding);
-}
-
-void Material::SetUniformBuffer(const std::string &name, const vk::DescriptorBufferInfo &bufferInfo) {
-    uint32_t binding = pipeline.GetBindingByName(name);
-    if (binding == UINT32_MAX) {
-        GE_CORE_WARN("Material::SetUniformBuffer: 未找到名为 \"{}\" 的 binding", name);
-        return;
-    }
-    SetUniformBuffer(binding, bufferInfo);
+    // 分配 descriptor set（使用 pipeline 中 set=1 的 layout）
+    descriptorSet.Init(device, descriptorPool, this->pipeline.GetSetLayout(1));
 }
 
 void Material::SetTexture(uint32_t binding, vk::ImageView textureView, vk::Sampler sampler) {

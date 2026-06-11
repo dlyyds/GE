@@ -6,6 +6,8 @@
 #include "Render/VulkanBase/VulkanPipeline.h"
 #include "Render/VulkanBase/VulkanBuffer.h"
 #include "Render/VulkanBase/VulkanRingBuffer.h"
+#include "Render/VulkanBase/VulkanDescriptorPool.h"
+#include "Render/VulkanBase/VulkanDescriptorSet.h"
 #include "Render/Mesh.h"
 #include "Render/Material.h"
 #include "Render/VulkanBase/VulkanSwapchain.h"
@@ -25,13 +27,15 @@ public:
     /// 完整初始化：从 VulkanContext 获取设备、从 swapchain 获取 image 数量，创建 ring buffers。
     void Init(VulkanContext &ctx, VulkanSwapchain &swapchain);
 
-    /// 完整销毁：清理 ring buffers。
+    /// 接管 pipeline 的 set=0（Frame）和 set=2（Object）layout，创建 descriptor pool + sets。
+    void InitDescriptorSets(vk::Device device,
+                            vk::DescriptorSetLayout frameLayout,
+                            vk::DescriptorSetLayout objectLayout);
+
+    /// 完整销毁。
     void Shutdown();
 
     /// 开始一帧的场景渲染。
-    /// @param cmd 当前帧的 command buffer（从 swapchain 获取）
-    /// @param imageIndex 当前帧的 swapchain image 索引
-    /// @param dimensions 当前帧的渲染尺寸（来自 swapchain）
     void BeginScene(vk::CommandBuffer cmd, uint32_t imageIndex,
                     vk::Extent2D dimensions,
                     const glm::mat4 &view, const glm::mat4 &projection,
@@ -49,15 +53,6 @@ public:
     /// ring buffer 大小（4 MB，约 16000 次 Draw）
     static constexpr vk::DeviceSize RING_BUFFER_SIZE = 4 * 1024 * 1024;
 
-    /// 返回 UBO descriptor 信息，用于初始化 Material。
-    [[nodiscard]] vk::DescriptorBufferInfo GetUniformBufferInfo() const {
-        return vk::DescriptorBufferInfo{
-            .buffer = m_RingBuffer.GetBuffer(),
-            .offset = 0,
-            .range = sizeof(UniformData),
-        };
-    }
-
     [[nodiscard]] uint32_t GetSwapchainImageCount() const { return static_cast<uint32_t>(m_Swapchain ? m_Swapchain->GetImageCount() : 0); }
 
     [[nodiscard]] VulkanSwapchain &GetSwapchain() { return *m_Swapchain; }
@@ -73,20 +68,31 @@ private:
 
     Renderer &operator=(const Renderer &) = delete;
 
-    struct UniformData {
+    // set=0: per-frame UBO（每帧更新，无 dynamic offset）
+    struct FrameUniformData {
         glm::mat4 projection;
         glm::mat4 view;
-        glm::mat4 model;
         glm::vec4 viewPos;
+    };
+
+    VulkanBuffer m_FrameBuffer;
+    VulkanDescriptorSet m_FrameSet;
+
+    // set=2: per-object UBO（ring buffer + dynamic offset）
+    struct ObjectUniformData {
+        glm::mat4 model;
         float lodBias;
         float _padding[3];
     };
 
+    VulkanRingBuffer m_RingBuffer;
+    VulkanDescriptorSet m_ObjectSet;
+
+    // 共用 descriptor pool（frame + object 各一个 set）
+    VulkanDescriptorPool m_GlobalPool;
+
     VulkanContext *m_Context = nullptr; // 非拥有指针
     VulkanSwapchain *m_Swapchain = nullptr; // 非拥有指针
-
-    // 单 ring buffer（所有帧共享，每帧 Reset）
-    VulkanRingBuffer m_RingBuffer;
 
     // Scene state
     vk::CommandBuffer m_ActiveCmd{nullptr};

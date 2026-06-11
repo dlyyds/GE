@@ -6,12 +6,13 @@
 #include "../../../include/GE/Render/VulkanBase/VulkanPipeline.h"
 
 #include <algorithm>
+#include <map>
 
 namespace GE {
 
 void VulkanPipeline::Init(vk::Device device, vk::Format color_format,
                           const VulkanShader &vertShader, const VulkanShader &fragShader,
-                          const std::vector<uint32_t> &dynamicBindings) {
+                          const std::vector<std::pair<uint32_t, uint32_t>> &dynamicBindings) {
     m_Device = device;
 
     // 反射 descriptor bindings 并合并 vertex + fragment
@@ -19,9 +20,10 @@ void VulkanPipeline::Init(vk::Device device, vk::Format color_format,
     auto frag_bindings = fragShader.ReflectDescriptorBindings();
     m_DescriptorBindings = VulkanShader::MergeDescriptorBindings({vert_bindings, frag_bindings});
 
-    // 将指定的 binding 转为 Dynamic 类型
+    // 将指定的 (set, binding) 转为 Dynamic 类型
     for (auto &b : m_DescriptorBindings) {
-        if (std::ranges::find(dynamicBindings, b.binding) != dynamicBindings.end()) {
+        auto it = std::ranges::find(dynamicBindings, std::pair(b.set, b.binding));
+        if (it != dynamicBindings.end()) {
             if (b.descriptorType == vk::DescriptorType::eUniformBuffer)
                 b.descriptorType = vk::DescriptorType::eUniformBufferDynamic;
             else if (b.descriptorType == vk::DescriptorType::eStorageBuffer)
@@ -29,27 +31,39 @@ void VulkanPipeline::Init(vk::Device device, vk::Format color_format,
         }
     }
 
-    // 从反射结果创建 DescriptorSetLayout（转为 vk 原生类型）
-    std::vector<vk::DescriptorSetLayoutBinding> raw_bindings;
-    raw_bindings.reserve(m_DescriptorBindings.size());
+    // 按 set 分组 bindings
+    std::map<uint32_t, std::vector<DescriptorBindingInfo>> bindingsBySet;
     for (auto &b : m_DescriptorBindings) {
-        raw_bindings.push_back(vk::DescriptorSetLayoutBinding{
-            .binding = b.binding,
-            .descriptorType = b.descriptorType,
-            .descriptorCount = b.descriptorCount,
-            .stageFlags = b.stageFlags,
-        });
+        bindingsBySet[b.set].push_back(b);
     }
-    vk::DescriptorSetLayoutCreateInfo layout_info{
-        .bindingCount = static_cast<uint32_t>(raw_bindings.size()),
-        .pBindings = raw_bindings.data(),
-    };
-    m_DescriptorSetLayout = device.createDescriptorSetLayout(layout_info);
 
-    // 创建 PipelineLayout
+    // 确定最大 set 编号，resize vector
+    uint32_t maxSet = bindingsBySet.empty() ? 0 : static_cast<uint32_t>(bindingsBySet.rbegin()->first) + 1;
+    m_DescriptorSetLayouts.assign(maxSet, nullptr);
+
+    // 为每个 set 创建 DescriptorSetLayout
+    for (auto &[set, bindings] : bindingsBySet) {
+        std::vector<vk::DescriptorSetLayoutBinding> raw_bindings;
+        raw_bindings.reserve(bindings.size());
+        for (auto &b : bindings) {
+            raw_bindings.push_back(vk::DescriptorSetLayoutBinding{
+                .binding = b.binding,
+                .descriptorType = b.descriptorType,
+                .descriptorCount = b.descriptorCount,
+                .stageFlags = b.stageFlags,
+            });
+        }
+        vk::DescriptorSetLayoutCreateInfo layout_info{
+            .bindingCount = static_cast<uint32_t>(raw_bindings.size()),
+            .pBindings = raw_bindings.data(),
+        };
+        m_DescriptorSetLayouts[set] = device.createDescriptorSetLayout(layout_info);
+    }
+
+    // 创建 PipelineLayout（包含所有 set）
     vk::PipelineLayoutCreateInfo pipeline_layout_info{
-        .setLayoutCount = 1,
-        .pSetLayouts = &m_DescriptorSetLayout,
+        .setLayoutCount = maxSet,
+        .pSetLayouts = m_DescriptorSetLayouts.data(),
     };
     m_PipelineLayout = device.createPipelineLayout(pipeline_layout_info);
 
@@ -124,12 +138,14 @@ void VulkanPipeline::Cleanup() {
             m_Device.destroyPipeline(m_Pipeline);
         if (m_PipelineLayout)
             m_Device.destroyPipelineLayout(m_PipelineLayout);
-        if (m_DescriptorSetLayout)
-            m_Device.destroyDescriptorSetLayout(m_DescriptorSetLayout);
+        for (auto &layout : m_DescriptorSetLayouts) {
+            if (layout)
+                m_Device.destroyDescriptorSetLayout(layout);
+        }
     }
-    m_Pipeline = nullptr;
+    m_DescriptorSetLayouts.clear();
     m_PipelineLayout = nullptr;
-    m_DescriptorSetLayout = nullptr;
+    m_Pipeline = nullptr;
     m_Device = nullptr;
 }
 
@@ -139,13 +155,6 @@ uint32_t VulkanPipeline::GetBindingByName(const std::string &name) const {
             return b.binding;
     }
     return UINT32_MAX;
-}
-
-void VulkanPipeline::SetDescriptorSetLayout(vk::DescriptorSetLayout layout) {
-    if (m_Device && m_DescriptorSetLayout) {
-        m_Device.destroyDescriptorSetLayout(m_DescriptorSetLayout);
-    }
-    m_DescriptorSetLayout = layout;
 }
 
 } // namespace GE

@@ -3,7 +3,6 @@
 
 #include <vulkan/vulkan.hpp>
 
-#include <array>
 #include <string>
 #include <vector>
 
@@ -31,10 +30,10 @@ public:
     /// @param color_format     颜色附件格式
     /// @param vertShader       顶点着色器（内部自动反射 vertex input）
     /// @param fragShader       片元着色器
-    /// @param dynamicBindings  需要改为 Dynamic 类型的 binding 编号列表
+    /// @param dynamicBindings  需要改为 Dynamic 类型的 (set, binding) 对列表
     void Init(vk::Device device, vk::Format color_format,
               const VulkanShader &vertShader, const VulkanShader &fragShader,
-              const std::vector<uint32_t> &dynamicBindings = {});
+              const std::vector<std::pair<uint32_t, uint32_t>> &dynamicBindings = {});
 
     void Cleanup();
 
@@ -42,18 +41,20 @@ public:
 
     [[nodiscard]] vk::Pipeline GetPipeline() const { return m_Pipeline; }
     [[nodiscard]] vk::PipelineLayout GetLayout() const { return m_PipelineLayout; }
-    [[nodiscard]] vk::DescriptorSetLayout GetDescriptorSetLayout() const { return m_DescriptorSetLayout; }
+
+    /// 获取指定 set 的 DescriptorSetLayout，set 越界或不存在时返回 nullptr。
+    [[nodiscard]] vk::DescriptorSetLayout GetSetLayout(uint32_t set) const {
+        return set < m_DescriptorSetLayouts.size() ? m_DescriptorSetLayouts[set] : nullptr;
+    }
+
     [[nodiscard]] const std::vector<DescriptorBindingInfo> &GetDescriptorBindings() const { return m_DescriptorBindings; }
 
     /// 通过着色器变量名查找 descriptor binding 编号，未找到返回 UINT32_MAX。
     [[nodiscard]] uint32_t GetBindingByName(const std::string &name) const;
 
-    /// Takes ownership of the layout handle. Destroys any previously owned layout.
-    void SetDescriptorSetLayout(vk::DescriptorSetLayout layout);
-
 private:
     vk::Device m_Device = nullptr;
-    vk::DescriptorSetLayout m_DescriptorSetLayout = nullptr;
+    std::vector<vk::DescriptorSetLayout> m_DescriptorSetLayouts;
     vk::PipelineLayout m_PipelineLayout = nullptr;
     vk::Pipeline m_Pipeline = nullptr;
     std::vector<DescriptorBindingInfo> m_DescriptorBindings;

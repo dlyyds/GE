@@ -282,6 +282,7 @@ std::vector<DescriptorBindingInfo> VulkanShader::ReflectDescriptorBindings() con
                                  vk::DescriptorType type) {
             for (auto &res : res_list) {
                 uint32_t binding = compiler.get_decoration(res.id, spv::DecorationBinding);
+                uint32_t set = compiler.get_decoration(res.id, spv::DecorationDescriptorSet);
                 auto &spir_type = compiler.get_type(res.type_id);
 
                 // 数组长度：无数组 → 1, 固定数组 → array[0], runtime 数组 → 1
@@ -297,6 +298,7 @@ std::vector<DescriptorBindingInfo> VulkanShader::ReflectDescriptorBindings() con
 
                 bindings.push_back(DescriptorBindingInfo{
                     .binding = binding,
+                    .set = set,
                     .descriptorType = type,
                     .descriptorCount = count,
                     .stageFlags = m_Stage,
@@ -320,17 +322,19 @@ std::vector<DescriptorBindingInfo> VulkanShader::ReflectDescriptorBindings() con
 std::vector<DescriptorBindingInfo> VulkanShader::MergeDescriptorBindings(
     std::initializer_list<std::vector<DescriptorBindingInfo> > stages) {
 
-    std::unordered_map<uint32_t, DescriptorBindingInfo> merged;
+    // key = (set << 32) | binding，避免不同 set 的同号 binding 冲突合并
+    std::unordered_map<uint64_t, DescriptorBindingInfo> merged;
     for (auto &stage : stages) {
         for (auto &b : stage) {
-            auto it = merged.find(b.binding);
+            uint64_t key = (static_cast<uint64_t>(b.set) << 32) | b.binding;
+            auto it = merged.find(key);
             if (it != merged.end()) {
                 it->second.stageFlags |= b.stageFlags;
                 // 如果现有 name 为空则用新 name 补上（同一个 binding 可能只在一个 stage 有名字）
                 if (it->second.name.empty())
                     it->second.name = b.name;
             } else {
-                merged[b.binding] = b;
+                merged[key] = b;
             }
         }
     }
@@ -342,8 +346,8 @@ std::vector<DescriptorBindingInfo> VulkanShader::MergeDescriptorBindings(
     // 日志输出合并结果
     GE_CORE_TRACE("MergeDescriptorBindings: {} bindings merged", result.size());
     for (auto &b : result) {
-        GE_CORE_TRACE("  binding={} name=\"{}\" type={} count={} stageFlags={}",
-                      b.binding, b.name, vk::to_string(b.descriptorType),
+        GE_CORE_TRACE("  set={} binding={} name=\"{}\" type={} count={} stageFlags={}",
+                      b.set, b.binding, b.name, vk::to_string(b.descriptorType),
                       b.descriptorCount, vk::to_string(b.stageFlags));
     }
 

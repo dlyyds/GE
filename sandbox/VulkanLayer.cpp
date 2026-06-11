@@ -40,8 +40,12 @@ void VulkanLayer::OnAttach() {
     // 材质
     auto fmt = swapchain.GetDimensions().format;
     m_Material.Init(device, r.CreateDefaultPipeline(device, fmt));
-    m_Material.SetUniformBuffer("ubo", r.GetUniformBufferInfo());
     m_Material.SetTexture("samplerColor", m_Texture.GetView(), m_Sampler.Get());
+
+    // Renderer 接管 set=0（FrameUBO）和 set=2（ObjectUBO）
+    r.InitDescriptorSets(device,
+                         m_Material.pipeline.GetSetLayout(0),
+                         m_Material.pipeline.GetSetLayout(2));
 }
 
 void VulkanLayer::OnDetach() {

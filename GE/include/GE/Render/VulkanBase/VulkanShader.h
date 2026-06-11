@@ -15,6 +15,7 @@ struct VertexInputState {
 /// Descriptor binding 信息（扩展 vk::DescriptorSetLayoutBinding，增加反射名称）。
 struct DescriptorBindingInfo {
     uint32_t binding = 0;
+    uint32_t set = 0;
     vk::DescriptorType descriptorType = vk::DescriptorType::eCombinedImageSampler;
     uint32_t descriptorCount = 0;
     vk::ShaderStageFlags stageFlags;

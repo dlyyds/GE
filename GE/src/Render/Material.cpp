@@ -14,8 +14,7 @@ namespace GE {
 
 void Material::Init(vk::Device device,
                     VulkanPipeline &&pipeline,
-                    uint32_t imageCount,
-                    const vk::DescriptorBufferInfo *uniformBufferInfos,
+                    const vk::DescriptorBufferInfo &uniformBufferInfo,
                     vk::ImageView textureView, vk::Sampler sampler) {
     this->pipeline = std::move(pipeline);
     auto &bindings = this->pipeline.GetDescriptorBindings();
@@ -25,39 +24,35 @@ void Material::Init(vk::Device device,
     for (auto &b : bindings) {
         poolSizes.push_back(vk::DescriptorPoolSize{
             .type = b.descriptorType,
-            .descriptorCount = b.descriptorCount * imageCount,
+            .descriptorCount = b.descriptorCount,
         });
     }
-    descriptorPool.Init(device, imageCount, poolSizes);
+    descriptorPool.Init(device, 1, poolSizes);
 
-    // 为每个 swapchain image 分配 descriptor set
-    descriptorSets.resize(imageCount);
-    for (uint32_t i = 0; i < imageCount; i++) {
-        descriptorSets[i].Init(device, descriptorPool, this->pipeline.GetDescriptorSetLayout());
+    // 分配单个 descriptor set
+    descriptorSet.Init(device, descriptorPool, this->pipeline.GetDescriptorSetLayout());
 
-        // 遍历反射的 bindings，按类型写入
-        for (auto &b : bindings) {
-            switch (b.descriptorType) {
-            case vk::DescriptorType::eUniformBuffer:
-            case vk::DescriptorType::eUniformBufferDynamic: {
-                descriptorSets[i].WriteBuffer(b.binding, b.descriptorType,
-                                              uniformBufferInfos[i]);
-                break;
-            }
-            case vk::DescriptorType::eCombinedImageSampler: {
-                vk::DescriptorImageInfo imageInfo{
-                    .sampler = sampler,
-                    .imageView = textureView,
-                    .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
-                };
-                descriptorSets[i].WriteImage(b.binding, imageInfo, b.descriptorType);
-                break;
-            }
-            default:
-                GE_CORE_WARN("Material::Init: unhandled descriptor type {} at binding {}",
-                             static_cast<int>(b.descriptorType), b.binding);
-                break;
-            }
+    // 遍历反射的 bindings，按类型写入
+    for (auto &b : bindings) {
+        switch (b.descriptorType) {
+        case vk::DescriptorType::eUniformBuffer:
+        case vk::DescriptorType::eUniformBufferDynamic: {
+            descriptorSet.WriteBuffer(b.binding, b.descriptorType, uniformBufferInfo);
+            break;
+        }
+        case vk::DescriptorType::eCombinedImageSampler: {
+            vk::DescriptorImageInfo imageInfo{
+                .sampler = sampler,
+                .imageView = textureView,
+                .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
+            };
+            descriptorSet.WriteImage(b.binding, imageInfo, b.descriptorType);
+            break;
+        }
+        default:
+            GE_CORE_WARN("Material::Init: unhandled descriptor type {} at binding {}",
+                         static_cast<int>(b.descriptorType), b.binding);
+            break;
         }
     }
 }
@@ -69,9 +64,7 @@ void Material::SetTexture(uint32_t binding, vk::ImageView textureView, vk::Sampl
         .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
     };
 
-    for (auto &ds : descriptorSets) {
-        ds.WriteImage(binding, imageInfo);
-    }
+    descriptorSet.WriteImage(binding, imageInfo);
 }
 
 void Material::SetTexture(const std::string &name, vk::ImageView textureView, vk::Sampler sampler) {
@@ -84,9 +77,7 @@ void Material::SetTexture(const std::string &name, vk::ImageView textureView, vk
 }
 
 void Material::Cleanup() {
-    for (auto &ds : descriptorSets)
-        ds.Destroy();
-    descriptorSets.clear();
+    descriptorSet.Destroy();
     descriptorPool.Cleanup();
     pipeline.Cleanup();
 }

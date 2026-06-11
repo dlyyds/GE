@@ -26,19 +26,17 @@ void Renderer::Init(VulkanContext &ctx, VulkanSwapchain &swapchain) {
     auto vkDevice = ctx.GetVkDevice();
     auto vmaAllocator = ctx.GetVmaAllocator();
 
-    // 为每个 swapchain image 创建 ring buffer（三重缓冲）
-    uint32_t imageCount = swapchain.GetImageCount();
-    m_RingBuffers.reserve(imageCount);
-    for (uint32_t i = 0; i < imageCount; i++) {
-        m_RingBuffers.emplace_back();
-        m_RingBuffers.back().Init(vmaAllocator, RING_BUFFER_SIZE);
-    }
+    // 查询硬件要求的 UBO 对齐值，空值回退 64
+    auto props = ctx.GetVkGpu().getProperties();
+    vk::DeviceSize uboAlignment = props.limits.minUniformBufferOffsetAlignment;
+    if (uboAlignment == 0) uboAlignment = 64;
+
+    // 创建单 ring buffer（使用设备对齐值）
+    m_RingBuffer.Init(vmaAllocator, RING_BUFFER_SIZE, uboAlignment);
 }
 
 void Renderer::Shutdown() {
-    for (auto &rb : m_RingBuffers)
-        rb.Destroy();
-    m_RingBuffers.clear();
+    m_RingBuffer.Destroy();
 
     m_Context = nullptr;
     m_Swapchain = nullptr;
@@ -62,8 +60,8 @@ void Renderer::BeginScene(vk::CommandBuffer cmd, uint32_t imageIndex,
                           const glm::mat4 &view, const glm::mat4 &projection,
                           const glm::vec3 &view_pos,
                           const glm::vec4 &clear_color) {
-    // 重置当前帧的 ring buffer
-    m_RingBuffers[imageIndex].Reset();
+    // 重置 ring buffer（该帧内所有 Draw 共享同一段内存区域）
+    m_RingBuffer.Reset();
 
     m_ActiveCmd = cmd;
     m_CurrentImageIndex = imageIndex;
@@ -99,9 +97,6 @@ void Renderer::BeginScene(vk::CommandBuffer cmd, uint32_t imageIndex,
 }
 
 void Renderer::Draw(const Mesh &mesh, const Material &material, const glm::mat4 &model, const glm::vec4 &color) {
-    uint32_t image_index = m_CurrentImageIndex;
-    VulkanRingBuffer &ringBuffer = m_RingBuffers[image_index];
-
     // 将本次 Draw 的 UBO 数据写入 ring buffer
     UniformData data{};
     data.projection = m_Projection;
@@ -110,8 +105,8 @@ void Renderer::Draw(const Mesh &mesh, const Material &material, const glm::mat4 
     data.viewPos = glm::vec4(m_ViewPos, 1.0f);
     data.lodBias = 0.0f;
 
-    vk::DeviceSize offset = ringBuffer.Allocate(sizeof(UniformData));
-    std::memcpy(static_cast<char *>(ringBuffer.GetMappedData()) + offset,
+    vk::DeviceSize offset = m_RingBuffer.Allocate(sizeof(UniformData));
+    std::memcpy(static_cast<char *>(m_RingBuffer.GetMappedData()) + offset,
                 &data, sizeof(data));
 
     vk::CommandBuffer cmd = m_ActiveCmd;
@@ -127,10 +122,10 @@ void Renderer::Draw(const Mesh &mesh, const Material &material, const glm::mat4 
     cmd.bindVertexBuffers(0, vb, {0});
     cmd.bindIndexBuffer(mesh.indices.GetBuffer(), 0, vk::IndexType::eUint16);
 
-    // 绑定当前 image 对应的 descriptor set，用动态偏移指定 UBO 数据
+    // 绑定材质的 descriptor set，用动态偏移指定 UBO 数据
     uint32_t dynamicOffset = static_cast<uint32_t>(offset);
     cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, material.pipeline.GetLayout(),
-                           0, material.descriptorSets[image_index].Get(), dynamicOffset);
+                           0, material.descriptorSet.Get(), dynamicOffset);
 
     cmd.drawIndexed(mesh.indexCount, 1, 0, 0, 0);
 }

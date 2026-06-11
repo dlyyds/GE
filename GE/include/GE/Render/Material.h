@@ -10,20 +10,18 @@
 
 namespace GE {
 
-/// Material = pipeline + N 个 descriptor set（每个 swapchain image 一个）。
-/// UBO binding 指向对应 image 的 ring buffer，避免更新冲突。
+/// Material = pipeline + 一个 descriptor set。
+/// UBO binding 通过 dynamic offset 指向 ring buffer 中的不同区域。
 struct Material {
     VulkanPipeline pipeline;
     VulkanDescriptorPool descriptorPool;
-    std::vector<VulkanDescriptorSet> descriptorSets;
+    VulkanDescriptorSet descriptorSet;
 
-    /// 接管管线所有权，为每个 swapchain image 创建一个 descriptor set，
+    /// 接管管线所有权，创建一个 descriptor set，
     /// 从 pipeline 的反射绑定信息驱动 pool 创建和 descriptor 写入。
-    /// uniformBufferInfos 长度必须等于 imageCount。
     void Init(vk::Device device,
               VulkanPipeline &&pipeline,
-              uint32_t imageCount,
-              const vk::DescriptorBufferInfo *uniformBufferInfos,
+              const vk::DescriptorBufferInfo &uniformBufferInfo,
               vk::ImageView textureView, vk::Sampler sampler);
 
     /// 按 binding 编号更新纹理。

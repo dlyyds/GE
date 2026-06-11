@@ -9,8 +9,9 @@
 
 namespace GE {
 
-void VulkanRingBuffer::Init(VmaAllocator allocator, vk::DeviceSize totalSize) {
+void VulkanRingBuffer::Init(VmaAllocator allocator, vk::DeviceSize totalSize, vk::DeviceSize alignment) {
     m_TotalSize = totalSize;
+    m_Alignment = alignment ? alignment : 64;
     m_CurrentOffset = 0;
 
     m_Buffer.Init(allocator, totalSize,
@@ -34,9 +35,11 @@ void VulkanRingBuffer::Reset() {
 }
 
 vk::DeviceSize VulkanRingBuffer::Allocate(vk::DeviceSize size, vk::DeviceSize alignment) {
-    // 将当前偏移按对齐值向上取整
-    vk::DeviceSize alignedOffset = (m_CurrentOffset + alignment - 1) & ~(alignment - 1);
+    // 将当前偏移按对齐值向上取整（传 0 则用 m_Alignment）
+    vk::DeviceSize align = alignment ? alignment : m_Alignment;
 
+    vk::DeviceSize alignedOffset = (m_CurrentOffset + align - 1) & ~(align - 1);
+    GE_CORE_TRACE("{}", alignedOffset);
     GE_CORE_ASSERT(alignedOffset + size <= m_TotalSize,
                    "VulkanRingBuffer out of memory");
 

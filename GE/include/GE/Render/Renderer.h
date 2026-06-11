@@ -46,27 +46,19 @@ public:
     /// 工厂方法：创建默认管线（MeshVertex 布局，UBO+纹理 descriptor）。
     VulkanPipeline CreateDefaultPipeline(vk::Device dev, vk::Format color_format);
 
-    /// 每个 swapchain image 的 ring buffer 大小（4 MB，约 16000 次 Draw）
+    /// ring buffer 大小（4 MB，约 16000 次 Draw）
     static constexpr vk::DeviceSize RING_BUFFER_SIZE = 4 * 1024 * 1024;
 
-    /// 返回当前帧的 UBO descriptor 信息，用于更新 Material。
-    [[nodiscard]] vk::DescriptorBufferInfo GetUniformBufferInfo(uint32_t imageIndex) const {
+    /// 返回 UBO descriptor 信息，用于初始化 Material。
+    [[nodiscard]] vk::DescriptorBufferInfo GetUniformBufferInfo() const {
         return vk::DescriptorBufferInfo{
-            .buffer = m_RingBuffers[imageIndex].GetBuffer(),
+            .buffer = m_RingBuffer.GetBuffer(),
             .offset = 0,
             .range = sizeof(UniformData),
         };
     }
 
-    /// 返回所有 swapchain image 的 UBO descriptor 信息数组（给 Material::Init 用）。
-    [[nodiscard]] std::vector<vk::DescriptorBufferInfo> GetUniformBufferInfos() const {
-        std::vector<vk::DescriptorBufferInfo> infos(m_RingBuffers.size());
-        for (uint32_t i = 0; i < m_RingBuffers.size(); i++)
-            infos[i] = GetUniformBufferInfo(i);
-        return infos;
-    }
-
-    [[nodiscard]] uint32_t GetSwapchainImageCount() const { return static_cast<uint32_t>(m_RingBuffers.size()); }
+    [[nodiscard]] uint32_t GetSwapchainImageCount() const { return static_cast<uint32_t>(m_Swapchain ? m_Swapchain->GetImageCount() : 0); }
 
     [[nodiscard]] VulkanSwapchain &GetSwapchain() { return *m_Swapchain; }
 
@@ -90,10 +82,11 @@ private:
         float _padding[3];
     };
 
-    VulkanContext *m_Context = nullptr;        // 非拥有指针
-    VulkanSwapchain *m_Swapchain = nullptr;    // 非拥有指针
+    VulkanContext *m_Context = nullptr; // 非拥有指针
+    VulkanSwapchain *m_Swapchain = nullptr; // 非拥有指针
 
-    std::vector<VulkanRingBuffer> m_RingBuffers;
+    // 单 ring buffer（所有帧共享，每帧 Reset）
+    VulkanRingBuffer m_RingBuffer;
 
     // Scene state
     vk::CommandBuffer m_ActiveCmd{nullptr};

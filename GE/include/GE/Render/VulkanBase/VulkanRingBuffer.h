@@ -12,22 +12,30 @@ namespace GE {
 class VulkanRingBuffer {
 public:
     VulkanRingBuffer() = default;
+
     ~VulkanRingBuffer() = default;
 
     VulkanRingBuffer(const VulkanRingBuffer &) = delete;
+
     VulkanRingBuffer &operator=(const VulkanRingBuffer &) = delete;
 
     VulkanRingBuffer(VulkanRingBuffer &&) = default;
+
     VulkanRingBuffer &operator=(VulkanRingBuffer &&) = default;
 
-    void Init(VmaAllocator allocator, vk::DeviceSize totalSize);
+    /// 初始化 ring buffer。
+    /// @param alignment 每次分配的对齐值，传入 minUniformBufferOffsetAlignment。
+    void Init(VmaAllocator allocator, vk::DeviceSize totalSize,
+              vk::DeviceSize alignment = 64);
+
     void Destroy();
+
     void Reset();
 
     /// 分配 `size` 字节的空间，返回从 buffer 起始位置的字节偏移。
-    /// 返回值会按 `alignment` 对齐（默认 256，满足 UBO 对齐要求）。
+    /// 返回值会按 m_Alignment 对齐。
     /// 数据通过 GetMappedData() + offset 写入。
-    vk::DeviceSize Allocate(vk::DeviceSize size, vk::DeviceSize alignment = 256);
+    vk::DeviceSize Allocate(vk::DeviceSize size, vk::DeviceSize alignment = 0);
 
     [[nodiscard]] vk::Buffer GetBuffer() const { return m_Buffer.GetBuffer(); }
     [[nodiscard]] void *GetMappedData() const { return m_MappedData; }
@@ -38,6 +46,7 @@ private:
     VulkanBuffer m_Buffer;
     void *m_MappedData = nullptr;
     vk::DeviceSize m_TotalSize = 0;
+    vk::DeviceSize m_Alignment = 64;
     vk::DeviceSize m_CurrentOffset = 0;
 };
 

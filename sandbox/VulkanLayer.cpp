@@ -37,11 +37,10 @@ void VulkanLayer::OnAttach() {
     m_Mesh.Init(allocator, Mesh::kVertices, sizeof(Mesh::kVertices),
                 Mesh::kIndices, sizeof(Mesh::kIndices), 6);
 
-    // 材质（为每个 swapchain image 创建独立的 descriptor set）
+    // 材质
     auto fmt = swapchain.GetDimensions().format;
-    auto bufferInfos = r.GetUniformBufferInfos();
     m_Material.Init(device, r.CreateDefaultPipeline(device, fmt),
-                    r.GetSwapchainImageCount(), bufferInfos.data(),
+                    r.GetUniformBufferInfo(),
                     m_Texture.GetView(), m_Sampler.Get());
 }
 
@@ -134,7 +133,7 @@ void VulkanLayer::RenderFrame() {
 
     // 画 5 个四边形，排成一行
     // 现在 Ring Buffer 保证每个 Draw 有自己的 UBO 空间，不会相互覆盖
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 6; i++) {
         float x = -0.8f + i * 0.4f; // -0.8, -0.4, 0.0, 0.4, 0.8
         auto model = glm::mat4(1.0f);
         model = glm::translate(model, glm::vec3(x, 0.0f, 0.0f));

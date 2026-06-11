@@ -44,12 +44,29 @@ public:
         m_ColorAttachmentCount++;
     }
 
+    void SetDepthAttachment(vk::ImageView imageView,
+                            vk::AttachmentLoadOp loadOp = vk::AttachmentLoadOp::eClear,
+                            vk::AttachmentStoreOp storeOp = vk::AttachmentStoreOp::eDontCare,
+                            vk::ImageLayout layout = vk::ImageLayout::eDepthStencilAttachmentOptimal) {
+        vk::ClearValue clearValue;
+        clearValue.depthStencil = vk::ClearDepthStencilValue{1.0f, 0};
+        m_DepthAttachment = vk::RenderingAttachmentInfo{
+            .imageView = imageView,
+            .imageLayout = layout,
+            .loadOp = loadOp,
+            .storeOp = storeOp,
+            .clearValue = clearValue,
+        };
+        m_HasDepth = true;
+    }
+
     void Begin(vk::CommandBuffer cmd) const {
         vk::RenderingInfo info{
             .renderArea = m_RenderArea,
             .layerCount = m_LayerCount,
             .colorAttachmentCount = m_ColorAttachmentCount,
             .pColorAttachments = m_ColorAttachments.data(),
+            .pDepthAttachment = m_HasDepth ? &m_DepthAttachment : nullptr,
         };
         cmd.beginRendering(info);
     }
@@ -57,13 +74,18 @@ public:
     static void End(vk::CommandBuffer cmd) { cmd.endRendering(); }
 
     /// 重置 attachment 计数器，允许对象重用。
-    void Reset() { m_ColorAttachmentCount = 0; }
+    void Reset() {
+        m_ColorAttachmentCount = 0;
+        m_HasDepth = false;
+    }
 
 private:
     vk::Rect2D m_RenderArea{{0, 0}, {0, 0}};
     uint32_t m_LayerCount = 1;
     std::array<vk::RenderingAttachmentInfo, MAX_COLOR_ATTACHMENTS> m_ColorAttachments{};
     uint32_t m_ColorAttachmentCount = 0;
+    vk::RenderingAttachmentInfo m_DepthAttachment{};
+    bool m_HasDepth = false;
 };
 
 } // namespace GE

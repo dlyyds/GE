@@ -41,6 +41,11 @@ public:
                                                    vk::ImageViewType type, vk::Format format,
                                                    vk::ImageAspectFlags aspect = vk::ImageAspectFlagBits::eColor);
 
+    /// 为当前 image 创建 View（用于 Init 创建不含 view 的 image 后补建）。
+    void CreateView(vk::Format format,
+                    vk::ImageViewType type = vk::ImageViewType::e2D,
+                    vk::ImageAspectFlags aspect = vk::ImageAspectFlagBits::eColor);
+
     /// Transition an image's layout using a predefined lookup table
     static void TransitionLayout(vk::CommandBuffer cmd, vk::Image image,
                                  vk::ImageLayout old_layout, vk::ImageLayout new_layout);

@@ -12,7 +12,8 @@ namespace GE {
 
 void VulkanPipeline::Init(vk::Device device, vk::Format color_format,
                           const VulkanShader &vertShader, const VulkanShader &fragShader,
-                          const std::vector<std::pair<uint32_t, uint32_t>> &dynamicBindings) {
+                          const std::vector<std::pair<uint32_t, uint32_t> > &dynamicBindings,
+                          vk::Format depth_format) {
     m_Device = device;
 
     // 反射 descriptor bindings 并合并 vertex + fragment
@@ -32,7 +33,7 @@ void VulkanPipeline::Init(vk::Device device, vk::Format color_format,
     }
 
     // 按 set 分组 bindings
-    std::map<uint32_t, std::vector<DescriptorBindingInfo>> bindingsBySet;
+    std::map<uint32_t, std::vector<DescriptorBindingInfo> > bindingsBySet;
     for (auto &b : m_DescriptorBindings) {
         bindingsBySet[b.set].push_back(b);
     }
@@ -92,7 +93,13 @@ void VulkanPipeline::Init(vk::Device device, vk::Format color_format,
 
     vk::PipelineColorBlendStateCreateInfo blend{.attachmentCount = 1, .pAttachments = &blend_attachment};
     vk::PipelineViewportStateCreateInfo viewport{.viewportCount = 1, .scissorCount = 1};
-    vk::PipelineDepthStencilStateCreateInfo depth_stencil{.depthCompareOp = vk::CompareOp::eAlways};
+
+    bool hasDepth = depth_format != vk::Format{};
+    vk::PipelineDepthStencilStateCreateInfo depth_stencil{
+        .depthTestEnable = hasDepth,
+        .depthWriteEnable = hasDepth,
+        .depthCompareOp = hasDepth ? vk::CompareOp::eLess : vk::CompareOp::eAlways,
+    };
     vk::PipelineMultisampleStateCreateInfo multisample{.rasterizationSamples = vk::SampleCountFlagBits::e1};
 
     vk::PipelineDynamicStateCreateInfo dynamic_state_info{
@@ -105,8 +112,11 @@ void VulkanPipeline::Init(vk::Device device, vk::Format color_format,
         fragShader.GetStageCreateInfo(),
     }};
 
-    vk::PipelineRenderingCreateInfo pipeline_rendering_info{.colorAttachmentCount = 1,
-                                                            .pColorAttachmentFormats = &color_format};
+    vk::PipelineRenderingCreateInfo pipeline_rendering_info{
+        .colorAttachmentCount = 1,
+        .pColorAttachmentFormats = &color_format,
+        .depthAttachmentFormat = depth_format,
+    };
 
     vk::GraphicsPipelineCreateInfo pipeline_create_info{
         .pNext = &pipeline_rendering_info,

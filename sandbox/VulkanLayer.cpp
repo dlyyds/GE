@@ -33,13 +33,12 @@ void VulkanLayer::OnAttach() {
     m_Texture.LoadFromFile(allocator, queue, qfi, "assets/textures/Checkerboard.png");
     m_Sampler.Init(device, vk::Filter::eNearest, vk::Filter::eNearest);
 
-    // 四边形网格
-    m_Mesh.Init(allocator, Mesh::kVertices, sizeof(Mesh::kVertices),
-                Mesh::kIndices, sizeof(Mesh::kIndices), 6);
+    // 3D 模型（立方体）
+    m_Mesh.InitCube(allocator);
 
     // 材质
     auto fmt = swapchain.GetDimensions().format;
-    m_Material.Init(device, r.CreateDefaultPipeline(device, fmt));
+    m_Material.Init(device, r.CreateDefaultPipeline(device, fmt, Renderer::DEPTH_FORMAT));
     m_Material.SetTexture("samplerColor", m_Texture.GetView(), m_Sampler.Get());
 
     // Renderer 接管 set=0（FrameUBO）和 set=2（ObjectUBO）
@@ -135,15 +134,12 @@ void VulkanLayer::RenderFrame() {
                  m_Camera.GetView(), m_Camera.GetProj(), m_Camera.GetPosition(),
                  {0.01f, 0.01f, 0.033f, 1.0f});
 
-    // 画 5 个四边形，排成一行
-    // 现在 Ring Buffer 保证每个 Draw 有自己的 UBO 空间，不会相互覆盖
-    for (int i = 0; i < 6; i++) {
-        float x = -0.8f + i * 0.4f; // -0.8, -0.4, 0.0, 0.4, 0.8
-        auto model = glm::mat4(1.0f);
-        model = glm::translate(model, glm::vec3(x, 0.0f, 0.0f));
-        model = glm::scale(model, glm::vec3(0.35f, 0.35f, 1.0f));
-        r.Draw(m_Mesh, m_Material, model, m_TriangleColor);
-    }
+    // 画一个旋转的 3D 立方体
+    auto model = glm::mat4(1.0f);
+    model = glm::translate(model, glm::vec3(m_Position, 0.0f));
+    model = glm::rotate(model, glm::radians(m_Rotation), glm::vec3(0.0f, 1.0f, 0.0f));
+    model = glm::scale(model, glm::vec3(m_Scale, 1.0f));
+    r.Draw(m_Mesh, m_Material, model, m_TriangleColor);
 
     r.EndScene();
 }

@@ -37,6 +37,13 @@ void Renderer::Init(VulkanContext &ctx, VulkanSwapchain &swapchain) {
 
     // set=2: 创建 per-object ring buffer
     m_RingBuffer.Init(vmaAllocator, RING_BUFFER_SIZE, uboAlignment);
+
+    // 创建深度 buffer（与 swapchain 尺寸一致）
+    auto dims = swapchain.GetDimensions();
+    m_DepthImage.Init(vmaAllocator, dims.width, dims.height, DEPTH_FORMAT,
+                      vk::ImageTiling::eOptimal,
+                      vk::ImageUsageFlagBits::eDepthStencilAttachment);
+    m_DepthImage.CreateView(DEPTH_FORMAT, vk::ImageViewType::e2D, vk::ImageAspectFlagBits::eDepth);
 }
 
 void Renderer::InitDescriptorSets(vk::Device device,
@@ -73,12 +80,14 @@ void Renderer::Shutdown() {
     m_GlobalPool.Cleanup();
     m_FrameBuffer.Destroy();
     m_RingBuffer.Destroy();
+    m_DepthImage.Cleanup();
 
     m_Context = nullptr;
     m_Swapchain = nullptr;
 }
 
-VulkanPipeline Renderer::CreateDefaultPipeline(vk::Device dev, vk::Format color_format) {
+VulkanPipeline Renderer::CreateDefaultPipeline(vk::Device dev, vk::Format color_format,
+                                               vk::Format depth_format) {
     // 创建着色器（ShaderModule 在管线创建后可安全销毁）
     VulkanShader vertShader, fragShader;
     vertShader.Init(dev, "assets/shaders/glsl/mesh.vert.spv", vk::ShaderStageFlagBits::eVertex);
@@ -87,7 +96,7 @@ VulkanPipeline Renderer::CreateDefaultPipeline(vk::Device dev, vk::Format color_
     // descriptor layout 在 VulkanPipeline::Init 内部通过反射自动创建，
     // 同时从 vertex shader 反射获取 input layout
     VulkanPipeline pipeline;
-    pipeline.Init(dev, color_format, vertShader, fragShader, /*dynamicBindings=*/{{2, 0}});
+    pipeline.Init(dev, color_format, vertShader, fragShader, /*dynamicBindings=*/{{2, 0}}, depth_format);
     return pipeline;
 }
 
@@ -117,12 +126,21 @@ void Renderer::BeginScene(vk::CommandBuffer cmd, uint32_t imageIndex,
     vk::ClearValue clear_value;
     clear_value.color = std::array<float, 4>{{clear_color.r, clear_color.g, clear_color.b, clear_color.a}};
 
+    // 深度 image layout 过渡（仅首次从 Undefined → DepthStencilAttachment）
+    if (!m_DepthImageTransitioned) {
+        VulkanImage::TransitionLayout(cmd, m_DepthImage.GetImage(),
+                                      vk::ImageLayout::eUndefined,
+                                      vk::ImageLayout::eDepthStencilAttachmentOptimal);
+        m_DepthImageTransitioned = true;
+    }
+
     VulkanRenderingInfo render_info;
     render_info.SetRenderArea(0, 0, dim.width, dim.height);
     render_info.AddColorAttachment(m_Swapchain->GetImageView(imageIndex),
                                    vk::AttachmentLoadOp::eClear,
                                    vk::AttachmentStoreOp::eStore,
                                    clear_value);
+    render_info.SetDepthAttachment(m_DepthImage.GetView());
     render_info.Begin(cmd);
 
     // 动态状态（本帧内所有 Draw 共享）

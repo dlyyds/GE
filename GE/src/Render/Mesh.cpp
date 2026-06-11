@@ -21,6 +21,13 @@ void Mesh::Init(VmaAllocator allocator,
     indices.Upload(indexData, indexSize);
 }
 
+void Mesh::InitCube(VmaAllocator allocator) {
+    Init(allocator,
+         kCubeVertices, sizeof(kCubeVertices),
+         kCubeIndices, sizeof(kCubeIndices),
+         36);
+}
+
 void Mesh::Destroy() {
     indices.Destroy();
     vertices.Destroy();

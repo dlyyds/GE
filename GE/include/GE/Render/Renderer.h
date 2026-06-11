@@ -5,6 +5,7 @@
 
 #include "Render/VulkanBase/VulkanPipeline.h"
 #include "Render/VulkanBase/VulkanBuffer.h"
+#include "Render/VulkanBase/VulkanImage.h"
 #include "Render/VulkanBase/VulkanRingBuffer.h"
 #include "Render/VulkanBase/VulkanDescriptorPool.h"
 #include "Render/VulkanBase/VulkanDescriptorSet.h"
@@ -48,10 +49,17 @@ public:
     void Draw(const Mesh &mesh, const Material &material, const glm::mat4 &model, const glm::vec4 &color);
 
     /// 工厂方法：创建默认管线（MeshVertex 布局，UBO+纹理 descriptor）。
-    VulkanPipeline CreateDefaultPipeline(vk::Device dev, vk::Format color_format);
+    /// @param dev            Vulkan 逻辑设备
+    /// @param color_format   颜色附件格式
+    /// @param depth_format   深度附件格式，不填则不开启深度测试
+    VulkanPipeline CreateDefaultPipeline(vk::Device dev, vk::Format color_format,
+                                         vk::Format depth_format = vk::Format{});
 
     /// ring buffer 大小（4 MB，约 16000 次 Draw）
     static constexpr vk::DeviceSize RING_BUFFER_SIZE = 4 * 1024 * 1024;
+
+    /// 默认深度格式
+    static constexpr vk::Format DEPTH_FORMAT = vk::Format::eD32Sfloat;
 
     [[nodiscard]] uint32_t GetSwapchainImageCount() const { return static_cast<uint32_t>(m_Swapchain ? m_Swapchain->GetImageCount() : 0); }
 
@@ -90,6 +98,10 @@ private:
 
     // 共用 descriptor pool（frame + object 各一个 set）
     VulkanDescriptorPool m_GlobalPool;
+
+    // 深度 buffer（与 swapchain 尺寸一致）
+    VulkanImage m_DepthImage;
+    bool m_DepthImageTransitioned = false;
 
     VulkanContext *m_Context = nullptr; // 非拥有指针
     VulkanSwapchain *m_Swapchain = nullptr; // 非拥有指针

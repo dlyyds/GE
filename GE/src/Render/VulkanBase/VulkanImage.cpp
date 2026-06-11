@@ -168,6 +168,12 @@ vk::ImageView VulkanImage::CreateView(vk::Device device, vk::Image image,
     return device.createImageView(view_info);
 }
 
+void VulkanImage::CreateView(vk::Format format,
+                              vk::ImageViewType type,
+                              vk::ImageAspectFlags aspect) {
+    m_View = CreateView(m_Device, m_Image, type, format, aspect);
+}
+
 void VulkanImage::TransitionLayout(vk::CommandBuffer cmd, vk::Image image,
                                    vk::ImageLayout old_layout, vk::ImageLayout new_layout) {
     struct Transition {
@@ -199,6 +205,11 @@ void VulkanImage::TransitionLayout(vk::CommandBuffer cmd, vk::Image image,
         {vk::ImageLayout::eColorAttachmentOptimal, vk::ImageLayout::ePresentSrcKHR,
          vk::PipelineStageFlagBits2::eColorAttachmentOutput, vk::AccessFlagBits2::eColorAttachmentWrite,
          vk::PipelineStageFlagBits2::eBottomOfPipe, vk::AccessFlagBits2::eNone},
+
+        // Undefined → DepthStencilAttachment:  新 depth image，准备渲染深度
+        {vk::ImageLayout::eUndefined, vk::ImageLayout::eDepthStencilAttachmentOptimal,
+         vk::PipelineStageFlagBits2::eTopOfPipe, vk::AccessFlagBits2::eNone,
+         vk::PipelineStageFlagBits2::eEarlyFragmentTests, vk::AccessFlagBits2::eDepthStencilAttachmentWrite},
     };
 
     auto it = std::ranges::find_if(kTransitions, [&](auto const &t) {
@@ -206,6 +217,11 @@ void VulkanImage::TransitionLayout(vk::CommandBuffer cmd, vk::Image image,
     });
     if (it == std::end(kTransitions))
         throw std::runtime_error("Unsupported layout transition");
+
+    // 根据目标 layout 选择 aspect mask
+    vk::ImageAspectFlags aspectMask = vk::ImageAspectFlagBits::eColor;
+    if (new_layout == vk::ImageLayout::eDepthStencilAttachmentOptimal)
+        aspectMask = vk::ImageAspectFlagBits::eDepth;
 
     vk::ImageMemoryBarrier2 barrier{
         .srcStageMask = it->src_stage,
@@ -217,7 +233,7 @@ void VulkanImage::TransitionLayout(vk::CommandBuffer cmd, vk::Image image,
         .srcQueueFamilyIndex = vk::QueueFamilyIgnored,
         .dstQueueFamilyIndex = vk::QueueFamilyIgnored,
         .image = image,
-        .subresourceRange = {.aspectMask = vk::ImageAspectFlagBits::eColor,
+        .subresourceRange = {.aspectMask = aspectMask,
                              .baseMipLevel = 0, .levelCount = 1,
                              .baseArrayLayer = 0, .layerCount = 1},
     };

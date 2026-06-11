@@ -31,9 +31,11 @@ public:
     /// @param vertShader       顶点着色器（内部自动反射 vertex input）
     /// @param fragShader       片元着色器
     /// @param dynamicBindings  需要改为 Dynamic 类型的 (set, binding) 对列表
+    /// @param depth_format     深度附件格式，不填则不开启深度测试
     void Init(vk::Device device, vk::Format color_format,
               const VulkanShader &vertShader, const VulkanShader &fragShader,
-              const std::vector<std::pair<uint32_t, uint32_t>> &dynamicBindings = {});
+              const std::vector<std::pair<uint32_t, uint32_t>> &dynamicBindings = {},
+              vk::Format depth_format = vk::Format{});
 
     void Cleanup();
 

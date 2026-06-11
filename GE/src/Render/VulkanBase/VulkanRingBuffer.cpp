@@ -39,7 +39,7 @@ vk::DeviceSize VulkanRingBuffer::Allocate(vk::DeviceSize size, vk::DeviceSize al
     vk::DeviceSize align = alignment ? alignment : m_Alignment;
 
     vk::DeviceSize alignedOffset = (m_CurrentOffset + align - 1) & ~(align - 1);
-    GE_CORE_TRACE("{}", alignedOffset);
+    //  GE_CORE_TRACE("{}", alignedOffset);
     GE_CORE_ASSERT(alignedOffset + size <= m_TotalSize,
                    "VulkanRingBuffer out of memory");
 

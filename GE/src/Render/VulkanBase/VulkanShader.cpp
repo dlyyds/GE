@@ -289,12 +289,18 @@ std::vector<DescriptorBindingInfo> VulkanShader::ReflectDescriptorBindings() con
                 if (!spir_type.array.empty() && spir_type.array[0] > 0)
                     count = spir_type.array[0];
 
+                // res.name 对 interface block 返回的是 block 类型名（如 "UBO"），
+                // 而用户期望的是实例名（如 "ubo"），用 get_name(res.id) 获取。
+                std::string name = compiler.get_name(res.id);
+                if (name.empty())
+                    name = res.name;
+
                 bindings.push_back(DescriptorBindingInfo{
                     .binding = binding,
                     .descriptorType = type,
                     .descriptorCount = count,
                     .stageFlags = m_Stage,
-                    .name = res.name,
+                    .name = name,
                 });
             }
         };

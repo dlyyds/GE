@@ -17,12 +17,16 @@ struct Material {
     VulkanDescriptorPool descriptorPool;
     VulkanDescriptorSet descriptorSet;
 
-    /// 接管管线所有权，创建一个 descriptor set，
-    /// 从 pipeline 的反射绑定信息驱动 pool 创建和 descriptor 写入。
+    /// 接管管线所有权，从反射的 binding 信息创建 descriptor pool 并分配 descriptor set。
+    /// 不写入任何 descriptor——由 SetUniformBuffer / SetTexture 完成。
     void Init(vk::Device device,
-              VulkanPipeline &&pipeline,
-              const vk::DescriptorBufferInfo &uniformBufferInfo,
-              vk::ImageView textureView, vk::Sampler sampler);
+              VulkanPipeline &&pipeline);
+
+    /// 按 binding 编号更新 uniform buffer 信息。
+    void SetUniformBuffer(uint32_t binding, const vk::DescriptorBufferInfo &bufferInfo);
+
+    /// 按着色器变量名更新 uniform buffer 信息。
+    void SetUniformBuffer(const std::string &name, const vk::DescriptorBufferInfo &bufferInfo);
 
     /// 按 binding 编号更新纹理。
     void SetTexture(uint32_t binding, vk::ImageView textureView, vk::Sampler sampler);

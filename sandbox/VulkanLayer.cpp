@@ -39,9 +39,9 @@ void VulkanLayer::OnAttach() {
 
     // 材质
     auto fmt = swapchain.GetDimensions().format;
-    m_Material.Init(device, r.CreateDefaultPipeline(device, fmt),
-                    r.GetUniformBufferInfo(),
-                    m_Texture.GetView(), m_Sampler.Get());
+    m_Material.Init(device, r.CreateDefaultPipeline(device, fmt));
+    m_Material.SetUniformBuffer("ubo", r.GetUniformBufferInfo());
+    m_Material.SetTexture("samplerColor", m_Texture.GetView(), m_Sampler.Get());
 }
 
 void VulkanLayer::OnDetach() {

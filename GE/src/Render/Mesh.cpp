@@ -9,8 +9,9 @@ namespace GE {
 void Mesh::Init(VmaAllocator allocator,
                 const void *vertexData, vk::DeviceSize vertexSize,
                 const void *indexData, vk::DeviceSize indexSize,
-                uint32_t indexCount) {
+                uint32_t indexCount, vk::IndexType indexType) {
     this->indexCount = indexCount;
+    this->indexType = indexType;
 
     vertices.Init(allocator, vertexSize,
                   vk::BufferUsageFlagBits::eVertexBuffer);
@@ -25,7 +26,7 @@ void Mesh::InitCube(VmaAllocator allocator) {
     Init(allocator,
          kCubeVertices, sizeof(kCubeVertices),
          kCubeIndices, sizeof(kCubeIndices),
-         36);
+         36, vk::IndexType::eUint16);
 }
 
 void Mesh::Destroy() {

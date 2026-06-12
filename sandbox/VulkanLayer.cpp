@@ -33,8 +33,9 @@ void VulkanLayer::OnAttach() {
     m_Texture.LoadFromFile(allocator, queue, qfi, "assets/textures/Checkerboard.png");
     m_Sampler.Init(device, vk::Filter::eNearest, vk::Filter::eNearest);
 
-    // 3D 模型（立方体）
-    m_Mesh.InitCube(allocator);
+    // 3D 模型
+    //m_Model.LoadFromFile(allocator, "assets/models/usemtl-issue-68.obj");
+    m_Model.LoadFromFile(allocator, "assets/models/catmark_torus_creases0.obj");
 
     // 材质
     auto fmt = swapchain.GetDimensions().format;
@@ -49,7 +50,7 @@ void VulkanLayer::OnAttach() {
 
 void VulkanLayer::OnDetach() {
     m_Material.Cleanup();
-    m_Mesh.Destroy();
+    m_Model.Cleanup();
     m_Sampler.Cleanup();
     m_Texture.Cleanup();
 }
@@ -139,7 +140,7 @@ void VulkanLayer::RenderFrame() {
     model = glm::translate(model, glm::vec3(m_Position, 0.0f));
     model = glm::rotate(model, glm::radians(m_Rotation), glm::vec3(0.0f, 1.0f, 0.0f));
     model = glm::scale(model, glm::vec3(m_Scale, 1.0f));
-    r.Draw(m_Mesh, m_Material, model, m_TriangleColor);
+    r.Draw(m_Model.GetMesh(), m_Material, model, m_TriangleColor);
 
     r.EndScene();
 }

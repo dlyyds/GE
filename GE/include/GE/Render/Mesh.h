@@ -20,6 +20,7 @@ struct Mesh {
     VulkanBuffer vertices;
     VulkanBuffer indices;
     uint32_t indexCount = 0;
+    vk::IndexType indexType = vk::IndexType::eUint16;
 
     static constexpr MeshVertex kVertices[4] = {
         {{-0.5f, -0.5f, 0.0f}, {0.0f, 1.0f}, {0.0f, 0.0f, 1.0f}},
@@ -74,7 +75,7 @@ struct Mesh {
     void Init(VmaAllocator allocator,
               const void *vertexData, vk::DeviceSize vertexSize,
               const void *indexData, vk::DeviceSize indexSize,
-              uint32_t indexCount);
+              uint32_t indexCount, vk::IndexType indexType);
 
     /// 使用内置的 cube 数据初始化。
     void InitCube(VmaAllocator allocator);

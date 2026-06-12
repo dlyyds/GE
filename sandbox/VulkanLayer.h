@@ -5,6 +5,7 @@
 #include "GE/Render/VulkanBase/VulkanImage.h"
 #include "GE/Render/VulkanBase/VulkanSampler.h"
 #include "GE/Render/Mesh.h"
+#include "GE/Render/Model.h"
 #include "GE/Render/Material.h"
 
 namespace GE {
@@ -33,7 +34,7 @@ private:
     Camera m_Camera;
     VulkanImage m_Texture;
     VulkanSampler m_Sampler;
-    Mesh m_Mesh;
+    Model m_Model;
     Material m_Material;
 };
 

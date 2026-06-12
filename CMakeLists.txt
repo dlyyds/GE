@@ -4,7 +4,7 @@ set(CMAKE_CXX_STANDARD 20)
 
 project(GE)
 
-# 匹配 bimg 的静态 CRT (/MT /MTd)
+
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 #set(CMAKE_BUILD_TYPE Debug)
@@ -53,10 +53,9 @@ file(GLOB GE_SRC
         ${CMAKE_SOURCE_DIR}/GE/third_party/SPIRV-Cross/spirv_cross_parsed_ir.cpp
         ${CMAKE_SOURCE_DIR}/GE/third_party/SPIRV-Cross/spirv_parser.cpp
         ${CMAKE_SOURCE_DIR}/GE/third_party/SPIRV-Cross/spirv_cfg.cpp
+        ${CMAKE_SOURCE_DIR}/GE/third_party/tinyobjloader/tiny_obj_loader.cpp
 
 )
-
-set(BGFX_DIR "F:/yxy/c++lib/bgfx")
 
 
 add_library(${GE_NAME} STATIC ${GE_SRC})
@@ -70,6 +69,7 @@ target_include_directories(${GE_NAME} PUBLIC
         ${CMAKE_SOURCE_DIR}/GE/third_party/GLFW/include
         ${CMAKE_SOURCE_DIR}/GE/third_party/stb
         ${CMAKE_SOURCE_DIR}/GE/third_party/SPIRV-Cross
+        ${CMAKE_SOURCE_DIR}/GE/third_party/tinyobjloader
         ${Vulkan_INCLUDE_DIRS}
         ${Vulkan_INCLUDE_DIRS}/spirv_cross
 )
@@ -83,8 +83,6 @@ target_compile_definitions(${GE_NAME} PUBLIC
         VULKAN_HPP_NO_STRUCT_CONSTRUCTORS
         VMA_DYNAMIC_VULKAN_FUNCTIONS=1
 )
-
-set(BGFX_BUILD_DIR "${BGFX_DIR}/.build/win64_vs2022/bin")
 
 
 target_link_libraries(${GE_NAME} PUBLIC

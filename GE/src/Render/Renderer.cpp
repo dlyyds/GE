@@ -179,7 +179,7 @@ void Renderer::Draw(const Mesh &mesh, const Material &material, const glm::mat4 
     // 绑定顶点/索引 buffer
     vk::Buffer vb = mesh.vertices.GetBuffer();
     cmd.bindVertexBuffers(0, vb, {0});
-    cmd.bindIndexBuffer(mesh.indices.GetBuffer(), 0, vk::IndexType::eUint16);
+    cmd.bindIndexBuffer(mesh.indices.GetBuffer(), 0, mesh.indexType);
 
     // 绑定所有 3 个 descriptor set：
     //   set=0: FrameUBO（per-frame，静态）

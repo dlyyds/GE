@@ -10,6 +10,8 @@
 
 namespace GE {
 
+class Texture; // 前置声明
+
 /// Material = pipeline + 一个 descriptor set（set=1，材质纹理）。
 /// set=0（FrameUBO）和 set=2（ObjectUBO）由 Renderer 管理。
 struct Material {
@@ -27,6 +29,9 @@ struct Material {
 
     /// 按着色器变量名更新纹理（如 "texSampler", "albedo"）。
     void SetTexture(const std::string &name, vk::ImageView textureView, vk::Sampler sampler);
+
+    /// 直接用 Texture 对象设置纹理（绑定由着色器变量名指定）。
+    void SetTexture(const std::string &name, const Texture &texture);
 
     void Cleanup();
 };

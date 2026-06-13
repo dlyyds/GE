@@ -6,7 +6,7 @@
 #include "Render/VulkanBase/VulkanContext.h"
 #include "Render/VulkanBase/VulkanRenderingInfo.h"
 #include "Core/GEWindow.h"
-
+#include <Core/Log.h>
 #include <array>
 #include <cstring>
 
@@ -29,7 +29,8 @@ void Renderer::Init(VulkanContext &ctx, VulkanSwapchain &swapchain) {
     // 查询硬件要求的 UBO 对齐值，空值回退 64
     auto props = ctx.GetVkGpu().getProperties();
     vk::DeviceSize uboAlignment = props.limits.minUniformBufferOffsetAlignment;
-    if (uboAlignment == 0) uboAlignment = 64;
+    if (uboAlignment == 0)
+        uboAlignment = 64;
 
     // set=0: 创建 per-frame UBO buffer（静态大小，每帧 memcpy 覆盖）
     m_FrameBuffer.Init(vmaAllocator, sizeof(FrameUniformData),
@@ -47,31 +48,31 @@ void Renderer::Init(VulkanContext &ctx, VulkanSwapchain &swapchain) {
 }
 
 void Renderer::InitDescriptorSets(vk::Device device,
-                                   vk::DescriptorSetLayout frameLayout,
-                                   vk::DescriptorSetLayout objectLayout) {
+                                  vk::DescriptorSetLayout frameLayout,
+                                  vk::DescriptorSetLayout objectLayout) {
     // 共用 pool：frame（1 个 eUniformBuffer）+ object（1 个 eUniformBufferDynamic）
     m_GlobalPool.Init(device, 2, {
-        {vk::DescriptorType::eUniformBuffer, 1},
-        {vk::DescriptorType::eUniformBufferDynamic, 1},
-    });
+                          {vk::DescriptorType::eUniformBuffer, 1},
+                          {vk::DescriptorType::eUniformBufferDynamic, 1},
+                      });
 
     // set=0: frame descriptor set
     m_FrameSet.Init(device, m_GlobalPool, frameLayout);
     m_FrameSet.WriteBuffer(0, vk::DescriptorType::eUniformBuffer,
-        vk::DescriptorBufferInfo{
-            .buffer = m_FrameBuffer.GetBuffer(),
-            .offset = 0,
-            .range = sizeof(FrameUniformData),
-        });
+                           vk::DescriptorBufferInfo{
+                               .buffer = m_FrameBuffer.GetBuffer(),
+                               .offset = 0,
+                               .range = sizeof(FrameUniformData),
+                           });
 
     // set=2: object descriptor set（指向 ring buffer，dynamic offset 在 Bind 时传入）
     m_ObjectSet.Init(device, m_GlobalPool, objectLayout);
     m_ObjectSet.WriteBuffer(0, vk::DescriptorType::eUniformBufferDynamic,
-        vk::DescriptorBufferInfo{
-            .buffer = m_RingBuffer.GetBuffer(),
-            .offset = 0,
-            .range = sizeof(ObjectUniformData),
-        });
+                            vk::DescriptorBufferInfo{
+                                .buffer = m_RingBuffer.GetBuffer(),
+                                .offset = 0,
+                                .range = sizeof(ObjectUniformData),
+                            });
 }
 
 void Renderer::Shutdown() {
@@ -84,6 +85,11 @@ void Renderer::Shutdown() {
 
     m_Context = nullptr;
     m_Swapchain = nullptr;
+}
+
+void Renderer::OnResize(vk::Extent2D newDimensions) {
+    m_DepthImage.Resize(newDimensions.width, newDimensions.height);
+    GE_CORE_INFO("Renderer depth buffer resized to {}x{}", newDimensions.width, newDimensions.height);
 }
 
 VulkanPipeline Renderer::CreateDefaultPipeline(vk::Device dev, vk::Format color_format,
@@ -104,7 +110,16 @@ void Renderer::BeginScene(vk::CommandBuffer cmd, uint32_t imageIndex,
                           vk::Extent2D dim,
                           const glm::mat4 &view, const glm::mat4 &projection,
                           const glm::vec3 &view_pos,
+                          const DirectionalLight &dir_light,
+                          const PointLight &point_light,
+                          const glm::vec4 &ambient,
                           const glm::vec4 &clear_color) {
+    // 如果 swapchain 尺寸变化，重建 depth buffer 匹配新尺寸
+    if (dim.width != m_DepthImage.GetWidth() || dim.height != m_DepthImage.GetHeight()) {
+        OnResize(dim);
+        m_DepthImageTransitioned = false;
+    }
+
     // 重置 ring buffer（该帧内所有 Draw 共享同一段内存区域）
     m_RingBuffer.Reset();
 
@@ -120,13 +135,16 @@ void Renderer::BeginScene(vk::CommandBuffer cmd, uint32_t imageIndex,
     frameData.projection = projection;
     frameData.view = view;
     frameData.viewPos = glm::vec4(view_pos, 1.0f);
+    frameData.dirLight = dir_light;
+    frameData.pointLight = point_light;
+    frameData.ambient = ambient;
     m_FrameBuffer.Upload(&frameData, sizeof(FrameUniformData));
 
     // 开始渲染 pass
     vk::ClearValue clear_value;
     clear_value.color = std::array<float, 4>{{clear_color.r, clear_color.g, clear_color.b, clear_color.a}};
 
-    // 深度 image layout 过渡（仅首次从 Undefined → DepthStencilAttachment）
+    // 深度 image layout 过渡（首次或重建后 Undefined → DepthStencilAttachment）
     if (!m_DepthImageTransitioned) {
         VulkanImage::TransitionLayout(cmd, m_DepthImage.GetImage(),
                                       vk::ImageLayout::eUndefined,
@@ -157,11 +175,11 @@ void Renderer::BeginScene(vk::CommandBuffer cmd, uint32_t imageIndex,
     cmd.setScissor(0, scissor);
 }
 
-void Renderer::Draw(const Mesh &mesh, const Material &material, const glm::mat4 &model, const glm::vec4 &color) {
+void Renderer::Draw(const Mesh &mesh, const Material &material, const glm::mat4 &model, const glm::vec4 &color, float lodBias) {
     // 将本次 Draw 的 ObjectUBO 数据写入 ring buffer
     ObjectUniformData objData{};
     objData.model = model;
-    objData.lodBias = 0.0f;
+    objData.lodBias = lodBias;
 
     vk::DeviceSize offset = m_RingBuffer.Allocate(sizeof(ObjectUniformData));
     std::memcpy(static_cast<char *>(m_RingBuffer.GetMappedData()) + offset,
@@ -190,7 +208,7 @@ void Renderer::Draw(const Mesh &mesh, const Material &material, const glm::mat4 
         material.descriptorSet.Get(),
         m_ObjectSet.Get(),
     };
-    uint32_t dynamicOffset = static_cast<uint32_t>(offset);
+    auto dynamicOffset = static_cast<uint32_t>(offset);
     cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, material.pipeline.GetLayout(),
                            0, 3, sets, 1, &dynamicOffset);
 

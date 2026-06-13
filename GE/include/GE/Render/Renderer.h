@@ -23,6 +23,19 @@ class VulkanContext;
 /// 管线和 descriptor set 存在于 Material 中，每个材质一套。
 class Renderer {
 public:
+    /// 方向光
+    struct DirectionalLight {
+        glm::vec4 direction; // w 未使用
+        glm::vec4 color;     // rgb + intensity 在 w
+    };
+
+    /// 点光源
+    struct PointLight {
+        glm::vec4 position;  // w = 半径倒数
+        glm::vec4 color;     // rgb + intensity 在 w
+    };
+
+public:
     static Renderer &Get();
 
     /// 完整初始化：从 VulkanContext 获取设备、从 swapchain 获取 image 数量，创建 ring buffers。
@@ -36,17 +49,26 @@ public:
     /// 完整销毁。
     void Shutdown();
 
+    /// 当 swapchain 尺寸变化时重建 depth buffer。
+    void OnResize(vk::Extent2D newDimensions);
+
     /// 开始一帧的场景渲染。
+    /// @param dir_light   方向光（direction, color+intensity）
+    /// @param point_light 点光源（position+radius_inv, color+intensity）
+    /// @param ambient     环境光颜色 + 强度
     void BeginScene(vk::CommandBuffer cmd, uint32_t imageIndex,
                     vk::Extent2D dimensions,
                     const glm::mat4 &view, const glm::mat4 &projection,
                     const glm::vec3 &view_pos,
+                    const DirectionalLight &dir_light = {{0.0f, -1.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 1.0f, 0.5f}},
+                    const PointLight &point_light = {{0.0f, 5.0f, 0.0f, 0.1f}, {1.0f, 1.0f, 1.0f, 1.0f}},
+                    const glm::vec4 &ambient = {0.05f, 0.05f, 0.1f, 1.0f},
                     const glm::vec4 &clear_color = {0.01f, 0.01f, 0.033f, 1.0f});
 
     void EndScene();
 
     /// 用指定材质绘制网格。
-    void Draw(const Mesh &mesh, const Material &material, const glm::mat4 &model, const glm::vec4 &color);
+    void Draw(const Mesh &mesh, const Material &material, const glm::mat4 &model, const glm::vec4 &color, float lodBias = 0.0f);
 
     /// 工厂方法：创建默认管线（MeshVertex 布局，UBO+纹理 descriptor）。
     /// @param dev            Vulkan 逻辑设备
@@ -81,6 +103,11 @@ private:
         glm::mat4 projection;
         glm::mat4 view;
         glm::vec4 viewPos;
+
+        // 灯光数据
+        DirectionalLight dirLight;
+        PointLight pointLight;
+        glm::vec4 ambient;   // rgb + 全局强度
     };
 
     VulkanBuffer m_FrameBuffer;

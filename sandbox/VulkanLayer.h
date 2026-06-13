@@ -2,11 +2,10 @@
 
 #include "GE/GE.h"
 #include "GE/Render/Camera.h"
-#include "GE/Render/VulkanBase/VulkanImage.h"
-#include "GE/Render/VulkanBase/VulkanSampler.h"
 #include "GE/Render/Mesh.h"
 #include "GE/Render/Model.h"
 #include "GE/Render/Material.h"
+#include "GE/Render/Texture.h"
 
 namespace GE {
 
@@ -30,12 +29,36 @@ private:
     float m_Rotation = 0.0f;
     glm::vec2 m_Position{0.0f, 0.0f};
     glm::vec2 m_Scale{1.0f, 1.0f};
+    float m_LodBias = 0.0f;
 
     Camera m_Camera;
-    VulkanImage m_Texture;
-    VulkanSampler m_Sampler;
+    Texture m_Texture;
     Model m_Model;
     Material m_Material;
+
+    // === 灯光控制 ===
+    bool m_LightEnabled = true;
+    bool m_DirLightEnabled = true;
+    bool m_PointLightEnabled = true;
+    bool m_AmbientEnabled = true;
+
+    // 方向光
+    Renderer::DirectionalLight m_DirectionalLight{
+        {0.0f, -1.0f, 0.5f, 0.0f},  // 方向（从斜上方照下）
+        {1.0f, 0.95f, 0.9f, 0.6f},  // 暖白色，强度 0.6
+    };
+
+    // 点光源
+    Renderer::PointLight m_PointLight{
+        {2.0f, 3.0f, 1.0f, 0.15f},  // 位置 + 半径倒数 0.15
+        {1.0f, 0.6f, 0.3f, 0.8f},   // 橙色，强度 0.8
+    };
+
+    // 环境光
+    glm::vec4 m_Ambient{0.05f, 0.05f, 0.1f, 1.0f};
+
+    // 镜面反射强度
+    float m_SpecularStrength = 0.5f;
 };
 
 } // namespace GE

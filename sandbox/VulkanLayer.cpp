@@ -29,18 +29,18 @@ void VulkanLayer::OnAttach() {
     m_Camera.SetAspect(static_cast<float>(swapchain.GetDimensions().width) /
                        static_cast<float>(swapchain.GetDimensions().height));
 
-    // 纹理
-    m_Texture.LoadFromFile(allocator, queue, qfi, "assets/textures/Checkerboard.png");
-    m_Sampler.Init(device, vk::Filter::eNearest, vk::Filter::eNearest);
+    // 纹理（Texture 内部自动创建匹配 mip 级数的 sampler）
+    m_Texture.LoadFromFile(allocator, queue, qfi, "assets/textures/Checkerboard.png",
+                           vk::Filter::eNearest, vk::Filter::eNearest);
 
     // 3D 模型
-    //m_Model.LoadFromFile(allocator, "assets/models/usemtl-issue-68.obj");
-    m_Model.LoadFromFile(allocator, "assets/models/catmark_torus_creases0.obj");
+    m_Model.LoadFromFile(allocator, "assets/models/usemtl-issue-68.obj");
+    //m_Model.LoadFromFile(allocator, "assets/models/catmark_torus_creases0.obj");
 
     // 材质
     auto fmt = swapchain.GetDimensions().format;
     m_Material.Init(device, r.CreateDefaultPipeline(device, fmt, Renderer::DEPTH_FORMAT));
-    m_Material.SetTexture("samplerColor", m_Texture.GetView(), m_Sampler.Get());
+    m_Material.SetTexture("samplerColor", m_Texture);
 
     // Renderer 接管 set=0（FrameUBO）和 set=2（ObjectUBO）
     r.InitDescriptorSets(device,
@@ -51,7 +51,6 @@ void VulkanLayer::OnAttach() {
 void VulkanLayer::OnDetach() {
     m_Material.Cleanup();
     m_Model.Cleanup();
-    m_Sampler.Cleanup();
     m_Texture.Cleanup();
 }
 
@@ -75,6 +74,33 @@ void VulkanLayer::OnImGuiRender() {
     ImGui::SliderFloat("Rotation", &m_Rotation, -180.0f, 180.0f, "%.1f deg");
     ImGui::SliderFloat2("Position##Model", glm::value_ptr(m_Position), -1.0f, 1.0f);
     ImGui::SliderFloat2("Scale", glm::value_ptr(m_Scale), 0.1f, 3.0f);
+    ImGui::SliderFloat("LOD Bias", &m_LodBias, -8.0f, 8.0f, "%.2f");
+
+    ImGui::SeparatorText("Lighting");
+    ImGui::Checkbox("Enable All Lights", &m_LightEnabled);
+
+    ImGui::Checkbox("Directional Light", &m_DirLightEnabled);
+    if (ImGui::CollapsingHeader("Directional", ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::DragFloat3("Dir Direction", glm::value_ptr(m_DirectionalLight.direction),
+                         0.05f, -1.0f, 1.0f);
+        ImGui::ColorEdit3("Dir Color", glm::value_ptr(m_DirectionalLight.color));
+        ImGui::SliderFloat("Dir Intensity", &m_DirectionalLight.color.w, 0.0f, 2.0f, "%.2f");
+    }
+
+    ImGui::Checkbox("Point Light", &m_PointLightEnabled);
+    if (ImGui::CollapsingHeader("Point", ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::DragFloat3("Point Position", glm::value_ptr(m_PointLight.position),
+                         0.1f, -10.0f, 10.0f);
+        ImGui::ColorEdit3("Point Color", glm::value_ptr(m_PointLight.color));
+        ImGui::SliderFloat("Point Intensity", &m_PointLight.color.w, 0.0f, 5.0f, "%.2f");
+        ImGui::SliderFloat("Point Radius", &m_PointLight.position.w, 0.01f, 1.0f, "%.3f");
+    }
+
+    ImGui::Checkbox("Ambient Light", &m_AmbientEnabled);
+    if (ImGui::CollapsingHeader("Ambient", ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::ColorEdit3("Ambient Color", glm::value_ptr(m_Ambient));
+        ImGui::SliderFloat("Ambient Intensity", &m_Ambient.w, 0.0f, 2.0f, "%.2f");
+    }
 
     ImGui::SeparatorText("Camera");
 
@@ -129,18 +155,31 @@ void VulkanLayer::RenderFrame() {
     auto &r = Renderer::Get();
     auto &swapchain = r.GetSwapchain();
 
+    // 构造灯光参数（按独立开关控制）
+    auto dirLight = m_DirectionalLight;
+    auto pointLight = m_PointLight;
+    auto ambient = m_Ambient;
+
+    if (!m_LightEnabled || !m_DirLightEnabled)
+        dirLight.color.w = 0.0f;
+    if (!m_LightEnabled || !m_PointLightEnabled)
+        pointLight.color.w = 0.0f;
+    if (!m_LightEnabled || !m_AmbientEnabled)
+        ambient.w = 0.0f;
+
     r.BeginScene(swapchain.GetCurrentCmd(),
                  swapchain.GetCurrentImageIndex(),
                  vk::Extent2D{swapchain.GetDimensions().width, swapchain.GetDimensions().height},
                  m_Camera.GetView(), m_Camera.GetProj(), m_Camera.GetPosition(),
+                 dirLight, pointLight, ambient,
                  {0.01f, 0.01f, 0.033f, 1.0f});
 
-    // 画一个旋转的 3D 立方体
+    // 画模型
     auto model = glm::mat4(1.0f);
     model = glm::translate(model, glm::vec3(m_Position, 0.0f));
     model = glm::rotate(model, glm::radians(m_Rotation), glm::vec3(0.0f, 1.0f, 0.0f));
     model = glm::scale(model, glm::vec3(m_Scale, 1.0f));
-    r.Draw(m_Model.GetMesh(), m_Material, model, m_TriangleColor);
+    r.Draw(m_Model.GetMesh(), m_Material, model, m_TriangleColor, m_LodBias);
 
     r.EndScene();
 }

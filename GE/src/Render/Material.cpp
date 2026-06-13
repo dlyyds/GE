@@ -4,6 +4,7 @@
 
 #define VULKAN_HPP_DISPATCH_LOADER_DYNAMIC 1
 #include "Render/Material.h"
+#include "Render/Texture.h"
 
 #include "Core/Log.h"
 
@@ -50,6 +51,10 @@ void Material::SetTexture(const std::string &name, vk::ImageView textureView, vk
         return;
     }
     SetTexture(binding, textureView, sampler);
+}
+
+void Material::SetTexture(const std::string &name, const Texture &texture) {
+    SetTexture(name, texture.GetImageView(), texture.GetSampler());
 }
 
 void Material::Cleanup() {

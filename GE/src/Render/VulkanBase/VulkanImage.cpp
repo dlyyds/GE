@@ -9,6 +9,8 @@
 #include "stb_image.h"
 
 #include <cassert>
+#include <cmath>
+#include <algorithm>
 #include <stdexcept>
 
 namespace GE {
@@ -39,6 +41,10 @@ void VulkanImage::LoadFromMemory(VmaAllocator allocator,
 
     m_Width = width;
     m_Height = height;
+    m_Format = format;
+
+    // 计算完整 mip 链级数
+    m_MipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(width, height)))) + 1;
 
     vk::DeviceSize image_size = static_cast<vk::DeviceSize>(width * height * 4);
 
@@ -51,17 +57,17 @@ void VulkanImage::LoadFromMemory(VmaAllocator allocator,
                         VMA_ALLOCATION_CREATE_MAPPED_BIT);
     staging_buffer.Upload(data, image_size);
 
-    // --- Final image ---
+    // --- Final image（带完整 mip 链）---
     VkImageCreateInfo image_info{};
     image_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     image_info.imageType = VK_IMAGE_TYPE_2D;
     image_info.format = static_cast<VkFormat>(format);
     image_info.extent = {width, height, 1};
-    image_info.mipLevels = 1;
+    image_info.mipLevels = m_MipLevels;
     image_info.arrayLayers = 1;
     image_info.samples = VK_SAMPLE_COUNT_1_BIT;
     image_info.tiling = VK_IMAGE_TILING_OPTIMAL;
-    image_info.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+    image_info.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
     image_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     image_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
@@ -89,9 +95,12 @@ void VulkanImage::LoadFromMemory(VmaAllocator allocator,
 
     cmd_buf.begin(vk::CommandBufferBeginInfo{.flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
 
+    // 所有 mip level 从 Undefined → TransferDst
     TransitionLayout(cmd_buf, m_Image,
-                     vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal);
+                     vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal,
+                     0, m_MipLevels);
 
+    // 拷贝 base level (mip 0)
     vk::BufferImageCopy copy_region{
         .bufferOffset = 0,
         .bufferRowLength = 0,
@@ -102,8 +111,37 @@ void VulkanImage::LoadFromMemory(VmaAllocator allocator,
     };
     cmd_buf.copyBufferToImage(staging_buffer.GetBuffer(), m_Image, vk::ImageLayout::eTransferDstOptimal, copy_region);
 
+    // 逐级 blit 生成 mip chain
+    for (uint32_t i = 1; i < m_MipLevels; i++) {
+        // 源 level i-1: TransferDst → TransferSrc
+        TransitionLayout(cmd_buf, m_Image,
+                         vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eTransferSrcOptimal,
+                         i - 1, 1);
+
+        vk::ImageBlit blit{};
+        blit.srcSubresource = {vk::ImageAspectFlagBits::eColor, i - 1, 0, 1};
+        blit.srcOffsets[0] = {0, 0, 0};
+        blit.srcOffsets[1] = {static_cast<int32_t>(std::max(width >> (i - 1), 1u)),
+                             static_cast<int32_t>(std::max(height >> (i - 1), 1u)), 1};
+        blit.dstSubresource = {vk::ImageAspectFlagBits::eColor, i, 0, 1};
+        blit.dstOffsets[0] = {0, 0, 0};
+        blit.dstOffsets[1] = {static_cast<int32_t>(std::max(width >> i, 1u)),
+                             static_cast<int32_t>(std::max(height >> i, 1u)), 1};
+
+        cmd_buf.blitImage(m_Image, vk::ImageLayout::eTransferSrcOptimal,
+                          m_Image, vk::ImageLayout::eTransferDstOptimal,
+                          blit, vk::Filter::eLinear);
+
+        // 源 level i-1: TransferSrc → ShaderReadOnly（不再需要作为 blit 源）
+        TransitionLayout(cmd_buf, m_Image,
+                         vk::ImageLayout::eTransferSrcOptimal, vk::ImageLayout::eShaderReadOnlyOptimal,
+                         i - 1, 1);
+    }
+
+    // 最后一个 mip level: TransferDst → ShaderReadOnly
     TransitionLayout(cmd_buf, m_Image,
-                     vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eShaderReadOnlyOptimal);
+                     vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eShaderReadOnlyOptimal,
+                     m_MipLevels - 1, 1);
 
     cmd_buf.end();
 
@@ -116,8 +154,16 @@ void VulkanImage::LoadFromMemory(VmaAllocator allocator,
     m_Device.freeCommandBuffers(cmd_pool, cmd_buf);
     m_Device.destroyCommandPool(cmd_pool);
 
-    // Create view
-    m_View = CreateView(m_Device, m_Image, vk::ImageViewType::e2D, format);
+    // 创建 view（覆盖所有 mip level）
+    vk::ImageViewCreateInfo view_info{
+        .image = m_Image,
+        .viewType = vk::ImageViewType::e2D,
+        .format = format,
+        .subresourceRange = {.aspectMask = vk::ImageAspectFlagBits::eColor,
+                             .baseMipLevel = 0, .levelCount = m_MipLevels,
+                             .baseArrayLayer = 0, .layerCount = 1},
+    };
+    m_View = m_Device.createImageView(view_info);
 }
 
 void VulkanImage::Init(VmaAllocator allocator,
@@ -132,6 +178,13 @@ void VulkanImage::Init(VmaAllocator allocator,
 
     m_Width = width;
     m_Height = height;
+
+    // 存储参数供 Resize 复用
+    m_Format = format;
+    m_Tiling = tiling;
+    m_Usage = usage;
+    m_MemoryUsage = memory_usage;
+    m_AllocFlags = flags;
 
     VkImageCreateInfo image_info{};
     image_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -156,6 +209,55 @@ void VulkanImage::Init(VmaAllocator allocator,
     m_Image = image;
 }
 
+void VulkanImage::Resize(uint32_t newWidth, uint32_t newHeight) {
+    // 销毁旧的 image 和 view
+    if (m_View)
+        m_Device.destroyImageView(m_View);
+    if (m_Image)
+        vmaDestroyImage(m_Allocator, static_cast<VkImage>(m_Image), m_Allocation);
+
+    m_View = nullptr;
+    m_Image = nullptr;
+    m_Allocation = nullptr;
+
+    m_Width = newWidth;
+    m_Height = newHeight;
+
+    // 用存储的参数重建
+    VkImageCreateInfo image_info{};
+    image_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    image_info.imageType = VK_IMAGE_TYPE_2D;
+    image_info.format = static_cast<VkFormat>(m_Format);
+    image_info.extent = {newWidth, newHeight, 1};
+    image_info.mipLevels = m_MipLevels;
+    image_info.arrayLayers = 1;
+    image_info.samples = VK_SAMPLE_COUNT_1_BIT;
+    image_info.tiling = static_cast<VkImageTiling>(m_Tiling);
+    image_info.usage = static_cast<VkImageUsageFlags>(m_Usage);
+    image_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    image_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+    VmaAllocationCreateInfo img_alloc_info{};
+    img_alloc_info.usage = m_MemoryUsage;
+    img_alloc_info.flags = m_AllocFlags;
+
+    VmaAllocationInfo vma_alloc_info;
+    VkImage image;
+    vmaCreateImage(m_Allocator, &image_info, &img_alloc_info, &image, &m_Allocation, &vma_alloc_info);
+    m_Image = image;
+
+    // 重建 view
+    vk::ImageViewCreateInfo view_info{
+        .image = m_Image,
+        .viewType = m_ViewType,
+        .format = m_Format,
+        .subresourceRange = {.aspectMask = m_Aspect,
+                             .baseMipLevel = 0, .levelCount = m_MipLevels,
+                             .baseArrayLayer = 0, .layerCount = 1},
+    };
+    m_View = m_Device.createImageView(view_info);
+}
+
 vk::ImageView VulkanImage::CreateView(vk::Device device, vk::Image image,
                                       vk::ImageViewType type, vk::Format format,
                                       vk::ImageAspectFlags aspect) {
@@ -169,13 +271,16 @@ vk::ImageView VulkanImage::CreateView(vk::Device device, vk::Image image,
 }
 
 void VulkanImage::CreateView(vk::Format format,
-                              vk::ImageViewType type,
-                              vk::ImageAspectFlags aspect) {
+                             vk::ImageViewType type,
+                             vk::ImageAspectFlags aspect) {
+    m_ViewType = type;
+    m_Aspect = aspect;
     m_View = CreateView(m_Device, m_Image, type, format, aspect);
 }
 
 void VulkanImage::TransitionLayout(vk::CommandBuffer cmd, vk::Image image,
-                                   vk::ImageLayout old_layout, vk::ImageLayout new_layout) {
+                                   vk::ImageLayout old_layout, vk::ImageLayout new_layout,
+                                   uint32_t baseMipLevel, uint32_t levelCount) {
     struct Transition {
         vk::ImageLayout old_layout;
         vk::ImageLayout new_layout;
@@ -190,6 +295,16 @@ void VulkanImage::TransitionLayout(vk::CommandBuffer cmd, vk::Image image,
         {vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal,
          vk::PipelineStageFlagBits2::eTopOfPipe, vk::AccessFlagBits2::eNone,
          vk::PipelineStageFlagBits2::eTransfer, vk::AccessFlagBits2::eTransferWrite},
+
+        // TransferDst → TransferSrc:  mip 生成前，准备作为 blit 源
+        {vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eTransferSrcOptimal,
+         vk::PipelineStageFlagBits2::eTransfer, vk::AccessFlagBits2::eTransferWrite,
+         vk::PipelineStageFlagBits2::eTransfer, vk::AccessFlagBits2::eTransferRead},
+
+        // TransferSrc → ShaderReadOnly:  mip 生成完成，转给着色器采样
+        {vk::ImageLayout::eTransferSrcOptimal, vk::ImageLayout::eShaderReadOnlyOptimal,
+         vk::PipelineStageFlagBits2::eTransfer, vk::AccessFlagBits2::eTransferRead,
+         vk::PipelineStageFlagBits2::eFragmentShader, vk::AccessFlagBits2::eShaderRead},
 
         // TransferDst → ShaderReadOnly:  staging 完成，准备给着色器采样
         {vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eShaderReadOnlyOptimal,
@@ -234,7 +349,7 @@ void VulkanImage::TransitionLayout(vk::CommandBuffer cmd, vk::Image image,
         .dstQueueFamilyIndex = vk::QueueFamilyIgnored,
         .image = image,
         .subresourceRange = {.aspectMask = aspectMask,
-                             .baseMipLevel = 0, .levelCount = 1,
+                             .baseMipLevel = baseMipLevel, .levelCount = levelCount,
                              .baseArrayLayer = 0, .layerCount = 1},
     };
 
@@ -259,6 +374,13 @@ void VulkanImage::Cleanup() {
     m_View = nullptr;
     m_Width = 0;
     m_Height = 0;
+    m_MipLevels = 1;
+    m_Format = vk::Format::eUndefined;
+    m_Usage = {};
+    m_MemoryUsage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+    m_AllocFlags = 0;
+    m_ViewType = vk::ImageViewType::e2D;
+    m_Aspect = vk::ImageAspectFlagBits::eColor;
 }
 
 } // namespace GE

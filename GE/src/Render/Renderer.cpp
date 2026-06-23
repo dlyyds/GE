@@ -175,7 +175,8 @@ void Renderer::BeginScene(vk::CommandBuffer cmd, uint32_t imageIndex,
     cmd.setScissor(0, scissor);
 }
 
-void Renderer::Draw(const Mesh &mesh, const Material &material, const glm::mat4 &model, const glm::vec4 &color, float lodBias) {
+void Renderer::Draw(const Mesh &mesh, const Material &material, const glm::mat4 &model, const glm::vec4 &color, float lodBias,
+                     uint32_t indexOffset, uint32_t indexCount) {
     // 将本次 Draw 的 ObjectUBO 数据写入 ring buffer
     ObjectUniformData objData{};
     objData.model = model;
@@ -212,7 +213,8 @@ void Renderer::Draw(const Mesh &mesh, const Material &material, const glm::mat4 
     cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, material.pipeline.GetLayout(),
                            0, 3, sets, 1, &dynamicOffset);
 
-    cmd.drawIndexed(mesh.indexCount, 1, 0, 0, 0);
+    uint32_t drawCount = (indexCount > 0) ? indexCount : mesh.indexCount;
+    cmd.drawIndexed(drawCount, 1, indexOffset, 0, 0);
 }
 
 void Renderer::EndScene() {

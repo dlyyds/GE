@@ -68,7 +68,10 @@ public:
     void EndScene();
 
     /// 用指定材质绘制网格。
-    void Draw(const Mesh &mesh, const Material &material, const glm::mat4 &model, const glm::vec4 &color, float lodBias = 0.0f);
+    /// @param indexOffset  submesh 索引偏移（0 = 从头开始）
+    /// @param indexCount   submesh 索引数量（0 = 绘制整个 mesh）
+    void Draw(const Mesh &mesh, const Material &material, const glm::mat4 &model, const glm::vec4 &color, float lodBias = 0.0f,
+              uint32_t indexOffset = 0, uint32_t indexCount = 0);
 
     /// 工厂方法：创建默认管线（MeshVertex 布局，UBO+纹理 descriptor）。
     /// @param dev            Vulkan 逻辑设备

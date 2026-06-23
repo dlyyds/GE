@@ -29,26 +29,60 @@ void VulkanLayer::OnAttach() {
     m_Camera.SetAspect(static_cast<float>(swapchain.GetDimensions().width) /
                        static_cast<float>(swapchain.GetDimensions().height));
 
-    // 纹理（Texture 内部自动创建匹配 mip 级数的 sampler）
+    // 默认纹理（1x1 白色 fallback）
+    m_DefaultTexture.LoadFromColor(allocator, queue, qfi, {1.0f, 1.0f, 1.0f});
+
+    // 旧：单纹理（后续可移除）
     m_Texture.LoadFromFile(allocator, queue, qfi, "assets/textures/Checkerboard.png",
                            vk::Filter::eNearest, vk::Filter::eNearest);
 
-    // 3D 模型
-    m_Model.LoadFromFile(allocator, "assets/models/usemtl-issue-68.obj");
-    //m_Model.LoadFromFile(allocator, "assets/models/catmark_torus_creases0.obj");
+    // 3D 模型（现在会同时解析 .mtl 材质信息）
+    m_Model.LoadFromFile(allocator, "assets/models/cube.obj");
 
-    // 材质
+    // 先创建一个临时管线获取 set0/set2 layout
     auto fmt = swapchain.GetDimensions().format;
+    VulkanPipeline tempPipeline = r.CreateDefaultPipeline(device, fmt, Renderer::DEPTH_FORMAT);
+    r.InitDescriptorSets(device, tempPipeline.GetSetLayout(0),
+                         tempPipeline.GetSetLayout(2));
+    tempPipeline.Cleanup();
+
+    // 为每个 MTL 材质创建 GPU Material + Texture
+    auto &materials = m_Model.GetMaterials();
+    m_SubmeshMaterials.clear();
+    m_SubmeshMaterials.reserve(materials.size());
+
+    for (auto &matData : materials) {
+        auto sm = std::make_unique<SubmeshMaterial>();
+        sm->material.Init(device, r.CreateDefaultPipeline(device, fmt, Renderer::DEPTH_FORMAT));
+
+        if (!matData.diffuseTexPath.empty()) {
+            sm->texture.LoadFromFile(allocator, queue, qfi, matData.diffuseTexPath);
+            sm->material.SetTexture("samplerColor", sm->texture);
+            GE_CORE_INFO("  Loaded texture: {}", matData.diffuseTexPath);
+        } else {
+            // 用 Kd 颜色创建 1x1 纹理
+            sm->texture.LoadFromColor(allocator, queue, qfi, matData.diffuse);
+            sm->material.SetTexture("samplerColor", sm->texture);
+            GE_CORE_INFO("  Created color texture from Kd ({:.2f}, {:.2f}, {:.2f})",
+                         matData.diffuse.r, matData.diffuse.g, matData.diffuse.b);
+        }
+
+        m_SubmeshMaterials.push_back(std::move(sm));
+    }
+
+    // 旧：单材质 fallback
     m_Material.Init(device, r.CreateDefaultPipeline(device, fmt, Renderer::DEPTH_FORMAT));
     m_Material.SetTexture("samplerColor", m_Texture);
-
-    // Renderer 接管 set=0（FrameUBO）和 set=2（ObjectUBO）
-    r.InitDescriptorSets(device,
-                         m_Material.pipeline.GetSetLayout(0),
-                         m_Material.pipeline.GetSetLayout(2));
 }
 
 void VulkanLayer::OnDetach() {
+    // 清理 per-submesh 材质
+    for (auto &sm : m_SubmeshMaterials) {
+        sm->material.Cleanup();
+        sm->texture.Cleanup();
+    }
+    m_SubmeshMaterials.clear();
+    m_DefaultTexture.Cleanup();
     m_Material.Cleanup();
     m_Model.Cleanup();
     m_Texture.Cleanup();
@@ -82,7 +116,7 @@ void VulkanLayer::OnImGuiRender() {
     ImGui::Checkbox("Directional Light", &m_DirLightEnabled);
     if (ImGui::CollapsingHeader("Directional", ImGuiTreeNodeFlags_DefaultOpen)) {
         ImGui::DragFloat3("Dir Direction", glm::value_ptr(m_DirectionalLight.direction),
-                         0.05f, -1.0f, 1.0f);
+                          0.05f, -1.0f, 1.0f);
         ImGui::ColorEdit3("Dir Color", glm::value_ptr(m_DirectionalLight.color));
         ImGui::SliderFloat("Dir Intensity", &m_DirectionalLight.color.w, 0.0f, 2.0f, "%.2f");
     }
@@ -90,7 +124,7 @@ void VulkanLayer::OnImGuiRender() {
     ImGui::Checkbox("Point Light", &m_PointLightEnabled);
     if (ImGui::CollapsingHeader("Point", ImGuiTreeNodeFlags_DefaultOpen)) {
         ImGui::DragFloat3("Point Position", glm::value_ptr(m_PointLight.position),
-                         0.1f, -10.0f, 10.0f);
+                          0.1f, -10.0f, 10.0f);
         ImGui::ColorEdit3("Point Color", glm::value_ptr(m_PointLight.color));
         ImGui::SliderFloat("Point Intensity", &m_PointLight.color.w, 0.0f, 5.0f, "%.2f");
         ImGui::SliderFloat("Point Radius", &m_PointLight.position.w, 0.01f, 1.0f, "%.3f");
@@ -174,12 +208,29 @@ void VulkanLayer::RenderFrame() {
                  dirLight, pointLight, ambient,
                  {0.01f, 0.01f, 0.033f, 1.0f});
 
-    // 画模型
+    // 画模型（按 SubMesh 遍历）
     auto model = glm::mat4(1.0f);
     model = glm::translate(model, glm::vec3(m_Position, 0.0f));
     model = glm::rotate(model, glm::radians(m_Rotation), glm::vec3(0.0f, 1.0f, 0.0f));
     model = glm::scale(model, glm::vec3(m_Scale, 1.0f));
-    r.Draw(m_Model.GetMesh(), m_Material, model, m_TriangleColor, m_LodBias);
+
+    auto &submeshes = m_Model.GetSubMeshes();
+    if (!submeshes.empty()) {
+        for (auto &submesh : submeshes) {
+            int matIdx = submesh.materialIndex;
+            Material *mat = nullptr;
+            if (matIdx >= 0 && matIdx < (int)m_SubmeshMaterials.size()) {
+                mat = &m_SubmeshMaterials[matIdx]->material;
+            } else {
+                mat = &m_Material; // fallback
+            }
+            r.Draw(m_Model.GetMesh(), *mat, model, m_TriangleColor, m_LodBias,
+                   submesh.indexOffset, submesh.indexCount);
+        }
+    } else {
+        // 无 SubMesh（如程序化球体），用旧 fallback
+        r.Draw(m_Model.GetMesh(), m_Material, model, m_TriangleColor, m_LodBias);
+    }
 
     r.EndScene();
 }

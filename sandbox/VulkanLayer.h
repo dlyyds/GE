@@ -1,6 +1,10 @@
 #pragma once
 
 #include "GE/GE.h"
+
+#include <memory>
+#include <vector>
+
 #include "GE/Render/Camera.h"
 #include "GE/Render/Mesh.h"
 #include "GE/Render/Model.h"
@@ -32,9 +36,17 @@ private:
     float m_LodBias = 0.0f;
 
     Camera m_Camera;
-    Texture m_Texture;
+    Texture m_Texture;           // 旧：单纹理（之后可移除）
     Model m_Model;
-    Material m_Material;
+    Material m_Material;         // 旧：单材质（无 MTL 时的 fallback）
+
+    // === MTL 材质 ===
+    struct SubmeshMaterial {
+        Material material;
+        Texture  texture;        // 若没纹理则为空，使用 m_DefaultTexture
+    };
+    std::vector<std::unique_ptr<SubmeshMaterial>> m_SubmeshMaterials;
+    Texture m_DefaultTexture;    // 1x1 白色 fallback 纹理
 
     // === 灯光控制 ===
     bool m_LightEnabled = true;

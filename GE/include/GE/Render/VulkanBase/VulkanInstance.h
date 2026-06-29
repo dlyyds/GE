@@ -7,27 +7,19 @@
 
 namespace GE {
 
-/// Non-static Vulkan instance. Two-phase init: default construct, then Init().
+/// Vulkan instance，构造即初始化，析构即销毁。
 class VulkanInstance {
 public:
-    VulkanInstance() = default;
-
-    /// Create the Vulkan instance. Must be called once before use.
-    void Init(const std::string &app_name = "GE App",
-              uint32_t api_version = VK_MAKE_VERSION(1, 3, 0));
-
-    /// Destroy the instance. Safe to call even if not initialized.
-    void Destroy();
+    explicit VulkanInstance(const std::string &app_name = "GE App",
+                            uint32_t api_version = VK_MAKE_VERSION(1, 3, 0));
 
     ~VulkanInstance();
 
     VulkanInstance(const VulkanInstance &) = delete;
     VulkanInstance &operator=(const VulkanInstance &) = delete;
 
-    VulkanInstance(VulkanInstance &&) = default;
-    VulkanInstance &operator=(VulkanInstance &&) = default;
-
-    [[nodiscard]] bool IsInitialized() const { return m_Instance != nullptr; }
+    VulkanInstance(VulkanInstance &&) = delete;
+    VulkanInstance &operator=(VulkanInstance &&) = delete;
 
     [[nodiscard]] vk::Instance Get() const { return m_Instance; }
 

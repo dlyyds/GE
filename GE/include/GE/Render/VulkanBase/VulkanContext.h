@@ -3,6 +3,8 @@
 #include <vulkan/vulkan.hpp>
 #include "vk_mem_alloc.h"
 
+#include <memory>
+
 #include "Render/VulkanBase/VulkanInstance.h"
 #include "Render/VulkanBase/VulkanDevice.h"
 
@@ -34,9 +36,9 @@ public:
     [[nodiscard]] bool IsInitialized() const { return m_Device.IsInitialized(); }
 
     // -- Vulkan 句柄访问器 --
-    [[nodiscard]] VulkanInstance &GetInstance() { return m_Instance; }
+    [[nodiscard]] VulkanInstance &GetInstance() { return *m_Instance; }
     [[nodiscard]] VulkanDevice &GetDevice() { return m_Device; }
-    [[nodiscard]] vk::Instance GetVkInstance() const { return m_Instance.Get(); }
+    [[nodiscard]] vk::Instance GetVkInstance() const { return m_Instance->Get(); }
     [[nodiscard]] vk::SurfaceKHR GetSurface() const { return m_Surface; }
     [[nodiscard]] vk::Device GetVkDevice() const { return m_Device.GetDevice(); }
     [[nodiscard]] vk::PhysicalDevice GetVkGpu() const { return m_Device.GetGpu(); }
@@ -45,7 +47,7 @@ public:
     [[nodiscard]] VmaAllocator GetVmaAllocator() const { return m_Device.GetVmaAllocator(); }
 
 private:
-    VulkanInstance m_Instance;
+    std::unique_ptr<VulkanInstance> m_Instance;
     vk::SurfaceKHR m_Surface = nullptr;
     VulkanDevice m_Device;
 };

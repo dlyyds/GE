@@ -36,7 +36,7 @@ static VKAPI_ATTR vk::Bool32 VKAPI_CALL DebugCallback(vk::DebugUtilsMessageSever
     return false;
 }
 
-void VulkanInstance::Destroy() {
+VulkanInstance::~VulkanInstance() {
     if (m_DebugCallback && m_Instance) {
         m_Instance.destroyDebugUtilsMessengerEXT(m_DebugCallback);
     }
@@ -47,11 +47,7 @@ void VulkanInstance::Destroy() {
     m_Instance = nullptr;
 }
 
-VulkanInstance::~VulkanInstance() {
-    Destroy();
-}
-
-void VulkanInstance::Init(const std::string &app_name, uint32_t api_version) {
+VulkanInstance::VulkanInstance(const std::string &app_name, uint32_t api_version) {
     GE_CORE_INFO("Initializing Vulkan instance.");
 
     // Load vkGetInstanceProcAddr from the Vulkan loader

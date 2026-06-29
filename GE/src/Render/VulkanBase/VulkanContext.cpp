@@ -97,7 +97,7 @@ void VulkanContext::CreateInstance() {
     // ---- 组装 Layers ----
     std::unordered_map<std::string, RequestMode> layers;
 
-#if defined(VKB_DEBUG) || defined(VKB_VALIDATION_LAYERS)
+#if defined(VK_DEBUG) || defined(VK_VALIDATION_LAYERS)
     // Debug/验证需要的扩展和 Layer
     extensions[VK_EXT_DEBUG_UTILS_EXTENSION_NAME] = RequestMode::Optional;
     layers["VK_LAYER_KHRONOS_validation"] = RequestMode::Optional;
@@ -105,7 +105,7 @@ void VulkanContext::CreateInstance() {
 
     // ---- 创建 Instance（完整参数）----
     auto extend_cb = [](StructureChainBuilder<vk::InstanceCreateInfo> &scb) {
-#if defined(VKB_DEBUG) || defined(VKB_VALIDATION_LAYERS)
+#if defined(VK_DEBUG) || defined(VK_VALIDATION_LAYERS)
         // 将 Debug messenger 加入 pNext，让验证层在 vkCreateInstance/vkDestroyInstance 期间也能上报
         vk::DebugUtilsMessengerCreateInfoEXT debug_pnext{
             .messageSeverity = vk::DebugUtilsMessageSeverityFlagBitsEXT::eError |
@@ -127,7 +127,7 @@ void VulkanContext::CreateInstance() {
         extend_cb);
 
     // ---- 注册 Debug 回调（如果 VK_EXT_DEBUG_UTILS 已启用）----
-#if defined(VKB_DEBUG) || defined(VKB_VALIDATION_LAYERS)
+#if defined(VK_DEBUG) || defined(VK_VALIDATION_LAYERS)
     if (m_Instance->IsExtensionEnabled(VK_EXT_DEBUG_UTILS_EXTENSION_NAME))
     {
         vk::DebugUtilsMessengerCreateInfoEXT debug_info{

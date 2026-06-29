@@ -81,7 +81,7 @@ void VulkanDevice::InitDevice() {
         throw std::runtime_error("Required device extensions are missing");
     }
 
-#if (defined(VKB_ENABLE_PORTABILITY))
+#if (defined(VK_ENABLE_PORTABILITY))
     if (std::ranges::any_of(device_extensions,
                             [](vk::ExtensionProperties const &extension) {
                                 return strcmp(extension.extensionName, VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME) == 0;

@@ -19,7 +19,7 @@ void VulkanContext::Init(Window &window) {
     m_Instance = std::make_unique<VulkanInstance>("GE App");
 
     // 2. 从 Instance + Window 创建 Surface
-    VkSurfaceKHR raw_surface = window.CreateVulkanSurface(m_Instance->Get());
+    VkSurfaceKHR raw_surface = window.CreateVulkanSurface(m_Instance->GetHandle());
     if (!raw_surface) {
         throw std::runtime_error("Failed to create window surface.");
     }
@@ -35,7 +35,7 @@ void VulkanContext::Destroy() {
 
     // 2. 销毁 Surface（必须在 Instance 之前销毁）
     if (m_Surface) {
-        m_Instance->Get().destroySurfaceKHR(m_Surface);
+        m_Instance->GetHandle().destroySurfaceKHR(m_Surface);
         m_Surface = nullptr;
     }
 

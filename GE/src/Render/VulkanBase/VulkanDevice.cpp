@@ -39,7 +39,7 @@ void VulkanDevice::Init(VulkanInstance &instance, vk::SurfaceKHR surface) {
 }
 
 void VulkanDevice::SelectPhysicalDevice(vk::SurfaceKHR surface) {
-    auto gpus = m_Instance->Get().enumeratePhysicalDevices();
+    auto gpus = m_Instance->GetHandle().enumeratePhysicalDevices();
 
     for (auto &gpu : gpus) {
         vk::PhysicalDeviceProperties device_properties = gpu.getProperties();
@@ -139,7 +139,7 @@ void VulkanDevice::InitDevice() {
 
         VmaAllocatorCreateInfo alloc_info{};
         alloc_info.vulkanApiVersion = VK_API_VERSION_1_3;
-        alloc_info.instance = m_Instance->Get();
+        alloc_info.instance = m_Instance->GetHandle();
         alloc_info.physicalDevice = m_Gpu;
         alloc_info.device = m_Device;
         alloc_info.pVulkanFunctions = &vk_funcs;

@@ -38,7 +38,7 @@ public:
     // -- Vulkan 句柄访问器 --
     [[nodiscard]] VulkanInstance &GetInstance() { return *m_Instance; }
     [[nodiscard]] VulkanDevice &GetDevice() { return m_Device; }
-    [[nodiscard]] vk::Instance GetVkInstance() const { return m_Instance->Get(); }
+    [[nodiscard]] vk::Instance GetVkInstance() const { return m_Instance->GetHandle(); }
     [[nodiscard]] vk::SurfaceKHR GetSurface() const { return m_Surface; }
     [[nodiscard]] vk::Device GetVkDevice() const { return m_Device.GetDevice(); }
     [[nodiscard]] vk::PhysicalDevice GetVkGpu() const { return m_Device.GetGpu(); }

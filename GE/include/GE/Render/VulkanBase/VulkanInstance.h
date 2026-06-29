@@ -92,9 +92,10 @@ public:
     /// 返回已启用的扩展列表。
     [[nodiscard]] std::vector<std::string> const &GetEnabledExtensions() const { return m_EnabledExtensions; }
 
-private:
-    // 默认的 InstanceCreateFlags 回调
+    /// 默认的 InstanceCreateFlags 回调（返回空 flags）。
     static vk::InstanceCreateFlags DefaultGetCreateFlags(std::vector<std::string> const &);
+
+private:
 
     /// 正在使用的 Vulkan 实例句柄
     vk::Instance m_Instance = nullptr;

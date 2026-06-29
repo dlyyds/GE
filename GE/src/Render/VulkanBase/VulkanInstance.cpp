@@ -258,21 +258,6 @@ VulkanInstance::VulkanInstance(
     StructureChainBuilder<vk::InstanceCreateInfo> scb;
     scb.set_anchor_struct(create_info);
 
-#if defined(VKB_DEBUG) || defined(VKB_VALIDATION_LAYERS)
-    if (has_debug_utils)
-    {
-        // 将 Debug messenger 加入 pNext，让验证层在 vkCreateInstance/vkDestroyInstance 期间也能上报
-        vk::DebugUtilsMessengerCreateInfoEXT debug_pnext{
-            .messageSeverity = vk::DebugUtilsMessageSeverityFlagBitsEXT::eError |
-                               vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning,
-            .messageType = vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral |
-                           vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation,
-            .pfnUserCallback = DebugCallback,
-        };
-        scb.add_struct(debug_pnext);
-    }
-#endif
-
     extend_instance_create_info(scb);
 
     // ---- 5. 创建 Vulkan Instance ----

@@ -11,6 +11,48 @@
 
 namespace GE {
 
+namespace {
+
+/// Debug 回调，将验证层消息路由到 GE 日志系统。
+VKAPI_ATTR vk::Bool32 VKAPI_CALL DebugCallback(vk::DebugUtilsMessageSeverityFlagBitsEXT   message_severity,
+                                                vk::DebugUtilsMessageTypeFlagsEXT          message_types,
+                                                vk::DebugUtilsMessengerCallbackDataEXT const *callback_data,
+                                                void                                        * /*user_data*/)
+{
+    auto severity = message_severity;
+    auto types    = message_types;
+    auto cb_data  = callback_data;
+
+    if (severity & vk::DebugUtilsMessageSeverityFlagBitsEXT::eError)
+    {
+        GE_CORE_ERROR("{} Validation Layer: Error: {}: {}",
+                      cb_data->messageIdNumber, cb_data->pMessageIdName, cb_data->pMessage);
+    }
+    else if (severity & vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning)
+    {
+        GE_CORE_WARN("{} Validation Layer: Warning: {}: {}",
+                     cb_data->messageIdNumber, cb_data->pMessageIdName, cb_data->pMessage);
+    }
+    else if (severity & vk::DebugUtilsMessageSeverityFlagBitsEXT::eInfo)
+    {
+        GE_CORE_INFO("{} Validation Layer: Information: {}: {}",
+                     cb_data->messageIdNumber, cb_data->pMessageIdName, cb_data->pMessage);
+    }
+    else if (types & vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance)
+    {
+        GE_CORE_TRACE("{} Validation Layer: Performance warning: {}: {}",
+                      cb_data->messageIdNumber, cb_data->pMessageIdName, cb_data->pMessage);
+    }
+    else if (severity & vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose)
+    {
+        GE_CORE_TRACE("{} Validation Layer: Verbose: {}: {}",
+                      cb_data->messageIdNumber, cb_data->pMessageIdName, cb_data->pMessage);
+    }
+    return false;
+}
+
+} // anonymous namespace
+
 VulkanContext::~VulkanContext() {
     if (IsInitialized())
         Destroy();
@@ -61,12 +103,28 @@ void VulkanContext::CreateInstance() {
     layers["VK_LAYER_KHRONOS_validation"] = RequestMode::Optional;
 #endif
 
-    // ---- 创建 Instance ----
+    // ---- 创建 Instance（完整参数）----
+    auto extend_cb = [](StructureChainBuilder<vk::InstanceCreateInfo> &scb) {
+#if defined(VKB_DEBUG) || defined(VKB_VALIDATION_LAYERS)
+        // 将 Debug messenger 加入 pNext，让验证层在 vkCreateInstance/vkDestroyInstance 期间也能上报
+        vk::DebugUtilsMessengerCreateInfoEXT debug_pnext{
+            .messageSeverity = vk::DebugUtilsMessageSeverityFlagBitsEXT::eError |
+                               vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning,
+            .messageType = vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral |
+                           vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation,
+            .pfnUserCallback = DebugCallback,
+        };
+        scb.add_struct(debug_pnext);
+#endif
+    };
+
     m_Instance = std::make_unique<VulkanInstance>(
         "GE App",
         VK_API_VERSION_1_3,
         layers,
-        extensions);
+        extensions,
+        VulkanInstance::DefaultGetCreateFlags,
+        extend_cb);
 }
 
 void VulkanContext::Destroy() {

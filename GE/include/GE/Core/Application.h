@@ -60,6 +60,8 @@ public:
     /// 访问 Vulkan 全局上下文（提供给 Layer 等创建 Vulkan 资源用）。
     static VulkanContext &GetVulkanContext() { return Get().m_VulkanContext; }
 
+    static VulkanSwapchain &GetSwapchain() { return Get().m_Swapchain; }
+
     /// 访问资源管理器（纹理、着色器、网格等 GPU 缓存）。
     static ResourceManager &GetResourceManager() { return Get().m_ResourceManager; }
 

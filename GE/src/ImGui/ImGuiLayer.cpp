@@ -31,12 +31,25 @@ void ImGuiLayer::OnAttach() {
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
     // io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
 
-    ImFontConfig config;
-    config.MergeMode = false;
-
     float fontSize = 24.0f;
-    io.Fonts->AddFontFromFileTTF("assets/fonts/opensans/OpenSans-Bold.ttf", fontSize);
-    io.FontDefault = io.Fonts->AddFontFromFileTTF("assets/fonts/opensans/OpenSans-Regular.ttf", fontSize);
+
+    // 加载英文字体（基础字体，包含 ASCII）
+    ImFontConfig cfg;
+    cfg.MergeMode = false;
+    io.FontDefault = io.Fonts->AddFontFromFileTTF(
+        "assets/fonts/opensans/OpenSans-Regular.ttf", fontSize, &cfg);
+
+    // 合并中文字体（微软雅黑）— 使中文标点和 CJK 字符能正确显示
+    cfg.MergeMode = true;
+    static const ImWchar cjkRanges[] = {
+        0x2000, 0x206F,   // 通用标点
+        0x3000, 0x303F,   // CJK 符号和标点
+        0x4E00, 0x9FFF,   // CJK 统一表意文字
+        0xFF00, 0xFFEF,   // 全角/半角形式
+        0
+    };
+    io.Fonts->AddFontFromFileTTF(
+        "C:\\Windows\\Fonts\\msyh.ttc", fontSize, &cfg, cjkRanges);
 
     ImGui::StyleColorsDark();
 
@@ -53,7 +66,7 @@ void ImGuiLayer::OnAttach() {
     ImGui_ImplGlfw_InitForOther(window, true);
 
     // ---- Vulkan renderer backend ----
-    auto &swapchain = Renderer::Get().GetSwapchain();
+    auto &swapchain = Application::GetSwapchain();
     auto &ctx = Application::GetVulkanContext();
 
     auto color_format = static_cast<VkFormat>(swapchain.GetDimensions().format);
@@ -136,7 +149,7 @@ void ImGuiLayer::End() {
 
     ImGui::Render();
 
-    auto &swapchain = Renderer::Get().GetSwapchain();
+    auto &swapchain = Application::GetSwapchain();
     auto cmd = swapchain.GetCurrentCmd();
 
     // Render ImGui on top with loadOp = eLoad to preserve the scene.

@@ -43,7 +43,7 @@ Application::Application(const std::string &name, ApplicationCommandLineArgs arg
                            m_VulkanContext.GetGraphicsQueueIndex());
 
     // 4. 初始化渲染器（RingBuffer 等）
-    Renderer::Get().Init(m_VulkanContext, m_Swapchain);
+    //  Renderer::Get().Init(m_VulkanContext, m_Swapchain);
 
     m_ImGuiLayer = CreateRef<ImGuiLayer>();
     PushOverlay(m_ImGuiLayer);

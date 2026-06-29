@@ -34,8 +34,6 @@ namespace GE {
 
 namespace {
 
-/// 尝试启用一个扩展，如果可用则加入 enabled_extensions。
-/// @return true 如果扩展可用。
 bool enable_extension(std::string const                          &requested_extension,
                       std::vector<vk::ExtensionProperties> const &available_extensions,
                       std::vector<std::string>                   &enabled_extensions)
@@ -64,8 +62,6 @@ bool enable_extension(std::string const                          &requested_exte
     return is_available;
 }
 
-/// 尝试启用一个 Layer，如果可用则加入 enabled_layers。
-/// @return true 如果 Layer 可用。
 bool enable_layer(std::string const                       &requested_layer,
                   std::vector<vk::LayerProperties> const  &available_layers,
                   std::vector<std::string>                &enabled_layers)
@@ -92,44 +88,6 @@ bool enable_layer(std::string const                       &requested_layer,
         GE_CORE_TRACE("Layer '{}' not available", requested_layer);
     }
     return is_available;
-}
-
-/// Debug 回调，将验证层消息路由到 GE 日志系统。
-VKAPI_ATTR vk::Bool32 VKAPI_CALL DebugCallback(vk::DebugUtilsMessageSeverityFlagBitsEXT   message_severity,
-                                                vk::DebugUtilsMessageTypeFlagsEXT          message_types,
-                                                vk::DebugUtilsMessengerCallbackDataEXT const *callback_data,
-                                                void                                        * /*user_data*/)
-{
-    auto severity = message_severity;
-    auto types    = message_types;
-    auto cb_data  = callback_data;
-
-    if (severity & vk::DebugUtilsMessageSeverityFlagBitsEXT::eError)
-    {
-        GE_CORE_ERROR("{} Validation Layer: Error: {}: {}",
-                      cb_data->messageIdNumber, cb_data->pMessageIdName, cb_data->pMessage);
-    }
-    else if (severity & vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning)
-    {
-        GE_CORE_WARN("{} Validation Layer: Warning: {}: {}",
-                     cb_data->messageIdNumber, cb_data->pMessageIdName, cb_data->pMessage);
-    }
-    else if (severity & vk::DebugUtilsMessageSeverityFlagBitsEXT::eInfo)
-    {
-        GE_CORE_INFO("{} Validation Layer: Information: {}: {}",
-                     cb_data->messageIdNumber, cb_data->pMessageIdName, cb_data->pMessage);
-    }
-    else if (types & vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance)
-    {
-        GE_CORE_TRACE("{} Validation Layer: Performance warning: {}: {}",
-                      cb_data->messageIdNumber, cb_data->pMessageIdName, cb_data->pMessage);
-    }
-    else if (severity & vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose)
-    {
-        GE_CORE_TRACE("{} Validation Layer: Verbose: {}: {}",
-                      cb_data->messageIdNumber, cb_data->pMessageIdName, cb_data->pMessage);
-    }
-    return false;
 }
 
 } // anonymous namespace
@@ -194,10 +152,9 @@ VulkanInstance::VulkanInstance(
         }
     }
 
-    // ---- 3. 启用 Extensions（仅启用用户明确请求的扩展）----
+    // ---- 3. 启用 Extensions ----
     std::vector<vk::ExtensionProperties> available_extensions = vk::enumerateInstanceExtensionProperties();
 
-    // 如果启用了 VK_LAYER_KHRONOS_validation，合并该 Layer 提供的实例扩展
     if (std::ranges::any_of(enabled_layers, [](auto const &l) { return l == "VK_LAYER_KHRONOS_validation"; }))
     {
         std::string const                    vl_name = "VK_LAYER_KHRONOS_validation";
@@ -220,13 +177,6 @@ VulkanInstance::VulkanInstance(
             }
         }
     }
-
-    // 检查 VK_EXT_DEBUG_UTILS 是否已启用（用于决定是否注册 Debug 回调）
-#if defined(VKB_DEBUG) || defined(VKB_VALIDATION_LAYERS)
-    bool has_debug_utils = std::ranges::any_of(m_EnabledExtensions, [](auto const &e) {
-        return e == VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
-    });
-#endif
 
     // ---- 4. 构建 InstanceCreateInfo ----
     vk::ApplicationInfo app_info{
@@ -254,31 +204,13 @@ VulkanInstance::VulkanInstance(
         .ppEnabledExtensionNames = enabled_extensions_cstr.data(),
     };
 
-    // 使用 StructureChainBuilder 支持 pNext 扩展
     StructureChainBuilder<vk::InstanceCreateInfo> scb;
     scb.set_anchor_struct(create_info);
-
     extend_instance_create_info(scb);
 
     // ---- 5. 创建 Vulkan Instance ----
     m_Instance = vk::createInstance(*scb.get_struct<vk::InstanceCreateInfo>());
     VULKAN_HPP_DEFAULT_DISPATCHER.init(m_Instance);
-
-    // ---- 6. 注册 Debug 回调（如果 VK_EXT_DEBUG_UTILS 已启用）----
-#if defined(VKB_DEBUG) || defined(VKB_VALIDATION_LAYERS)
-    if (has_debug_utils)
-    {
-        vk::DebugUtilsMessengerCreateInfoEXT debug_info{
-            .messageSeverity = vk::DebugUtilsMessageSeverityFlagBitsEXT::eError |
-                               vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning,
-            .messageType = vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral |
-                           vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation,
-            .pfnUserCallback = DebugCallback,
-        };
-        m_DebugCallback = m_Instance.createDebugUtilsMessengerEXT(debug_info);
-        GE_CORE_TRACE("DebugCallback has been registered");
-    }
-#endif
 }
 
 // ============================================================================
@@ -287,12 +219,6 @@ VulkanInstance::VulkanInstance(
 
 VulkanInstance::~VulkanInstance()
 {
-    if (m_DebugCallback && m_Instance)
-    {
-        m_Instance.destroyDebugUtilsMessengerEXT(m_DebugCallback);
-        m_DebugCallback = nullptr;
-    }
-
     if (m_Instance)
     {
         m_Instance.destroy();
@@ -310,7 +236,6 @@ bool VulkanInstance::IsExtensionEnabled(char const *extension) const
                                [extension](std::string const &enabled) { return enabled == extension; });
 }
 
-// static
 vk::InstanceCreateFlags VulkanInstance::DefaultGetCreateFlags(std::vector<std::string> const &)
 {
     return vk::InstanceCreateFlags{};

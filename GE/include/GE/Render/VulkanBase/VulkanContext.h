@@ -50,6 +50,7 @@ private:
     std::unique_ptr<VulkanInstance> m_Instance;
     vk::SurfaceKHR m_Surface = nullptr;
     VulkanDevice m_Device;
+    vk::DebugUtilsMessengerEXT m_DebugCallback = nullptr;
 
     /// 使用完整参数创建 VulkanInstance（组装平台必需扩展、debug 扩展等）
     void CreateInstance();

@@ -105,9 +105,6 @@ private:
 
     /// 动态加载器，用于获取 vkGetInstanceProcAddr
     vk::detail::DynamicLoader m_Loader;
-
-    /// Debug 回调句柄（设置验证层时使用）
-    vk::DebugUtilsMessengerEXT m_DebugCallback = nullptr;
 };
 
 } // namespace GE

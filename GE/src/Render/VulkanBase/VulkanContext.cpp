@@ -125,19 +125,41 @@ void VulkanContext::CreateInstance() {
         extensions,
         VulkanInstance::DefaultGetCreateFlags,
         extend_cb);
+
+    // ---- 注册 Debug 回调（如果 VK_EXT_DEBUG_UTILS 已启用）----
+#if defined(VKB_DEBUG) || defined(VKB_VALIDATION_LAYERS)
+    if (m_Instance->IsExtensionEnabled(VK_EXT_DEBUG_UTILS_EXTENSION_NAME))
+    {
+        vk::DebugUtilsMessengerCreateInfoEXT debug_info{
+            .messageSeverity = vk::DebugUtilsMessageSeverityFlagBitsEXT::eError |
+                               vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning,
+            .messageType = vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral |
+                           vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation,
+            .pfnUserCallback = DebugCallback,
+        };
+        m_DebugCallback = m_Instance->GetHandle().createDebugUtilsMessengerEXT(debug_info);
+        GE_CORE_TRACE("DebugCallback has been registered");
+    }
+#endif
 }
 
 void VulkanContext::Destroy() {
     // 1. 销毁 Device
     m_Device.Destroy();
 
-    // 2. 销毁 Surface（必须在 Instance 之前销毁）
+    // 2. 销毁 Debug 回调（必须在 Instance 之前销毁）
+    if (m_DebugCallback) {
+        m_Instance->GetHandle().destroyDebugUtilsMessengerEXT(m_DebugCallback);
+        m_DebugCallback = nullptr;
+    }
+
+    // 3. 销毁 Surface（必须在 Instance 之前销毁）
     if (m_Surface) {
         m_Instance->GetHandle().destroySurfaceKHR(m_Surface);
         m_Surface = nullptr;
     }
 
-    // 3. 销毁 Instance（unique_ptr 析构触发 VulkanInstance 析构）
+    // 4. 销毁 Instance（unique_ptr 析构触发 VulkanInstance 析构）
     m_Instance.reset();
 }
 

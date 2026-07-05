@@ -207,7 +207,9 @@ inline FeatureType &PhysicalDevice::AddExtensionFeatures()
                                  std::string(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME) + " 未启用");
     }
 
-    auto [it, added] = extension_features.insert({FeatureType::structureType, std::make_shared<FeatureType>()});
+    auto ptr = std::make_shared<FeatureType>();
+    ptr->sType = FeatureType::structureType;
+    auto [it, added] = extension_features.insert({FeatureType::structureType, std::move(ptr)});
     if (added)
     {
         // 头插法：新节点插入链表头部，pNext 指向旧头

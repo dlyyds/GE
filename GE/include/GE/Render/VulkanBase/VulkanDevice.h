@@ -3,65 +3,82 @@
 #include <vulkan/vulkan.hpp>
 #include "vk_mem_alloc.h"
 
+#include <functional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace GE {
 
-class VulkanInstance;
-class Window;
+class PhysicalDevice;
 
-/// Vulkan logical device. Two-phase init: default construct, then Init().
-/// Owns the VMA allocator. Does NOT own the surface (managed by VulkanContext).
+/**
+ * @brief Vulkan 逻辑设备，参照 Vulkan-Samples 的 Device 模式实现。
+ *
+ * 构造即创建逻辑设备，析构即销毁。
+ * 生命周期由 VulkanContext 通过 unique_ptr 管理。
+ * 保留 VMA 分配器集成（Vulkan-Samples 原版不使用 VMA，此处按项目需要保留）。
+ */
 class VulkanDevice {
 public:
-    VulkanDevice() = default;
-
-    /// Creates device from the given instance, physical device and surface.
-    /// @param instance        the Vulkan instance (must outlive this device)
-    /// @param gpu             the selected physical device handle
-    /// @param surface         the window surface (used for queue family selection)
-    void Init(VulkanInstance &instance, vk::PhysicalDevice gpu, vk::SurfaceKHR surface);
-
-    /// Destroy device, VMA allocator. Safe to call even if not initialized.
-    void Destroy();
+    /**
+     * @brief 创建逻辑设备。
+     * @param gpu                  已选定的物理设备（必须已构造且有效）。
+     * @param surface              窗口 surface（用于 present 支持查询）。
+     * @param requested_extensions 按扩展名 → 是否可选 映射的请求扩展列表。
+     * @param request_gpu_features 在设备创建前调用，用于请求 GPU 扩展特性。
+     */
+    VulkanDevice(PhysicalDevice                                          &gpu,
+                 vk::SurfaceKHR                                           surface,
+                 std::unordered_map<const char *, bool> const            &requested_extensions = {},
+                 std::function<void(PhysicalDevice &)>                    request_gpu_features  = {});
 
     ~VulkanDevice();
 
     VulkanDevice(const VulkanDevice &) = delete;
     VulkanDevice &operator=(const VulkanDevice &) = delete;
 
-    VulkanDevice(VulkanDevice &&) = default;
-    VulkanDevice &operator=(VulkanDevice &&) = default;
+    /// 获取 Vulkan 逻辑设备句柄。
+    [[nodiscard]] vk::Device GetHandle() const { return m_Device; }
 
-    [[nodiscard]] bool IsInitialized() const { return m_Device != nullptr; }
+    /// 获取关联的 PhysicalDevice。
+    [[nodiscard]] PhysicalDevice &GetGpu() const { return m_Gpu; }
 
-    [[nodiscard]] vk::PhysicalDevice GetGpu() const { return m_Gpu; }
-    [[nodiscard]] vk::Device GetDevice() const { return m_Device; }
-    [[nodiscard]] vk::Queue GetQueue() const { return m_Queue; }
+    /// 获取图形队列。
+    [[nodiscard]] vk::Queue GetQueue() const { return m_GraphicsQueue; }
+
+    /// 获取图形队列对应的队列族索引。
     [[nodiscard]] int32_t GetGraphicsQueueIndex() const { return m_GraphicsQueueIndex; }
 
-    /// Return the VMA allocator. Valid after Init().
+    /// 获取 VMA 分配器。
     [[nodiscard]] VmaAllocator GetVmaAllocator() const { return m_VmaAllocator; }
 
-    /// Utility: find a memory type matching type_filter with the given properties.
+    /// 检查指定扩展是否已启用。
+    [[nodiscard]] bool IsExtensionEnabled(const char *extension) const;
+
+    /// 等待设备空闲。
+    void WaitIdle() const;
+
+    /// 在给定的物理设备上查找满足类型位掩码和内存属性要求的内存类型。
     static uint32_t FindMemoryType(vk::PhysicalDevice gpu, uint32_t type_filter,
                                    vk::MemoryPropertyFlags properties);
 
 private:
-    void InitDevice();
+    /// 内部初始化：队列创建、扩展检查、特性请求、设备创建、VMA 初始化。
+    void Init(std::unordered_map<const char *, bool> const &requested_extensions,
+              std::function<void(PhysicalDevice &)>         request_gpu_features);
 
-    bool ValidateExtensions(const std::vector<const char *> &required,
-                            const std::vector<vk::ExtensionProperties> &available);
+    /// 初始化 VMA 分配器。
+    void InitVma();
 
-    vk::Device m_Device = nullptr;
-    vk::Queue m_Queue = nullptr;
-    vk::PhysicalDevice m_Gpu = nullptr;
-    int32_t m_GraphicsQueueIndex = -1;
-    VmaAllocator m_VmaAllocator = nullptr;
+    PhysicalDevice &m_Gpu;
+    vk::Device      m_Device            = nullptr;
+    vk::SurfaceKHR  m_Surface           = nullptr;
+    vk::Queue       m_GraphicsQueue     = nullptr;
+    int32_t         m_GraphicsQueueIndex = -1;
 
-    // Non-owning pointer — VulkanInstance must outlive this device.
-    VulkanInstance *m_Instance = nullptr;
+    std::vector<const char *> m_EnabledExtensions;
+    VmaAllocator              m_VmaAllocator = nullptr;
 };
 
 } // namespace GE

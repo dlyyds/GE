@@ -1,165 +1,263 @@
-//
-// Created by Lenovo on 2026/6/3.
-//
-
 #define VULKAN_HPP_DISPATCH_LOADER_DYNAMIC 1
 #include "Render/VulkanBase/VulkanDevice.h"
-#include "Render/VulkanBase/VulkanInstance.h"
+#include "Render/VulkanBase/PhysicalDevice.h"
 #include "Core/Log.h"
 
 #include <cstring>
+#include <stdexcept>
 
 namespace GE {
 
-void VulkanDevice::Destroy() {
-    if (m_VmaAllocator) {
+// ============================================================================
+// 构造函数：创建物理设备 → 初始化 → VMA
+// ============================================================================
+
+VulkanDevice::VulkanDevice(PhysicalDevice                                          &gpu,
+                           vk::SurfaceKHR                                           surface,
+                           std::unordered_map<const char *, bool> const            &requested_extensions,
+                           std::function<void(PhysicalDevice &)>                    request_gpu_features) :
+    m_Gpu{gpu},
+    m_Surface{surface}
+{
+    Init(requested_extensions, request_gpu_features);
+    InitVma();
+}
+
+// ============================================================================
+// 析构函数
+// ============================================================================
+
+VulkanDevice::~VulkanDevice()
+{
+    if (m_VmaAllocator)
+    {
         vmaDestroyAllocator(m_VmaAllocator);
         m_VmaAllocator = nullptr;
     }
 
-    m_Queue = nullptr;
+    m_GraphicsQueue = nullptr;
     if (m_Device)
+    {
         m_Device.destroy();
-    m_Device = nullptr;
-    m_Gpu = nullptr;
-    m_GraphicsQueueIndex = -1;
-
-    m_Instance = nullptr;
-}
-
-VulkanDevice::~VulkanDevice() {
-    Destroy();
-}
-
-void VulkanDevice::Init(VulkanInstance &instance, vk::PhysicalDevice gpu, vk::SurfaceKHR surface) {
-    m_Instance = &instance;
-    m_Gpu = gpu;
-
-    // 查找支持 Graphics + Present 的队列族
-    auto queue_family_properties = gpu.getQueueFamilyProperties();
-    uint32_t index = 0;
-    auto qfpIt = std::ranges::find_if(queue_family_properties,
-                                      [&gpu, surface, &index](vk::QueueFamilyProperties const &qfp) {
-                                          return (qfp.queueFlags & vk::QueueFlagBits::eGraphics) &&
-                                                 static_cast<VkBool32>(gpu.getSurfaceSupportKHR(index++, surface));
-                                      });
-    if (qfpIt == queue_family_properties.end()) {
-        throw std::runtime_error("No queue family supports both graphics and present.");
+        m_Device = nullptr;
     }
-    m_GraphicsQueueIndex = static_cast<int32_t>(std::distance(queue_family_properties.begin(), qfpIt));
-
-    InitDevice();
 }
 
-void VulkanDevice::InitDevice() {
-    GE_CORE_INFO("Initializing Vulkan device.");
+// ============================================================================
+// Init — 参照 Vulkan-Samples Device::init() 模式
+// ============================================================================
 
-    std::vector<vk::ExtensionProperties> device_extensions = m_Gpu.enumerateDeviceExtensionProperties();
+void VulkanDevice::Init(std::unordered_map<const char *, bool> const &requested_extensions,
+                        std::function<void(PhysicalDevice &)>         request_gpu_features)
+{
+    GE_CORE_INFO("Selected GPU: {}", m_Gpu.GetProperties().deviceName.data());
 
-    std::vector<const char *> required_device_extensions{VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-                                                         VK_EXT_EXTENDED_DYNAMIC_STATE_EXTENSION_NAME};
+    // ---- 1. 准备所有队列族的创建信息 ----
+    auto const &queue_family_properties = m_Gpu.GetQueueFamilyProperties();
+    std::vector<vk::DeviceQueueCreateInfo> queue_create_infos;
+    std::vector<std::vector<float>>        queue_priorities;
 
-    if (!ValidateExtensions(required_device_extensions, device_extensions)) {
-        throw std::runtime_error("Required device extensions are missing");
+    queue_create_infos.reserve(queue_family_properties.size());
+    queue_priorities.reserve(queue_family_properties.size());
+
+    for (uint32_t family_index = 0; family_index < queue_family_properties.size(); ++family_index)
+    {
+        auto const &qfp = queue_family_properties[family_index];
+
+        queue_priorities.push_back(std::vector<float>(qfp.queueCount, 0.5f));
+
+        // 如果启用了高优先级图形队列，将图形队列族的第一个队列设为 1.0
+        if (m_Gpu.HasHighPriorityGraphicsQueue() && (qfp.queueFlags & vk::QueueFlagBits::eGraphics))
+        {
+            queue_priorities.back()[0] = 1.0f;
+        }
+
+        queue_create_infos.push_back(vk::DeviceQueueCreateInfo{
+            .queueFamilyIndex = family_index,
+            .queueCount       = qfp.queueCount,
+            .pQueuePriorities = queue_priorities[family_index].data(),
+        });
     }
 
-#if (defined(VK_ENABLE_PORTABILITY))
-    if (std::ranges::any_of(device_extensions,
-                            [](vk::ExtensionProperties const &extension) {
-                                return strcmp(extension.extensionName, VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME) == 0;
-                            })) {
-        required_device_extensions.push_back(VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME);
+    // ---- 2. 检查并启用扩展 ----
+    // 2a. 基础必需扩展（Swapchain）
+    std::vector<const char *> required_core_extensions = {
+        VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+        VK_EXT_EXTENDED_DYNAMIC_STATE_EXTENSION_NAME,
+    };
+
+    // 检查必需扩展是否可用
+    for (auto const &ext : required_core_extensions)
+    {
+        if (m_Gpu.IsExtensionSupported(ext))
+        {
+            m_EnabledExtensions.push_back(ext);
+        }
+        else
+        {
+            throw std::runtime_error(std::string("Required device extension not available: ") + ext);
+        }
+    }
+
+#if defined(VK_ENABLE_PORTABILITY)
+    if (m_Gpu.IsExtensionSupported(VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME))
+    {
+        m_EnabledExtensions.push_back(VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME);
     }
 #endif
 
-    auto supported_features_chain =
-        m_Gpu.getFeatures2<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features,
-                           vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>();
+    // 2b. 可选扩展（Dedicated Allocation 等）
+    bool can_get_memory_requirements = m_Gpu.IsExtensionSupported("VK_KHR_get_memory_requirements2");
+    bool has_dedicated_allocation    = m_Gpu.IsExtensionSupported("VK_KHR_dedicated_allocation");
 
-    if (!supported_features_chain.get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering) {
-        throw std::runtime_error("Dynamic Rendering feature is missing");
-    }
-    if (!supported_features_chain.get<vk::PhysicalDeviceVulkan13Features>().synchronization2) {
-        throw std::runtime_error("Synchronization2 feature is missing");
-    }
-    if (!supported_features_chain.get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState) {
-        throw std::runtime_error("Extended Dynamic State feature is missing");
+    if (can_get_memory_requirements && has_dedicated_allocation)
+    {
+        m_EnabledExtensions.push_back("VK_KHR_get_memory_requirements2");
+        m_EnabledExtensions.push_back("VK_KHR_dedicated_allocation");
+        GE_CORE_INFO("Dedicated Allocation enabled");
     }
 
-    vk::PhysicalDeviceVulkan13Features vulkan13_features;
-    vulkan13_features.synchronization2 = true;
-    vulkan13_features.dynamicRendering = true;
-    vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT ext_features;
-    ext_features.extendedDynamicState = true;
-    vk::StructureChain<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features,
-                       vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>
-        enabled_features_chain = {vk::PhysicalDeviceFeatures2{}, vulkan13_features, ext_features};
+    // 2c. 请求的外部扩展
+    for (auto const &[ext_name, is_optional] : requested_extensions)
+    {
+        if (m_Gpu.IsExtensionSupported(ext_name))
+        {
+            // 避免重复添加
+            auto already = std::ranges::find_if(m_EnabledExtensions,
+                [ext_name](const char *enabled) { return strcmp(enabled, ext_name) == 0; });
+            if (already == m_EnabledExtensions.end())
+            {
+                m_EnabledExtensions.push_back(ext_name);
+            }
+        }
+        else if (!is_optional)
+        {
+            throw std::runtime_error(std::string("Required device extension not available: ") + ext_name);
+        }
+        else
+        {
+            GE_CORE_WARN("Optional device extension '{}' not available, some features may be disabled", ext_name);
+        }
+    }
 
-    float queue_priority = 0.5f;
+    if (!m_EnabledExtensions.empty())
+    {
+        GE_CORE_INFO("Device enabled extensions:");
+        for (auto const &ext : m_EnabledExtensions)
+        {
+            GE_CORE_INFO("  \t{}", ext);
+        }
+    }
 
-    vk::DeviceQueueCreateInfo queue_info;
-    queue_info.queueFamilyIndex = static_cast<uint32_t>(m_GraphicsQueueIndex);
-    queue_info.queueCount = 1;
-    queue_info.pQueuePriorities = &queue_priority;
+    // ---- 3. 调用外部特性请求回调 ----
+    if (request_gpu_features)
+    {
+        request_gpu_features(m_Gpu);
+    }
 
-    vk::DeviceCreateInfo device_info;
-    device_info.pNext = &enabled_features_chain.get<vk::PhysicalDeviceFeatures2>();
-    device_info.queueCreateInfoCount = 1;
-    device_info.pQueueCreateInfos = &queue_info;
-    device_info.enabledExtensionCount = static_cast<uint32_t>(required_device_extensions.size());
-    device_info.ppEnabledExtensionNames = required_device_extensions.data();
+    // ---- 4. 创建逻辑设备 ----
+    vk::DeviceCreateInfo create_info{
+        .pNext                   = m_Gpu.GetExtensionFeatureChain(),
+        .queueCreateInfoCount    = static_cast<uint32_t>(queue_create_infos.size()),
+        .pQueueCreateInfos       = queue_create_infos.data(),
+        .enabledExtensionCount   = static_cast<uint32_t>(m_EnabledExtensions.size()),
+        .ppEnabledExtensionNames = m_EnabledExtensions.data(),
+        .pEnabledFeatures        = &m_Gpu.GetRequestedFeatures(),
+    };
 
-    m_Device = m_Gpu.createDevice(device_info);
+    m_Device = m_Gpu.GetHandle().createDevice(create_info);
 
     VULKAN_HPP_DEFAULT_DISPATCHER.init(m_Device);
 
-    // Init VMA allocator
+    // ---- 5. 获取图形队列 ----
+    // 找第一个支持 Graphics 的队列族
+    for (uint32_t family_index = 0; family_index < queue_family_properties.size(); ++family_index)
     {
-        VmaVulkanFunctions vk_funcs{};
-        vk_funcs.vkGetInstanceProcAddr = VULKAN_HPP_DEFAULT_DISPATCHER.vkGetInstanceProcAddr;
-        vk_funcs.vkGetDeviceProcAddr = VULKAN_HPP_DEFAULT_DISPATCHER.vkGetDeviceProcAddr;
+        if (queue_family_properties[family_index].queueFlags & vk::QueueFlagBits::eGraphics)
+        {
+            m_GraphicsQueueIndex = static_cast<int32_t>(family_index);
+            m_GraphicsQueue      = m_Device.getQueue(family_index, 0);
 
-        VmaAllocatorCreateInfo alloc_info{};
-        alloc_info.vulkanApiVersion = VK_API_VERSION_1_3;
-        alloc_info.instance = m_Instance->GetHandle();
-        alloc_info.physicalDevice = m_Gpu;
-        alloc_info.device = m_Device;
-        alloc_info.pVulkanFunctions = &vk_funcs;
-
-        vmaCreateAllocator(&alloc_info, &m_VmaAllocator);
+            GE_CORE_INFO("Using graphics queue family index {}", family_index);
+            break;
+        }
     }
 
-    m_Queue = m_Device.getQueue(static_cast<uint32_t>(m_GraphicsQueueIndex), 0);
+    if (m_GraphicsQueueIndex < 0)
+    {
+        throw std::runtime_error("No graphics queue family found on the device");
+    }
 }
 
+// ============================================================================
+// InitVma — VMA 分配器初始化
+// ============================================================================
+
+void VulkanDevice::InitVma()
+{
+    VmaVulkanFunctions vk_funcs{};
+    vk_funcs.vkGetInstanceProcAddr = VULKAN_HPP_DEFAULT_DISPATCHER.vkGetInstanceProcAddr;
+    vk_funcs.vkGetDeviceProcAddr   = VULKAN_HPP_DEFAULT_DISPATCHER.vkGetDeviceProcAddr;
+
+    VmaAllocatorCreateInfo alloc_info{};
+    alloc_info.vulkanApiVersion     = VK_API_VERSION_1_3;
+    alloc_info.instance             = static_cast<VkInstance>(m_Gpu.GetInstance().GetHandle());
+    alloc_info.physicalDevice       = static_cast<VkPhysicalDevice>(m_Gpu.GetHandle());
+    alloc_info.device               = static_cast<VkDevice>(m_Device);
+    alloc_info.pVulkanFunctions     = &vk_funcs;
+
+    VkResult result = vmaCreateAllocator(&alloc_info, &m_VmaAllocator);
+    if (result != VK_SUCCESS)
+    {
+        throw std::runtime_error("Failed to create VMA allocator");
+    }
+}
+
+// ============================================================================
+// 扩展检查
+// ============================================================================
+
+bool VulkanDevice::IsExtensionEnabled(const char *extension) const
+{
+    return std::ranges::find_if(m_EnabledExtensions,
+                                [extension](const char *enabled) {
+                                    return strcmp(extension, enabled) == 0;
+                                }) != m_EnabledExtensions.end();
+}
+
+// ============================================================================
+// 等待空闲
+// ============================================================================
+
+void VulkanDevice::WaitIdle() const
+{
+    if (m_Device)
+    {
+        m_Device.waitIdle();
+    }
+}
+
+// ============================================================================
+// 查找内存类型（静态工具函数）
+// ============================================================================
+
 uint32_t VulkanDevice::FindMemoryType(vk::PhysicalDevice gpu, uint32_t type_filter,
-                                      vk::MemoryPropertyFlags properties) {
+                                      vk::MemoryPropertyFlags properties)
+{
     vk::PhysicalDeviceMemoryProperties mem_properties = gpu.getMemoryProperties();
 
-    for (uint32_t i = 0; i < mem_properties.memoryTypeCount; i++) {
-        if (type_filter & (1 << i)) {
-            if ((mem_properties.memoryTypes[i].propertyFlags & properties) == properties) {
+    for (uint32_t i = 0; i < mem_properties.memoryTypeCount; ++i)
+    {
+        if (type_filter & (1 << i))
+        {
+            if ((mem_properties.memoryTypes[i].propertyFlags & properties) == properties)
+            {
                 return i;
             }
         }
     }
 
     throw std::runtime_error("Failed to find suitable memory type.");
-}
-
-bool VulkanDevice::ValidateExtensions(const std::vector<const char *> &required,
-                                      const std::vector<vk::ExtensionProperties> &available) {
-    return std::ranges::all_of(required,
-                               [&available](auto const &extension_name) {
-                                   bool found = std::ranges::any_of(
-                                       available, [&extension_name](auto const &ep) {
-                                           return strcmp(ep.extensionName, extension_name) == 0;
-                                       });
-                                   if (!found) {
-                                       GE_CORE_ERROR("Required extension not found: {}", extension_name);
-                                   }
-                                   return found;
-                               });
 }
 
 } // namespace GE

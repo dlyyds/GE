@@ -1,7 +1,3 @@
-//
-// Created by Lenovo on 2026/6/9.
-//
-
 #include "Render/VulkanBase/VulkanContext.h"
 #include "Core/GEWindow.h"
 #include "Core/Log.h"
@@ -73,7 +69,7 @@ void VulkanContext::Init(Window &window) {
     auto gpus = m_Instance->GetHandle().enumeratePhysicalDevices();
     for (auto &gpu : gpus) {
         if (gpu.getProperties().apiVersion >= VK_API_VERSION_1_3) {
-            m_PhysicalDevice.emplace(*m_Instance, gpu);
+            m_PhysicalDevice = std::make_unique<PhysicalDevice>(*m_Instance, gpu);
             break;
         }
     }
@@ -81,8 +77,8 @@ void VulkanContext::Init(Window &window) {
         throw std::runtime_error("Failed to find a suitable GPU with Vulkan 1.3 support.");
     }
 
-    // 4. 初始化 Device（传入已选 GPU 和 surface）
-    m_Device.Init(*m_Instance, m_PhysicalDevice->GetHandle(), m_Surface);
+    // 4. 创建 Device（构造即创建逻辑设备 + VMA）
+    m_Device = std::make_unique<VulkanDevice>(*m_PhysicalDevice, m_Surface);
 }
 
 std::unique_ptr<VulkanInstance> VulkanContext::CreateInstance() {
@@ -156,8 +152,8 @@ std::unique_ptr<VulkanInstance> VulkanContext::CreateInstance() {
 }
 
 void VulkanContext::Destroy() {
-    // 1. 销毁 Device
-    m_Device.Destroy();
+    // 1. 销毁 Device（unique_ptr 析构触发 VulkanDevice 析构 → 销毁 VMA + Device）
+    m_Device.reset();
 
     // 2. 释放 PhysicalDevice（持有 Instance 引用，须在 Instance 之前销毁）
     m_PhysicalDevice.reset();

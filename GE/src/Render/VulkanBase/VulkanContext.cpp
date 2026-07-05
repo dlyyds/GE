@@ -59,8 +59,8 @@ VulkanContext::~VulkanContext() {
 }
 
 void VulkanContext::Init(Window &window) {
-    // 1. 创建 Vulkan Instance（使用完整参数组装必需扩展）
-    CreateInstance();
+    // 1. 创建 Vulkan Instance
+    m_Instance = CreateInstance();
 
     // 2. 从 Instance + Window 创建 Surface
     VkSurfaceKHR raw_surface = window.CreateVulkanSurface(m_Instance->GetHandle());
@@ -69,11 +69,23 @@ void VulkanContext::Init(Window &window) {
     }
     m_Surface = raw_surface;
 
-    // 3. 初始化 Device（传入 surface 用于队列族选择）
-    m_Device.Init(*m_Instance, m_Surface);
+    // 3. 选择 PhysicalDevice（找第一个支持 Vulkan 1.3 的 GPU）
+    auto gpus = m_Instance->GetHandle().enumeratePhysicalDevices();
+    for (auto &gpu : gpus) {
+        if (gpu.getProperties().apiVersion >= VK_API_VERSION_1_3) {
+            m_PhysicalDevice.emplace(*m_Instance, gpu);
+            break;
+        }
+    }
+    if (!m_PhysicalDevice) {
+        throw std::runtime_error("Failed to find a suitable GPU with Vulkan 1.3 support.");
+    }
+
+    // 4. 初始化 Device（传入已选 GPU 和 surface）
+    m_Device.Init(*m_Instance, m_PhysicalDevice->GetHandle(), m_Surface);
 }
 
-void VulkanContext::CreateInstance() {
+std::unique_ptr<VulkanInstance> VulkanContext::CreateInstance() {
     // ---- 组装平台必需的扩展 ----
     std::unordered_map<std::string, RequestMode> extensions;
     extensions[VK_KHR_SURFACE_EXTENSION_NAME] = RequestMode::Required;
@@ -98,15 +110,13 @@ void VulkanContext::CreateInstance() {
     std::unordered_map<std::string, RequestMode> layers;
 
 #if defined(VK_DEBUG) || defined(VK_VALIDATION_LAYERS)
-    // Debug/验证需要的扩展和 Layer
     extensions[VK_EXT_DEBUG_UTILS_EXTENSION_NAME] = RequestMode::Optional;
     layers["VK_LAYER_KHRONOS_validation"] = RequestMode::Optional;
 #endif
 
-    // ---- 创建 Instance（完整参数）----
+    // ---- pNext 扩展回调 ----
     auto extend_cb = [](StructureChainBuilder<vk::InstanceCreateInfo> &scb) {
 #if defined(VK_DEBUG) || defined(VK_VALIDATION_LAYERS)
-        // 将 Debug messenger 加入 pNext，让验证层在 vkCreateInstance/vkDestroyInstance 期间也能上报
         vk::DebugUtilsMessengerCreateInfoEXT debug_pnext{
             .messageSeverity = vk::DebugUtilsMessageSeverityFlagBitsEXT::eError |
                                vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning,
@@ -118,7 +128,7 @@ void VulkanContext::CreateInstance() {
 #endif
     };
 
-    m_Instance = std::make_unique<VulkanInstance>(
+    auto instance = std::make_unique<VulkanInstance>(
         "GE App",
         VK_API_VERSION_1_3,
         layers,
@@ -128,7 +138,7 @@ void VulkanContext::CreateInstance() {
 
     // ---- 注册 Debug 回调（如果 VK_EXT_DEBUG_UTILS 已启用）----
 #if defined(VK_DEBUG) || defined(VK_VALIDATION_LAYERS)
-    if (m_Instance->IsExtensionEnabled(VK_EXT_DEBUG_UTILS_EXTENSION_NAME))
+    if (instance->IsExtensionEnabled(VK_EXT_DEBUG_UTILS_EXTENSION_NAME))
     {
         vk::DebugUtilsMessengerCreateInfoEXT debug_info{
             .messageSeverity = vk::DebugUtilsMessageSeverityFlagBitsEXT::eError |
@@ -137,29 +147,34 @@ void VulkanContext::CreateInstance() {
                            vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation,
             .pfnUserCallback = DebugCallback,
         };
-        m_DebugCallback = m_Instance->GetHandle().createDebugUtilsMessengerEXT(debug_info);
+        m_DebugCallback = instance->GetHandle().createDebugUtilsMessengerEXT(debug_info);
         GE_CORE_TRACE("DebugCallback has been registered");
     }
 #endif
+
+    return instance;
 }
 
 void VulkanContext::Destroy() {
     // 1. 销毁 Device
     m_Device.Destroy();
 
-    // 2. 销毁 Debug 回调（必须在 Instance 之前销毁）
+    // 2. 释放 PhysicalDevice（持有 Instance 引用，须在 Instance 之前销毁）
+    m_PhysicalDevice.reset();
+
+    // 3. 销毁 Debug 回调（必须在 Instance 之前销毁）
     if (m_DebugCallback) {
         m_Instance->GetHandle().destroyDebugUtilsMessengerEXT(m_DebugCallback);
         m_DebugCallback = nullptr;
     }
 
-    // 3. 销毁 Surface（必须在 Instance 之前销毁）
+    // 4. 销毁 Surface（必须在 Instance 之前销毁）
     if (m_Surface) {
         m_Instance->GetHandle().destroySurfaceKHR(m_Surface);
         m_Surface = nullptr;
     }
 
-    // 4. 销毁 Instance（unique_ptr 析构触发 VulkanInstance 析构）
+    // 5. 销毁 Instance（unique_ptr 析构触发 VulkanInstance 析构）
     m_Instance.reset();
 }
 

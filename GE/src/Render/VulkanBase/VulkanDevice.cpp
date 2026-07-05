@@ -31,42 +31,24 @@ VulkanDevice::~VulkanDevice() {
     Destroy();
 }
 
-void VulkanDevice::Init(VulkanInstance &instance, vk::SurfaceKHR surface) {
+void VulkanDevice::Init(VulkanInstance &instance, vk::PhysicalDevice gpu, vk::SurfaceKHR surface) {
     m_Instance = &instance;
+    m_Gpu = gpu;
 
-    SelectPhysicalDevice(surface);
+    // 查找支持 Graphics + Present 的队列族
+    auto queue_family_properties = gpu.getQueueFamilyProperties();
+    uint32_t index = 0;
+    auto qfpIt = std::ranges::find_if(queue_family_properties,
+                                      [&gpu, surface, &index](vk::QueueFamilyProperties const &qfp) {
+                                          return (qfp.queueFlags & vk::QueueFlagBits::eGraphics) &&
+                                                 static_cast<VkBool32>(gpu.getSurfaceSupportKHR(index++, surface));
+                                      });
+    if (qfpIt == queue_family_properties.end()) {
+        throw std::runtime_error("No queue family supports both graphics and present.");
+    }
+    m_GraphicsQueueIndex = static_cast<int32_t>(std::distance(queue_family_properties.begin(), qfpIt));
+
     InitDevice();
-}
-
-void VulkanDevice::SelectPhysicalDevice(vk::SurfaceKHR surface) {
-    auto gpus = m_Instance->GetHandle().enumeratePhysicalDevices();
-
-    for (auto &gpu : gpus) {
-        vk::PhysicalDeviceProperties device_properties = gpu.getProperties();
-        if (device_properties.apiVersion < vk::ApiVersion13) {
-            GE_CORE_WARN("Physical device '{}' does not support Vulkan 1.3, skipping.", device_properties.deviceName.data());
-            continue;
-        }
-
-        std::vector<vk::QueueFamilyProperties> queue_family_properties = gpu.getQueueFamilyProperties();
-
-        uint32_t index = 0;
-        auto qfpIt = std::ranges::find_if(queue_family_properties,
-                                          [&gpu, surface, &index](vk::QueueFamilyProperties const &qfp) {
-                                              return (qfp.queueFlags & vk::QueueFlagBits::eGraphics) &&
-                                                     gpu.getSurfaceSupportKHR(index++, surface);
-                                          });
-        if (qfpIt != queue_family_properties.end()) {
-            m_GraphicsQueueIndex = static_cast<int32_t>(std::distance(queue_family_properties.begin(), qfpIt));
-            m_Gpu = gpu;
-            GE_CORE_INFO("Selected GPU: {}", device_properties.deviceName.data());
-            break;
-        }
-    }
-
-    if (m_GraphicsQueueIndex < 0) {
-        throw std::runtime_error("Failed to find a suitable GPU with Vulkan 1.3 support.");
-    }
 }
 
 void VulkanDevice::InitDevice() {

@@ -17,10 +17,11 @@ class VulkanDevice {
 public:
     VulkanDevice() = default;
 
-    /// Creates device from the given instance and surface.
-    /// @param instance  the Vulkan instance (must outlive this device)
-    /// @param surface   the window surface (used for queue family selection)
-    void Init(VulkanInstance &instance, vk::SurfaceKHR surface);
+    /// Creates device from the given instance, physical device and surface.
+    /// @param instance        the Vulkan instance (must outlive this device)
+    /// @param gpu             the selected physical device handle
+    /// @param surface         the window surface (used for queue family selection)
+    void Init(VulkanInstance &instance, vk::PhysicalDevice gpu, vk::SurfaceKHR surface);
 
     /// Destroy device, VMA allocator. Safe to call even if not initialized.
     void Destroy();
@@ -48,7 +49,6 @@ public:
                                    vk::MemoryPropertyFlags properties);
 
 private:
-    void SelectPhysicalDevice(vk::SurfaceKHR surface);
     void InitDevice();
 
     bool ValidateExtensions(const std::vector<const char *> &required,

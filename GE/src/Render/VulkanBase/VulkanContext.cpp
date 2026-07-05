@@ -54,7 +54,59 @@ VulkanContext::~VulkanContext() {
         Destroy();
 }
 
+// ============================================================================
+// 扩展管理
+// ============================================================================
+
+void VulkanContext::AddInstanceExtension(std::string name, RequestMode mode) {
+    m_InstanceExtensions[std::move(name)] = mode;
+}
+
+void VulkanContext::AddDeviceExtension(std::string name, RequestMode mode) {
+    m_DeviceExtensions[std::move(name)] = mode;
+}
+
+// ============================================================================
+// 填充引擎默认扩展（用户已自定义的不覆盖）
+// ============================================================================
+
+void VulkanContext::ApplyDefaultExtensions() {
+    // -- Instance 默认扩展 --
+    m_InstanceExtensions.try_emplace(VK_KHR_SURFACE_EXTENSION_NAME, RequestMode::Required);
+
+#if defined(VK_USE_PLATFORM_ANDROID_KHR)
+    m_InstanceExtensions.try_emplace(VK_KHR_ANDROID_SURFACE_EXTENSION_NAME, RequestMode::Required);
+#elif defined(VK_USE_PLATFORM_WIN32_KHR)
+    m_InstanceExtensions.try_emplace(VK_KHR_WIN32_SURFACE_EXTENSION_NAME, RequestMode::Required);
+#elif defined(VK_USE_PLATFORM_METAL_EXT)
+    m_InstanceExtensions.try_emplace(VK_EXT_METAL_SURFACE_EXTENSION_NAME, RequestMode::Required);
+#elif defined(VK_USE_PLATFORM_XCB_KHR)
+    m_InstanceExtensions.try_emplace(VK_KHR_XCB_SURFACE_EXTENSION_NAME, RequestMode::Required);
+#elif defined(VK_USE_PLATFORM_XLIB_KHR)
+    m_InstanceExtensions.try_emplace(VK_KHR_XLIB_SURFACE_EXTENSION_NAME, RequestMode::Required);
+#elif defined(VK_USE_PLATFORM_WAYLAND_KHR)
+    m_InstanceExtensions.try_emplace(VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME, RequestMode::Required);
+#elif defined(VK_USE_PLATFORM_DISPLAY_KHR)
+    m_InstanceExtensions.try_emplace(VK_KHR_DISPLAY_EXTENSION_NAME, RequestMode::Required);
+#endif
+
+#if defined(VK_DEBUG) || defined(VK_VALIDATION_LAYERS)
+    m_InstanceExtensions.try_emplace(VK_EXT_DEBUG_UTILS_EXTENSION_NAME, RequestMode::Optional);
+#endif
+
+    // -- Device 默认扩展 --
+    m_DeviceExtensions.try_emplace(VK_KHR_SWAPCHAIN_EXTENSION_NAME, RequestMode::Required);
+    m_DeviceExtensions.try_emplace(VK_EXT_EXTENDED_DYNAMIC_STATE_EXTENSION_NAME, RequestMode::Required);
+}
+
+// ============================================================================
+// Init
+// ============================================================================
+
 void VulkanContext::Init(Window &window) {
+    // 0. 填充引擎默认扩展（用户已添加的不覆盖）
+    ApplyDefaultExtensions();
+
     // 1. 创建 Vulkan Instance
     m_Instance = CreateInstance();
 
@@ -77,40 +129,23 @@ void VulkanContext::Init(Window &window) {
         throw std::runtime_error("Failed to find a suitable GPU with Vulkan 1.3 support.");
     }
 
-    // 4. 创建 Device（构造即创建逻辑设备 + VMA）
-    m_Device = std::make_unique<VulkanDevice>(*m_PhysicalDevice, m_Surface);
+    // 4. 创建 Device（传入用户 + 引擎默认扩展）
+    m_Device = std::make_unique<VulkanDevice>(*m_PhysicalDevice, m_Surface, m_DeviceExtensions);
 }
 
+// ============================================================================
+// CreateInstance
+// ============================================================================
+
 std::unique_ptr<VulkanInstance> VulkanContext::CreateInstance() {
-    // ---- 组装平台必需的扩展 ----
-    std::unordered_map<std::string, RequestMode> extensions;
-    extensions[VK_KHR_SURFACE_EXTENSION_NAME] = RequestMode::Required;
-
-#if defined(VK_USE_PLATFORM_ANDROID_KHR)
-    extensions[VK_KHR_ANDROID_SURFACE_EXTENSION_NAME] = RequestMode::Required;
-#elif defined(VK_USE_PLATFORM_WIN32_KHR)
-    extensions[VK_KHR_WIN32_SURFACE_EXTENSION_NAME] = RequestMode::Required;
-#elif defined(VK_USE_PLATFORM_METAL_EXT)
-    extensions[VK_EXT_METAL_SURFACE_EXTENSION_NAME] = RequestMode::Required;
-#elif defined(VK_USE_PLATFORM_XCB_KHR)
-    extensions[VK_KHR_XCB_SURFACE_EXTENSION_NAME] = RequestMode::Required;
-#elif defined(VK_USE_PLATFORM_XLIB_KHR)
-    extensions[VK_KHR_XLIB_SURFACE_EXTENSION_NAME] = RequestMode::Required;
-#elif defined(VK_USE_PLATFORM_WAYLAND_KHR)
-    extensions[VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME] = RequestMode::Required;
-#elif defined(VK_USE_PLATFORM_DISPLAY_KHR)
-    extensions[VK_KHR_DISPLAY_EXTENSION_NAME] = RequestMode::Required;
-#endif
-
     // ---- 组装 Layers ----
     std::unordered_map<std::string, RequestMode> layers;
 
 #if defined(VK_DEBUG) || defined(VK_VALIDATION_LAYERS)
-    extensions[VK_EXT_DEBUG_UTILS_EXTENSION_NAME] = RequestMode::Optional;
     layers["VK_LAYER_KHRONOS_validation"] = RequestMode::Optional;
 #endif
 
-    // ---- pNext 扩展回调 ----
+    // ---- pNext 扩展回调（注册 Debug 回调结构体到 Instance 创建链）----
     auto extend_cb = [](StructureChainBuilder<vk::InstanceCreateInfo> &scb) {
 #if defined(VK_DEBUG) || defined(VK_VALIDATION_LAYERS)
         vk::DebugUtilsMessengerCreateInfoEXT debug_pnext{
@@ -128,7 +163,7 @@ std::unique_ptr<VulkanInstance> VulkanContext::CreateInstance() {
         "GE App",
         VK_API_VERSION_1_3,
         layers,
-        extensions,
+        m_InstanceExtensions,               // ← 扩展列表由 ApplyDefaultExtensions + 用户填充
         VulkanInstance::DefaultGetCreateFlags,
         extend_cb);
 
@@ -150,6 +185,10 @@ std::unique_ptr<VulkanInstance> VulkanContext::CreateInstance() {
 
     return instance;
 }
+
+// ============================================================================
+// Destroy
+// ============================================================================
 
 void VulkanContext::Destroy() {
     // 1. 销毁 Device（unique_ptr 析构触发 VulkanDevice 析构 → 销毁 VMA + Device）

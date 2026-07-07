@@ -81,6 +81,9 @@ private:
     /// 创建 VulkanDevice（配置扩展特性、DebugUtils 等）。
     std::unique_ptr<VulkanDevice> CreateDevice();
 
+    /// 选择支持 Vulkan 1.3 的 PhysicalDevice。
+    std::unique_ptr<PhysicalDevice> SelectPhysicalDevice();
+
     // -- 扩展列表（在 Init 前由外部和 ApplyDefaultExtensions 共同填充）--
     std::unordered_map<std::string, RequestMode> m_InstanceExtensions;
     std::unordered_map<std::string, RequestMode> m_DeviceExtensions;

@@ -116,17 +116,8 @@ VulkanContext::VulkanContext(Window &window) {
     }
     m_Surface = raw_surface;
 
-    // 3. 选择 PhysicalDevice（找第一个支持 Vulkan 1.3 的 GPU）
-    auto gpus = m_Instance->GetHandle().enumeratePhysicalDevices();
-    for (auto &gpu : gpus) {
-        if (gpu.getProperties().apiVersion >= VK_API_VERSION_1_3) {
-            m_PhysicalDevice = std::make_unique<PhysicalDevice>(*m_Instance, gpu);
-            break;
-        }
-    }
-    if (!m_PhysicalDevice) {
-        throw std::runtime_error("Failed to find a suitable GPU with Vulkan 1.3 support.");
-    }
+    // 3. 选择 PhysicalDevice
+    m_PhysicalDevice = SelectPhysicalDevice();
 
     // 4. 创建 Device
     m_Device = CreateDevice();
@@ -183,6 +174,20 @@ std::unique_ptr<VulkanInstance> VulkanContext::CreateInstance() {
 #endif
 
     return instance;
+}
+
+// ============================================================================
+// SelectPhysicalDevice
+// ============================================================================
+
+std::unique_ptr<PhysicalDevice> VulkanContext::SelectPhysicalDevice() {
+    auto gpus = m_Instance->GetHandle().enumeratePhysicalDevices();
+    for (auto &gpu : gpus) {
+        if (gpu.getProperties().apiVersion >= VK_API_VERSION_1_3) {
+            return std::make_unique<PhysicalDevice>(*m_Instance, gpu);
+        }
+    }
+    throw std::runtime_error("Failed to find a suitable GPU with Vulkan 1.3 support.");
 }
 
 // ============================================================================

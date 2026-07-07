@@ -31,20 +31,17 @@ Application::Application(const std::string &name, ApplicationCommandLineArgs arg
     // 1. 初始化 Vulkan 上下文（构造中完成 Instance → Surface → Device → VMA）
     m_VulkanContext = std::make_unique<VulkanContext>(*m_Window);
 
-    // 2. 创建 Swapchain（格式/呈现模式使用默认优先级列表）
+    // 2. 创建 Swapchain（匹配 HPPSwapchain 构造函数）
     auto &dev = m_VulkanContext->GetDevice();
     m_Swapchain = std::make_unique<VulkanSwapchain>(
         dev.GetHandle(), dev.GetGpu().GetHandle(), m_VulkanContext->GetSurface(),
-        dev.GetQueue(), dev.GetGraphicsQueueIndex(),
+        vk::PresentModeKHR::eMailbox,
+        std::vector<vk::PresentModeKHR>{vk::PresentModeKHR::eMailbox, vk::PresentModeKHR::eFifo},
         std::vector<vk::SurfaceFormatKHR>{
             {vk::Format::eR8G8B8A8Srgb, vk::ColorSpaceKHR::eSrgbNonlinear},
             {vk::Format::eB8G8R8A8Srgb, vk::ColorSpaceKHR::eSrgbNonlinear},
         },
-        std::vector<vk::PresentModeKHR>{
-            vk::PresentModeKHR::eMailbox,
-            vk::PresentModeKHR::eFifo,
-        },
-        VulkanSwapchainProperties{.extent = {m_Window->GetWidth(), m_Window->GetHeight()}});
+        vk::Extent2D{m_Window->GetWidth(), m_Window->GetHeight()});
 
     // 3. 初始化资源管理器（纹理缓存等）
     m_ResourceManager.Init(m_VulkanContext->GetVmaAllocator(),
@@ -112,18 +109,17 @@ void Application::Run() {
         m_LastFrameTime = time;
 
         if (!m_Minimized) {
-            if (m_Swapchain->BeginFrame()) {
-                for (auto &layer : m_LayerStack)
-                    layer->OnUpdate(timestep);
+            // TODO: 帧管理已从 VulkanSwapchain 剥离，需要重新组织 BeginFrame/EndFrame
+            // 使用 m_Swapchain->AcquireNextImage() + 外部管理 PerFrame/ImageViews
+            for (auto &layer : m_LayerStack)
+                layer->OnUpdate(timestep);
 
-                ImGuiLayer::Begin();
-                for (auto &layer : m_LayerStack)
-                    layer->OnImGuiRender();
-                ImGuiLayer::End();
-
-                m_Swapchain->EndFrame();
-            }
+            ImGuiLayer::Begin();
+            for (auto &layer : m_LayerStack)
+                layer->OnImGuiRender();
+            ImGuiLayer::End();
         }
+        m_Window->OnUpdate();
         m_Window->OnUpdate();
     }
 }

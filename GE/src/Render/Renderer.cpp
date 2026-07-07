@@ -154,7 +154,7 @@ void Renderer::BeginScene(vk::CommandBuffer cmd, uint32_t imageIndex,
 
     VulkanRenderingInfo render_info;
     render_info.SetRenderArea(0, 0, dim.width, dim.height);
-    render_info.AddColorAttachment(m_Swapchain->GetImageView(imageIndex),
+    render_info.AddColorAttachment(/* TODO: image view 管理已移出 swapchain */ vk::ImageView{nullptr},
                                    vk::AttachmentLoadOp::eClear,
                                    vk::AttachmentStoreOp::eStore,
                                    clear_value);

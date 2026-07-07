@@ -150,18 +150,19 @@ void ImGuiLayer::End() {
     ImGui::Render();
 
     auto &swapchain = Application::GetSwapchain();
-    auto cmd = swapchain.GetCurrentCmd();
+    // TODO: cmd/image view 管理已移出 swapchain
+    // auto cmd = swapchain.GetCurrentCmd();
 
     // Render ImGui on top with loadOp = eLoad to preserve the scene.
-    VulkanRenderingInfo render_info;
-    auto extent = swapchain.GetExtent();
-    render_info.SetRenderArea(0, 0, extent.width, extent.height);
-    render_info.AddColorAttachment(swapchain.GetCurrentImageView(),
-                                   vk::AttachmentLoadOp::eLoad,
-                                   vk::AttachmentStoreOp::eStore);
-    render_info.Begin(cmd);
-    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
-    render_info.End(cmd);
+    // VulkanRenderingInfo render_info;
+    // auto extent = swapchain.GetExtent();
+    // render_info.SetRenderArea(0, 0, extent.width, extent.height);
+    // render_info.AddColorAttachment(swapchain.GetCurrentImageView(),
+    //                                vk::AttachmentLoadOp::eLoad,
+    //                                vk::AttachmentStoreOp::eStore);
+    // render_info.Begin(cmd);
+    // ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
+    // render_info.End(cmd);
 }
 
 void ImGuiLayer::OnImGuiRender() {

@@ -86,7 +86,7 @@ public:
     /// 默认深度格式
     static constexpr vk::Format DEPTH_FORMAT = vk::Format::eD32Sfloat;
 
-    [[nodiscard]] uint32_t GetSwapchainImageCount() const { return static_cast<uint32_t>(m_Swapchain ? m_Swapchain->GetImageCount() : 0); }
+    [[nodiscard]] uint32_t GetSwapchainImageCount() const { return static_cast<uint32_t>(m_Swapchain ? m_Swapchain->GetImages().size() : 0); }
 
     [[nodiscard]] VulkanSwapchain &GetSwapchain() { return *m_Swapchain; }
 

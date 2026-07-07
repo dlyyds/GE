@@ -78,6 +78,9 @@ private:
     /// 使用完整参数创建 VulkanInstance（组装平台必需扩展、debug 扩展等）。
     std::unique_ptr<VulkanInstance> CreateInstance();
 
+    /// 创建 VulkanDevice（配置扩展特性、DebugUtils 等）。
+    std::unique_ptr<VulkanDevice> CreateDevice();
+
     // -- 扩展列表（在 Init 前由外部和 ApplyDefaultExtensions 共同填充）--
     std::unordered_map<std::string, RequestMode> m_InstanceExtensions;
     std::unordered_map<std::string, RequestMode> m_DeviceExtensions;

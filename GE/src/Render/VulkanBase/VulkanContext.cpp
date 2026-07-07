@@ -128,26 +128,8 @@ VulkanContext::VulkanContext(Window &window) {
         throw std::runtime_error("Failed to find a suitable GPU with Vulkan 1.3 support.");
     }
 
-    // 4. 创建 Device（传入用户 + 引擎默认扩展 + 必需特性回调 + DebugUtils）
-    std::unique_ptr<DebugUtils> debug_utils;
-    if (m_Instance->IsExtensionEnabled(VK_EXT_DEBUG_UTILS_EXTENSION_NAME)) {
-        debug_utils = std::make_unique<DebugUtilsExt>();
-    } else {
-        debug_utils = std::make_unique<DummyDebugUtils>();
-    }
-
-    m_Device = std::make_unique<VulkanDevice>(*m_PhysicalDevice, m_Surface, m_DeviceExtensions,
-        [](PhysicalDevice &gpu) {
-            // 启用 Dynamic Rendering & Synchronization2（Vulkan 1.3 核心特性）
-            auto &vulkan13 = gpu.AddExtensionFeatures<vk::PhysicalDeviceVulkan13Features>();
-            vulkan13.synchronization2 = true;
-            vulkan13.dynamicRendering = true;
-
-            // 启用 Extended Dynamic State
-            auto &ext_dyn_state = gpu.AddExtensionFeatures<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>();
-            ext_dyn_state.extendedDynamicState = true;
-        },
-        std::move(debug_utils));
+    // 4. 创建 Device
+    m_Device = CreateDevice();
 }
 
 // ============================================================================
@@ -201,6 +183,33 @@ std::unique_ptr<VulkanInstance> VulkanContext::CreateInstance() {
 #endif
 
     return instance;
+}
+
+// ============================================================================
+// CreateDevice
+// ============================================================================
+
+std::unique_ptr<VulkanDevice> VulkanContext::CreateDevice() {
+    // 组装 DebugUtils（启用 debug utils 扩展时用真实实现，否则用空实现）
+    std::unique_ptr<DebugUtils> debug_utils;
+    if (m_Instance->IsExtensionEnabled(VK_EXT_DEBUG_UTILS_EXTENSION_NAME)) {
+        debug_utils = std::make_unique<DebugUtilsExt>();
+    } else {
+        debug_utils = std::make_unique<DummyDebugUtils>();
+    }
+
+    return std::make_unique<VulkanDevice>(*m_PhysicalDevice, m_Surface, m_DeviceExtensions,
+        [](PhysicalDevice &gpu) {
+            // 启用 Dynamic Rendering & Synchronization2（Vulkan 1.3 核心特性）
+            auto &vulkan13 = gpu.AddExtensionFeatures<vk::PhysicalDeviceVulkan13Features>();
+            vulkan13.synchronization2 = true;
+            vulkan13.dynamicRendering = true;
+
+            // 启用 Extended Dynamic State
+            auto &ext_dyn_state = gpu.AddExtensionFeatures<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>();
+            ext_dyn_state.extendedDynamicState = true;
+        },
+        std::move(debug_utils));
 }
 
 // ============================================================================

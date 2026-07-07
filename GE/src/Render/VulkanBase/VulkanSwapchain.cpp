@@ -157,7 +157,7 @@ vk::CompositeAlphaFlagBitsKHR choose_composite_alpha(vk::CompositeAlphaFlagBitsK
 
     auto const chosen_it = std::ranges::find_if(alpha_priority_list,
         [&supported_composite_alpha](vk::CompositeAlphaFlagBitsKHR alpha) {
-            return alpha & supported_composite_alpha;
+            return static_cast<bool>(alpha & supported_composite_alpha);
         });
 
     if (chosen_it == alpha_priority_list.end()) {
@@ -200,7 +200,7 @@ std::set<vk::ImageUsageFlagBits> choose_image_usage(const std::set<vk::ImageUsag
 
         auto const priority_it = std::ranges::find_if(usage_priority_list,
             [&supported_image_usage, &supported_features](auto usage) {
-                return (usage & supported_image_usage) && validate_format_feature(usage, supported_features);
+                return static_cast<bool>(usage & supported_image_usage) && validate_format_feature(usage, supported_features);
             });
 
         if (priority_it != usage_priority_list.end()) {

@@ -47,7 +47,7 @@ public:
                     const std::set<vk::ImageUsageFlagBits>          &image_usage_flags                = {vk::ImageUsageFlagBits::eColorAttachment, vk::ImageUsageFlagBits::eTransferSrc});
 
     VulkanSwapchain(const VulkanSwapchain &) = delete;
-    VulkanSwapchain(VulkanSwapchain &&other);
+    VulkanSwapchain(VulkanSwapchain &&other) noexcept;
     ~VulkanSwapchain();
 
     VulkanSwapchain &operator=(const VulkanSwapchain &) = delete;

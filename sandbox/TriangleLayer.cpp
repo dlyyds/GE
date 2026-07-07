@@ -19,7 +19,7 @@ void TriangleLayer::OnAttach() {
     auto device = ctx.GetVkDevice();
     auto allocator = ctx.GetVmaAllocator();
     auto &swapchain = Application::GetSwapchain();
-    auto colorFmt = swapchain.GetDimensions().format;
+    auto colorFmt = swapchain.GetFormat();
 
     // ── 1. 加载着色器 ────────────────────────────────────────────
     m_VertShader.Init(device, "assets/shaders/glsl/triangle_raw.vert.spv",
@@ -59,17 +59,17 @@ void TriangleLayer::OnDetach() {
 }
 
 void TriangleLayer::OnUpdate(Timestep &ts) {
-    auto &swapchain = Application::GetSwapchain();
-    auto cmd = swapchain.GetCurrentCmd();
-    auto dim = swapchain.GetDimensions();
+    auto cmd = Application::GetFrameCmd();
+    auto extent = Application::GetSwapchain().GetExtent();
+    auto imageIndex = Application::GetFrameImageIndex();
 
     // ── 开始动态渲染 ──────────────────────────────────────────────
     vk::ClearValue clearValue;
     clearValue.color = std::array<float, 4>{0.0f, 0.0f, 0.0f, 1.0f};
 
     VulkanRenderingInfo renderInfo;
-    renderInfo.SetRenderArea(0, 0, dim.width, dim.height);
-    renderInfo.AddColorAttachment(swapchain.GetCurrentImageView(),
+    renderInfo.SetRenderArea(0, 0, extent.width, extent.height);
+    renderInfo.AddColorAttachment(Application::GetFrameImageView(imageIndex),
                                   vk::AttachmentLoadOp::eClear,
                                   vk::AttachmentStoreOp::eStore,
                                   clearValue);
@@ -77,15 +77,15 @@ void TriangleLayer::OnUpdate(Timestep &ts) {
 
     // ── 动态状态 ──────────────────────────────────────────────────
     vk::Viewport vp;
-    vp.width = static_cast<float>(dim.width);
-    vp.height = static_cast<float>(dim.height);
+    vp.width = static_cast<float>(extent.width);
+    vp.height = static_cast<float>(extent.height);
     vp.minDepth = 0.0f;
     vp.maxDepth = 1.0f;
     cmd.setViewport(0, vp);
 
     vk::Rect2D scissor;
-    scissor.extent.width = dim.width;
-    scissor.extent.height = dim.height;
+    scissor.extent.width = extent.width;
+    scissor.extent.height = extent.height;
     cmd.setScissor(0, scissor);
 
     cmd.setCullMode(vk::CullModeFlagBits::eNone);

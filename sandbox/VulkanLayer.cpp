@@ -26,8 +26,8 @@ void VulkanLayer::OnAttach() {
     auto &swapchain = r.GetSwapchain();
 
     // 相机
-    m_Camera.SetAspect(static_cast<float>(swapchain.GetDimensions().width) /
-                       static_cast<float>(swapchain.GetDimensions().height));
+    m_Camera.SetAspect(static_cast<float>(swapchain.GetExtent().width) /
+                       static_cast<float>(swapchain.GetExtent().height));
 
     // 默认纹理（1x1 白色 fallback）
     m_DefaultTexture.LoadFromColor(allocator, queue, qfi, {1.0f, 1.0f, 1.0f});
@@ -40,7 +40,7 @@ void VulkanLayer::OnAttach() {
     m_Model.LoadFromFile(allocator, "assets/models/cube.obj");
 
     // 先创建一个临时管线获取 set0/set2 layout
-    auto fmt = swapchain.GetDimensions().format;
+    auto fmt = swapchain.GetFormat();
     VulkanPipeline tempPipeline = r.CreateDefaultPipeline(device, fmt, Renderer::DEPTH_FORMAT);
     r.InitDescriptorSets(device, tempPipeline.GetSetLayout(0),
                          tempPipeline.GetSetLayout(2));
@@ -173,8 +173,8 @@ void VulkanLayer::OnImGuiRender() {
     if (ImGui::Button("Reset Camera")) {
         m_Camera = Camera{};
         auto &swapchain = Renderer::Get().GetSwapchain();
-        m_Camera.SetAspect(static_cast<float>(swapchain.GetDimensions().width) /
-                           static_cast<float>(swapchain.GetDimensions().height));
+        m_Camera.SetAspect(static_cast<float>(swapchain.GetExtent().width) /
+                           static_cast<float>(swapchain.GetExtent().height));
     }
 
     ImGui::SeparatorText("Mouse Hint");
@@ -201,9 +201,9 @@ void VulkanLayer::RenderFrame() {
     if (!m_LightEnabled || !m_AmbientEnabled)
         ambient.w = 0.0f;
 
-    r.BeginScene(swapchain.GetCurrentCmd(),
-                 swapchain.GetCurrentImageIndex(),
-                 vk::Extent2D{swapchain.GetDimensions().width, swapchain.GetDimensions().height},
+    r.BeginScene(Application::GetFrameCmd(),
+                 Application::GetFrameImageIndex(),
+                 vk::Extent2D{swapchain.GetExtent().width, swapchain.GetExtent().height},
                  m_Camera.GetView(), m_Camera.GetProj(), m_Camera.GetPosition(),
                  dirLight, pointLight, ambient,
                  {0.01f, 0.01f, 0.033f, 1.0f});

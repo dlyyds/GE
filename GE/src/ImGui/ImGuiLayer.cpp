@@ -85,8 +85,8 @@ void ImGuiLayer::OnAttach() {
         .QueueFamily = static_cast<uint32_t>(ctx.GetGraphicsQueueIndex()),
         .Queue = static_cast<VkQueue>(ctx.GetVkQueue()),
         .DescriptorPoolSize = 1024,
-        .MinImageCount = swapchain.GetImageCount(),
-        .ImageCount = swapchain.GetImageCount(),
+        .MinImageCount = static_cast<uint32_t>(swapchain.GetImages().size()),
+        .ImageCount = static_cast<uint32_t>(swapchain.GetImages().size()),
         .PipelineInfoMain = {
             .PipelineRenderingCreateInfo = pipeline_rendering_info,
         },
@@ -149,20 +149,19 @@ void ImGuiLayer::End() {
 
     ImGui::Render();
 
-    auto &swapchain = Application::GetSwapchain();
-    // TODO: cmd/image view 管理已移出 swapchain
-    // auto cmd = swapchain.GetCurrentCmd();
+    auto cmd = Application::GetFrameCmd();
+    auto imageIndex = Application::GetFrameImageIndex();
 
     // Render ImGui on top with loadOp = eLoad to preserve the scene.
-    // VulkanRenderingInfo render_info;
-    // auto extent = swapchain.GetExtent();
-    // render_info.SetRenderArea(0, 0, extent.width, extent.height);
-    // render_info.AddColorAttachment(swapchain.GetCurrentImageView(),
-    //                                vk::AttachmentLoadOp::eLoad,
-    //                                vk::AttachmentStoreOp::eStore);
-    // render_info.Begin(cmd);
-    // ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
-    // render_info.End(cmd);
+    VulkanRenderingInfo render_info;
+    render_info.SetRenderArea(0, 0, static_cast<uint32_t>(io.DisplaySize.x),
+                              static_cast<uint32_t>(io.DisplaySize.y));
+    render_info.AddColorAttachment(Application::GetFrameImageView(imageIndex),
+                                   vk::AttachmentLoadOp::eLoad,
+                                   vk::AttachmentStoreOp::eStore);
+    render_info.Begin(cmd);
+    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
+    render_info.End(cmd);
 }
 
 void ImGuiLayer::OnImGuiRender() {

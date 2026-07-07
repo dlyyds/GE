@@ -3,6 +3,7 @@
 //
 
 #include "Render/Renderer.h"
+#include "Core/Application.h"
 #include "Render/VulkanBase/VulkanContext.h"
 #include "Render/VulkanBase/VulkanRenderingInfo.h"
 #include "Core/GEWindow.h"
@@ -154,7 +155,7 @@ void Renderer::BeginScene(vk::CommandBuffer cmd, uint32_t imageIndex,
 
     VulkanRenderingInfo render_info;
     render_info.SetRenderArea(0, 0, dim.width, dim.height);
-    render_info.AddColorAttachment(/* TODO: image view 管理已移出 swapchain */ vk::ImageView{nullptr},
+    render_info.AddColorAttachment(Application::GetFrameImageView(imageIndex),
                                    vk::AttachmentLoadOp::eClear,
                                    vk::AttachmentStoreOp::eStore,
                                    clear_value);

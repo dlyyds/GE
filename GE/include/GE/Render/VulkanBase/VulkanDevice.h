@@ -4,9 +4,13 @@
 #include "vk_mem_alloc.h"
 
 #include <functional>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+#include "Render/VulkanBase/VulkanCommon.h"
+#include "Render/VulkanBase/VulkanDebug.h"
 
 namespace GE {
 
@@ -27,15 +31,18 @@ public:
      * @param surface              窗口 surface（用于 present 支持查询）。
      * @param requested_extensions 按扩展名 → 是否可选 映射的请求扩展列表。
      * @param request_gpu_features 在设备创建前调用，用于请求 GPU 扩展特性。
+     * @param debug_utils          调试工具实例（DebugUtilsExt / DummyDebugUtils 等）。
      */
-    VulkanDevice(PhysicalDevice                                          &gpu,
-                 vk::SurfaceKHR                                           surface,
-                 std::unordered_map<const char *, bool> const            &requested_extensions = {},
-                 std::function<void(PhysicalDevice &)>                    request_gpu_features  = {});
+    VulkanDevice(PhysicalDevice &gpu,
+                 vk::SurfaceKHR surface,
+                 std::unordered_map<std::string, RequestMode> const &requested_extensions = {},
+                 const std::function<void(PhysicalDevice &)> &request_gpu_features = {},
+                 std::unique_ptr<DebugUtils> debug_utils = {});
 
     ~VulkanDevice();
 
     VulkanDevice(const VulkanDevice &) = delete;
+
     VulkanDevice &operator=(const VulkanDevice &) = delete;
 
     /// 获取 Vulkan 逻辑设备句柄。
@@ -53,6 +60,9 @@ public:
     /// 获取 VMA 分配器。
     [[nodiscard]] VmaAllocator GetVmaAllocator() const { return m_VmaAllocator; }
 
+    /// 获取调试工具实例。
+    [[nodiscard]] DebugUtils const &GetDebugUtils() const { return *m_DebugUtils; }
+
     /// 检查指定扩展是否已启用。
     [[nodiscard]] bool IsExtensionEnabled(const char *extension) const;
 
@@ -65,20 +75,21 @@ public:
 
 private:
     /// 内部初始化：队列创建、扩展检查、特性请求、设备创建、VMA 初始化。
-    void Init(std::unordered_map<const char *, bool> const &requested_extensions,
-              std::function<void(PhysicalDevice &)>         request_gpu_features);
+    void Init(std::unordered_map<std::string, RequestMode> const &requested_extensions,
+              const std::function<void(PhysicalDevice &)> &request_gpu_features);
 
     /// 初始化 VMA 分配器。
     void InitVma();
 
     PhysicalDevice &m_Gpu;
-    vk::Device      m_Device            = nullptr;
-    vk::SurfaceKHR  m_Surface           = nullptr;
-    vk::Queue       m_GraphicsQueue     = nullptr;
-    int32_t         m_GraphicsQueueIndex = -1;
+    vk::Device m_Device = nullptr;
+    vk::SurfaceKHR m_Surface = nullptr;
+    vk::Queue m_GraphicsQueue = nullptr;
+    int32_t m_GraphicsQueueIndex = -1;
 
+    std::unique_ptr<DebugUtils> m_DebugUtils;
     std::vector<const char *> m_EnabledExtensions;
-    VmaAllocator              m_VmaAllocator = nullptr;
+    VmaAllocator m_VmaAllocator = nullptr;
 };
 
 } // namespace GE

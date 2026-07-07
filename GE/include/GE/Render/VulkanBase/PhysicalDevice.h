@@ -187,7 +187,7 @@ class PhysicalDevice
     vk::PhysicalDevice                                     handle;                   ///< Vulkan 物理设备句柄
     bool                                                   high_priority_graphics_queue = {}; ///< 高优先级图形队列开关
     VulkanInstance                                        &instance;                 ///< 关联的 Vulkan Instance
-    void                                                 *last_requested_extension_feature = nullptr; ///< 结构链尾指针
+    void                                                 *last_requested_extension_feature = nullptr; ///< 扩展特性 pNext 链头（头插法最新节点）
     vk::PhysicalDeviceMemoryProperties                     memory_properties;        ///< GPU 内存属性
     vk::PhysicalDeviceProperties                           properties;               ///< GPU 属性
     std::vector<vk::QueueFamilyProperties>                 queue_family_properties;  ///< 队列族属性列表

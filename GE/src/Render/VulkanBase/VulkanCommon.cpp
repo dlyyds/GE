@@ -16,7 +16,6 @@
  * limitations under the License.
  */
 
-#define VULKAN_HPP_DISPATCH_LOADER_DYNAMIC 1
 #include "Render/VulkanBase/VulkanCommon.h"
 
 #include "FileSystem/FileSystem.h"

@@ -2,7 +2,6 @@
 // Created by Lenovo on 2026/6/7.
 //
 
-#define VULKAN_HPP_DISPATCH_LOADER_DYNAMIC 1
 #include "Render/Material.h"
 #include "Render/Texture.h"
 

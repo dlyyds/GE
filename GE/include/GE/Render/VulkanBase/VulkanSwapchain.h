@@ -68,6 +68,19 @@ public:
     std::pair<vk::Result, uint32_t> AcquireNextImage(vk::Semaphore image_acquired_semaphore, vk::Fence fence = nullptr) const;
 
 private:
+    /// 完整构造函数（所有其他构造函数委托至此）。
+    VulkanSwapchain(VulkanSwapchain                               &old_swapchain,
+                    vk::Device                                     device,
+                    vk::PhysicalDevice                             gpu,
+                    vk::SurfaceKHR                                 surface,
+                    const vk::PresentModeKHR                       present_mode,
+                    const std::vector<vk::PresentModeKHR>         &present_mode_priority_list,
+                    const std::vector<vk::SurfaceFormatKHR>       &surface_format_priority_list,
+                    const vk::Extent2D                            &extent,
+                    uint32_t                                       image_count,
+                    const vk::SurfaceTransformFlagBitsKHR          transform,
+                    const std::set<vk::ImageUsageFlagBits>        &image_usage_flags);
+
     vk::Device                          m_Device = nullptr;
     vk::PhysicalDevice                  m_Gpu = nullptr;
     vk::SurfaceKHR                      m_Surface = nullptr;

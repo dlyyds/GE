@@ -25,7 +25,7 @@ class Window;
 /// - 引擎默认扩展（surface、swapchain 等）自动填充，用户自定义不覆盖
 class VulkanContext {
 public:
-    VulkanContext() = default;
+    explicit VulkanContext(Window &window);
 
     ~VulkanContext();
 
@@ -34,9 +34,6 @@ public:
 
     VulkanContext(VulkanContext &&) = delete;
     VulkanContext &operator=(VulkanContext &&) = delete;
-
-    /// 初始化：创建 Instance → Surface → 选择 PhysicalDevice → 创建 Device → VMA
-    void Init(Window &window);
 
     /// 销毁：Device → PhysicalDevice → Surface → Instance
     void Destroy();

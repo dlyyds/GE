@@ -102,11 +102,7 @@ void VulkanContext::ApplyDefaultExtensions() {
     m_DeviceExtensions.try_emplace(VK_EXT_EXTENDED_DYNAMIC_STATE_EXTENSION_NAME, RequestMode::Required);
 }
 
-// ============================================================================
-// Init
-// ============================================================================
-
-void VulkanContext::Init(Window &window) {
+VulkanContext::VulkanContext(Window &window) {
     // 0. 填充引擎默认扩展（用户已添加的不覆盖）
     ApplyDefaultExtensions();
 

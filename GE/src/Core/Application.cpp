@@ -28,9 +28,8 @@ Application::Application(const std::string &name, ApplicationCommandLineArgs arg
     m_Window = Window::Create(WindowProps(name, 1600, 900));
     m_Window->SetEventCallback(GE_BIND_EVENT_FN(Application::OnEvent));
 
-    // 1. 初始化 Vulkan 上下文（Instance → Surface → Device → VMA）
-    m_VulkanContext = std::make_unique<VulkanContext>();
-    m_VulkanContext->Init(*m_Window);
+    // 1. 初始化 Vulkan 上下文（构造中完成 Instance → Surface → Device → VMA）
+    m_VulkanContext = std::make_unique<VulkanContext>(*m_Window);
 
     // 2. 创建 Swapchain
     auto &dev = m_VulkanContext->GetDevice();

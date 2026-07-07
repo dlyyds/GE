@@ -68,10 +68,6 @@ public:
     std::pair<vk::Result, uint32_t> AcquireNextImage(vk::Semaphore image_acquired_semaphore, vk::Fence fence = nullptr) const;
 
 private:
-    void Create(const VulkanSwapchainProperties &props);
-
-    vk::SurfaceFormatKHR SelectSurfaceFormat(const std::vector<vk::SurfaceFormatKHR> &priority_list);
-
     vk::Device                          m_Device = nullptr;
     vk::PhysicalDevice                  m_Gpu = nullptr;
     vk::SurfaceKHR                      m_Surface = nullptr;

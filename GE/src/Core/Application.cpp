@@ -29,18 +29,19 @@ Application::Application(const std::string &name, ApplicationCommandLineArgs arg
     m_Window->SetEventCallback(GE_BIND_EVENT_FN(Application::OnEvent));
 
     // 1. 初始化 Vulkan 上下文（Instance → Surface → Device → VMA）
-    m_VulkanContext.Init(*m_Window);
+    m_VulkanContext = std::make_unique<VulkanContext>();
+    m_VulkanContext->Init(*m_Window);
 
     // 2. 创建 Swapchain
-    auto &dev = m_VulkanContext.GetDevice();
-    m_Swapchain.Init(dev.GetHandle(), dev.GetGpu().GetHandle(), m_VulkanContext.GetSurface(),
+    auto &dev = m_VulkanContext->GetDevice();
+    m_Swapchain.Init(dev.GetHandle(), dev.GetGpu().GetHandle(), m_VulkanContext->GetSurface(),
                      dev.GetQueue(), dev.GetGraphicsQueueIndex(),
                      m_Window->GetWidth(), m_Window->GetHeight());
 
     // 3. 初始化资源管理器（纹理缓存等）
-    m_ResourceManager.Init(m_VulkanContext.GetVmaAllocator(),
-                           m_VulkanContext.GetVkQueue(),
-                           m_VulkanContext.GetGraphicsQueueIndex());
+    m_ResourceManager.Init(m_VulkanContext->GetVmaAllocator(),
+                           m_VulkanContext->GetVkQueue(),
+                           m_VulkanContext->GetGraphicsQueueIndex());
 
     // 4. 初始化渲染器（RingBuffer 等）
     //  Renderer::Get().Init(m_VulkanContext, m_Swapchain);
@@ -55,7 +56,7 @@ Application::~Application() {
     GE_CORE_INFO("Application Shoutdown");
 
     // 1. 等待 GPU 完成所有未完成的工作，然后才能安全释放资源
-    m_VulkanContext.GetVkDevice().waitIdle();
+    m_VulkanContext->GetVkDevice().waitIdle();
 
     // 2. Detach 所有层（层中的 Material/Mesh/Texture 持有 GPU 资源）
     m_LayerStack.Clear();
@@ -70,8 +71,8 @@ Application::~Application() {
     // 5. 销毁 Swapchain
     m_Swapchain.Destroy();
 
-    // 6. 销毁 Vulkan 上下文
-    m_VulkanContext.Destroy();
+    // 6. 销毁 Vulkan 上下文（Scope 析构自动触发 VulkanContext::Destroy）
+    m_VulkanContext.reset();
 
     s_Instance = nullptr;
 }

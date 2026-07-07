@@ -58,7 +58,7 @@ public:
     [[nodiscard]] float GetFPS() const { return m_FPS; }
 
     /// 访问 Vulkan 全局上下文（提供给 Layer 等创建 Vulkan 资源用）。
-    static VulkanContext &GetVulkanContext() { return Get().m_VulkanContext; }
+    static VulkanContext &GetVulkanContext() { return *Get().m_VulkanContext; }
 
     static VulkanSwapchain &GetSwapchain() { return Get().m_Swapchain; }
 
@@ -88,7 +88,7 @@ private:
     int m_FrameCount = 0;
 
     // -- Vulkan 资源 --
-    VulkanContext m_VulkanContext;
+    std::unique_ptr<VulkanContext> m_VulkanContext;
     VulkanSwapchain m_Swapchain;
     ResourceManager m_ResourceManager;
 

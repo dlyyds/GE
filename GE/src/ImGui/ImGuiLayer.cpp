@@ -69,7 +69,7 @@ void ImGuiLayer::OnAttach() {
     auto &swapchain = Application::GetSwapchain();
     auto &ctx = Application::GetVulkanContext();
 
-    auto color_format = static_cast<VkFormat>(swapchain.GetDimensions().format);
+    auto color_format = static_cast<VkFormat>(swapchain.GetFormat());
 
     VkPipelineRenderingCreateInfoKHR pipeline_rendering_info{
         .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR,
@@ -154,7 +154,8 @@ void ImGuiLayer::End() {
 
     // Render ImGui on top with loadOp = eLoad to preserve the scene.
     VulkanRenderingInfo render_info;
-    render_info.SetRenderArea(0, 0, swapchain.GetDimensions().width, swapchain.GetDimensions().height);
+    auto extent = swapchain.GetExtent();
+    render_info.SetRenderArea(0, 0, extent.width, extent.height);
     render_info.AddColorAttachment(swapchain.GetCurrentImageView(),
                                    vk::AttachmentLoadOp::eLoad,
                                    vk::AttachmentStoreOp::eStore);

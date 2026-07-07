@@ -31,11 +31,20 @@ Application::Application(const std::string &name, ApplicationCommandLineArgs arg
     // 1. 初始化 Vulkan 上下文（构造中完成 Instance → Surface → Device → VMA）
     m_VulkanContext = std::make_unique<VulkanContext>(*m_Window);
 
-    // 2. 创建 Swapchain
+    // 2. 创建 Swapchain（格式/呈现模式使用默认优先级列表）
     auto &dev = m_VulkanContext->GetDevice();
-    m_Swapchain.Init(dev.GetHandle(), dev.GetGpu().GetHandle(), m_VulkanContext->GetSurface(),
-                     dev.GetQueue(), dev.GetGraphicsQueueIndex(),
-                     m_Window->GetWidth(), m_Window->GetHeight());
+    m_Swapchain = std::make_unique<VulkanSwapchain>(
+        dev.GetHandle(), dev.GetGpu().GetHandle(), m_VulkanContext->GetSurface(),
+        dev.GetQueue(), dev.GetGraphicsQueueIndex(),
+        std::vector<vk::SurfaceFormatKHR>{
+            {vk::Format::eR8G8B8A8Srgb, vk::ColorSpaceKHR::eSrgbNonlinear},
+            {vk::Format::eB8G8R8A8Srgb, vk::ColorSpaceKHR::eSrgbNonlinear},
+        },
+        std::vector<vk::PresentModeKHR>{
+            vk::PresentModeKHR::eMailbox,
+            vk::PresentModeKHR::eFifo,
+        },
+        VulkanSwapchainProperties{.extent = {m_Window->GetWidth(), m_Window->GetHeight()}});
 
     // 3. 初始化资源管理器（纹理缓存等）
     m_ResourceManager.Init(m_VulkanContext->GetVmaAllocator(),
@@ -67,10 +76,10 @@ Application::~Application() {
     // 4. 关闭渲染器（释放 RingBuffer）
     Renderer::Get().Shutdown();
 
-    // 5. 销毁 Swapchain
-    m_Swapchain.Destroy();
+    // 5. 销毁 Swapchain（unique_ptr 析构自动触发 VulkanSwapchain 析构）
+    m_Swapchain.reset();
 
-    // 6. 销毁 Vulkan 上下文（Scope 析构自动触发 VulkanContext::Destroy）
+    // 6. 销毁 Vulkan 上下文（unique_ptr 析构自动触发 VulkanContext::Destroy）
     m_VulkanContext.reset();
 
     s_Instance = nullptr;
@@ -103,7 +112,7 @@ void Application::Run() {
         m_LastFrameTime = time;
 
         if (!m_Minimized) {
-            if (m_Swapchain.BeginFrame()) {
+            if (m_Swapchain->BeginFrame()) {
                 for (auto &layer : m_LayerStack)
                     layer->OnUpdate(timestep);
 
@@ -112,7 +121,7 @@ void Application::Run() {
                     layer->OnImGuiRender();
                 ImGuiLayer::End();
 
-                m_Swapchain.EndFrame();
+                m_Swapchain->EndFrame();
             }
         }
         m_Window->OnUpdate();

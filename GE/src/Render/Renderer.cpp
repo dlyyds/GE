@@ -40,8 +40,8 @@ void Renderer::Init(VulkanContext &ctx, VulkanSwapchain &swapchain) {
     m_RingBuffer.Init(vmaAllocator, RING_BUFFER_SIZE, uboAlignment);
 
     // 创建深度 buffer（与 swapchain 尺寸一致）
-    auto dims = swapchain.GetDimensions();
-    m_DepthImage.Init(vmaAllocator, dims.width, dims.height, DEPTH_FORMAT,
+    auto extent = swapchain.GetExtent();
+    m_DepthImage.Init(vmaAllocator, extent.width, extent.height, DEPTH_FORMAT,
                       vk::ImageTiling::eOptimal,
                       vk::ImageUsageFlagBits::eDepthStencilAttachment);
     m_DepthImage.CreateView(DEPTH_FORMAT, vk::ImageViewType::e2D, vk::ImageAspectFlagBits::eDepth);

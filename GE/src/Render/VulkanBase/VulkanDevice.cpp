@@ -1,3 +1,4 @@
+#include "Render/VulkanBase/VulkanAllocated.h"
 #include "Render/VulkanBase/VulkanDevice.h"
 #include "Render/VulkanBase/PhysicalDevice.h"
 #include "Core/Log.h"
@@ -29,6 +30,9 @@ VulkanDevice::VulkanDevice(PhysicalDevice &gpu,
 // ============================================================================
 
 VulkanDevice::~VulkanDevice() {
+    // 先关闭 allocated 单例（输出泄漏统计），再销毁 VMA
+    allocated::shutdown();
+
     if (m_VmaAllocator) {
         vmaDestroyAllocator(m_VmaAllocator);
         m_VmaAllocator = nullptr;
@@ -185,6 +189,9 @@ void VulkanDevice::InitVma() {
     if (result != VK_SUCCESS) {
         throw std::runtime_error("Failed to create VMA allocator");
     }
+
+    // 注册 VMA 分配器到 allocated 单例，供 Allocated 基类使用
+    allocated::init(m_VmaAllocator);
 }
 
 // ============================================================================

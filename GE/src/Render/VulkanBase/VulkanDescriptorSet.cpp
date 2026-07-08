@@ -94,13 +94,24 @@ VulkanDescriptorSet::VulkanDescriptorSet(
     const BindingMap<vk::DescriptorImageInfo>  &image_infos) :
     m_Device(&device),
     m_Layout(&layout),
-    m_FullPool(&pool),
+    m_Pool(&pool),
     m_BufferInfos(buffer_infos),
     m_ImageInfos(image_infos),
     m_Handle(pool.Allocate())
 {
     Prepare();
 }
+
+VulkanDescriptorSet::VulkanDescriptorSet(VulkanDescriptorSet &&other) noexcept :
+    m_Device(std::exchange(other.m_Device, nullptr)),
+    m_Layout(std::exchange(other.m_Layout, nullptr)),
+    m_Pool(std::exchange(other.m_Pool, nullptr)),
+    m_BufferInfos(std::move(other.m_BufferInfos)),
+    m_ImageInfos(std::move(other.m_ImageInfos)),
+    m_Handle(std::exchange(other.m_Handle, vk::DescriptorSet{nullptr})),
+    m_WriteDescriptorSets(std::move(other.m_WriteDescriptorSets)),
+    m_UpdatedBindings(std::move(other.m_UpdatedBindings))
+{}
 
 // ==================================================================
 // 核心：Prepare — 从 buffer_infos / image_infos 构建 write 操作

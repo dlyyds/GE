@@ -55,13 +55,13 @@ class VulkanDescriptorSet
 
     VulkanDescriptorSet(const VulkanDescriptorSet &)            = delete;
 
-    VulkanDescriptorSet(VulkanDescriptorSet &&other)            = delete;
+    VulkanDescriptorSet(VulkanDescriptorSet &&other)            noexcept;
 
     ~VulkanDescriptorSet()                                      = default;
 
     VulkanDescriptorSet &operator=(const VulkanDescriptorSet &) = delete;
 
-    VulkanDescriptorSet &operator=(VulkanDescriptorSet &&)      = delete;
+    VulkanDescriptorSet &operator=(VulkanDescriptorSet &&)      = default;
 
     /**
      * @brief 重置状态，可选择传入新的 buffer/image infos。
@@ -94,7 +94,7 @@ class VulkanDescriptorSet
 
     VulkanDevice                    *m_Device      = nullptr;
     const VulkanDescriptorSetLayout *m_Layout      = nullptr;
-    VulkanDescriptorPool            *m_FullPool    = nullptr;
+    VulkanDescriptorPool            *m_Pool        = nullptr;
 
     BindingMap<vk::DescriptorBufferInfo> m_BufferInfos;
     BindingMap<vk::DescriptorImageInfo>  m_ImageInfos;

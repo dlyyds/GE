@@ -92,9 +92,9 @@ class VulkanDescriptorSet
     /// 从 buffer_infos / image_infos 构建 write_descriptor_sets。
     void Prepare();
 
-    VulkanDevice                    *m_Device      = nullptr;
-    const VulkanDescriptorSetLayout *m_Layout      = nullptr;
-    VulkanDescriptorPool            *m_Pool        = nullptr;
+    VulkanDevice                    *m_Device = nullptr;
+    const VulkanDescriptorSetLayout *m_Layout = nullptr;
+    VulkanDescriptorPool            *m_Pool   = nullptr;
 
     BindingMap<vk::DescriptorBufferInfo> m_BufferInfos;
     BindingMap<vk::DescriptorImageInfo>  m_ImageInfos;

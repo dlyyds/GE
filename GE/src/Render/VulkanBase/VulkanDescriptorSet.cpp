@@ -28,49 +28,58 @@
 #include "Render/VulkanBase/PhysicalDevice.h"
 #include "Core/Log.h"
 
-namespace GE {
-namespace {
+#include <cstdint>
+#include <utility>
+
+namespace GE
+{
+namespace
+{
 
 // ==================================================================
 // 哈希辅助（boost hash_combine 风格）
 // ==================================================================
 
 template <class T>
-inline void hash_combine(size_t &seed, const T &v) {
-    // glm 也提供 hash_combine，但此处直接实现以保持独立
+inline void hash_combine(size_t &seed, const T &v)
+{
     std::hash<T> hasher;
     seed ^= hasher(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
 }
 
 /// 对 vk::WriteDescriptorSet 的内容做哈希（用于变更追踪）。
-size_t hash_write_descriptor_set(const vk::WriteDescriptorSet &write) {
+size_t hash_write_descriptor_set(const vk::WriteDescriptorSet &write)
+{
     size_t seed = 0;
 
-    // Cast 到 C 类型再哈希（vk::* 包装类型无 std::hash 特化）
     hash_combine(seed, static_cast<VkDescriptorSet>(write.dstSet));
     hash_combine(seed, write.dstBinding);
     hash_combine(seed, write.dstArrayElement);
     hash_combine(seed, write.descriptorCount);
     hash_combine(seed, static_cast<uint32_t>(write.descriptorType));
 
-    // 按 descriptor 类型哈希其指向的 pBufferInfo / pImageInfo
     auto desc_type = static_cast<uint32_t>(write.descriptorType);
 
     if (desc_type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER ||
         desc_type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER ||
         desc_type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC ||
-        desc_type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC) {
-        for (uint32_t i = 0; i < write.descriptorCount; i++) {
+        desc_type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC)
+    {
+        for (uint32_t i = 0; i < write.descriptorCount; i++)
+        {
             hash_combine(seed, static_cast<VkBuffer>(write.pBufferInfo[i].buffer));
             hash_combine(seed, write.pBufferInfo[i].offset);
             hash_combine(seed, write.pBufferInfo[i].range);
         }
-    } else if (desc_type == VK_DESCRIPTOR_TYPE_SAMPLER ||
-               desc_type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER ||
-               desc_type == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE ||
-               desc_type == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE ||
-               desc_type == VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT) {
-        for (uint32_t i = 0; i < write.descriptorCount; i++) {
+    }
+    else if (desc_type == VK_DESCRIPTOR_TYPE_SAMPLER ||
+             desc_type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER ||
+             desc_type == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE ||
+             desc_type == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE ||
+             desc_type == VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT)
+    {
+        for (uint32_t i = 0; i < write.descriptorCount; i++)
+        {
             hash_combine(seed, static_cast<VkSampler>(write.pImageInfo[i].sampler));
             hash_combine(seed, static_cast<VkImageView>(write.pImageInfo[i].imageView));
             hash_combine(seed, static_cast<uint32_t>(write.pImageInfo[i].imageLayout));
@@ -114,7 +123,7 @@ VulkanDescriptorSet::VulkanDescriptorSet(VulkanDescriptorSet &&other) noexcept :
 {}
 
 // ==================================================================
-// 核心：Prepare — 从 buffer_infos / image_infos 构建 write 操作
+// Prepare — 从 buffer_infos / image_infos 构建 write 操作
 // ==================================================================
 
 void VulkanDescriptorSet::Prepare()

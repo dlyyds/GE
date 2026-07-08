@@ -206,9 +206,9 @@ void Renderer::Draw(const Mesh &mesh, const Material &material, const glm::mat4 
     //   set=1: Material 纹理
     //   set=2: ObjectUBO（per-draw，dynamic offset）
     vk::DescriptorSet sets[] = {
-        m_FrameSet.Get(),
-        material.descriptorSet.Get(),
-        m_ObjectSet.Get(),
+        m_FrameSet.GetHandle(),
+        material.descriptorSet.GetHandle(),
+        m_ObjectSet.GetHandle(),
     };
     auto dynamicOffset = static_cast<uint32_t>(offset);
     cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, material.pipeline.GetLayout(),

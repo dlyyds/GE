@@ -1,48 +1,158 @@
-#pragma once
+/* Copyright (c) 2019-2025, Arm Limited and Contributors
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Licensed under the Apache License, Version 2.0 the "License";
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
+/**
+ * @file VulkanDescriptorSet.h
+ * @brief DescriptorSet 封装，从 Vulkan-Samples 适配而来。
+ *
+ * 从 VulkanDescriptorPool 分配的 descriptor set 句柄。
+ * 支持批量更新 + 增量追踪，避免重复写入相同 binding。
+ * 也保留简单模式（Init + WriteBuffer/WriteImage）用于向后兼容。
+ */
+
+#pragma once
 
 #include <vulkan/vulkan.hpp>
 
-#include "VulkanSimpleDescriptorPool.h"
-
+#include <cstdint>
+#include <unordered_map>
 #include <vector>
 
-namespace GE {
+#include "Render/VulkanBase/VulkanCommon.h"
 
-class VulkanDescriptorSet {
-public:
+namespace GE
+{
+
+class VulkanDevice;
+class VulkanDescriptorSetLayout;
+class VulkanDescriptorPool;
+class VulkanSimpleDescriptorPool;
+
+/**
+ * @brief 从 VulkanDescriptorPool 分配的 descriptor set 句柄。
+ *
+ *  完整模式  ：传入 VulkanDescriptorSetLayout + VulkanDescriptorPool，
+ *             池管理生命周期，支持 Reset/Update/ApplyWrites 批量操作。
+ *  简单模式  ：通过 Init 从 VulkanSimpleDescriptorPool 分配，
+ *             适合直接 WriteBuffer/WriteImage 的轻量使用。
+ *
+ * 追踪已写入的 bindings，防止重复的 vkUpdateDescriptorSets 调用。
+ */
+class VulkanDescriptorSet
+{
+  public:
+    /// 完整模式：从 DescriptorSetLayout + DescriptorPool 构造，自动分配。
+    VulkanDescriptorSet(VulkanDevice                          &device,
+                        const VulkanDescriptorSetLayout       &layout,
+                        VulkanDescriptorPool                   &pool,
+                        const BindingMap<vk::DescriptorBufferInfo> &buffer_infos = {},
+                        const BindingMap<vk::DescriptorImageInfo>  &image_infos  = {});
+
+    /// 简单模式：从 VulkanSimpleDescriptorPool 分配。
+    VulkanDescriptorSet(vk::Device                device,
+                        VulkanSimpleDescriptorPool &pool,
+                        vk::DescriptorSetLayout    layout);
+
     VulkanDescriptorSet() = default;
-
-    ~VulkanDescriptorSet() = default;
 
     VulkanDescriptorSet(const VulkanDescriptorSet &) = delete;
 
-    VulkanDescriptorSet &operator=(const VulkanDescriptorSet &) = delete;
+    VulkanDescriptorSet(VulkanDescriptorSet &&other);
 
-    VulkanDescriptorSet(VulkanDescriptorSet &&) = default;
+    ~VulkanDescriptorSet() = default;
+
+    VulkanDescriptorSet &operator=(const VulkanDescriptorSet &) = delete;
 
     VulkanDescriptorSet &operator=(VulkanDescriptorSet &&) = default;
 
-    /// Allocate descriptor set from pool.
+    // ========================================================================
+    // Vulkan-Samples 风格接口
+    // ========================================================================
+
+    /**
+     * @brief 重置状态，可选择传入新的 buffer/image infos。
+     *        清空 write_descriptor_sets 和 updated_bindings 后重新 prepare。
+     */
+    void Reset(const BindingMap<vk::DescriptorBufferInfo> &new_buffer_infos = {},
+               const BindingMap<vk::DescriptorImageInfo>  &new_image_infos  = {});
+
+    /**
+     * @brief 执行所有待处理的写入操作。
+     * @param bindings_to_update 空 = 更新所有未写入/已变更的 bindings；
+     *                           非空 = 仅更新指定 binding 中已变更的。
+     */
+    void Update(const std::vector<uint32_t> &bindings_to_update = {});
+
+    /// 强制应用所有 write 操作（不检查更新状态）。
+    void ApplyWrites() const;
+
+    // ========================================================================
+    // 便捷写入（向后兼容）
+    // ========================================================================
+
+    /// 简单模式初始化（向后兼容，替代旧 Init）。
     void Init(vk::Device device, VulkanSimpleDescriptorPool &pool,
               vk::DescriptorSetLayout layout);
 
-    /// Write a uniform buffer descriptor at the given binding.
+    /// 立即写入一个 buffer descriptor。
     void WriteBuffer(uint32_t binding, vk::DescriptorType type,
                      vk::DescriptorBufferInfo buffer_info);
 
-    /// Write a combined image sampler descriptor at the given binding.
+    /// 立即写入一个 image descriptor。
     void WriteImage(uint32_t binding, vk::DescriptorImageInfo image_info,
                     vk::DescriptorType type = vk::DescriptorType::eCombinedImageSampler);
 
+    /// 仅简单模式需要手动销毁（完整模式下池管理生命周期）。
     void Destroy();
 
-    [[nodiscard]] vk::DescriptorSet Get() const { return m_DescriptorSet; }
+    // ========================================================================
+    // 访问器
+    // ========================================================================
 
-private:
-    vk::Device m_Device = nullptr;
-    vk::DescriptorSet m_DescriptorSet = nullptr;
-    vk::DescriptorPool m_DescriptorPool = nullptr;
+    [[nodiscard]] vk::DescriptorSet GetHandle() const { return m_Handle; }
+
+    const VulkanDescriptorSetLayout &GetLayout() const;
+
+    BindingMap<vk::DescriptorBufferInfo> &GetBufferInfos() { return m_BufferInfos; }
+
+    BindingMap<vk::DescriptorImageInfo> &GetImageInfos() { return m_ImageInfos; }
+
+  private:
+    /// 从 buffer_infos / image_infos 构建 write_descriptor_sets。
+    void Prepare();
+
+    VulkanDevice                    *m_Device      = nullptr;
+    const VulkanDescriptorSetLayout *m_Layout      = nullptr;
+    VulkanDescriptorPool            *m_FullPool    = nullptr;   // 完整模式池（allocate）
+
+    vk::Device                       m_RawDevice   = nullptr;
+    vk::DescriptorPool               m_RawPool     = nullptr;   // 简单模式池（free）
+
+    BindingMap<vk::DescriptorBufferInfo> m_BufferInfos;
+    BindingMap<vk::DescriptorImageInfo>  m_ImageInfos;
+
+    vk::DescriptorSet m_Handle{nullptr};
+
+    /// 待执行的 write 操作列表（由 Prepare 构建）。
+    std::vector<vk::WriteDescriptorSet> m_WriteDescriptorSets;
+
+    /// 已写入的 bindings → 写入内容的哈希值。
+    /// 用于在 Update 中跳过未变更的 binding。
+    std::unordered_map<uint32_t, size_t> m_UpdatedBindings;
 };
 
 } // namespace GE

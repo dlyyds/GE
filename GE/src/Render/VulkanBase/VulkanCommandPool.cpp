@@ -1,21 +1,23 @@
-#include "../../../include/GE/Render/VulkanBase/VulkanCommandPool.h"
+#include "Render/VulkanBase/VulkanCommandPool.h"
+#include "Render/VulkanBase/VulkanDevice.h"
 
 #include <stdexcept>
+#include <utility>
 
 namespace GE {
 
-VulkanCommandPool::VulkanCommandPool(vk::Device device, uint32_t queue_family_index,
+VulkanCommandPool::VulkanCommandPool(VulkanDevice &device, uint32_t queue_family_index,
                                      vk::CommandPoolCreateFlags flags) :
     m_Device(device),
     m_QueueFamilyIndex(queue_family_index) {
-    m_Handle = device.createCommandPool(vk::CommandPoolCreateInfo{
+    m_Handle = device.GetHandle().createCommandPool(vk::CommandPoolCreateInfo{
         .flags = flags,
         .queueFamilyIndex = queue_family_index,
     });
 }
 
 VulkanCommandPool::VulkanCommandPool(VulkanCommandPool &&other) noexcept :
-    m_Device(std::exchange(other.m_Device, nullptr)),
+    m_Device(other.m_Device),
     m_Handle(std::exchange(other.m_Handle, nullptr)),
     m_QueueFamilyIndex(std::exchange(other.m_QueueFamilyIndex, 0)),
     m_PrimaryCommandBuffers(std::move(other.m_PrimaryCommandBuffers)),
@@ -27,7 +29,7 @@ VulkanCommandPool::VulkanCommandPool(VulkanCommandPool &&other) noexcept :
 VulkanCommandPool::~VulkanCommandPool() {
     if (m_Handle) {
         // Command buffers are freed automatically when the pool is destroyed
-        m_Device.destroyCommandPool(m_Handle);
+        m_Device.GetHandle().destroyCommandPool(m_Handle);
     }
 }
 
@@ -46,7 +48,7 @@ vk::CommandBuffer VulkanCommandPool::RequestCommandBuffer(vk::CommandBufferLevel
         .level = level,
         .commandBufferCount = 1,
     };
-    auto cmd = m_Device.allocateCommandBuffers(allocInfo)[0];
+    auto cmd = m_Device.GetHandle().allocateCommandBuffers(allocInfo)[0];
     pool.push_back(cmd);
     activeCount++;
     return cmd;
@@ -54,7 +56,7 @@ vk::CommandBuffer VulkanCommandPool::RequestCommandBuffer(vk::CommandBufferLevel
 
 void VulkanCommandPool::ResetPool() {
     if (m_Handle) {
-        m_Device.resetCommandPool(m_Handle);
+        m_Device.GetHandle().resetCommandPool(m_Handle);
     }
     m_ActivePrimaryCount   = 0;
     m_ActiveSecondaryCount = 0;

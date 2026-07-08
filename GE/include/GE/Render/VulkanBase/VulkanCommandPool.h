@@ -1,16 +1,17 @@
 #pragma once
 
-#include <memory>
 #include <vector>
 #include <vulkan/vulkan.hpp>
 
 namespace GE {
 
+class VulkanDevice;
+
 /// Vulkan CommandPool 封装，管理 command pool 及其分配的 command buffers。
 /// 参考 Vulkan-Samples CommandPoolBase 设计，适配 GE 引擎风格。
 class VulkanCommandPool {
 public:
-    VulkanCommandPool(vk::Device device, uint32_t queue_family_index,
+    VulkanCommandPool(VulkanDevice &device, uint32_t queue_family_index,
                       vk::CommandPoolCreateFlags flags = vk::CommandPoolCreateFlagBits::eTransient);
 
     VulkanCommandPool(const VulkanCommandPool &) = delete;
@@ -29,7 +30,7 @@ public:
     void ResetPool();
 
 private:
-    vk::Device     m_Device           = nullptr;
+    VulkanDevice   &m_Device;
     vk::CommandPool m_Handle          = nullptr;
     uint32_t        m_QueueFamilyIndex = 0;
 

@@ -7,7 +7,7 @@
 #include "Render/VulkanBase/VulkanBuffer.h"
 #include "Render/VulkanBase/VulkanImage.h"
 #include "Render/VulkanBase/VulkanRingBuffer.h"
-#include "Render/VulkanBase/VulkanDescriptorPool.h"
+#include "Render/VulkanBase/VulkanSimpleDescriptorPool.h"
 #include "Render/VulkanBase/VulkanDescriptorSet.h"
 #include "Render/Mesh.h"
 #include "Render/Material.h"
@@ -127,7 +127,7 @@ private:
     VulkanDescriptorSet m_ObjectSet;
 
     // 共用 descriptor pool（frame + object 各一个 set）
-    VulkanDescriptorPool m_GlobalPool;
+    VulkanSimpleDescriptorPool m_GlobalPool;
 
     // 深度 buffer（与 swapchain 尺寸一致）
     VulkanImage m_DepthImage;

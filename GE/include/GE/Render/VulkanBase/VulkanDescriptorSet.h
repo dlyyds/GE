@@ -3,7 +3,7 @@
 
 #include <vulkan/vulkan.hpp>
 
-#include "VulkanDescriptorPool.h"
+#include "VulkanSimpleDescriptorPool.h"
 
 #include <vector>
 
@@ -24,7 +24,7 @@ public:
     VulkanDescriptorSet &operator=(VulkanDescriptorSet &&) = default;
 
     /// Allocate descriptor set from pool.
-    void Init(vk::Device device, VulkanDescriptorPool &pool,
+    void Init(vk::Device device, VulkanSimpleDescriptorPool &pool,
               vk::DescriptorSetLayout layout);
 
     /// Write a uniform buffer descriptor at the given binding.

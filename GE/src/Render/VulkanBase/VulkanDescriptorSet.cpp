@@ -1,8 +1,8 @@
-#include "../../../include/GE/Render/VulkanBase/VulkanDescriptorSet.h"
+#include "Render/VulkanBase/VulkanDescriptorSet.h"
 
 namespace GE {
 
-void VulkanDescriptorSet::Init(vk::Device device, VulkanDescriptorPool &pool,
+void VulkanDescriptorSet::Init(vk::Device device, VulkanSimpleDescriptorPool &pool,
                                vk::DescriptorSetLayout layout) {
     m_Device = device;
     m_DescriptorPool = pool.Get();

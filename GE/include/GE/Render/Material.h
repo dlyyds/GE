@@ -5,7 +5,7 @@
 #include <vector>
 
 #include "Render/VulkanBase/VulkanPipeline.h"
-#include "Render/VulkanBase/VulkanDescriptorPool.h"
+#include "Render/VulkanBase/VulkanSimpleDescriptorPool.h"
 #include "Render/VulkanBase/VulkanDescriptorSet.h"
 
 namespace GE {
@@ -16,7 +16,7 @@ class Texture; // 前置声明
 /// set=0（FrameUBO）和 set=2（ObjectUBO）由 Renderer 管理。
 struct Material {
     VulkanPipeline pipeline;
-    VulkanDescriptorPool descriptorPool;
+    VulkanSimpleDescriptorPool descriptorPool;
     VulkanDescriptorSet descriptorSet;
 
     /// 接管管线所有权，从 pipeline 的 set=1 bindings 创建 descriptor pool 并分配 descriptor set。

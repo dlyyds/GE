@@ -10,13 +10,17 @@ class VulkanCommandPool;
 /// 管理单个 command buffer 的生命周期（分配 → 录制 → 回收）。
 class VulkanCommandBuffer {
 public:
-    VulkanCommandBuffer(VulkanCommandPool &pool,
-                        vk::CommandBufferLevel level = vk::CommandBufferLevel::ePrimary);
+    explicit VulkanCommandBuffer(VulkanCommandPool &pool,
+                                 vk::CommandBufferLevel level = vk::CommandBufferLevel::ePrimary);
 
     VulkanCommandBuffer(const VulkanCommandBuffer &) = delete;
+
     VulkanCommandBuffer(VulkanCommandBuffer &&other) noexcept;
+
     VulkanCommandBuffer &operator=(const VulkanCommandBuffer &) = delete;
+
     VulkanCommandBuffer &operator=(VulkanCommandBuffer &&) = delete;
+
     ~VulkanCommandBuffer();
 
     /// 开始录制 command buffer。
@@ -29,13 +33,13 @@ public:
     /// 重置 command buffer。
     void Reset();
 
-    [[nodiscard]] vk::CommandBuffer     GetHandle() const { return m_Handle; }
+    [[nodiscard]] vk::CommandBuffer GetHandle() const { return m_Handle; }
     [[nodiscard]] vk::CommandBufferLevel GetLevel() const { return m_Level; }
-    [[nodiscard]] VulkanCommandPool     &GetPool() const { return m_Pool; }
+    [[nodiscard]] VulkanCommandPool &GetPool() const { return m_Pool; }
 
 private:
-    VulkanCommandPool  &m_Pool;
-    vk::CommandBuffer   m_Handle = nullptr;
+    VulkanCommandPool &m_Pool;
+    vk::CommandBuffer m_Handle = nullptr;
     vk::CommandBufferLevel m_Level = vk::CommandBufferLevel::ePrimary;
 };
 

@@ -21,7 +21,6 @@
  *
  * 从 VulkanDescriptorPool 分配的 descriptor set 句柄。
  * 支持批量更新 + 增量追踪，避免重复写入相同 binding。
- * 也保留简单模式（Init + WriteBuffer/WriteImage）用于向后兼容。
  */
 
 #pragma once
@@ -40,48 +39,29 @@ namespace GE
 class VulkanDevice;
 class VulkanDescriptorSetLayout;
 class VulkanDescriptorPool;
-class VulkanSimpleDescriptorPool;
 
 /**
  * @brief 从 VulkanDescriptorPool 分配的 descriptor set 句柄。
- *
- *  完整模式  ：传入 VulkanDescriptorSetLayout + VulkanDescriptorPool，
- *             池管理生命周期，支持 Reset/Update/ApplyWrites 批量操作。
- *  简单模式  ：通过 Init 从 VulkanSimpleDescriptorPool 分配，
- *             适合直接 WriteBuffer/WriteImage 的轻量使用。
- *
- * 追踪已写入的 bindings，防止重复的 vkUpdateDescriptorSets 调用。
+ *        追踪已写入的 bindings，防止重复的 vkUpdateDescriptorSets 调用。
  */
 class VulkanDescriptorSet
 {
   public:
-    /// 完整模式：从 DescriptorSetLayout + DescriptorPool 构造，自动分配。
     VulkanDescriptorSet(VulkanDevice                          &device,
                         const VulkanDescriptorSetLayout       &layout,
                         VulkanDescriptorPool                   &pool,
                         const BindingMap<vk::DescriptorBufferInfo> &buffer_infos = {},
                         const BindingMap<vk::DescriptorImageInfo>  &image_infos  = {});
 
-    /// 简单模式：从 VulkanSimpleDescriptorPool 分配。
-    VulkanDescriptorSet(vk::Device                device,
-                        VulkanSimpleDescriptorPool &pool,
-                        vk::DescriptorSetLayout    layout);
+    VulkanDescriptorSet(const VulkanDescriptorSet &)            = delete;
 
-    VulkanDescriptorSet() = default;
+    VulkanDescriptorSet(VulkanDescriptorSet &&other)            = delete;
 
-    VulkanDescriptorSet(const VulkanDescriptorSet &) = delete;
-
-    VulkanDescriptorSet(VulkanDescriptorSet &&other);
-
-    ~VulkanDescriptorSet() = default;
+    ~VulkanDescriptorSet()                                      = default;
 
     VulkanDescriptorSet &operator=(const VulkanDescriptorSet &) = delete;
 
-    VulkanDescriptorSet &operator=(VulkanDescriptorSet &&) = default;
-
-    // ========================================================================
-    // Vulkan-Samples 风格接口
-    // ========================================================================
+    VulkanDescriptorSet &operator=(VulkanDescriptorSet &&)      = delete;
 
     /**
      * @brief 重置状态，可选择传入新的 buffer/image infos。
@@ -100,29 +80,6 @@ class VulkanDescriptorSet
     /// 强制应用所有 write 操作（不检查更新状态）。
     void ApplyWrites() const;
 
-    // ========================================================================
-    // 便捷写入（向后兼容）
-    // ========================================================================
-
-    /// 简单模式初始化（向后兼容，替代旧 Init）。
-    void Init(vk::Device device, VulkanSimpleDescriptorPool &pool,
-              vk::DescriptorSetLayout layout);
-
-    /// 立即写入一个 buffer descriptor。
-    void WriteBuffer(uint32_t binding, vk::DescriptorType type,
-                     vk::DescriptorBufferInfo buffer_info);
-
-    /// 立即写入一个 image descriptor。
-    void WriteImage(uint32_t binding, vk::DescriptorImageInfo image_info,
-                    vk::DescriptorType type = vk::DescriptorType::eCombinedImageSampler);
-
-    /// 仅简单模式需要手动销毁（完整模式下池管理生命周期）。
-    void Destroy();
-
-    // ========================================================================
-    // 访问器
-    // ========================================================================
-
     [[nodiscard]] vk::DescriptorSet GetHandle() const { return m_Handle; }
 
     const VulkanDescriptorSetLayout &GetLayout() const;
@@ -137,21 +94,16 @@ class VulkanDescriptorSet
 
     VulkanDevice                    *m_Device      = nullptr;
     const VulkanDescriptorSetLayout *m_Layout      = nullptr;
-    VulkanDescriptorPool            *m_FullPool    = nullptr;   // 完整模式池（allocate）
-
-    vk::Device                       m_RawDevice   = nullptr;
-    vk::DescriptorPool               m_RawPool     = nullptr;   // 简单模式池（free）
+    VulkanDescriptorPool            *m_FullPool    = nullptr;
 
     BindingMap<vk::DescriptorBufferInfo> m_BufferInfos;
     BindingMap<vk::DescriptorImageInfo>  m_ImageInfos;
 
     vk::DescriptorSet m_Handle{nullptr};
 
-    /// 待执行的 write 操作列表（由 Prepare 构建）。
-    std::vector<vk::WriteDescriptorSet> m_WriteDescriptorSets;
+    std::vector<vk::WriteDescriptorSet>  m_WriteDescriptorSets;
 
     /// 已写入的 bindings → 写入内容的哈希值。
-    /// 用于在 Update 中跳过未变更的 binding。
     std::unordered_map<uint32_t, size_t> m_UpdatedBindings;
 };
 

@@ -24,31 +24,26 @@
 
 #include "Render/VulkanBase/VulkanDescriptorSetLayout.h"
 #include "Render/VulkanBase/VulkanDescriptorPool.h"
-#include "Render/VulkanBase/VulkanSimpleDescriptorPool.h"
 #include "Render/VulkanBase/VulkanDevice.h"
 #include "Render/VulkanBase/PhysicalDevice.h"
 #include "Core/Log.h"
 
-namespace GE
-{
-namespace
-{
+namespace GE {
+namespace {
 
 // ==================================================================
 // 哈希辅助（boost hash_combine 风格）
 // ==================================================================
 
 template <class T>
-inline void hash_combine(size_t &seed, const T &v)
-{
+inline void hash_combine(size_t &seed, const T &v) {
     // glm 也提供 hash_combine，但此处直接实现以保持独立
     std::hash<T> hasher;
     seed ^= hasher(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
 }
 
 /// 对 vk::WriteDescriptorSet 的内容做哈希（用于变更追踪）。
-size_t hash_write_descriptor_set(const vk::WriteDescriptorSet &write)
-{
+size_t hash_write_descriptor_set(const vk::WriteDescriptorSet &write) {
     size_t seed = 0;
 
     // Cast 到 C 类型再哈希（vk::* 包装类型无 std::hash 特化）
@@ -64,23 +59,18 @@ size_t hash_write_descriptor_set(const vk::WriteDescriptorSet &write)
     if (desc_type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER ||
         desc_type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER ||
         desc_type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC ||
-        desc_type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC)
-    {
-        for (uint32_t i = 0; i < write.descriptorCount; i++)
-        {
+        desc_type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC) {
+        for (uint32_t i = 0; i < write.descriptorCount; i++) {
             hash_combine(seed, static_cast<VkBuffer>(write.pBufferInfo[i].buffer));
             hash_combine(seed, write.pBufferInfo[i].offset);
             hash_combine(seed, write.pBufferInfo[i].range);
         }
-    }
-    else if (desc_type == VK_DESCRIPTOR_TYPE_SAMPLER ||
-             desc_type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER ||
-             desc_type == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE ||
-             desc_type == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE ||
-             desc_type == VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT)
-    {
-        for (uint32_t i = 0; i < write.descriptorCount; i++)
-        {
+    } else if (desc_type == VK_DESCRIPTOR_TYPE_SAMPLER ||
+               desc_type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER ||
+               desc_type == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE ||
+               desc_type == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE ||
+               desc_type == VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT) {
+        for (uint32_t i = 0; i < write.descriptorCount; i++) {
             hash_combine(seed, static_cast<VkSampler>(write.pImageInfo[i].sampler));
             hash_combine(seed, static_cast<VkImageView>(write.pImageInfo[i].imageView));
             hash_combine(seed, static_cast<uint32_t>(write.pImageInfo[i].imageLayout));
@@ -112,34 +102,6 @@ VulkanDescriptorSet::VulkanDescriptorSet(
     Prepare();
 }
 
-VulkanDescriptorSet::VulkanDescriptorSet(
-    vk::Device                device,
-    VulkanSimpleDescriptorPool &pool,
-    vk::DescriptorSetLayout    layout) :
-    m_RawDevice(device),
-    m_RawPool(pool.Get())
-{
-    vk::DescriptorSetAllocateInfo alloc_info{
-        .descriptorPool     = pool.Get(),
-        .descriptorSetCount = 1,
-        .pSetLayouts        = &layout,
-    };
-    m_Handle = device.allocateDescriptorSets(alloc_info).front();
-}
-
-VulkanDescriptorSet::VulkanDescriptorSet(VulkanDescriptorSet &&other) :
-    m_Device(other.m_Device),
-    m_Layout(other.m_Layout),
-    m_FullPool(other.m_FullPool),
-    m_RawDevice(other.m_RawDevice),
-    m_RawPool(other.m_RawPool),
-    m_BufferInfos(std::move(other.m_BufferInfos)),
-    m_ImageInfos(std::move(other.m_ImageInfos)),
-    m_Handle(std::exchange(other.m_Handle, vk::DescriptorSet{nullptr})),
-    m_WriteDescriptorSets(std::move(other.m_WriteDescriptorSets)),
-    m_UpdatedBindings(std::move(other.m_UpdatedBindings))
-{}
-
 // ==================================================================
 // 核心：Prepare — 从 buffer_infos / image_infos 构建 write 操作
 // ==================================================================
@@ -152,7 +114,6 @@ void VulkanDescriptorSet::Prepare()
         return;
     }
 
-    // 获取设备限制（用于裁剪 buffer range）
     size_t uniform_buffer_range_limit = std::numeric_limits<size_t>::max();
     size_t storage_buffer_range_limit = std::numeric_limits<size_t>::max();
 
@@ -163,7 +124,6 @@ void VulkanDescriptorSet::Prepare()
         storage_buffer_range_limit = props.limits.maxStorageBufferRange;
     }
 
-    // 遍历所有 buffer bindings
     for (auto &binding_it : m_BufferInfos)
     {
         auto  binding_index   = binding_it.first;
@@ -177,7 +137,6 @@ void VulkanDescriptorSet::Prepare()
 
                 size_t buffer_range_limit = static_cast<size_t>(buffer_info.range);
 
-                // 裁剪 buffer range 到设备限制，否则 Vulkan 验证层报错
                 if ((binding_info->descriptorType == vk::DescriptorType::eUniformBuffer ||
                      binding_info->descriptorType == vk::DescriptorType::eUniformBufferDynamic) &&
                     buffer_range_limit > uniform_buffer_range_limit)
@@ -214,7 +173,6 @@ void VulkanDescriptorSet::Prepare()
         }
     }
 
-    // 遍历所有 image bindings
     for (auto &binding_it : m_ImageInfos)
     {
         auto  binding_index     = binding_it.first;
@@ -267,7 +225,6 @@ void VulkanDescriptorSet::Update(const std::vector<uint32_t> &bindings_to_update
 
     if (bindings_to_update.empty())
     {
-        // 空列表 → 更新所有尚未写入或已变更的 binding
         for (auto &write_op : m_WriteDescriptorSets)
         {
             process_write_op(write_op);
@@ -275,7 +232,6 @@ void VulkanDescriptorSet::Update(const std::vector<uint32_t> &bindings_to_update
     }
     else
     {
-        // 仅更新指定 binding
         for (auto &write_op : m_WriteDescriptorSets)
         {
             if (std::ranges::find(bindings_to_update, write_op.dstBinding) != bindings_to_update.end())
@@ -285,15 +241,12 @@ void VulkanDescriptorSet::Update(const std::vector<uint32_t> &bindings_to_update
         }
     }
 
-    // 执行 Vulkan 调用
     if (!write_ops.empty())
     {
-        m_RawDevice
-            ? m_RawDevice.updateDescriptorSets(static_cast<uint32_t>(write_ops.size()), write_ops.data(), 0, nullptr)
-            : m_Device->GetHandle().updateDescriptorSets(static_cast<uint32_t>(write_ops.size()), write_ops.data(), 0, nullptr);
+        m_Device->GetHandle().updateDescriptorSets(
+            static_cast<uint32_t>(write_ops.size()), write_ops.data(), 0, nullptr);
     }
 
-    // 记录已写入的 bindings 及其哈希值
     for (size_t i = 0; i < write_ops.size(); i++)
     {
         m_UpdatedBindings[write_ops[i].dstBinding] = write_op_hashes[i];
@@ -306,18 +259,9 @@ void VulkanDescriptorSet::Update(const std::vector<uint32_t> &bindings_to_update
 
 void VulkanDescriptorSet::ApplyWrites() const
 {
-    if (m_RawDevice)
-    {
-        m_RawDevice.updateDescriptorSets(
-            static_cast<uint32_t>(m_WriteDescriptorSets.size()),
-            m_WriteDescriptorSets.data(), 0, nullptr);
-    }
-    else
-    {
-        m_Device->GetHandle().updateDescriptorSets(
-            static_cast<uint32_t>(m_WriteDescriptorSets.size()),
-            m_WriteDescriptorSets.data(), 0, nullptr);
-    }
+    m_Device->GetHandle().updateDescriptorSets(
+        static_cast<uint32_t>(m_WriteDescriptorSets.size()),
+        m_WriteDescriptorSets.data(), 0, nullptr);
 }
 
 // ==================================================================
@@ -342,72 +286,6 @@ void VulkanDescriptorSet::Reset(
     m_UpdatedBindings.clear();
 
     Prepare();
-}
-
-// ==================================================================
-// Init（向后兼容）
-// ==================================================================
-
-void VulkanDescriptorSet::Init(vk::Device device, VulkanSimpleDescriptorPool &pool,
-                                vk::DescriptorSetLayout layout)
-{
-    m_RawDevice = device;
-    m_RawPool   = pool.Get();
-
-    vk::DescriptorSetAllocateInfo alloc_info{
-        .descriptorPool     = pool.Get(),
-        .descriptorSetCount = 1,
-        .pSetLayouts        = &layout,
-    };
-    m_Handle = device.allocateDescriptorSets(alloc_info).front();
-}
-
-// ==================================================================
-// 便捷写入（向后兼容）
-// ==================================================================
-
-void VulkanDescriptorSet::WriteBuffer(uint32_t binding, vk::DescriptorType type,
-                                       vk::DescriptorBufferInfo buffer_info)
-{
-    vk::WriteDescriptorSet write{
-        .dstSet          = m_Handle,
-        .dstBinding      = binding,
-        .descriptorCount = 1,
-        .descriptorType  = type,
-        .pBufferInfo     = &buffer_info,
-    };
-
-    m_RawDevice
-        ? m_RawDevice.updateDescriptorSets(write, nullptr)
-        : m_Device->GetHandle().updateDescriptorSets(write, nullptr);
-}
-
-void VulkanDescriptorSet::WriteImage(uint32_t binding, vk::DescriptorImageInfo image_info,
-                                      vk::DescriptorType type)
-{
-    vk::WriteDescriptorSet write{
-        .dstSet          = m_Handle,
-        .dstBinding      = binding,
-        .descriptorCount = 1,
-        .descriptorType  = type,
-        .pImageInfo      = &image_info,
-    };
-
-    m_RawDevice
-        ? m_RawDevice.updateDescriptorSets(write, nullptr)
-        : m_Device->GetHandle().updateDescriptorSets(write, nullptr);
-}
-
-void VulkanDescriptorSet::Destroy()
-{
-    if (m_RawDevice && m_Handle && m_RawPool)
-    {
-        m_RawDevice.freeDescriptorSets(m_RawPool, m_Handle);
-    }
-    // 完整模式下池管理生命周期，无需手动释放
-    m_Handle   = vk::DescriptorSet{nullptr};
-    m_RawPool  = nullptr;
-    m_RawDevice = nullptr;
 }
 
 // ==================================================================

@@ -16,6 +16,7 @@ namespace GE {
 void Material::Init(vk::Device device,
                     VulkanPipeline &&pipeline) {
     this->pipeline = std::move(pipeline);
+    this->Device = device;
     auto &bindings = this->pipeline.GetDescriptorBindings();
 
     // 只过滤 set=1 的 bindings（材质纹理）
@@ -30,17 +31,30 @@ void Material::Init(vk::Device device,
     descriptorPool.Init(device, 1, poolSizes);
 
     // 分配 descriptor set（使用 pipeline 中 set=1 的 layout）
-    descriptorSet.Init(device, descriptorPool, this->pipeline.GetSetLayout(1));
+    auto set_layout = this->pipeline.GetSetLayout(1);
+    vk::DescriptorSetAllocateInfo alloc_info{
+        .descriptorPool     = descriptorPool.Get(),
+        .descriptorSetCount = 1,
+        .pSetLayouts        = &set_layout,
+    };
+    DescriptorSet = device.allocateDescriptorSets(alloc_info).front();
 }
 
 void Material::SetTexture(uint32_t binding, vk::ImageView textureView, vk::Sampler sampler) {
     vk::DescriptorImageInfo imageInfo{
-        .sampler = sampler,
-        .imageView = textureView,
+        .sampler    = sampler,
+        .imageView  = textureView,
         .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
     };
 
-    descriptorSet.WriteImage(binding, imageInfo);
+    vk::WriteDescriptorSet write{
+        .dstSet          = DescriptorSet,
+        .dstBinding      = binding,
+        .descriptorCount = 1,
+        .descriptorType  = vk::DescriptorType::eCombinedImageSampler,
+        .pImageInfo      = &imageInfo,
+    };
+    Device.updateDescriptorSets(write, nullptr);
 }
 
 void Material::SetTexture(const std::string &name, vk::ImageView textureView, vk::Sampler sampler) {
@@ -57,7 +71,11 @@ void Material::SetTexture(const std::string &name, const Texture &texture) {
 }
 
 void Material::Cleanup() {
-    descriptorSet.Destroy();
+    if (Device && DescriptorSet) {
+        Device.freeDescriptorSets(descriptorPool.Get(), DescriptorSet);
+    }
+    DescriptorSet = nullptr;
+    Device        = nullptr;
     descriptorPool.Cleanup();
     pipeline.Cleanup();
 }

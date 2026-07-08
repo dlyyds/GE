@@ -57,28 +57,55 @@ void Renderer::InitDescriptorSets(vk::Device device,
                           {vk::DescriptorType::eUniformBufferDynamic, 1},
                       });
 
-    // set=0: frame descriptor set
-    m_FrameSet.Init(device, m_GlobalPool, frameLayout);
-    m_FrameSet.WriteBuffer(0, vk::DescriptorType::eUniformBuffer,
-                           vk::DescriptorBufferInfo{
-                               .buffer = m_FrameBuffer.GetBuffer(),
-                               .offset = 0,
-                               .range = sizeof(FrameUniformData),
-                           });
+    // 分配 set=0: frame descriptor set
+    vk::DescriptorSetAllocateInfo frame_alloc{
+        .descriptorPool     = m_GlobalPool.Get(),
+        .descriptorSetCount = 1,
+        .pSetLayouts        = &frameLayout,
+    };
+    m_FrameSetHandle = device.allocateDescriptorSets(frame_alloc).front();
+    vk::DescriptorBufferInfo frame_buf{
+        .buffer = m_FrameBuffer.GetBuffer(),
+        .offset = 0,
+        .range  = sizeof(FrameUniformData),
+    };
+    vk::WriteDescriptorSet frame_write{
+        .dstSet          = m_FrameSetHandle,
+        .dstBinding      = 0,
+        .descriptorCount = 1,
+        .descriptorType  = vk::DescriptorType::eUniformBuffer,
+        .pBufferInfo     = &frame_buf,
+    };
+    device.updateDescriptorSets(frame_write, nullptr);
 
-    // set=2: object descriptor set（指向 ring buffer，dynamic offset 在 Bind 时传入）
-    m_ObjectSet.Init(device, m_GlobalPool, objectLayout);
-    m_ObjectSet.WriteBuffer(0, vk::DescriptorType::eUniformBufferDynamic,
-                            vk::DescriptorBufferInfo{
-                                .buffer = m_RingBuffer.GetBuffer(),
-                                .offset = 0,
-                                .range = sizeof(ObjectUniformData),
-                            });
+    // 分配 set=2: object descriptor set
+    vk::DescriptorSetAllocateInfo object_alloc{
+        .descriptorPool     = m_GlobalPool.Get(),
+        .descriptorSetCount = 1,
+        .pSetLayouts        = &objectLayout,
+    };
+    m_ObjectSetHandle = device.allocateDescriptorSets(object_alloc).front();
+    vk::DescriptorBufferInfo object_buf{
+        .buffer = m_RingBuffer.GetBuffer(),
+        .offset = 0,
+        .range  = sizeof(ObjectUniformData),
+    };
+    vk::WriteDescriptorSet object_write{
+        .dstSet          = m_ObjectSetHandle,
+        .dstBinding      = 0,
+        .descriptorCount = 1,
+        .descriptorType  = vk::DescriptorType::eUniformBufferDynamic,
+        .pBufferInfo     = &object_buf,
+    };
+    device.updateDescriptorSets(object_write, nullptr);
 }
 
 void Renderer::Shutdown() {
-    m_ObjectSet.Destroy();
-    m_FrameSet.Destroy();
+    auto device = m_Context ? m_Context->GetVkDevice() : vk::Device{nullptr};
+    if (device) {
+        if (m_ObjectSetHandle) device.freeDescriptorSets(m_GlobalPool.Get(), m_ObjectSetHandle);
+        if (m_FrameSetHandle) device.freeDescriptorSets(m_GlobalPool.Get(), m_FrameSetHandle);
+    }
     m_GlobalPool.Cleanup();
     m_FrameBuffer.Destroy();
     m_RingBuffer.Destroy();
@@ -206,9 +233,9 @@ void Renderer::Draw(const Mesh &mesh, const Material &material, const glm::mat4 
     //   set=1: Material 纹理
     //   set=2: ObjectUBO（per-draw，dynamic offset）
     vk::DescriptorSet sets[] = {
-        m_FrameSet.GetHandle(),
-        material.descriptorSet.GetHandle(),
-        m_ObjectSet.GetHandle(),
+        m_FrameSetHandle,
+        material.DescriptorSet,
+        m_ObjectSetHandle,
     };
     auto dynamicOffset = static_cast<uint32_t>(offset);
     cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, material.pipeline.GetLayout(),

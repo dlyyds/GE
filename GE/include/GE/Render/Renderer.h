@@ -8,7 +8,6 @@
 #include "Render/VulkanBase/VulkanImage.h"
 #include "Render/VulkanBase/VulkanRingBuffer.h"
 #include "Render/VulkanBase/VulkanSimpleDescriptorPool.h"
-#include "Render/VulkanBase/VulkanDescriptorSet.h"
 #include "Render/Mesh.h"
 #include "Render/Material.h"
 #include "Render/VulkanBase/VulkanSwapchain.h"
@@ -114,7 +113,7 @@ private:
     };
 
     VulkanBuffer m_FrameBuffer;
-    VulkanDescriptorSet m_FrameSet;
+    vk::DescriptorSet m_FrameSetHandle{nullptr};
 
     // set=2: per-object UBO（ring buffer + dynamic offset）
     struct ObjectUniformData {
@@ -124,7 +123,7 @@ private:
     };
 
     VulkanRingBuffer m_RingBuffer;
-    VulkanDescriptorSet m_ObjectSet;
+    vk::DescriptorSet m_ObjectSetHandle{nullptr};
 
     // 共用 descriptor pool（frame + object 各一个 set）
     VulkanSimpleDescriptorPool m_GlobalPool;

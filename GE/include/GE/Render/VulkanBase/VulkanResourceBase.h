@@ -29,12 +29,13 @@
 
 #pragma once
 
+#include "VulkanDevice.h"
+
 #include <string>
 #include <utility>
 #include <vulkan/vulkan.hpp>
 
-namespace GE
-{
+namespace GE {
 
 class VulkanDevice;
 
@@ -45,25 +46,28 @@ class VulkanDevice;
  * 支持为任何 Vulkan 对象设置调试名称。
  */
 template <typename Handle>
-class VulkanResourceBase
-{
-  public:
+class VulkanResourceBase {
+public:
     VulkanResourceBase(Handle handle = nullptr, VulkanDevice *device = nullptr);
 
     VulkanResourceBase(const VulkanResourceBase &) = delete;
+
     VulkanResourceBase &operator=(const VulkanResourceBase &) = delete;
 
     VulkanResourceBase(VulkanResourceBase &&other);
+
     VulkanResourceBase &operator=(VulkanResourceBase &&other);
 
     virtual ~VulkanResourceBase() = default;
 
     const std::string &GetDebugName() const;
 
-    VulkanDevice       &GetDevice();
-    VulkanDevice const &GetDevice() const;
+    VulkanDevice &GetDevice();
 
-    Handle       &GetHandle();
+    [[nodiscard]] VulkanDevice const &GetDevice() const;
+
+    Handle &GetHandle();
+
     Handle const &GetHandle() const;
 
     /// 将 Vulkan 句柄转为 uint64_t（用于 DebugUtils 等需要 uint64_t 句柄的 API）。
@@ -73,6 +77,7 @@ class VulkanResourceBase
     vk::ObjectType GetObjectType() const;
 
     bool HasDevice() const;
+
     bool HasHandle() const;
 
     /**
@@ -84,10 +89,10 @@ class VulkanResourceBase
 
     void SetHandle(Handle hdl);
 
-  private:
-    std::string    debug_name;
-    VulkanDevice  *device = nullptr;
-    Handle         handle{nullptr};
+private:
+    std::string debug_name;
+    VulkanDevice *device = nullptr;
+    Handle handle{nullptr};
 };
 
 // ==================================================================
@@ -96,90 +101,76 @@ class VulkanResourceBase
 // ==================================================================
 
 template <typename Handle>
-inline VulkanResourceBase<Handle>::VulkanResourceBase(Handle handle_, VulkanDevice *device_) :
-    handle(handle_),
-    device(device_)
-{}
+inline VulkanResourceBase<Handle>::VulkanResourceBase(Handle handle_, VulkanDevice *device_) : handle(handle_),
+                                                                                               device(device_) {
+}
 
 template <typename Handle>
-inline VulkanResourceBase<Handle>::VulkanResourceBase(VulkanResourceBase &&other) :
-    handle(std::exchange(other.handle, {})),
-    device(std::exchange(other.device, {})),
-    debug_name(std::exchange(other.debug_name, {}))
-{}
+inline VulkanResourceBase<Handle>::VulkanResourceBase(VulkanResourceBase &&other) : handle(std::exchange(other.handle, {})),
+                                                                                    device(std::exchange(other.device, {})),
+                                                                                    debug_name(std::exchange(other.debug_name, {})) {
+}
 
 template <typename Handle>
-inline VulkanResourceBase<Handle> &VulkanResourceBase<Handle>::operator=(VulkanResourceBase &&other)
-{
-    handle     = std::exchange(other.handle, {});
-    device     = std::exchange(other.device, {});
+inline VulkanResourceBase<Handle> &VulkanResourceBase<Handle>::operator=(VulkanResourceBase &&other) {
+    handle = std::exchange(other.handle, {});
+    device = std::exchange(other.device, {});
     debug_name = std::exchange(other.debug_name, {});
     return *this;
 }
 
 template <typename Handle>
-inline const std::string &VulkanResourceBase<Handle>::GetDebugName() const
-{
+inline const std::string &VulkanResourceBase<Handle>::GetDebugName() const {
     return debug_name;
 }
 
 template <typename Handle>
-inline VulkanDevice &VulkanResourceBase<Handle>::GetDevice()
-{
+inline VulkanDevice &VulkanResourceBase<Handle>::GetDevice() {
     return *device;
 }
 
 template <typename Handle>
-inline VulkanDevice const &VulkanResourceBase<Handle>::GetDevice() const
-{
+inline VulkanDevice const &VulkanResourceBase<Handle>::GetDevice() const {
     return *device;
 }
 
 template <typename Handle>
-inline Handle &VulkanResourceBase<Handle>::GetHandle()
-{
+inline Handle &VulkanResourceBase<Handle>::GetHandle() {
     return handle;
 }
 
 template <typename Handle>
-inline Handle const &VulkanResourceBase<Handle>::GetHandle() const
-{
+inline Handle const &VulkanResourceBase<Handle>::GetHandle() const {
     return handle;
 }
 
 template <typename Handle>
-inline uint64_t VulkanResourceBase<Handle>::GetHandleU64() const
-{
+inline uint64_t VulkanResourceBase<Handle>::GetHandleU64() const {
     // vulkan.hpp 中所有 vk::Handle 派生类型均支持到 uint64_t 的隐式转换
     return static_cast<uint64_t>(handle);
 }
 
 template <typename Handle>
-inline vk::ObjectType VulkanResourceBase<Handle>::GetObjectType() const
-{
+inline vk::ObjectType VulkanResourceBase<Handle>::GetObjectType() const {
     // vulkan.hpp 中每个句柄类型（如 vk::Image）都有静态成员 objectType
     return Handle::objectType;
 }
 
 template <typename Handle>
-inline bool VulkanResourceBase<Handle>::HasDevice() const
-{
+inline bool VulkanResourceBase<Handle>::HasDevice() const {
     return device != nullptr;
 }
 
 template <typename Handle>
-inline bool VulkanResourceBase<Handle>::HasHandle() const
-{
-    return handle != Handle{nullptr};
+inline bool VulkanResourceBase<Handle>::HasHandle() const {
+    return handle != Handle{};
 }
 
 template <typename Handle>
-inline void VulkanResourceBase<Handle>::SetDebugName(const std::string &name)
-{
+inline void VulkanResourceBase<Handle>::SetDebugName(const std::string &name) {
     debug_name = name;
 
-    if (device && !debug_name.empty())
-    {
+    if (device && !debug_name.empty()) {
         device->GetDebugUtils().SetDebugName(
             device->GetHandle(),
             GetObjectType(),
@@ -189,8 +180,7 @@ inline void VulkanResourceBase<Handle>::SetDebugName(const std::string &name)
 }
 
 template <typename Handle>
-inline void VulkanResourceBase<Handle>::SetHandle(Handle hdl)
-{
+inline void VulkanResourceBase<Handle>::SetHandle(Handle hdl) {
     handle = hdl;
 }
 

@@ -21,6 +21,7 @@ public:
     ~VulkanCommandPool();
 
     [[nodiscard]] vk::CommandPool GetHandle() const { return m_Handle; }
+    [[nodiscard]] VulkanDevice   &GetDevice() const { return m_Device; }
     [[nodiscard]] uint32_t        GetQueueFamilyIndex() const { return m_QueueFamilyIndex; }
 
     /// 从 pool 分配一个 command buffer。

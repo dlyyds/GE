@@ -146,8 +146,10 @@ inline Handle const &VulkanResourceBase<Handle>::GetHandle() const {
 
 template <typename Handle>
 inline uint64_t VulkanResourceBase<Handle>::GetHandleU64() const {
-    // vulkan.hpp 中所有 vk::Handle 派生类型均支持到 uint64_t 的隐式转换
-    return static_cast<uint64_t>(handle);
+    // vulkan.hpp 句柄类型不保证与 uint64_t 二进制兼容（32 位平台上非调度句柄可能只有 32 位），
+    // 因此在编译时检查大小后，通过 reinterpret_cast 读取句柄的原始内存表示。
+    using UintHandle = typename std::conditional<sizeof(Handle) == sizeof(uint32_t), uint32_t, uint64_t>::type;
+    return static_cast<uint64_t>(*reinterpret_cast<UintHandle const *>(&handle));
 }
 
 template <typename Handle>

@@ -9,7 +9,7 @@
 #include "Debug/Assert.h"
 #include "ImGui/ImGuiLayer.h"
 
-#include "Render/VulkanBase/VulkanImage.h"
+#include "Render/VulkanBase/VulkanHppImage.h"
 #include "Render/VulkanBase/VulkanRenderingInfo.h"
 
 #include <Events/ApplicationEvent.h>
@@ -56,7 +56,7 @@ Application::Application(const std::string &name, ApplicationCommandLineArgs arg
         // ImageViews
         m_SwapchainImageViews.reserve(imageCount);
         for (auto &img : images) {
-            m_SwapchainImageViews.push_back(VulkanImage::CreateView(
+            m_SwapchainImageViews.push_back(image_utils::CreateView(
                 vkDevice, img, vk::ImageViewType::e2D, m_Swapchain->GetFormat()));
         }
 
@@ -68,7 +68,7 @@ Application::Application(const std::string &name, ApplicationCommandLineArgs arg
     }
 
     // 4. 初始化资源管理器（纹理缓存等）
-    m_ResourceManager.Init(m_VulkanContext->GetVmaAllocator(),
+    m_ResourceManager.Init(m_VulkanContext->GetDevice(),
                            m_VulkanContext->GetVkQueue(),
                            m_VulkanContext->GetGraphicsQueueIndex());
 
@@ -180,7 +180,7 @@ void Application::Run() {
             // 4. Begin command buffer + layout transition
             auto cmd = pf.GetCommandBuffer();
             cmd.begin(vk::CommandBufferBeginInfo{.flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
-            VulkanImage::TransitionLayout(cmd, swapchain.GetImages()[imageIndex],
+            image_utils::TransitionLayout(cmd, swapchain.GetImages()[imageIndex],
                                           vk::ImageLayout::eUndefined, vk::ImageLayout::eColorAttachmentOptimal);
 
             // 5. 存储帧状态（供 Renderer / ImGuiLayer 通过 Application 访问）
@@ -198,7 +198,7 @@ void Application::Run() {
             ImGuiLayer::End();
 
             // 8. Transition to present + end command buffer
-            VulkanImage::TransitionLayout(cmd, swapchain.GetImages()[imageIndex],
+            image_utils::TransitionLayout(cmd, swapchain.GetImages()[imageIndex],
                                           vk::ImageLayout::eColorAttachmentOptimal, vk::ImageLayout::ePresentSrcKHR);
             cmd.end();
 

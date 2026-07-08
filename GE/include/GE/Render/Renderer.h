@@ -5,7 +5,8 @@
 
 #include "Render/VulkanBase/VulkanPipeline.h"
 #include "Render/VulkanBase/VulkanBuffer.h"
-#include "Render/VulkanBase/VulkanImage.h"
+#include "Render/VulkanBase/VulkanHppImage.h"
+#include "Render/VulkanBase/VulkanHppImageView.h"
 #include "Render/VulkanBase/VulkanRingBuffer.h"
 #include "Render/VulkanBase/VulkanSimpleDescriptorPool.h"
 #include "Render/Mesh.h"
@@ -129,7 +130,8 @@ private:
     VulkanSimpleDescriptorPool m_GlobalPool;
 
     // 深度 buffer（与 swapchain 尺寸一致）
-    VulkanImage m_DepthImage;
+    std::unique_ptr<VulkanHppImage>     m_DepthImage;
+    std::unique_ptr<VulkanHppImageView> m_DepthImageView;
     bool m_DepthImageTransitioned = false;
 
     VulkanContext *m_Context = nullptr; // 非拥有指针

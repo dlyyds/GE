@@ -9,7 +9,8 @@
 
 namespace GE {
 
-class VulkanImage;
+class VulkanDevice;
+class VulkanHppImage;
 
 /// 纹理库，按文件路径去重管理 GPU 纹理。
 ///
@@ -18,9 +19,9 @@ class VulkanImage;
 ///
 /// 用法：
 ///   TextureLib texLib;
-///   texLib.Init(allocator, queue, qfi);
+///   texLib.Init(device, queue, qfi);
 ///
-///   VulkanImage *tex = texLib.Load("textures/brick.png");
+///   VulkanHppImage *tex = texLib.Load("textures/brick.png");
 ///   // ... 使用 tex ...
 ///   texLib.Release("textures/brick.png");
 ///
@@ -40,14 +41,14 @@ public:
 
     /// 初始化纹理库，保存设备/队列引用供后续纹理加载使用。
     /// 必须在第一次 Load() 前调用。
-    void Init(VmaAllocator allocator, vk::Queue queue, uint32_t queueFamilyIndex);
+    void Init(VulkanDevice &device, vk::Queue queue, uint32_t queueFamilyIndex);
 
     /// 加载纹理，按文件路径去重。
-    /// 首次加载会创建 VulkanImage，之后直接返回缓存指针。
+    /// 首次加载会创建 VulkanHppImage，之后直接返回缓存指针。
     /// 返回的指针在 Release() 或 GC()/Clear() 前始终有效。
     /// @param filepath 纹理文件路径（传递给 stb_image）
-    /// @return VulkanImage 指针，加载失败返回 nullptr
-    VulkanImage *Load(const std::string &filepath);
+    /// @return VulkanHppImage 指针，加载失败返回 nullptr
+    VulkanHppImage *Load(const std::string &filepath);
 
     /// 释放纹理引用（引用计数减一）。
     /// 引用计数归零后，纹理不会被立即销毁，等待下次 GC() 清理。
@@ -70,12 +71,12 @@ private:
     static std::string NormalizePath(const std::string &path);
 
     struct CachedTexture {
-        std::unique_ptr<VulkanImage> image;
+        std::unique_ptr<VulkanHppImage> image;
         uint32_t refCount = 0;
         ~CachedTexture();   // 定义在 .cpp 中，确保完整类型
     };
 
-    VmaAllocator m_Allocator = nullptr;
+    VulkanDevice *m_Device = nullptr;
     vk::Queue m_Queue = nullptr;
     uint32_t m_QueueFamilyIndex = 0;
 

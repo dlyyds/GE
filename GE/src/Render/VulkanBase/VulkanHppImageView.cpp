@@ -1,0 +1,121 @@
+/* Copyright (c) 2023-2025, NVIDIA CORPORATION. All rights reserved.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Licensed under the Apache License, Version 2.0 the "License";
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#include "Render/VulkanBase/VulkanHppImageView.h"
+#include "Render/VulkanBase/VulkanHppImage.h"
+
+#include <vulkan/vulkan_format_traits.hpp>
+
+#include <stdexcept>
+
+namespace GE
+{
+
+VulkanHppImageView::VulkanHppImageView(VulkanHppImage &img,
+                                       vk::ImageViewType    view_type,
+                                       vk::Format           format,
+                                       uint32_t             mip_level,
+                                       uint32_t             array_layer,
+                                       uint32_t             n_mip_levels,
+                                       uint32_t             n_array_layers) :
+    VulkanResourceBase<vk::ImageView>{nullptr, &img.GetDevice()},
+    image{&img},
+    format{format}
+{
+	if (format == vk::Format::eUndefined)
+	{
+		this->format = format = image->get_format();
+	}
+
+	subresource_range = vk::ImageSubresourceRange{
+	    .aspectMask     = (std::string(vk::componentName(format, 0)) == "D") ? vk::ImageAspectFlagBits::eDepth : vk::ImageAspectFlagBits::eColor,
+	    .baseMipLevel   = mip_level,
+	    .levelCount     = n_mip_levels == 0 ? image->get_subresource().mipLevel : n_mip_levels,
+	    .baseArrayLayer = array_layer,
+	    .layerCount     = n_array_layers == 0 ? image->get_subresource().arrayLayer : n_array_layers,
+	};
+
+	vk::ImageViewCreateInfo image_view_create_info{
+	    .image            = image->GetHandle(),
+	    .viewType         = view_type,
+	    .format           = format,
+	    .subresourceRange = subresource_range,
+	};
+
+	SetHandle(GetDevice().GetHandle().createImageView(image_view_create_info));
+
+	// 向 Image 注册此 View，以便 Image 移动时收到通知
+	image->get_views().emplace(this);
+}
+
+VulkanHppImageView::VulkanHppImageView(VulkanHppImageView &&other) :
+    VulkanResourceBase<vk::ImageView>{std::move(other)},
+    image{other.image},
+    format{other.format},
+    subresource_range{other.subresource_range}
+{
+	// 从旧 Image 的 view 集合中移除旧的 this 指针，加入新的
+	auto &views = image->get_views();
+	views.erase(&other);
+	views.emplace(this);
+
+	other.SetHandle(nullptr);
+}
+
+VulkanHppImageView::~VulkanHppImageView()
+{
+	if (GetHandle())
+	{
+		GetDevice().GetHandle().destroyImageView(GetHandle());
+	}
+}
+
+vk::Format VulkanHppImageView::get_format() const
+{
+	return format;
+}
+
+const VulkanHppImage &VulkanHppImageView::get_image() const
+{
+	if (!image)
+	{
+		throw std::runtime_error("VulkanHppImageView is referring an invalid image");
+	}
+	return *image;
+}
+
+void VulkanHppImageView::set_image(VulkanHppImage &img)
+{
+	image = &img;
+}
+
+vk::ImageSubresourceLayers VulkanHppImageView::get_subresource_layers() const
+{
+	return vk::ImageSubresourceLayers{
+	    subresource_range.aspectMask,
+	    subresource_range.baseMipLevel,
+	    subresource_range.baseArrayLayer,
+	    subresource_range.layerCount,
+	};
+}
+
+vk::ImageSubresourceRange VulkanHppImageView::get_subresource_range() const
+{
+	return subresource_range;
+}
+
+}        // namespace GE

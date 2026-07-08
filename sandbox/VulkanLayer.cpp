@@ -18,8 +18,7 @@ VulkanLayer::VulkanLayer() : Layer("VulkanLayer") {
 
 void VulkanLayer::OnAttach() {
     auto &ctx = Application::GetVulkanContext();
-    auto allocator = ctx.GetVmaAllocator();
-    auto device = ctx.GetVkDevice();
+    auto &device = ctx.GetDevice();
     auto queue = ctx.GetVkQueue();
     auto qfi = ctx.GetGraphicsQueueIndex();
     auto &r = Renderer::Get();
@@ -30,19 +29,19 @@ void VulkanLayer::OnAttach() {
                        static_cast<float>(swapchain.GetExtent().height));
 
     // 默认纹理（1x1 白色 fallback）
-    m_DefaultTexture.LoadFromColor(allocator, queue, qfi, {1.0f, 1.0f, 1.0f});
+    m_DefaultTexture.LoadFromColor(device, queue, qfi, {1.0f, 1.0f, 1.0f});
 
     // 旧：单纹理（后续可移除）
-    m_Texture.LoadFromFile(allocator, queue, qfi, "assets/textures/Checkerboard.png",
+    m_Texture.LoadFromFile(device, queue, qfi, "assets/textures/Checkerboard.png",
                            vk::Filter::eNearest, vk::Filter::eNearest);
 
     // 3D 模型（现在会同时解析 .mtl 材质信息）
-    m_Model.LoadFromFile(allocator, "assets/models/cube.obj");
+    m_Model.LoadFromFile(device.GetVmaAllocator(), "assets/models/cube.obj");
 
     // 先创建一个临时管线获取 set0/set2 layout
     auto fmt = swapchain.GetFormat();
-    VulkanPipeline tempPipeline = r.CreateDefaultPipeline(device, fmt, Renderer::DEPTH_FORMAT);
-    r.InitDescriptorSets(device, tempPipeline.GetSetLayout(0),
+    VulkanPipeline tempPipeline = r.CreateDefaultPipeline(device.GetHandle(), fmt, Renderer::DEPTH_FORMAT);
+    r.InitDescriptorSets(device.GetHandle(), tempPipeline.GetSetLayout(0),
                          tempPipeline.GetSetLayout(2));
     tempPipeline.Cleanup();
 
@@ -53,15 +52,15 @@ void VulkanLayer::OnAttach() {
 
     for (auto &matData : materials) {
         auto sm = std::make_unique<SubmeshMaterial>();
-        sm->material.Init(device, r.CreateDefaultPipeline(device, fmt, Renderer::DEPTH_FORMAT));
+        sm->material.Init(device.GetHandle(), r.CreateDefaultPipeline(device.GetHandle(), fmt, Renderer::DEPTH_FORMAT));
 
         if (!matData.diffuseTexPath.empty()) {
-            sm->texture.LoadFromFile(allocator, queue, qfi, matData.diffuseTexPath);
+            sm->texture.LoadFromFile(device, queue, qfi, matData.diffuseTexPath);
             sm->material.SetTexture("samplerColor", sm->texture);
             GE_CORE_INFO("  Loaded texture: {}", matData.diffuseTexPath);
         } else {
             // 用 Kd 颜色创建 1x1 纹理
-            sm->texture.LoadFromColor(allocator, queue, qfi, matData.diffuse);
+            sm->texture.LoadFromColor(device, queue, qfi, matData.diffuse);
             sm->material.SetTexture("samplerColor", sm->texture);
             GE_CORE_INFO("  Created color texture from Kd ({:.2f}, {:.2f}, {:.2f})",
                          matData.diffuse.r, matData.diffuse.g, matData.diffuse.b);
@@ -71,7 +70,7 @@ void VulkanLayer::OnAttach() {
     }
 
     // 旧：单材质 fallback
-    m_Material.Init(device, r.CreateDefaultPipeline(device, fmt, Renderer::DEPTH_FORMAT));
+    m_Material.Init(device.GetHandle(), r.CreateDefaultPipeline(device.GetHandle(), fmt, Renderer::DEPTH_FORMAT));
     m_Material.SetTexture("samplerColor", m_Texture);
 }
 

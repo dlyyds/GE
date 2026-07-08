@@ -10,8 +10,8 @@ ResourceManager::~ResourceManager() {
     Shutdown();
 }
 
-void ResourceManager::Init(VmaAllocator allocator, vk::Queue queue, uint32_t queueFamilyIndex) {
-    m_Textures.Init(allocator, queue, queueFamilyIndex);
+void ResourceManager::Init(VulkanDevice &device, vk::Queue queue, uint32_t queueFamilyIndex) {
+    m_Textures.Init(device, queue, queueFamilyIndex);
 }
 
 void ResourceManager::Shutdown() {

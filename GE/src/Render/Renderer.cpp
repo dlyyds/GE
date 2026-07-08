@@ -6,6 +6,7 @@
 #include "Core/Application.h"
 #include "Render/VulkanBase/VulkanContext.h"
 #include "Render/VulkanBase/VulkanRenderingInfo.h"
+#include "Render/VulkanBase/VulkanDevice.h"
 #include "Core/GEWindow.h"
 #include <Core/Log.h>
 #include <array>
@@ -24,8 +25,9 @@ void Renderer::Init(VulkanContext &ctx, VulkanSwapchain &swapchain) {
     m_Context = &ctx;
     m_Swapchain = &swapchain;
 
-    auto vkDevice = ctx.GetVkDevice();
-    auto vmaAllocator = ctx.GetVmaAllocator();
+    auto &device   = ctx.GetDevice();
+    auto  vkDevice = ctx.GetVkDevice();
+    auto  vmaAllocator = ctx.GetVmaAllocator();
 
     // 查询硬件要求的 UBO 对齐值，空值回退 64
     auto props = ctx.GetVkGpu().getProperties();
@@ -42,10 +44,15 @@ void Renderer::Init(VulkanContext &ctx, VulkanSwapchain &swapchain) {
 
     // 创建深度 buffer（与 swapchain 尺寸一致）
     auto extent = swapchain.GetExtent();
-    m_DepthImage.Init(vmaAllocator, extent.width, extent.height, DEPTH_FORMAT,
-                      vk::ImageTiling::eOptimal,
-                      vk::ImageUsageFlagBits::eDepthStencilAttachment);
-    m_DepthImage.CreateView(DEPTH_FORMAT, vk::ImageViewType::e2D, vk::ImageAspectFlagBits::eDepth);
+    m_DepthImage = std::make_unique<VulkanHppImage>(device,
+        vk::Extent3D{extent.width, extent.height, 1},
+        DEPTH_FORMAT,
+        vk::ImageUsageFlagBits::eDepthStencilAttachment,
+        VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE,
+        vk::SampleCountFlagBits::e1);
+    m_DepthImageView = std::make_unique<VulkanHppImageView>(
+        *m_DepthImage, vk::ImageViewType::e2D, DEPTH_FORMAT,
+        0, 0, 1, 1);
 }
 
 void Renderer::InitDescriptorSets(vk::Device device,
@@ -109,14 +116,31 @@ void Renderer::Shutdown() {
     m_GlobalPool.Cleanup();
     m_FrameBuffer.Destroy();
     m_RingBuffer.Destroy();
-    m_DepthImage.Cleanup();
+    // unique_ptr 析构自动销毁 HPPImage + HPPImageView（RAII）
+    m_DepthImageView.reset();
+    m_DepthImage.reset();
 
     m_Context = nullptr;
     m_Swapchain = nullptr;
 }
 
 void Renderer::OnResize(vk::Extent2D newDimensions) {
-    m_DepthImage.Resize(newDimensions.width, newDimensions.height);
+    if (!m_Context) return;
+    auto &device = m_Context->GetDevice();
+
+    // 重建深度 buffer
+    m_DepthImageView.reset();
+    m_DepthImage = std::make_unique<VulkanHppImage>(device,
+        vk::Extent3D{newDimensions.width, newDimensions.height, 1},
+        DEPTH_FORMAT,
+        vk::ImageUsageFlagBits::eDepthStencilAttachment,
+        VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE,
+        vk::SampleCountFlagBits::e1);
+    m_DepthImageView = std::make_unique<VulkanHppImageView>(
+        *m_DepthImage, vk::ImageViewType::e2D, DEPTH_FORMAT,
+        0, 0, 1, 1);
+
+    m_DepthImageTransitioned = false;
     GE_CORE_INFO("Renderer depth buffer resized to {}x{}", newDimensions.width, newDimensions.height);
 }
 
@@ -143,7 +167,8 @@ void Renderer::BeginScene(vk::CommandBuffer cmd, uint32_t imageIndex,
                           const glm::vec4 &ambient,
                           const glm::vec4 &clear_color) {
     // 如果 swapchain 尺寸变化，重建 depth buffer 匹配新尺寸
-    if (dim.width != m_DepthImage.GetWidth() || dim.height != m_DepthImage.GetHeight()) {
+    if (m_DepthImage &&
+        (dim.width != m_DepthImage->get_extent().width || dim.height != m_DepthImage->get_extent().height)) {
         OnResize(dim);
         m_DepthImageTransitioned = false;
     }
@@ -173,8 +198,8 @@ void Renderer::BeginScene(vk::CommandBuffer cmd, uint32_t imageIndex,
     clear_value.color = std::array<float, 4>{{clear_color.r, clear_color.g, clear_color.b, clear_color.a}};
 
     // 深度 image layout 过渡（首次或重建后 Undefined → DepthStencilAttachment）
-    if (!m_DepthImageTransitioned) {
-        VulkanImage::TransitionLayout(cmd, m_DepthImage.GetImage(),
+    if (m_DepthImage && !m_DepthImageTransitioned) {
+        image_utils::TransitionLayout(cmd, m_DepthImage->GetHandle(),
                                       vk::ImageLayout::eUndefined,
                                       vk::ImageLayout::eDepthStencilAttachmentOptimal);
         m_DepthImageTransitioned = true;
@@ -186,7 +211,9 @@ void Renderer::BeginScene(vk::CommandBuffer cmd, uint32_t imageIndex,
                                    vk::AttachmentLoadOp::eClear,
                                    vk::AttachmentStoreOp::eStore,
                                    clear_value);
-    render_info.SetDepthAttachment(m_DepthImage.GetView());
+    if (m_DepthImageView) {
+        render_info.SetDepthAttachment(m_DepthImageView->GetHandle());
+    }
     render_info.Begin(cmd);
 
     // 动态状态（本帧内所有 Draw 共享）

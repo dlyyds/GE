@@ -1,28 +1,61 @@
-#include "Render/VulkanBase/VulkanAllocated.h"
+/* Copyright (c) 2025, NVIDIA CORPORATION. All rights reserved.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Licensed under the Apache License, Version 2.0 the "License";
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 #include "Render/VulkanBase/VulkanDevice.h"
-#include "Render/VulkanBase/PhysicalDevice.h"
+#include "Render/VulkanBase/VulkanAllocated.h"
+#include "Render/VulkanBase/VulkanBuffer.h"
+#include "Render/VulkanBase/VulkanCommandPool.h"
+#include "Render/VulkanBase/VulkanDebug.h"
+#include "Render/VulkanBase/VulkanFencePool.h"
 #include "Core/Log.h"
 
-#include <cstring>
+#include <cassert>
 #include <stdexcept>
+#include <string>
 #include <utility>
 
 namespace GE {
 
 // ============================================================================
-// 构造函数：创建物理设备 → 初始化 → VMA
+// 主构造函数
 // ============================================================================
 
 VulkanDevice::VulkanDevice(PhysicalDevice &gpu,
                            vk::SurfaceKHR surface,
+                           std::unique_ptr<DebugUtils> &&debug_utils,
                            std::unordered_map<std::string, RequestMode> const &requested_extensions,
-                           const std::function<void(PhysicalDevice &)> &request_gpu_features,
-                           std::unique_ptr<DebugUtils> debug_utils) :
+                           std::function<void(PhysicalDevice &)> request_gpu_features) :
+    VulkanResourceBase<vk::Device>{nullptr, this},
+    m_DebugUtils{debug_utils ? std::move(debug_utils) : std::make_unique<DummyDebugUtils>()},
     m_Gpu{gpu},
-    m_Surface{surface},
-    m_DebugUtils{debug_utils ? std::move(debug_utils) : std::make_unique<DummyDebugUtils>()} {
-    Init(requested_extensions, request_gpu_features);
-    InitVma();
+    m_Surface{surface} {
+    Init(requested_extensions, std::move(request_gpu_features));
+}
+
+// ============================================================================
+// 包装构造函数：包装已有 vk::Device
+// ============================================================================
+
+VulkanDevice::VulkanDevice(PhysicalDevice &gpu, vk::Device &vulkan_device, vk::SurfaceKHR surface) :
+    VulkanResourceBase<vk::Device>{vulkan_device, this},
+    m_DebugUtils{std::make_unique<DummyDebugUtils>()},
+    m_Gpu{gpu},
+    m_Surface{surface} {
+    // 包装模式下不执行 Init，直接使用传入的设备
 }
 
 // ============================================================================
@@ -30,33 +63,29 @@ VulkanDevice::VulkanDevice(PhysicalDevice &gpu,
 // ============================================================================
 
 VulkanDevice::~VulkanDevice() {
-    // 先关闭 allocated 单例（输出泄漏统计），再销毁 VMA
+    // 注意：跳过 resource_cache.clear()（GE 暂无 ResourceCache）
+
+    m_CommandPool.reset();
+    m_FencePool.reset();
     allocated::shutdown();
 
-    if (m_VmaAllocator) {
-        vmaDestroyAllocator(m_VmaAllocator);
-        m_VmaAllocator = nullptr;
-    }
-
-    m_GraphicsQueue = nullptr;
-    if (m_Device) {
-        m_Device.destroy();
-        m_Device = nullptr;
+    if (this->GetHandle()) {
+        this->GetHandle().destroy();
     }
 }
 
 // ============================================================================
-// Init — 参照 Vulkan-Samples Device::init() 模式
+// Init — 核心初始化
 // ============================================================================
 
 void VulkanDevice::Init(std::unordered_map<std::string, RequestMode> const &requested_extensions,
-                        const std::function<void(PhysicalDevice &)> &request_gpu_features) {
+                        std::function<void(PhysicalDevice &)> request_gpu_features) {
     GE_CORE_INFO("Selected GPU: {}", m_Gpu.GetProperties().deviceName.data());
 
     // ---- 1. 准备所有队列族的创建信息 ----
     auto const &queue_family_properties = m_Gpu.GetQueueFamilyProperties();
     std::vector<vk::DeviceQueueCreateInfo> queue_create_infos;
-    std::vector<std::vector<float> > queue_priorities;
+    std::vector<std::vector<float>>        queue_priorities;
 
     queue_create_infos.reserve(queue_family_properties.size());
     queue_priorities.reserve(queue_family_properties.size());
@@ -67,25 +96,25 @@ void VulkanDevice::Init(std::unordered_map<std::string, RequestMode> const &requ
         queue_priorities.emplace_back(qfp.queueCount, 0.5f);
 
         // 如果启用了高优先级图形队列，将图形队列族的第一个队列设为 1.0
-        if (m_Gpu.HasHighPriorityGraphicsQueue() && (qfp.queueFlags & vk::QueueFlagBits::eGraphics)) {
+        if (m_Gpu.HasHighPriorityGraphicsQueue() &&
+            (get_queue_family_index(queue_family_properties, vk::QueueFlagBits::eGraphics) == family_index)) {
             queue_priorities.back()[0] = 1.0f;
         }
 
         queue_create_infos.push_back(vk::DeviceQueueCreateInfo{
             .queueFamilyIndex = family_index,
-            .queueCount = qfp.queueCount,
+            .queueCount       = qfp.queueCount,
             .pQueuePriorities = queue_priorities[family_index].data(),
         });
     }
 
     // ---- 2. 检查并启用扩展 ----
-    // 2a. 基础必需扩展（Swapchain）
+    // 2a. 基础必需扩展（Swapchain + ExtendedDynamicState）
     std::vector<const char *> required_core_extensions = {
         VK_KHR_SWAPCHAIN_EXTENSION_NAME,
         VK_EXT_EXTENDED_DYNAMIC_STATE_EXTENSION_NAME,
     };
 
-    // 检查必需扩展是否可用
     for (auto const &ext : required_core_extensions) {
         if (m_Gpu.IsExtensionSupported(ext)) {
             m_EnabledExtensions.emplace_back(ext);
@@ -100,9 +129,9 @@ void VulkanDevice::Init(std::unordered_map<std::string, RequestMode> const &requ
     }
 #endif
 
-    // 2b. 可选扩展（Dedicated Allocation 等）
+    // 2b. 可选扩展（VMA Dedicated Allocation）
     bool can_get_memory_requirements = m_Gpu.IsExtensionSupported("VK_KHR_get_memory_requirements2");
-    bool has_dedicated_allocation = m_Gpu.IsExtensionSupported("VK_KHR_dedicated_allocation");
+    bool has_dedicated_allocation    = m_Gpu.IsExtensionSupported("VK_KHR_dedicated_allocation");
 
     if (can_get_memory_requirements && has_dedicated_allocation) {
         m_EnabledExtensions.emplace_back("VK_KHR_get_memory_requirements2");
@@ -111,21 +140,21 @@ void VulkanDevice::Init(std::unordered_map<std::string, RequestMode> const &requ
     }
 
     // 2c. 请求的外部扩展
-    for (auto const &[ext_name, is_optional] : requested_extensions) {
+    std::vector<const char *> unsupported_extensions;
+    for (auto const &[ext_name, mode] : requested_extensions) {
         if (m_Gpu.IsExtensionSupported(ext_name)) {
             // 避免重复添加
             auto already = std::ranges::find_if(m_EnabledExtensions,
-                                                [ext_name](const char *enabled) { return strcmp(enabled, ext_name.c_str()) == 0; });
+                                                [&ext_name](const char *enabled) { return ext_name == enabled; });
             if (already == m_EnabledExtensions.end()) {
                 m_EnabledExtensions.push_back(ext_name.c_str());
             }
-        } else if (is_optional == RequestMode::Required) {
-            throw std::runtime_error(std::string("Required device extension not available: ") + ext_name);
         } else {
-            GE_CORE_WARN("Optional device extension '{}' not available, some features may be disabled", ext_name);
+            unsupported_extensions.push_back(ext_name.c_str());
         }
     }
 
+    // 记录启用的扩展
     if (!m_EnabledExtensions.empty()) {
         GE_CORE_INFO("Device enabled extensions:");
         for (auto const &ext : m_EnabledExtensions) {
@@ -133,109 +162,368 @@ void VulkanDevice::Init(std::unordered_map<std::string, RequestMode> const &requ
         }
     }
 
-    // ---- 3. 调用外部特性请求回调 ----
+    // 处理不支持的扩展
+    bool error = false;
+    for (auto const &ext : unsupported_extensions) {
+        auto it = requested_extensions.find(ext);
+        if (it != requested_extensions.end() && it->second == RequestMode::Optional) {
+            GE_CORE_WARN("Optional device extension '{}' not available, some features may be disabled", ext);
+        } else {
+            GE_CORE_ERROR("Required device extension '{}' not available, cannot run", ext);
+            error = true;
+        }
+    }
+    if (error) {
+        throw std::runtime_error("Required device extensions not present");
+    }
+
+    // ---- 3. 调用 GPU 特性请求回调 ----
     if (request_gpu_features) {
         request_gpu_features(m_Gpu);
     }
 
     // ---- 4. 创建逻辑设备 ----
     vk::DeviceCreateInfo create_info{
-        .pNext = m_Gpu.GetExtensionFeatureChain(),
-        .queueCreateInfoCount = static_cast<uint32_t>(queue_create_infos.size()),
-        .pQueueCreateInfos = queue_create_infos.data(),
-        .enabledExtensionCount = static_cast<uint32_t>(m_EnabledExtensions.size()),
+        .pNext                   = m_Gpu.GetExtensionFeatureChain(),
+        .queueCreateInfoCount    = static_cast<uint32_t>(queue_create_infos.size()),
+        .pQueueCreateInfos       = queue_create_infos.data(),
+        .enabledExtensionCount   = static_cast<uint32_t>(m_EnabledExtensions.size()),
         .ppEnabledExtensionNames = m_EnabledExtensions.data(),
-        .pEnabledFeatures = &m_Gpu.GetRequestedFeatures(),
+        .pEnabledFeatures        = &m_Gpu.GetRequestedFeatures(),
     };
 
-    m_Device = m_Gpu.GetHandle().createDevice(create_info);
+    vk::Device device = m_Gpu.GetHandle().createDevice(create_info);
+    this->SetHandle(device);
 
-    VULKAN_HPP_DEFAULT_DISPATCHER.init(m_Device);
+    VULKAN_HPP_DEFAULT_DISPATCHER.init(device);
 
-    // ---- 5. 获取图形队列 ----
+    // ---- 5. 创建所有队列 ----
+    m_Queues.resize(queue_family_properties.size());
+
     for (uint32_t family_index = 0; family_index < queue_family_properties.size(); ++family_index) {
         auto const &qfp = queue_family_properties[family_index];
-        if (qfp.queueFlags & vk::QueueFlagBits::eGraphics) {
-            m_GraphicsQueueIndex = static_cast<int32_t>(family_index);
-            m_GraphicsQueue = m_Device.getQueue(family_index, 0);
+        vk::Bool32 present_supported = m_Gpu.IsPresentSupported(m_Surface, family_index);
 
-            // 创建 VulkanQueue 封装，查询 present 支持
-            auto can_present = m_Gpu.IsPresentSupported(m_Surface, family_index);
-            m_GraphicsQueueObj = std::make_unique<VulkanQueue>(*this, family_index, qfp, can_present, 0);
-
-            GE_CORE_INFO("Using graphics queue family index {}", family_index);
-            break;
+        for (uint32_t queue_index = 0; queue_index < qfp.queueCount; ++queue_index) {
+            m_Queues[family_index].emplace_back(*this, family_index, qfp, present_supported, queue_index);
         }
     }
 
-    if (m_GraphicsQueueIndex < 0) {
-        throw std::runtime_error("No graphics queue family found on the device");
-    }
-}
-
-// ============================================================================
-// InitVma — VMA 分配器初始化
-// ============================================================================
-
-void VulkanDevice::InitVma() {
+    // ---- 6. 初始化 VMA 分配器 ----
     VmaVulkanFunctions vk_funcs{};
     vk_funcs.vkGetInstanceProcAddr = VULKAN_HPP_DEFAULT_DISPATCHER.vkGetInstanceProcAddr;
-    vk_funcs.vkGetDeviceProcAddr = VULKAN_HPP_DEFAULT_DISPATCHER.vkGetDeviceProcAddr;
+    vk_funcs.vkGetDeviceProcAddr   = VULKAN_HPP_DEFAULT_DISPATCHER.vkGetDeviceProcAddr;
 
     VmaAllocatorCreateInfo alloc_info{};
     alloc_info.vulkanApiVersion = VK_API_VERSION_1_3;
-    alloc_info.instance = static_cast<VkInstance>(m_Gpu.GetInstance().GetHandle());
-    alloc_info.physicalDevice = static_cast<VkPhysicalDevice>(m_Gpu.GetHandle());
-    alloc_info.device = static_cast<VkDevice>(m_Device);
+    alloc_info.instance         = static_cast<VkInstance>(m_Gpu.GetInstance().GetHandle());
+    alloc_info.physicalDevice   = static_cast<VkPhysicalDevice>(m_Gpu.GetHandle());
+    alloc_info.device           = static_cast<VkDevice>(device);
     alloc_info.pVulkanFunctions = &vk_funcs;
 
-    VkResult result = vmaCreateAllocator(&alloc_info, &m_VmaAllocator);
+    VmaAllocator vma_allocator{nullptr};
+    VkResult result = vmaCreateAllocator(&alloc_info, &vma_allocator);
     if (result != VK_SUCCESS) {
         throw std::runtime_error("Failed to create VMA allocator");
     }
+    allocated::init(vma_allocator);
 
-    // 注册 VMA 分配器到 allocated 单例，供 Allocated 基类使用
-    allocated::init(m_VmaAllocator);
+    // ---- 7. 创建内建 command pool 和 fence pool ----
+    uint32_t family_index = GetQueueByFlagsImpl(
+        vk::QueueFlagBits::eGraphics | vk::QueueFlagBits::eCompute, 0).GetFamilyIndex();
+    m_CommandPool = std::make_unique<VulkanCommandPool>(*this, family_index);
+    m_FencePool   = std::make_unique<VulkanFencePool>(this->GetHandle());
 }
 
 // ============================================================================
-// 扩展检查
+// AddQueue
+// ============================================================================
+
+void VulkanDevice::AddQueue(size_t global_index, uint32_t family_index,
+                            vk::QueueFamilyProperties const &properties, vk::Bool32 can_present) {
+    if (m_Queues.size() <= global_index) {
+        m_Queues.resize(global_index + 1);
+    }
+    m_Queues[global_index].emplace_back(*this, family_index, properties, can_present, 0);
+}
+
+// ============================================================================
+// CopyBuffer
+// ============================================================================
+
+void VulkanDevice::CopyBuffer(VulkanBuffer const &src, VulkanBuffer &dst,
+                              vk::Queue queue, vk::BufferCopy const *copy_region) {
+    assert(dst.GetSize() <= src.GetSize());
+    assert(src.GetBuffer());
+    CopyBufferImpl(this->GetHandle(), src, dst, queue, copy_region);
+}
+
+void VulkanDevice::CopyBufferImpl(vk::Device device, VulkanBuffer const &src, VulkanBuffer &dst,
+                                  vk::Queue queue, vk::BufferCopy const *copy_region) {
+    vk::CommandBuffer cmd_buf = CreateCommandBufferImpl(device, vk::CommandBufferLevel::ePrimary, true);
+
+    vk::BufferCopy buffer_copy;
+    if (copy_region == nullptr) {
+        buffer_copy.size = src.GetSize();
+    } else {
+        buffer_copy = *copy_region;
+    }
+
+    cmd_buf.copyBuffer(src.GetBuffer(), dst.GetBuffer(), buffer_copy);
+
+    FlushCommandBufferImpl(device, cmd_buf, queue, true, nullptr);
+}
+
+// ============================================================================
+// CreateCommandBuffer
+// ============================================================================
+
+vk::CommandBuffer VulkanDevice::CreateCommandBuffer(vk::CommandBufferLevel level, bool begin) const {
+    return CreateCommandBufferImpl(this->GetHandle(), level, begin);
+}
+
+vk::CommandBuffer VulkanDevice::CreateCommandBufferImpl(vk::Device device, vk::CommandBufferLevel level, bool begin) const {
+    assert(m_CommandPool && "No command pool exists in the device");
+
+    vk::CommandBufferAllocateInfo alloc_info{
+        .commandPool        = m_CommandPool->GetHandle(),
+        .level              = level,
+        .commandBufferCount = 1,
+    };
+    vk::CommandBuffer cmd_buf = device.allocateCommandBuffers(alloc_info).front();
+
+    if (begin) {
+        cmd_buf.begin(vk::CommandBufferBeginInfo{});
+    }
+
+    return cmd_buf;
+}
+
+// ============================================================================
+// CreateCommandPool
+// ============================================================================
+
+vk::CommandPool VulkanDevice::CreateCommandPool(uint32_t queue_index, vk::CommandPoolCreateFlags flags) {
+    vk::CommandPoolCreateInfo pool_info{
+        .flags            = flags,
+        .queueFamilyIndex = queue_index,
+    };
+    return this->GetHandle().createCommandPool(pool_info);
+}
+
+// ============================================================================
+// CreateImage
+// ============================================================================
+
+std::pair<vk::Image, vk::DeviceMemory> VulkanDevice::CreateImage(
+    vk::Format format, vk::Extent2D const &extent, uint32_t mip_levels,
+    vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties) const {
+    return CreateImageImpl(this->GetHandle(), format, extent, mip_levels, usage, properties);
+}
+
+std::pair<vk::Image, vk::DeviceMemory> VulkanDevice::CreateImageImpl(
+    vk::Device device, vk::Format format, vk::Extent2D const &extent,
+    uint32_t mip_levels, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties) const {
+    vk::ImageCreateInfo image_info{
+        .imageType   = vk::ImageType::e2D,
+        .format      = format,
+        .extent      = {.width = extent.width, .height = extent.height, .depth = 1},
+        .mipLevels   = mip_levels,
+        .arrayLayers = 1,
+        .samples     = vk::SampleCountFlagBits::e1,
+        .tiling      = vk::ImageTiling::eOptimal,
+        .usage       = usage,
+    };
+
+    vk::Image image = device.createImage(image_info);
+
+    vk::MemoryRequirements mem_reqs = device.getImageMemoryRequirements(image);
+
+    vk::MemoryAllocateInfo mem_alloc{
+        .allocationSize  = mem_reqs.size,
+        .memoryTypeIndex = m_Gpu.GetMemoryType(mem_reqs.memoryTypeBits, properties),
+    };
+    vk::DeviceMemory memory = device.allocateMemory(mem_alloc);
+    device.bindImageMemory(image, memory, 0);
+
+    return {image, memory};
+}
+
+// ============================================================================
+// CreateInternalCommandPool / CreateInternalFencePool
+// ============================================================================
+
+void VulkanDevice::CreateInternalCommandPool() {
+    uint32_t family_index = GetQueueByFlagsImpl(
+        vk::QueueFlagBits::eGraphics | vk::QueueFlagBits::eCompute, 0).GetFamilyIndex();
+    m_CommandPool = std::make_unique<VulkanCommandPool>(*this, family_index);
+}
+
+void VulkanDevice::CreateInternalFencePool() {
+    m_FencePool = std::make_unique<VulkanFencePool>(this->GetHandle());
+}
+
+// ============================================================================
+// FlushCommandBuffer
+// ============================================================================
+
+void VulkanDevice::FlushCommandBuffer(vk::CommandBuffer command_buffer, vk::Queue queue,
+                                      bool free, vk::Semaphore signal_semaphore) const {
+    FlushCommandBufferImpl(this->GetHandle(), command_buffer, queue, free, signal_semaphore);
+}
+
+void VulkanDevice::FlushCommandBufferImpl(vk::Device device, vk::CommandBuffer command_buffer,
+                                          vk::Queue queue, bool free, vk::Semaphore signal_semaphore) const {
+    if (!command_buffer) {
+        return;
+    }
+
+    command_buffer.end();
+
+    vk::SubmitInfo submit_info{
+        .commandBufferCount = 1,
+        .pCommandBuffers    = &command_buffer,
+    };
+    if (signal_semaphore) {
+        submit_info.setSignalSemaphores(signal_semaphore);
+    }
+
+    // 创建 fence 确保 command buffer 执行完成
+    vk::Fence fence = device.createFence(vk::FenceCreateInfo{});
+
+    // 提交到队列
+    queue.submit(submit_info, fence);
+
+    // 等待 fence
+    vk::Result result = device.waitForFences(1, &fence, VK_TRUE, DEFAULT_FENCE_TIMEOUT);
+    if (result != vk::Result::eSuccess) {
+        GE_CORE_ERROR("Detected Vulkan error: {}", vk::to_string(result));
+        abort();
+    }
+
+    device.destroyFence(fence);
+
+    if (m_CommandPool && free) {
+        device.freeCommandBuffers(m_CommandPool->GetHandle(), command_buffer);
+    }
+}
+
+// ============================================================================
+// GetCommandPool
+// ============================================================================
+
+VulkanCommandPool &VulkanDevice::GetCommandPool() const {
+    return *m_CommandPool;
+}
+
+// ============================================================================
+// GetDebugUtils
+// ============================================================================
+
+DebugUtils const &VulkanDevice::GetDebugUtils() const {
+    return *m_DebugUtils;
+}
+
+// ============================================================================
+// GetFencePool
+// ============================================================================
+
+VulkanFencePool &VulkanDevice::GetFencePool() const {
+    return *m_FencePool;
+}
+
+// ============================================================================
+// GetGpu
+// ============================================================================
+
+PhysicalDevice const &VulkanDevice::GetGpu() const {
+    return m_Gpu;
+}
+
+// ============================================================================
+// GetQueue
+// ============================================================================
+
+VulkanQueue const &VulkanDevice::GetQueue(uint32_t queue_family_index, uint32_t queue_index) const {
+    assert(queue_family_index < m_Queues.size() && "Queue family index out of bounds");
+    assert(queue_index < m_Queues[queue_family_index].size() && "Queue index out of bounds");
+    return m_Queues[queue_family_index][queue_index];
+}
+
+// ============================================================================
+// GetQueueByFlags
+// ============================================================================
+
+VulkanQueue const &VulkanDevice::GetQueueByFlags(vk::QueueFlags required_queue_flags, uint32_t queue_index) const {
+    return GetQueueByFlagsImpl(required_queue_flags, queue_index);
+}
+
+VulkanQueue const &VulkanDevice::GetQueueByFlagsImpl(vk::QueueFlags required_queue_flags, uint32_t queue_index) const {
+    auto queue_it = std::ranges::find_if(m_Queues,
+                                         [required_queue_flags, queue_index](std::vector<VulkanQueue> const &family) {
+                                             assert(!family.empty());
+                                             vk::QueueFamilyProperties const &props = family[0].GetProperties();
+                                             return ((props.queueFlags & required_queue_flags) == required_queue_flags) &&
+                                                    (queue_index < props.queueCount);
+                                         });
+
+    if (queue_it == m_Queues.end()) {
+        throw std::runtime_error("Queue not found");
+    }
+
+    return (*queue_it)[queue_index];
+}
+
+// ============================================================================
+// GetQueueByPresent
+// ============================================================================
+
+VulkanQueue const &VulkanDevice::GetQueueByPresent(uint32_t queue_index) const {
+    auto queue_it = std::ranges::find_if(m_Queues,
+                                         [queue_index](std::vector<VulkanQueue> const &family) {
+                                             return !family.empty() &&
+                                                    queue_index < family[0].GetProperties().queueCount &&
+                                                    family[0].SupportPresent();
+                                         });
+
+    if (queue_it == m_Queues.end()) {
+        throw std::runtime_error("Queue not found");
+    }
+
+    return (*queue_it)[queue_index];
+}
+
+// ============================================================================
+// IsExtensionEnabled
 // ============================================================================
 
 bool VulkanDevice::IsExtensionEnabled(const char *extension) const {
     return std::ranges::find_if(m_EnabledExtensions,
-                                [extension](std::string const &enabled) {
-                                    return enabled == extension;
+                                [extension](const char *enabled) {
+                                    return strcmp(extension, enabled) == 0;
                                 }) != m_EnabledExtensions.end();
 }
 
 // ============================================================================
-// 等待空闲
+// IsImageFormatSupported
 // ============================================================================
 
-void VulkanDevice::WaitIdle() const {
-    if (m_Device) {
-        m_Device.waitIdle();
-    }
+bool VulkanDevice::IsImageFormatSupported(vk::Format format) const {
+    vk::ImageFormatProperties format_properties;
+    return vk::Result::eErrorFormatNotSupported !=
+           m_Gpu.GetHandle().getImageFormatProperties(
+               format, vk::ImageType::e2D, vk::ImageTiling::eOptimal,
+               vk::ImageUsageFlagBits::eSampled, {}, &format_properties);
 }
 
 // ============================================================================
-// 查找内存类型（静态工具函数）
+// WaitIdle
 // ============================================================================
 
-uint32_t VulkanDevice::FindMemoryType(vk::PhysicalDevice gpu, uint32_t type_filter,
-                                      vk::MemoryPropertyFlags properties) {
-    vk::PhysicalDeviceMemoryProperties mem_properties = gpu.getMemoryProperties();
-
-    for (uint32_t i = 0; i < mem_properties.memoryTypeCount; ++i) {
-        if (type_filter & (1 << i)) {
-            if ((mem_properties.memoryTypes[i].propertyFlags & properties) == properties) {
-                return i;
-            }
-        }
+void VulkanDevice::WaitIdle() const {
+    if (this->GetHandle()) {
+        this->GetHandle().waitIdle();
     }
-
-    throw std::runtime_error("Failed to find suitable memory type.");
 }
 
 } // namespace GE

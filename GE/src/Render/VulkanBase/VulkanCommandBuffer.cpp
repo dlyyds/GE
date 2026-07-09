@@ -1,5 +1,6 @@
 #include "Render/VulkanBase/VulkanCommandBuffer.h"
 #include "Render/VulkanBase/VulkanCommandPool.h"
+#include "Render/VulkanBase/VulkanDevice.h"
 
 #include <cassert>
 #include <utility>

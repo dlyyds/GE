@@ -29,7 +29,7 @@
 
 #pragma once
 
-#include "VulkanDevice.h"
+#include "Render/VulkanBase/VulkanDebug.h"
 
 #include <string>
 #include <utility>

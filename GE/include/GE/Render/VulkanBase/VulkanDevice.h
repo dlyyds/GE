@@ -1,100 +1,205 @@
+/* Copyright (c) 2025, NVIDIA CORPORATION. All rights reserved.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Licensed under the Apache License, Version 2.0 the "License";
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/**
+ * @file VulkanDevice.h
+ * @brief Vulkan 逻辑设备封装，从 Vulkan-Samples 的 Device 模板适配（仅 Cpp 绑定）。
+ *
+ * 包装 vk::Device，管理队列、CommandPool、FencePool、VMA 分配器和资源缓存。
+ * 构造即创建设备，析构即销毁设备。
+ */
+
 #pragma once
 
 #include <vulkan/vulkan.hpp>
 #include "vk_mem_alloc.h"
 
+#include <cstdint>
+#include <cstring>
 #include <functional>
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
+#include "Render/VulkanBase/PhysicalDevice.h"
 #include "Render/VulkanBase/VulkanCommon.h"
-#include "Render/VulkanBase/VulkanDebug.h"
 #include "Render/VulkanBase/VulkanQueue.h"
+#include "Render/VulkanBase/VulkanResourceBase.h"
 
 namespace GE {
 
-class PhysicalDevice;
+class DebugUtils;
+class VulkanBuffer;
+class VulkanCommandPool;
+class VulkanFencePool;
 
 /**
- * @brief Vulkan 逻辑设备，参照 Vulkan-Samples 的 Device 模式实现。
+ * @brief Vulkan 逻辑设备。
  *
- * 构造即创建逻辑设备，析构即销毁。
- * 生命周期由 VulkanContext 通过 unique_ptr 管理。
- * 保留 VMA 分配器集成（Vulkan-Samples 原版不使用 VMA，此处按项目需要保留）。
+ * 封装 vk::Device 的生命周期，提供队列管理、命令缓冲、buffer/image 辅助方法、
+ * fence pool、debug utils 和 VMA 分配器初始化。
+ *
+ * 使用方式：
+ * @code
+ *   VulkanDevice device(gpu, surface, debug_utils, extensions, features_cb);
+ *   vk::Queue graphics_queue = device.GetQueueByFlags(vk::QueueFlagBits::eGraphics, 0).GetHandle();
+ * @endcode
  */
-class VulkanDevice {
+class VulkanDevice : public VulkanResourceBase<vk::Device> {
 public:
-    /**
-     * @brief 创建逻辑设备。
-     * @param gpu                  已选定的物理设备（必须已构造且有效）。
-     * @param surface              窗口 surface（用于 present 支持查询）。
-     * @param requested_extensions 按扩展名 → 是否可选 映射的请求扩展列表。
-     * @param request_gpu_features 在设备创建前调用，用于请求 GPU 扩展特性。
-     * @param debug_utils          调试工具实例（DebugUtilsExt / DummyDebugUtils 等）。
-     */
+    /// @brief 主构造函数：创建逻辑设备
+    /// @param gpu                  已选定的物理设备
+    /// @param surface              窗口 surface（用于 present 支持查询）
+    /// @param debug_utils          调试工具实例（DebugUtilsExt / DummyDebugUtils）
+    /// @param requested_extensions 请求的扩展列表（扩展名 → 是否可选）
+    /// @param request_gpu_features 创建前回调，用于请求 GPU 扩展特性
     VulkanDevice(PhysicalDevice &gpu,
                  vk::SurfaceKHR surface,
+                 std::unique_ptr<DebugUtils> &&debug_utils,
                  std::unordered_map<std::string, RequestMode> const &requested_extensions = {},
-                 const std::function<void(PhysicalDevice &)> &request_gpu_features = {},
-                 std::unique_ptr<DebugUtils> debug_utils = {});
+                 std::function<void(PhysicalDevice &)> request_gpu_features = {});
 
-    ~VulkanDevice();
+    /// @brief 包装构造函数：包装已有 vk::Device
+    /// @param gpu            关联的物理设备
+    /// @param vulkan_device  已有的 vk::Device 句柄
+    /// @param surface        窗口 surface
+    VulkanDevice(PhysicalDevice &gpu, vk::Device &vulkan_device, vk::SurfaceKHR surface);
 
     VulkanDevice(const VulkanDevice &) = delete;
+    VulkanDevice(VulkanDevice &&) = delete;
+    ~VulkanDevice();
 
     VulkanDevice &operator=(const VulkanDevice &) = delete;
+    VulkanDevice &operator=(VulkanDevice &&) = delete;
 
-    /// 获取 Vulkan 逻辑设备句柄。
-    [[nodiscard]] vk::Device GetHandle() const { return m_Device; }
+    // =================================================================
+    // 队列管理
+    // =================================================================
 
-    /// 获取关联的 PhysicalDevice。
-    [[nodiscard]] PhysicalDevice &GetGpu() const { return m_Gpu; }
+    /// @brief 向设备添加一个队列。
+    /// @param global_index  队列在 m_Queues 中的外层索引（通常 = family_index）
+    /// @param family_index  队列族索引
+    /// @param properties    队列族属性
+    /// @param can_present   是否支持 present
+    void AddQueue(size_t global_index, uint32_t family_index,
+                  vk::QueueFamilyProperties const &properties, vk::Bool32 can_present);
 
-    /// 获取图形队列。
-    [[nodiscard]] vk::Queue GetQueue() const { return m_GraphicsQueue; }
+    // =================================================================
+    // Buffer / Image 工具
+    // =================================================================
 
-    /// 获取图形队列对象（VulkanQueue 封装）。
-    [[nodiscard]] VulkanQueue &GetGraphicsQueue() const { return *m_GraphicsQueueObj; }
+    /// @brief 使用临时 command buffer 执行 buffer 拷贝。
+    void CopyBuffer(VulkanBuffer const &src, VulkanBuffer &dst,
+                    vk::Queue queue, vk::BufferCopy const *copy_region = nullptr);
 
-    /// 获取图形队列对应的队列族索引。
-    [[nodiscard]] int32_t GetGraphicsQueueIndex() const { return m_GraphicsQueueIndex; }
+    /// @brief 从内建 command pool 分配一个 command buffer。
+    /// @param level  Command buffer 级别
+    /// @param begin  是否立即开始录制
+    vk::CommandBuffer CreateCommandBuffer(vk::CommandBufferLevel level, bool begin = false) const;
 
-    /// 获取 VMA 分配器。
-    [[nodiscard]] VmaAllocator GetVmaAllocator() const { return m_VmaAllocator; }
+    /// @brief 创建一个 command pool。
+    vk::CommandPool CreateCommandPool(uint32_t queue_index,
+                                      vk::CommandPoolCreateFlags flags = {});
 
-    /// 获取调试工具实例。
-    [[nodiscard]] DebugUtils const &GetDebugUtils() const { return *m_DebugUtils; }
+    /// @brief 创建一个 image 及其绑定的 DeviceMemory。
+    std::pair<vk::Image, vk::DeviceMemory> CreateImage(
+        vk::Format format, vk::Extent2D const &extent, uint32_t mip_levels,
+        vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties) const;
 
-    /// 检查指定扩展是否已启用。
-    [[nodiscard]] bool IsExtensionEnabled(const char *extension) const;
+    /// @brief 创建内建的 command pool（供 CreateCommandBuffer / FlushCommandBuffer 使用）。
+    void CreateInternalCommandPool();
 
-    /// 等待设备空闲。
+    /// @brief 创建内建的 fence pool。
+    void CreateInternalFencePool();
+
+    /// @brief 提交 command buffer、等待完成、可选释放。
+    /// @param command_buffer     要刷新的 command buffer
+    /// @param queue              提交到的队列
+    /// @param free               是否在提交后释放 command buffer
+    /// @param signal_semaphore   可选，提交时 signal 的信号量
+    void FlushCommandBuffer(vk::CommandBuffer command_buffer, vk::Queue queue,
+                            bool free = true, vk::Semaphore signal_semaphore = nullptr) const;
+
+    // =================================================================
+    // 访问器
+    // =================================================================
+
+    /// @brief 获取内建 command pool。
+    VulkanCommandPool &GetCommandPool() const;
+
+    /// @brief 获取 debug utils。
+    DebugUtils const &GetDebugUtils() const;
+
+    /// @brief 获取内建 fence pool。
+    VulkanFencePool &GetFencePool() const;
+
+    /// @brief 获取关联的 PhysicalDevice。
+    PhysicalDevice const &GetGpu() const;
+
+    /// @brief 按队列族和索引获取队列。
+    VulkanQueue const &GetQueue(uint32_t queue_family_index, uint32_t queue_index) const;
+
+    /// @brief 按队列能力标志获取队列。
+    VulkanQueue const &GetQueueByFlags(vk::QueueFlags required_queue_flags, uint32_t queue_index) const;
+
+    /// @brief 获取支持 present 的队列。
+    VulkanQueue const &GetQueueByPresent(uint32_t queue_index) const;
+
+    // =================================================================
+    // 查询
+    // =================================================================
+
+    /// @brief 检查扩展是否已启用。
+    bool IsExtensionEnabled(const char *extension) const;
+
+    /// @brief 检查 image 格式是否受支持。
+    bool IsImageFormatSupported(vk::Format format) const;
+
+    /// @brief 等待设备空闲。
     void WaitIdle() const;
 
-    /// 在给定的物理设备上查找满足类型位掩码和内存属性要求的内存类型。
-    static uint32_t FindMemoryType(vk::PhysicalDevice gpu, uint32_t type_filter,
-                                   vk::MemoryPropertyFlags properties);
-
 private:
-    /// 内部初始化：队列创建、扩展检查、特性请求、设备创建、VMA 初始化。
+    // ---- 内部实现 ----
+    void CopyBufferImpl(vk::Device device, VulkanBuffer const &src, VulkanBuffer &dst,
+                        vk::Queue queue, vk::BufferCopy const *copy_region);
+
+    vk::CommandBuffer CreateCommandBufferImpl(vk::Device device, vk::CommandBufferLevel level, bool begin) const;
+
+    std::pair<vk::Image, vk::DeviceMemory> CreateImageImpl(
+        vk::Device device, vk::Format format, vk::Extent2D const &extent,
+        uint32_t mip_levels, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties) const;
+
+    void FlushCommandBufferImpl(vk::Device device, vk::CommandBuffer command_buffer,
+                                vk::Queue queue, bool free, vk::Semaphore signal_semaphore) const;
+
+    VulkanQueue const &GetQueueByFlagsImpl(vk::QueueFlags required_queue_flags, uint32_t queue_index) const;
+
     void Init(std::unordered_map<std::string, RequestMode> const &requested_extensions,
-              const std::function<void(PhysicalDevice &)> &request_gpu_features);
+              std::function<void(PhysicalDevice &)> request_gpu_features);
 
-    /// 初始化 VMA 分配器。
-    void InitVma();
-
-    PhysicalDevice &m_Gpu;
-    vk::Device m_Device = nullptr;
-    vk::SurfaceKHR m_Surface = nullptr;
-    vk::Queue m_GraphicsQueue = nullptr;
-    int32_t m_GraphicsQueueIndex = -1;
-    std::unique_ptr<VulkanQueue> m_GraphicsQueueObj;
-
-    std::unique_ptr<DebugUtils> m_DebugUtils;
-    std::vector<const char *> m_EnabledExtensions;
-    VmaAllocator m_VmaAllocator = nullptr;
+    // ---- 成员 ----
+    std::unique_ptr<VulkanCommandPool>    m_CommandPool;
+    std::unique_ptr<DebugUtils>           m_DebugUtils;
+    std::vector<const char *>             m_EnabledExtensions;
+    std::unique_ptr<VulkanFencePool>      m_FencePool;
+    PhysicalDevice                       &m_Gpu;
+    std::vector<std::vector<VulkanQueue>> m_Queues;      ///< [family_index][queue_index]
+    vk::SurfaceKHR                        m_Surface = nullptr;
 };
 
 } // namespace GE

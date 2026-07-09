@@ -51,7 +51,7 @@ Application::Application(const std::string &name, ApplicationCommandLineArgs arg
         auto images = m_Swapchain->GetImages();
         auto imageCount = images.size();
         auto vkDevice = dev.GetHandle();
-        auto queueIndex = static_cast<uint32_t>(dev.GetGraphicsQueueIndex());
+        auto queueIndex = dev.GetQueueByFlags(vk::QueueFlagBits::eGraphics, 0).GetFamilyIndex();
 
         // ImageViews
         m_SwapchainImageViews.reserve(imageCount);
@@ -66,11 +66,6 @@ Application::Application(const std::string &name, ApplicationCommandLineArgs arg
             pf.Init(vkDevice, queueIndex);
         }
     }
-
-    // 4. 初始化资源管理器（纹理缓存等）
-    m_ResourceManager.Init(m_VulkanContext->GetDevice(),
-                           m_VulkanContext->GetVkQueue(),
-                           m_VulkanContext->GetGraphicsQueueIndex());
 
     // 5. 初始化渲染器（RingBuffer 等）
     //  Renderer::Get().Init(m_VulkanContext, m_Swapchain);
@@ -91,11 +86,7 @@ Application::~Application() {
     m_LayerStack.Clear();
     m_ImGuiLayer.reset();
 
-    // 3. 关闭资源管理器（释放纹理等 GPU 资源）
-    m_ResourceManager.Shutdown();
-
     // 4. 关闭渲染器（释放 RingBuffer）
-    Renderer::Get().Shutdown();
 
     // 5. 销毁 per-frame 资源
     auto vkDevice = m_VulkanContext->GetVkDevice();
@@ -174,7 +165,8 @@ void Application::Run() {
             pf.ResetCommandPool(vkDevice);
 
             vk::Semaphore oldSem = pf.TakeAcquireSemaphore();
-            if (oldSem) m_RecycledSemaphores.push_back(oldSem);
+            if (oldSem)
+                m_RecycledSemaphores.push_back(oldSem);
             pf.GiveAcquireSemaphore(acquireSem);
 
             // 4. Begin command buffer + layout transition

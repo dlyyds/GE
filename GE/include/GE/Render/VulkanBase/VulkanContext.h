@@ -7,6 +7,7 @@
 #include <string>
 #include <unordered_map>
 
+#include "Render/VulkanBase/VulkanAllocated.h"
 #include "Render/VulkanBase/VulkanInstance.h"
 #include "Render/VulkanBase/VulkanDevice.h"
 #include "Render/VulkanBase/PhysicalDevice.h"
@@ -67,9 +68,9 @@ public:
     [[nodiscard]] vk::SurfaceKHR     GetSurface() const { return m_Surface; }
     [[nodiscard]] vk::Device         GetVkDevice() const { return m_Device->GetHandle(); }
     [[nodiscard]] vk::PhysicalDevice GetVkGpu() const { return m_Device->GetGpu().GetHandle(); }
-    [[nodiscard]] vk::Queue          GetVkQueue() const { return m_Device->GetQueue(); }
-    [[nodiscard]] int32_t            GetGraphicsQueueIndex() const { return m_Device->GetGraphicsQueueIndex(); }
-    [[nodiscard]] VmaAllocator       GetVmaAllocator() const { return m_Device->GetVmaAllocator(); }
+    [[nodiscard]] vk::Queue          GetVkQueue() const { return m_Device->GetQueueByFlags(vk::QueueFlagBits::eGraphics, 0).GetHandle(); }
+    [[nodiscard]] uint32_t           GetGraphicsQueueIndex() const { return m_Device->GetQueueByFlags(vk::QueueFlagBits::eGraphics, 0).GetFamilyIndex(); }
+    [[nodiscard]] VmaAllocator       GetVmaAllocator() const { return allocated::get_memory_allocator(); }
 
 private:
     /// 填充引擎默认扩展（用户已自定义的不覆盖）。

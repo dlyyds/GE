@@ -1,4 +1,5 @@
 #include "Render/VulkanBase/VulkanContext.h"
+#include "Render/VulkanBase/VulkanDebug.h"
 #include "Core/GEWindow.h"
 #include "Core/Log.h"
 
@@ -203,7 +204,7 @@ std::unique_ptr<VulkanDevice> VulkanContext::CreateDevice() {
         debug_utils = std::make_unique<DummyDebugUtils>();
     }
 
-    return std::make_unique<VulkanDevice>(*m_PhysicalDevice, m_Surface, m_DeviceExtensions,
+    return std::make_unique<VulkanDevice>(*m_PhysicalDevice, m_Surface, std::move(debug_utils), m_DeviceExtensions,
         [](PhysicalDevice &gpu) {
             // 启用 Dynamic Rendering & Synchronization2（Vulkan 1.3 核心特性）
             auto &vulkan13 = gpu.AddExtensionFeatures<vk::PhysicalDeviceVulkan13Features>();
@@ -213,8 +214,7 @@ std::unique_ptr<VulkanDevice> VulkanContext::CreateDevice() {
             // 启用 Extended Dynamic State
             auto &ext_dyn_state = gpu.AddExtensionFeatures<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>();
             ext_dyn_state.extendedDynamicState = true;
-        },
-        std::move(debug_utils));
+        });
 }
 
 // ============================================================================

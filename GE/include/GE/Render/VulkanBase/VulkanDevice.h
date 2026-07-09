@@ -11,6 +11,7 @@
 
 #include "Render/VulkanBase/VulkanCommon.h"
 #include "Render/VulkanBase/VulkanDebug.h"
+#include "Render/VulkanBase/VulkanQueue.h"
 
 namespace GE {
 
@@ -54,6 +55,9 @@ public:
     /// 获取图形队列。
     [[nodiscard]] vk::Queue GetQueue() const { return m_GraphicsQueue; }
 
+    /// 获取图形队列对象（VulkanQueue 封装）。
+    [[nodiscard]] VulkanQueue &GetGraphicsQueue() const { return *m_GraphicsQueueObj; }
+
     /// 获取图形队列对应的队列族索引。
     [[nodiscard]] int32_t GetGraphicsQueueIndex() const { return m_GraphicsQueueIndex; }
 
@@ -86,6 +90,7 @@ private:
     vk::SurfaceKHR m_Surface = nullptr;
     vk::Queue m_GraphicsQueue = nullptr;
     int32_t m_GraphicsQueueIndex = -1;
+    std::unique_ptr<VulkanQueue> m_GraphicsQueueObj;
 
     std::unique_ptr<DebugUtils> m_DebugUtils;
     std::vector<const char *> m_EnabledExtensions;

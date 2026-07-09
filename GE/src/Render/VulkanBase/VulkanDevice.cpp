@@ -153,11 +153,15 @@ void VulkanDevice::Init(std::unordered_map<std::string, RequestMode> const &requ
     VULKAN_HPP_DEFAULT_DISPATCHER.init(m_Device);
 
     // ---- 5. 获取图形队列 ----
-    // 找第一个支持 Graphics 的队列族
     for (uint32_t family_index = 0; family_index < queue_family_properties.size(); ++family_index) {
-        if (queue_family_properties[family_index].queueFlags & vk::QueueFlagBits::eGraphics) {
+        auto const &qfp = queue_family_properties[family_index];
+        if (qfp.queueFlags & vk::QueueFlagBits::eGraphics) {
             m_GraphicsQueueIndex = static_cast<int32_t>(family_index);
             m_GraphicsQueue = m_Device.getQueue(family_index, 0);
+
+            // 创建 VulkanQueue 封装，查询 present 支持
+            auto can_present = m_Gpu.IsPresentSupported(m_Surface, family_index);
+            m_GraphicsQueueObj = std::make_unique<VulkanQueue>(*this, family_index, qfp, can_present, 0);
 
             GE_CORE_INFO("Using graphics queue family index {}", family_index);
             break;

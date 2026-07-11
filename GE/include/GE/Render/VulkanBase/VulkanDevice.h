@@ -151,6 +151,9 @@ public:
     /// @brief 获取关联的 PhysicalDevice。
     PhysicalDevice const &GetGpu() const;
 
+    /// @brief 获取 VMA 分配器。
+    [[nodiscard]] VmaAllocator GetVmaAllocator() const { return m_VmaAllocator; }
+
     /// @brief 按队列族和索引获取队列。
     VulkanQueue const &GetQueue(uint32_t queue_family_index, uint32_t queue_index) const;
 

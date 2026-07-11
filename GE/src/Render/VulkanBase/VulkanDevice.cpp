@@ -16,7 +16,6 @@
  */
 
 #include "Render/VulkanBase/VulkanDevice.h"
-#include "Render/VulkanBase/VulkanAllocated.h"
 #include "Render/VulkanBase/VulkanBuffer.h"
 #include "Render/VulkanBase/VulkanCommandPool.h"
 #include "Render/VulkanBase/VulkanDebug.h"
@@ -71,7 +70,6 @@ VulkanDevice::~VulkanDevice() {
         vmaDestroyAllocator(m_VmaAllocator);
         m_VmaAllocator = nullptr;
     }
-    allocated::shutdown();
 
     if (this->GetHandle()) {
         this->GetHandle().destroy();
@@ -231,7 +229,6 @@ void VulkanDevice::Init(std::unordered_map<std::string, RequestMode> const &requ
         throw std::runtime_error("Failed to create VMA allocator");
     }
     m_VmaAllocator = vma_allocator;
-    allocated::init(vma_allocator);
 
     // ---- 7. 创建内建 command pool 和 fence pool ----
     uint32_t family_index = GetQueueByFlagsImpl(

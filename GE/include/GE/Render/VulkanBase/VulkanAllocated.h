@@ -21,8 +21,8 @@
  * @file VulkanAllocated.h
  * @brief 从 Vulkan-Samples 适配的 VMA 内存分配基类。
  *
- * 提供 VMA 分配器单例管理以及 Allocated RAII 基类，
- * 为 Vulkan Image / Buffer 资源提供自动内存管理。
+ * 提供 Allocated RAII 基类，为 Vulkan Image / Buffer 资源提供自动内存管理。
+ * VMA 分配器由 VulkanDevice 创建和管理，通过 this->GetDevice().GetVmaAllocator() 获取。
  *
  * GE 统一使用 vulkan.hpp C++ 风格句柄，因此移除了原版的 BindingType 模板参数。
  */
@@ -45,24 +45,6 @@ namespace GE
 {
 namespace allocated
 {
-/**
- * @brief 获取 VMA 分配器单例引用。
- *        在调用 init 之后、shutdown 之前有效。
- */
-VmaAllocator &get_memory_allocator();
-
-/**
- * @brief 初始化 VMA 分配器单例。
- *        将传入的 allocator 存入单例供 Allocated 内部使用。
- *        幂等，应配对调用 shutdown。
- */
-void init(VmaAllocator allocator);
-
-/**
- * @brief 关闭 VMA 分配器单例。
- *        仅清除单例引用，不销毁 allocator（所有权由 VulkanDevice 管理）。
- */
-void shutdown();
 
 /**
  * @brief VMA 内存分配 RAII 基类，为 VkImage 和 VkBuffer 等需要内存分配的
@@ -73,6 +55,8 @@ void shutdown();
  * - 内存映射（map / unmap）
  * - 数据上传（update / updateTyped）
  * - flush 同步（非 HOST_COHERENT 内存）
+ *
+ * VMA 分配器通过 this->GetDevice().GetVmaAllocator() 获取。
  *
  * @tparam HandleType Vulkan 句柄类型，如 vk::Buffer 或 vk::Image。
  */
@@ -308,7 +292,7 @@ inline vk::Buffer Allocated<HandleType>::create_buffer(const vk::BufferCreateInf
 	if (alignment == 0)
 	{
 		result = vmaCreateBuffer(
-		    get_memory_allocator(),
+		    this->GetDevice().GetVmaAllocator(),
 		    reinterpret_cast<const VkBufferCreateInfo *>(&create_info),
 		    &allocation_create_info,
 		    reinterpret_cast<VkBuffer *>(&buffer),
@@ -318,7 +302,7 @@ inline vk::Buffer Allocated<HandleType>::create_buffer(const vk::BufferCreateInf
 	else
 	{
 		result = vmaCreateBufferWithAlignment(
-		    get_memory_allocator(),
+		    this->GetDevice().GetVmaAllocator(),
 		    reinterpret_cast<const VkBufferCreateInfo *>(&create_info),
 		    &allocation_create_info,
 		    alignment,
@@ -341,7 +325,7 @@ inline vk::Image Allocated<HandleType>::create_image(const vk::ImageCreateInfo &
 	vk::Image         image = VK_NULL_HANDLE;
 	VmaAllocationInfo allocation_info{};
 
-	VkResult result = vmaCreateImage(get_memory_allocator(),
+	VkResult result = vmaCreateImage(this->GetDevice().GetVmaAllocator(),
 	                                 reinterpret_cast<const VkImageCreateInfo *>(&create_info),
 	                                 &allocation_create_info,
 	                                 reinterpret_cast<VkImage *>(&image),
@@ -363,7 +347,7 @@ inline void Allocated<HandleType>::destroy_buffer(vk::Buffer handle)
 	if (handle != VK_NULL_HANDLE && allocation != VK_NULL_HANDLE)
 	{
 		unmap();
-		vmaDestroyBuffer(get_memory_allocator(), static_cast<VkBuffer>(handle), allocation);
+		vmaDestroyBuffer(this->GetDevice().GetVmaAllocator(), static_cast<VkBuffer>(handle), allocation);
 		clear();
 	}
 }
@@ -374,7 +358,7 @@ inline void Allocated<HandleType>::destroy_image(vk::Image image)
 	if (image != VK_NULL_HANDLE && allocation != VK_NULL_HANDLE)
 	{
 		unmap();
-		vmaDestroyImage(get_memory_allocator(), static_cast<VkImage>(image), allocation);
+		vmaDestroyImage(this->GetDevice().GetVmaAllocator(), static_cast<VkImage>(image), allocation);
 		clear();
 	}
 }
@@ -384,7 +368,7 @@ inline void Allocated<HandleType>::flush(VkDeviceSize offset, VkDeviceSize size)
 {
 	if (!coherent)
 	{
-		vmaFlushAllocation(get_memory_allocator(), allocation, offset, size);
+		vmaFlushAllocation(this->GetDevice().GetVmaAllocator(), allocation, offset, size);
 	}
 }
 
@@ -398,7 +382,7 @@ template <typename HandleType>
 inline vk::DeviceMemory Allocated<HandleType>::get_memory() const
 {
 	VmaAllocationInfo alloc_info;
-	vmaGetAllocationInfo(get_memory_allocator(), allocation, &alloc_info);
+	vmaGetAllocationInfo(this->GetDevice().GetVmaAllocator(), allocation, &alloc_info);
 	return static_cast<vk::DeviceMemory>(alloc_info.deviceMemory);
 }
 
@@ -406,7 +390,7 @@ template <typename HandleType>
 inline VkDeviceSize Allocated<HandleType>::get_memory_offset() const
 {
 	VmaAllocationInfo alloc_info;
-	vmaGetAllocationInfo(get_memory_allocator(), allocation, &alloc_info);
+	vmaGetAllocationInfo(this->GetDevice().GetVmaAllocator(), allocation, &alloc_info);
 	return alloc_info.offset;
 }
 
@@ -415,7 +399,7 @@ inline uint8_t *Allocated<HandleType>::map()
 {
 	if (!persistent && !mapped())
 	{
-		VkResult result = vmaMapMemory(get_memory_allocator(), allocation, reinterpret_cast<void **>(&mapped_data));
+		VkResult result = vmaMapMemory(this->GetDevice().GetVmaAllocator(), allocation, reinterpret_cast<void **>(&mapped_data));
 		if (result != VK_SUCCESS)
 		{
 			throw std::runtime_error("Cannot map memory");
@@ -446,7 +430,7 @@ template <typename HandleType>
 inline void Allocated<HandleType>::post_create(VmaAllocationInfo const &allocation_info)
 {
 	VkMemoryPropertyFlags memory_properties;
-	vmaGetAllocationMemoryProperties(get_memory_allocator(), allocation, &memory_properties);
+	vmaGetAllocationMemoryProperties(this->GetDevice().GetVmaAllocator(), allocation, &memory_properties);
 	coherent    = (memory_properties & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) == VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 	mapped_data = static_cast<uint8_t *>(allocation_info.pMappedData);
 	persistent  = mapped();
@@ -457,7 +441,7 @@ inline void Allocated<HandleType>::unmap()
 {
 	if (!persistent && mapped())
 	{
-		vmaUnmapMemory(get_memory_allocator(), allocation);
+		vmaUnmapMemory(this->GetDevice().GetVmaAllocator(), allocation);
 		mapped_data = nullptr;
 	}
 }

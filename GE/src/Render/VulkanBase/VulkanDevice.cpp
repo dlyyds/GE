@@ -63,10 +63,14 @@ VulkanDevice::VulkanDevice(PhysicalDevice &gpu, vk::Device &vulkan_device, vk::S
 // ============================================================================
 
 VulkanDevice::~VulkanDevice() {
-    // 注意：跳过 resource_cache.clear()（GE 暂无 ResourceCache）
-
     m_CommandPool.reset();
     m_FencePool.reset();
+
+    // 销毁 VMA 分配器（必须在 vkDestroyDevice 之前）
+    if (m_VmaAllocator) {
+        vmaDestroyAllocator(m_VmaAllocator);
+        m_VmaAllocator = nullptr;
+    }
     allocated::shutdown();
 
     if (this->GetHandle()) {
@@ -226,6 +230,7 @@ void VulkanDevice::Init(std::unordered_map<std::string, RequestMode> const &requ
     if (result != VK_SUCCESS) {
         throw std::runtime_error("Failed to create VMA allocator");
     }
+    m_VmaAllocator = vma_allocator;
     allocated::init(vma_allocator);
 
     // ---- 7. 创建内建 command pool 和 fence pool ----

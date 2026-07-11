@@ -200,6 +200,7 @@ private:
     PhysicalDevice                       &m_Gpu;
     std::vector<std::vector<VulkanQueue>> m_Queues;      ///< [family_index][queue_index]
     vk::SurfaceKHR                        m_Surface = nullptr;
+    VmaAllocator                          m_VmaAllocator = nullptr;
 };
 
 } // namespace GE

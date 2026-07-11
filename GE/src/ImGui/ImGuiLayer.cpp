@@ -4,8 +4,8 @@
 
 #include "Core/Application.h"
 #include "Core/Log.h"
-#include "Render/Renderer.h"
-#include "../../include/GE/Render/VulkanBase/VulkanRenderingInfo.h"
+
+#include "Render/VulkanBase/VulkanRenderingInfo.h"
 
 #include "GLFW/glfw3.h"
 
@@ -42,10 +42,10 @@ void ImGuiLayer::OnAttach() {
     // 合并中文字体（微软雅黑）— 使中文标点和 CJK 字符能正确显示
     cfg.MergeMode = true;
     static const ImWchar cjkRanges[] = {
-        0x2000, 0x206F,   // 通用标点
-        0x3000, 0x303F,   // CJK 符号和标点
-        0x4E00, 0x9FFF,   // CJK 统一表意文字
-        0xFF00, 0xFFEF,   // 全角/半角形式
+        0x2000, 0x206F, // 通用标点
+        0x3000, 0x303F, // CJK 符号和标点
+        0x4E00, 0x9FFF, // CJK 统一表意文字
+        0xFF00, 0xFFEF, // 全角/半角形式
         0
     };
     io.Fonts->AddFontFromFileTTF(

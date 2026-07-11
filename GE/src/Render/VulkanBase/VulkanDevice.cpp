@@ -231,7 +231,7 @@ void VulkanDevice::Init(std::unordered_map<std::string, RequestMode> const &requ
     m_VmaAllocator = vma_allocator;
 
     // ---- 7. 创建内建 command pool 和 fence pool ----
-    uint32_t family_index = GetQueueByFlagsImpl(
+    uint32_t family_index = GetQueueByFlags(
         vk::QueueFlagBits::eGraphics | vk::QueueFlagBits::eCompute, 0).GetFamilyIndex();
     m_CommandPool = std::make_unique<VulkanCommandPool>(*this, family_index);
     m_FencePool   = std::make_unique<VulkanFencePool>(this->GetHandle());
@@ -257,12 +257,8 @@ void VulkanDevice::CopyBuffer(VulkanBuffer const &src, VulkanBuffer &dst,
                               vk::Queue queue, vk::BufferCopy const *copy_region) {
     assert(dst.GetSize() <= src.GetSize());
     assert(src.GetBuffer());
-    CopyBufferImpl(this->GetHandle(), src, dst, queue, copy_region);
-}
 
-void VulkanDevice::CopyBufferImpl(vk::Device device, VulkanBuffer const &src, VulkanBuffer &dst,
-                                  vk::Queue queue, vk::BufferCopy const *copy_region) {
-    vk::CommandBuffer cmd_buf = CreateCommandBufferImpl(device, vk::CommandBufferLevel::ePrimary, true);
+    vk::CommandBuffer cmd_buf = CreateCommandBuffer(vk::CommandBufferLevel::ePrimary, true);
 
     vk::BufferCopy buffer_copy;
     if (copy_region == nullptr) {
@@ -273,7 +269,7 @@ void VulkanDevice::CopyBufferImpl(vk::Device device, VulkanBuffer const &src, Vu
 
     cmd_buf.copyBuffer(src.GetBuffer(), dst.GetBuffer(), buffer_copy);
 
-    FlushCommandBufferImpl(device, cmd_buf, queue, true, nullptr);
+    FlushCommandBuffer(cmd_buf, queue, true, nullptr);
 }
 
 // ============================================================================
@@ -281,10 +277,6 @@ void VulkanDevice::CopyBufferImpl(vk::Device device, VulkanBuffer const &src, Vu
 // ============================================================================
 
 vk::CommandBuffer VulkanDevice::CreateCommandBuffer(vk::CommandBufferLevel level, bool begin) const {
-    return CreateCommandBufferImpl(this->GetHandle(), level, begin);
-}
-
-vk::CommandBuffer VulkanDevice::CreateCommandBufferImpl(vk::Device device, vk::CommandBufferLevel level, bool begin) const {
     assert(m_CommandPool && "No command pool exists in the device");
 
     vk::CommandBufferAllocateInfo alloc_info{
@@ -292,7 +284,7 @@ vk::CommandBuffer VulkanDevice::CreateCommandBufferImpl(vk::Device device, vk::C
         .level              = level,
         .commandBufferCount = 1,
     };
-    vk::CommandBuffer cmd_buf = device.allocateCommandBuffers(alloc_info).front();
+    vk::CommandBuffer cmd_buf = GetHandle().allocateCommandBuffers(alloc_info).front();
 
     if (begin) {
         cmd_buf.begin(vk::CommandBufferBeginInfo{});
@@ -351,7 +343,7 @@ std::pair<vk::Image, vk::DeviceMemory> VulkanDevice::CreateImage(
 // ============================================================================
 
 void VulkanDevice::CreateInternalCommandPool() {
-    uint32_t family_index = GetQueueByFlagsImpl(
+    uint32_t family_index = GetQueueByFlags(
         vk::QueueFlagBits::eGraphics | vk::QueueFlagBits::eCompute, 0).GetFamilyIndex();
     m_CommandPool = std::make_unique<VulkanCommandPool>(*this, family_index);
 }
@@ -366,11 +358,6 @@ void VulkanDevice::CreateInternalFencePool() {
 
 void VulkanDevice::FlushCommandBuffer(vk::CommandBuffer command_buffer, vk::Queue queue,
                                       bool free, vk::Semaphore signal_semaphore) const {
-    FlushCommandBufferImpl(this->GetHandle(), command_buffer, queue, free, signal_semaphore);
-}
-
-void VulkanDevice::FlushCommandBufferImpl(vk::Device device, vk::CommandBuffer command_buffer,
-                                          vk::Queue queue, bool free, vk::Semaphore signal_semaphore) const {
     if (!command_buffer) {
         return;
     }
@@ -386,22 +373,22 @@ void VulkanDevice::FlushCommandBufferImpl(vk::Device device, vk::CommandBuffer c
     }
 
     // 创建 fence 确保 command buffer 执行完成
-    vk::Fence fence = device.createFence(vk::FenceCreateInfo{});
+    vk::Fence fence = GetHandle().createFence(vk::FenceCreateInfo{});
 
     // 提交到队列
     queue.submit(submit_info, fence);
 
     // 等待 fence
-    vk::Result result = device.waitForFences(1, &fence, VK_TRUE, DEFAULT_FENCE_TIMEOUT);
+    vk::Result result = GetHandle().waitForFences(1, &fence, VK_TRUE, DEFAULT_FENCE_TIMEOUT);
     if (result != vk::Result::eSuccess) {
         GE_CORE_ERROR("Detected Vulkan error: {}", vk::to_string(result));
         abort();
     }
 
-    device.destroyFence(fence);
+    GetHandle().destroyFence(fence);
 
     if (m_CommandPool && free) {
-        device.freeCommandBuffers(m_CommandPool->GetHandle(), command_buffer);
+        GetHandle().freeCommandBuffers(m_CommandPool->GetHandle(), command_buffer);
     }
 }
 
@@ -452,10 +439,6 @@ VulkanQueue const &VulkanDevice::GetQueue(uint32_t queue_family_index, uint32_t 
 // ============================================================================
 
 VulkanQueue const &VulkanDevice::GetQueueByFlags(vk::QueueFlags required_queue_flags, uint32_t queue_index) const {
-    return GetQueueByFlagsImpl(required_queue_flags, queue_index);
-}
-
-VulkanQueue const &VulkanDevice::GetQueueByFlagsImpl(vk::QueueFlags required_queue_flags, uint32_t queue_index) const {
     auto queue_it = std::ranges::find_if(m_Queues,
                                          [required_queue_flags, queue_index](std::vector<VulkanQueue> const &family) {
                                              assert(!family.empty());

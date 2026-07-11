@@ -81,10 +81,13 @@ public:
     VulkanDevice(PhysicalDevice &gpu, vk::Device &vulkan_device, vk::SurfaceKHR surface);
 
     VulkanDevice(const VulkanDevice &) = delete;
+
     VulkanDevice(VulkanDevice &&) = delete;
+
     ~VulkanDevice();
 
     VulkanDevice &operator=(const VulkanDevice &) = delete;
+
     VulkanDevice &operator=(VulkanDevice &&) = delete;
 
     // =================================================================
@@ -177,33 +180,18 @@ public:
     void WaitIdle() const;
 
 private:
-    // ---- 内部实现 ----
-    void CopyBufferImpl(vk::Device device, VulkanBuffer const &src, VulkanBuffer &dst,
-                        vk::Queue queue, vk::BufferCopy const *copy_region);
-
-    vk::CommandBuffer CreateCommandBufferImpl(vk::Device device, vk::CommandBufferLevel level, bool begin) const;
-
-    std::pair<vk::Image, vk::DeviceMemory> CreateImageImpl(
-        vk::Device device, vk::Format format, vk::Extent2D const &extent,
-        uint32_t mip_levels, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties) const;
-
-    void FlushCommandBufferImpl(vk::Device device, vk::CommandBuffer command_buffer,
-                                vk::Queue queue, bool free, vk::Semaphore signal_semaphore) const;
-
-    VulkanQueue const &GetQueueByFlagsImpl(vk::QueueFlags required_queue_flags, uint32_t queue_index) const;
-
     void Init(std::unordered_map<std::string, RequestMode> const &requested_extensions,
               std::function<void(PhysicalDevice &)> request_gpu_features);
 
     // ---- 成员 ----
-    std::unique_ptr<VulkanCommandPool>    m_CommandPool;
-    std::unique_ptr<DebugUtils>           m_DebugUtils;
-    std::vector<const char *>             m_EnabledExtensions;
-    std::unique_ptr<VulkanFencePool>      m_FencePool;
-    PhysicalDevice                       &m_Gpu;
-    std::vector<std::vector<VulkanQueue>> m_Queues;      ///< [family_index][queue_index]
-    vk::SurfaceKHR                        m_Surface = nullptr;
-    VmaAllocator                          m_VmaAllocator = nullptr;
+    std::unique_ptr<VulkanCommandPool> m_CommandPool;
+    std::unique_ptr<DebugUtils> m_DebugUtils;
+    std::vector<const char *> m_EnabledExtensions;
+    std::unique_ptr<VulkanFencePool> m_FencePool;
+    PhysicalDevice &m_Gpu;
+    std::vector<std::vector<VulkanQueue> > m_Queues; ///< [family_index][queue_index]
+    vk::SurfaceKHR m_Surface = nullptr;
+    VmaAllocator m_VmaAllocator = nullptr;
 };
 
 } // namespace GE

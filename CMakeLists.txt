@@ -104,7 +104,6 @@ target_precompile_headers(${GE_NAME} PRIVATE GE/include/GE/pch.h)
 
 set(Sandbox_SRC
         ${CMAKE_SOURCE_DIR}/sandbox/SandboxApp.cpp
-        ${CMAKE_SOURCE_DIR}/sandbox/VulkanLayer.cpp
         ${CMAKE_SOURCE_DIR}/sandbox/TriangleLayer.cpp
 )
 

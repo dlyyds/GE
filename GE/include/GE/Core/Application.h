@@ -12,8 +12,7 @@
 #include "Core/Timestep.h"
 #include "Debug/Assert.h"
 #include "ImGui/ImGuiLayer.h"
-#include "Render/Renderer.h"
-#include "Render/ResourceManager.h"
+
 #include "Render/VulkanBase/VulkanContext.h"
 #include "Render/VulkanBase/VulkanSwapchain.h"
 #include "Render/VulkanBase/VulkanPerFrame.h"
@@ -63,13 +62,11 @@ public:
 
     static VulkanSwapchain &GetSwapchain() { return *Get().m_Swapchain; }
 
-    /// 访问资源管理器（纹理、着色器、网格等 GPU 缓存）。
-    static ResourceManager &GetResourceManager() { return Get().m_ResourceManager; }
 
     /// 帧渲染辅助：当前帧的 command buffer 和 image index。
     static vk::CommandBuffer GetFrameCmd() { return Get().m_CurrentCmd; }
-    static uint32_t          GetFrameImageIndex() { return Get().m_CurrentImageIndex; }
-    static vk::ImageView     GetFrameImageView(uint32_t index) { return Get().m_SwapchainImageViews[index]; }
+    static uint32_t GetFrameImageIndex() { return Get().m_CurrentImageIndex; }
+    static vk::ImageView GetFrameImageView(uint32_t index) { return Get().m_SwapchainImageViews[index]; }
 
 private:
     void Run();
@@ -96,14 +93,14 @@ private:
     // -- Vulkan 资源 --
     std::unique_ptr<VulkanContext> m_VulkanContext;
     std::unique_ptr<VulkanSwapchain> m_Swapchain;
-    ResourceManager m_ResourceManager;
+
 
     // -- 帧管理（已从 VulkanSwapchain 剥离） --
-    std::vector<vk::ImageView>    m_SwapchainImageViews;
-    std::vector<VulkanPerFrame>   m_PerFrame;
-    std::vector<vk::Semaphore>    m_RecycledSemaphores;
-    vk::CommandBuffer             m_CurrentCmd = nullptr;
-    uint32_t                      m_CurrentImageIndex = ~0u;
+    std::vector<vk::ImageView> m_SwapchainImageViews;
+    std::vector<VulkanPerFrame> m_PerFrame;
+    std::vector<vk::Semaphore> m_RecycledSemaphores;
+    vk::CommandBuffer m_CurrentCmd = nullptr;
+    uint32_t m_CurrentImageIndex = ~0u;
 
 private:
     static Application *s_Instance;

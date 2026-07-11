@@ -4,7 +4,7 @@
 
 #include "TriangleLayer.h"
 #include "GE/Core/Application.h"
-#include "GE/Render/Renderer.h"
+
 #include "GE/Render/VulkanBase/VulkanRenderingInfo.h"
 
 #include "imgui.h"

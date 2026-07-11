@@ -110,14 +110,14 @@ public:
     /// @brief 从内建 command pool 分配一个 command buffer。
     /// @param level  Command buffer 级别
     /// @param begin  是否立即开始录制
-    vk::CommandBuffer CreateCommandBuffer(vk::CommandBufferLevel level, bool begin = false) const;
+    [[nodiscard]] vk::CommandBuffer CreateCommandBuffer(vk::CommandBufferLevel level, bool begin = false) const;
 
     /// @brief 创建一个 command pool。
     vk::CommandPool CreateCommandPool(uint32_t queue_index,
                                       vk::CommandPoolCreateFlags flags = {});
 
     /// @brief 创建一个 image 及其绑定的 DeviceMemory。
-    std::pair<vk::Image, vk::DeviceMemory> CreateImage(
+    [[nodiscard]] std::pair<vk::Image, vk::DeviceMemory> CreateImage(
         vk::Format format, vk::Extent2D const &extent, uint32_t mip_levels,
         vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties) const;
 

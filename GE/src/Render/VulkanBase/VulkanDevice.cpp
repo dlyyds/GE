@@ -320,12 +320,6 @@ vk::CommandPool VulkanDevice::CreateCommandPool(uint32_t queue_index, vk::Comman
 std::pair<vk::Image, vk::DeviceMemory> VulkanDevice::CreateImage(
     vk::Format format, vk::Extent2D const &extent, uint32_t mip_levels,
     vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties) const {
-    return CreateImageImpl(this->GetHandle(), format, extent, mip_levels, usage, properties);
-}
-
-std::pair<vk::Image, vk::DeviceMemory> VulkanDevice::CreateImageImpl(
-    vk::Device device, vk::Format format, vk::Extent2D const &extent,
-    uint32_t mip_levels, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties) const {
     vk::ImageCreateInfo image_info{
         .imageType   = vk::ImageType::e2D,
         .format      = format,
@@ -337,6 +331,7 @@ std::pair<vk::Image, vk::DeviceMemory> VulkanDevice::CreateImageImpl(
         .usage       = usage,
     };
 
+    vk::Device device = this->GetHandle();
     vk::Image image = device.createImage(image_info);
 
     vk::MemoryRequirements mem_reqs = device.getImageMemoryRequirements(image);

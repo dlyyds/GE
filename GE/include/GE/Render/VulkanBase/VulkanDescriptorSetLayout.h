@@ -33,12 +33,11 @@
 #include <unordered_map>
 #include <vector>
 
-#include "Render/VulkanBase/VulkanResourceBase.h"
-
 namespace GE
 {
 
 class ShaderModule;
+class VulkanDevice;
 struct ShaderResource;
 
 /**
@@ -46,7 +45,7 @@ struct ShaderResource;
  *        从 ShaderResource 创建 VkDescriptorSetLayout，
  *        并提供 binding 编号和名称的查找。
  */
-class VulkanDescriptorSetLayout : public VulkanResourceBase<vk::DescriptorSetLayout>
+class VulkanDescriptorSetLayout
 {
   public:
     /**
@@ -86,6 +85,10 @@ class VulkanDescriptorSetLayout : public VulkanResourceBase<vk::DescriptorSetLay
     const std::vector<ShaderModule *> &GetShaderModules() const;
 
   private:
+    VulkanDevice &m_Device;
+
+    vk::DescriptorSetLayout m_Handle{VK_NULL_HANDLE};
+
     uint32_t m_SetIndex;
 
     std::vector<vk::DescriptorSetLayoutBinding> m_Bindings;

@@ -95,7 +95,7 @@ VulkanDescriptorSetLayout::VulkanDescriptorSetLayout(
     uint32_t                           set_index,
     const std::vector<ShaderModule *> &shader_modules,
     const std::vector<ShaderResource> &resource_set) :
-    VulkanResourceBase(nullptr, &device),
+    m_Device(device),
     m_SetIndex(set_index),
     m_ShaderModules(shader_modules)
 {
@@ -184,11 +184,12 @@ VulkanDescriptorSetLayout::VulkanDescriptorSetLayout(
     }
 
     // 创建 Vulkan DescriptorSetLayout
-    SetHandle(device.GetHandle().createDescriptorSetLayout(create_info));
+    m_Handle = device.GetHandle().createDescriptorSetLayout(create_info);
 }
 
 VulkanDescriptorSetLayout::VulkanDescriptorSetLayout(VulkanDescriptorSetLayout &&other) :
-    VulkanResourceBase(std::move(other)),
+    m_Device(other.m_Device),
+    m_Handle(other.m_Handle),
     m_SetIndex(other.m_SetIndex),
     m_Bindings(std::move(other.m_Bindings)),
     m_BindingFlags(std::move(other.m_BindingFlags)),
@@ -196,13 +197,15 @@ VulkanDescriptorSetLayout::VulkanDescriptorSetLayout(VulkanDescriptorSetLayout &
     m_BindingFlagsLookup(std::move(other.m_BindingFlagsLookup)),
     m_ResourcesLookup(std::move(other.m_ResourcesLookup)),
     m_ShaderModules(std::move(other.m_ShaderModules))
-{}
+{
+    other.m_Handle = VK_NULL_HANDLE;
+}
 
 VulkanDescriptorSetLayout::~VulkanDescriptorSetLayout()
 {
-    if (HasHandle())
+    if (m_Handle)
     {
-        GetDevice().GetHandle().destroyDescriptorSetLayout(GetHandle());
+        m_Device.GetHandle().destroyDescriptorSetLayout(m_Handle);
     }
 }
 

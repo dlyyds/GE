@@ -258,7 +258,7 @@ void VulkanPipelineState::SetViewportState(const ViewportState &state)
     if (m_ViewportState != state)
     {
         m_ViewportState = state;
-        m_DynamicDirty = true;
+        m_PipelineDirty = true;
     }
 }
 

@@ -70,6 +70,8 @@ class VulkanDescriptorSetLayout
 
     VulkanDescriptorSetLayout &operator=(VulkanDescriptorSetLayout &&) = delete;
 
+    vk::DescriptorSetLayout GetHandle() const { return m_Handle; }
+
     uint32_t GetIndex() const;
 
     const std::vector<vk::DescriptorSetLayoutBinding> &GetBindings() const;

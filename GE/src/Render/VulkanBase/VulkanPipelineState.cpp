@@ -222,7 +222,7 @@ void VulkanPipelineState::SetPipelineLayout(VulkanPipelineLayout &pipeline_layou
     if (new_handle != old_handle)
     {
         m_PipelineLayout = &pipeline_layout;
-        m_Dirty = true;
+        m_PipelineDirty = true;
     }
 }
 
@@ -231,7 +231,7 @@ void VulkanPipelineState::SetVertexInputState(const VertexInputState &state)
     if (m_VertexInputState != state)
     {
         m_VertexInputState = state;
-        m_Dirty = true;
+        m_PipelineDirty = true;
     }
 }
 
@@ -240,7 +240,7 @@ void VulkanPipelineState::SetInputAssemblyState(const InputAssemblyState &state)
     if (m_InputAssemblyState != state)
     {
         m_InputAssemblyState = state;
-        m_Dirty = true;
+        m_DynamicDirty = true;
     }
 }
 
@@ -249,7 +249,7 @@ void VulkanPipelineState::SetRasterizationState(const RasterizationState &state)
     if (m_RasterizationState != state)
     {
         m_RasterizationState = state;
-        m_Dirty = true;
+        m_DynamicDirty = true;
     }
 }
 
@@ -258,7 +258,7 @@ void VulkanPipelineState::SetViewportState(const ViewportState &state)
     if (m_ViewportState != state)
     {
         m_ViewportState = state;
-        m_Dirty = true;
+        m_DynamicDirty = true;
     }
 }
 
@@ -267,7 +267,7 @@ void VulkanPipelineState::SetMultisampleState(const MultisampleState &state)
     if (m_MultisampleState != state)
     {
         m_MultisampleState = state;
-        m_Dirty = true;
+        m_PipelineDirty = true;
     }
 }
 
@@ -276,7 +276,7 @@ void VulkanPipelineState::SetDepthStencilState(const DepthStencilState &state)
     if (m_DepthStencilState != state)
     {
         m_DepthStencilState = state;
-        m_Dirty = true;
+        m_DynamicDirty = true;
     }
 }
 
@@ -285,7 +285,7 @@ void VulkanPipelineState::SetColorBlendState(const ColorBlendState &state)
     if (m_ColorBlendState != state)
     {
         m_ColorBlendState = state;
-        m_Dirty = true;
+        m_PipelineDirty = true;
     }
 }
 
@@ -348,14 +348,20 @@ std::vector<vk::DynamicState> VulkanPipelineState::GetDynamicStates()
     };
 }
 
-bool VulkanPipelineState::IsDirty() const
+bool VulkanPipelineState::IsDynamicDirty() const
 {
-    return m_Dirty;
+    return m_DynamicDirty;
+}
+
+bool VulkanPipelineState::IsPipelineDirty() const
+{
+    return m_PipelineDirty;
 }
 
 void VulkanPipelineState::ClearDirty()
 {
-    m_Dirty = false;
+    m_DynamicDirty  = false;
+    m_PipelineDirty = false;
 }
 
 void VulkanPipelineState::FlushDynamicState(vk::CommandBuffer cmd) const

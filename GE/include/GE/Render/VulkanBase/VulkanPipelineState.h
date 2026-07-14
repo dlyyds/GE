@@ -187,15 +187,24 @@ class VulkanPipelineState
     /// 返回应在 VkPipelineDynamicStateCreateInfo 中启用的所有动态状态
     [[nodiscard]] static std::vector<vk::DynamicState> GetDynamicStates();
 
-    [[nodiscard]] bool IsDirty() const;
-    void               ClearDirty();
+    /// 检查是否有动态状态（如 cullMode、depthTest 等）发生了变更，
+    /// 需要调用 FlushDynamicState() 刷入 command buffer。
+    [[nodiscard]] bool IsDynamicDirty() const;
+
+    /// 检查是否有静态管线状态（如 vertex input、multisample、blend attachments）
+    /// 发生了变更，需要重建 VkPipeline。
+    [[nodiscard]] bool IsPipelineDirty() const;
+
+    /// 清除所有脏标记。
+    void ClearDirty();
 
     /// 将当前所有动态状态通过 vkCmdSet* 写入 command buffer。
     /// 注意：不包含 Viewport/Scissor（本类仅跟踪计数，不跟踪实际视口矩形）。
     void FlushDynamicState(vk::CommandBuffer cmd) const;
 
   private:
-    bool m_Dirty{false};
+    bool m_DynamicDirty{false};   ///< 动态状态变更（只需 vkCmdSet* 刷入）
+    bool m_PipelineDirty{false};  ///< 静态状态变更（需要重建 VkPipeline）
 
     VulkanPipelineLayout *m_PipelineLayout{nullptr};
 

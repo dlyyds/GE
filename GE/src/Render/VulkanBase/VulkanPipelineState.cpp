@@ -212,6 +212,10 @@ void VulkanPipelineState::Reset()
     m_MultisampleState      = {};
     m_DepthStencilState     = {};
     m_ColorBlendState       = {};
+
+    m_ColorAttachmentFormats.clear();
+    m_DepthFormat   = {};
+    m_StencilFormat = {};
 }
 
 void VulkanPipelineState::SetPipelineLayout(VulkanPipelineLayout &pipeline_layout)
@@ -289,6 +293,21 @@ void VulkanPipelineState::SetColorBlendState(const ColorBlendState &state)
     }
 }
 
+void VulkanPipelineState::SetRenderingFormats(std::vector<vk::Format> color_attachments,
+                                               vk::Format depth_format,
+                                               vk::Format stencil_format)
+{
+    if (m_ColorAttachmentFormats != color_attachments ||
+        m_DepthFormat != depth_format ||
+        m_StencilFormat != stencil_format)
+    {
+        m_ColorAttachmentFormats = std::move(color_attachments);
+        m_DepthFormat            = depth_format;
+        m_StencilFormat          = stencil_format;
+        m_PipelineDirty          = true;
+    }
+}
+
 const VulkanPipelineLayout *VulkanPipelineState::GetPipelineLayout() const
 {
     return m_PipelineLayout;
@@ -327,6 +346,21 @@ const DepthStencilState &VulkanPipelineState::GetDepthStencilState() const
 const ColorBlendState &VulkanPipelineState::GetColorBlendState() const
 {
     return m_ColorBlendState;
+}
+
+const std::vector<vk::Format> &VulkanPipelineState::GetColorAttachmentFormats() const
+{
+    return m_ColorAttachmentFormats;
+}
+
+vk::Format VulkanPipelineState::GetDepthFormat() const
+{
+    return m_DepthFormat;
+}
+
+vk::Format VulkanPipelineState::GetStencilFormat() const
+{
+    return m_StencilFormat;
 }
 
 std::vector<vk::DynamicState> VulkanPipelineState::GetDynamicStates()

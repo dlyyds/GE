@@ -174,6 +174,11 @@ class VulkanPipelineState
     void SetDepthStencilState(const DepthStencilState &state);
     void SetColorBlendState(const ColorBlendState &state);
 
+    /// 设置动态渲染的附件格式（管线创建必需，变更需重建管线）。
+    void SetRenderingFormats(std::vector<vk::Format> color_attachments,
+                             vk::Format depth_format   = {},
+                             vk::Format stencil_format = {});
+
     [[nodiscard]] const VulkanPipelineLayout *GetPipelineLayout() const;
 
     [[nodiscard]] const VertexInputState      &GetVertexInputState() const;
@@ -183,6 +188,10 @@ class VulkanPipelineState
     [[nodiscard]] const MultisampleState       &GetMultisampleState() const;
     [[nodiscard]] const DepthStencilState      &GetDepthStencilState() const;
     [[nodiscard]] const ColorBlendState        &GetColorBlendState() const;
+
+    [[nodiscard]] const std::vector<vk::Format> &GetColorAttachmentFormats() const;
+    [[nodiscard]] vk::Format                     GetDepthFormat() const;
+    [[nodiscard]] vk::Format                     GetStencilFormat() const;
 
     /// 返回应在 VkPipelineDynamicStateCreateInfo 中启用的所有动态状态
     [[nodiscard]] static std::vector<vk::DynamicState> GetDynamicStates();
@@ -215,6 +224,11 @@ class VulkanPipelineState
     MultisampleState      m_MultisampleState{};
     DepthStencilState     m_DepthStencilState{};
     ColorBlendState       m_ColorBlendState{};
+
+    /// 动态渲染附件格式
+    std::vector<vk::Format> m_ColorAttachmentFormats;
+    vk::Format              m_DepthFormat{};
+    vk::Format              m_StencilFormat{};
 };
 
 } // namespace GE

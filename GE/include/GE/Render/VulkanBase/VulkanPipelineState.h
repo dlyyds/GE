@@ -190,6 +190,10 @@ class VulkanPipelineState
     [[nodiscard]] bool IsDirty() const;
     void               ClearDirty();
 
+    /// 将当前所有动态状态通过 vkCmdSet* 写入 command buffer。
+    /// 注意：不包含 Viewport/Scissor（本类仅跟踪计数，不跟踪实际视口矩形）。
+    void FlushDynamicState(vk::CommandBuffer cmd) const;
+
   private:
     bool m_Dirty{false};
 

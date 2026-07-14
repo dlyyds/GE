@@ -358,4 +358,33 @@ void VulkanPipelineState::ClearDirty()
     m_Dirty = false;
 }
 
+void VulkanPipelineState::FlushDynamicState(vk::CommandBuffer cmd) const
+{
+    // 光栅化状态
+    cmd.setCullMode(m_RasterizationState.cull_mode);
+    cmd.setFrontFace(m_RasterizationState.front_face);
+    cmd.setRasterizerDiscardEnable(m_RasterizationState.rasterizer_discard_enable);
+    cmd.setDepthBiasEnable(m_RasterizationState.depth_bias_enable);
+
+    // 输入装配状态
+    cmd.setPrimitiveTopology(m_InputAssemblyState.topology);
+
+    // 深度/模板状态
+    cmd.setDepthTestEnable(m_DepthStencilState.depth_test_enable);
+    cmd.setDepthWriteEnable(m_DepthStencilState.depth_write_enable);
+    cmd.setDepthCompareOp(m_DepthStencilState.depth_compare_op);
+    cmd.setDepthBoundsTestEnable(m_DepthStencilState.depth_bounds_test_enable);
+    cmd.setStencilTestEnable(m_DepthStencilState.stencil_test_enable);
+    cmd.setStencilOp(vk::StencilFaceFlagBits::eFront,
+                     m_DepthStencilState.front.fail_op,
+                     m_DepthStencilState.front.pass_op,
+                     m_DepthStencilState.front.depth_fail_op,
+                     m_DepthStencilState.front.compare_op);
+    cmd.setStencilOp(vk::StencilFaceFlagBits::eBack,
+                     m_DepthStencilState.back.fail_op,
+                     m_DepthStencilState.back.pass_op,
+                     m_DepthStencilState.back.depth_fail_op,
+                     m_DepthStencilState.back.compare_op);
+}
+
 } // namespace GE

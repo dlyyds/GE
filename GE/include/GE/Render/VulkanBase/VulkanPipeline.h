@@ -1,65 +1,134 @@
-#pragma once
+/* Copyright (c) 2019-2025, Arm Limited and Contributors
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Licensed under the Apache License, Version 2.0 the "License";
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
+/**
+ * @file VulkanPipeline.h
+ * @brief Vulkan 管线封装，参考 Vulkan-Samples 的 Pipeline 设计。
+ *
+ * 体系结构：
+ *   VulkanPipeline（基类）
+ *     ├─ VulkanGraphicsPipeline（图形管线）
+ *     └─ VulkanComputePipeline（计算管线）
+ *
+ * 基类持有由外部传入的 VulkanPipelineState 副本，
+ * 构造函数创建管线后自动清除脏标记。
+ */
+
+#pragma once
 
 #include <vulkan/vulkan.hpp>
 
-#include <string>
-#include <vector>
+#include <cstdint>
 
-#include "Render/VulkanBase/VulkanShader.h"
+#include "Render/VulkanBase/VulkanPipelineState.h"
 
-namespace GE {
+namespace GE
+{
 
-/// Vulkan 图形管线封装。
-/// 通过 VulkanShader 对象提供着色器阶段，着色器模块由调用方管理生命周期。
-class VulkanPipeline {
-public:
-    VulkanPipeline() = default;
+class VulkanDevice;
 
-    ~VulkanPipeline() = default;
+class VulkanDevice;
+
+/**
+ * @brief Vulkan 管线基类。
+ *
+ * 持有 vk::Pipeline 句柄和 VulkanPipelineState 副本。
+ * 析构时自动销毁句柄。
+ */
+class VulkanPipeline
+{
+  public:
+    VulkanPipeline(VulkanDevice &device);
 
     VulkanPipeline(const VulkanPipeline &) = delete;
+
+    VulkanPipeline(VulkanPipeline &&other) noexcept;
+
+    virtual ~VulkanPipeline();
+
     VulkanPipeline &operator=(const VulkanPipeline &) = delete;
 
-    VulkanPipeline(VulkanPipeline &&) = default;
-    VulkanPipeline &operator=(VulkanPipeline &&) = default;
+    VulkanPipeline &operator=(VulkanPipeline &&) = delete;
 
-    /// 创建图形管线。vertex input layout 从 vertex shader 自动反射获取，
-    /// descriptor set layout 从两个 shader 的反射结果合并创建。
-    /// @param device           Vulkan 逻辑设备
-    /// @param color_format     颜色附件格式
-    /// @param vertShader       顶点着色器（内部自动反射 vertex input）
-    /// @param fragShader       片元着色器
-    /// @param dynamicBindings  需要改为 Dynamic 类型的 (set, binding) 对列表
-    /// @param depth_format     深度附件格式，不填则不开启深度测试
-    void Init(vk::Device device, vk::Format color_format,
-              const VulkanShader &vertShader, const VulkanShader &fragShader,
-              const std::vector<std::pair<uint32_t, uint32_t>> &dynamicBindings = {},
-              vk::Format depth_format = vk::Format{});
+    /// 获取底层 VkPipeline 句柄
+    vk::Pipeline GetHandle() const { return m_Handle; }
 
-    void Cleanup();
+    /// 获取可修改的状态引用（用于运行时动态更新）
+    VulkanPipelineState &GetState() { return m_State; }
 
-    void Bind(vk::CommandBuffer cmd) const { cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, m_Pipeline); }
+    /// 获取只读状态引用
+    const VulkanPipelineState &GetState() const { return m_State; }
 
-    [[nodiscard]] vk::Pipeline GetPipeline() const { return m_Pipeline; }
-    [[nodiscard]] vk::PipelineLayout GetLayout() const { return m_PipelineLayout; }
+  protected:
+    VulkanDevice       &m_Device;
+    vk::Pipeline        m_Handle{VK_NULL_HANDLE};
+    VulkanPipelineState m_State;
+};
 
-    /// 获取指定 set 的 DescriptorSetLayout，set 越界或不存在时返回 nullptr。
-    [[nodiscard]] vk::DescriptorSetLayout GetSetLayout(uint32_t set) const {
-        return set < m_DescriptorSetLayouts.size() ? m_DescriptorSetLayouts[set] : nullptr;
-    }
 
-    [[nodiscard]] const std::vector<DescriptorBindingInfo> &GetDescriptorBindings() const { return m_DescriptorBindings; }
+/**
+ * @brief 图形管线。
+ *
+ * 从给定的 VulkanPipelineState 创建 VkPipeline，
+ * 默认启用 Dynamic Rendering。
+ */
+class VulkanGraphicsPipeline : public VulkanPipeline
+{
+  public:
+    VulkanGraphicsPipeline(VulkanDevice       &device,
+                           VkPipelineCache     pipeline_cache,
+                           VulkanPipelineState &pipeline_state);
 
-    /// 通过着色器变量名查找 descriptor binding 编号，未找到返回 UINT32_MAX。
-    [[nodiscard]] uint32_t GetBindingByName(const std::string &name) const;
+    ~VulkanGraphicsPipeline() override;
 
-private:
-    vk::Device m_Device = nullptr;
-    std::vector<vk::DescriptorSetLayout> m_DescriptorSetLayouts;
-    vk::PipelineLayout m_PipelineLayout = nullptr;
-    vk::Pipeline m_Pipeline = nullptr;
-    std::vector<DescriptorBindingInfo> m_DescriptorBindings;
+    VulkanGraphicsPipeline(const VulkanGraphicsPipeline &) = delete;
+
+    VulkanGraphicsPipeline(VulkanGraphicsPipeline &&) = default;
+
+    VulkanGraphicsPipeline &operator=(const VulkanGraphicsPipeline &) = delete;
+
+    VulkanGraphicsPipeline &operator=(VulkanGraphicsPipeline &&) = delete;
+
+    /// 绑定到命令缓冲区
+    void Bind(vk::CommandBuffer cmd) const;
+};
+
+
+/**
+ * @brief 计算管线。
+ *
+ * 从给定的 VulkanPipelineState 创建 VkPipeline。
+ */
+class VulkanComputePipeline : public VulkanPipeline
+{
+  public:
+    VulkanComputePipeline(VulkanDevice       &device,
+                          VkPipelineCache     pipeline_cache,
+                          VulkanPipelineState &pipeline_state);
+
+    ~VulkanComputePipeline() override;
+
+    VulkanComputePipeline(const VulkanComputePipeline &) = delete;
+
+    VulkanComputePipeline(VulkanComputePipeline &&) = default;
+
+    VulkanComputePipeline &operator=(const VulkanComputePipeline &) = delete;
+
+    VulkanComputePipeline &operator=(VulkanComputePipeline &&) = delete;
 };
 
 } // namespace GE

@@ -1,169 +1,115 @@
-//
-// Created by Lenovo on 2026/6/3.
-//
+/* Copyright (c) 2019-2025, Arm Limited and Contributors
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Licensed under the Apache License, Version 2.0 the "License";
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
-#include "../../../include/GE/Render/VulkanBase/VulkanPipeline.h"
+/**
+ * @file VulkanPipeline.cpp
+ * @brief VulkanPipeline 各子类实现。
+ */
 
-#include <algorithm>
-#include <map>
+#include "Render/VulkanBase/VulkanPipeline.h"
+#include "Render/VulkanBase/VulkanDevice.h"
 
-namespace GE {
+namespace GE
+{
 
-void VulkanPipeline::Init(vk::Device device, vk::Format color_format,
-                          const VulkanShader &vertShader, const VulkanShader &fragShader,
-                          const std::vector<std::pair<uint32_t, uint32_t> > &dynamicBindings,
-                          vk::Format depth_format) {
-    m_Device = device;
+// ============================================================================
+// VulkanPipeline（基类）
+// ============================================================================
 
-    // 反射 descriptor bindings 并合并 vertex + fragment
-    auto vert_bindings = vertShader.ReflectDescriptorBindings();
-    auto frag_bindings = fragShader.ReflectDescriptorBindings();
-    m_DescriptorBindings = VulkanShader::MergeDescriptorBindings({vert_bindings, frag_bindings});
+VulkanPipeline::VulkanPipeline(VulkanDevice &device) :
+    m_Device(device)
+{
+}
 
-    // 将指定的 (set, binding) 转为 Dynamic 类型
-    for (auto &b : m_DescriptorBindings) {
-        auto it = std::ranges::find(dynamicBindings, std::pair(b.set, b.binding));
-        if (it != dynamicBindings.end()) {
-            if (b.descriptorType == vk::DescriptorType::eUniformBuffer)
-                b.descriptorType = vk::DescriptorType::eUniformBufferDynamic;
-            else if (b.descriptorType == vk::DescriptorType::eStorageBuffer)
-                b.descriptorType = vk::DescriptorType::eStorageBufferDynamic;
-        }
+VulkanPipeline::VulkanPipeline(VulkanPipeline &&other) noexcept :
+    m_Device(other.m_Device),
+    m_Handle(other.m_Handle),
+    m_State(std::move(other.m_State))
+{
+    other.m_Handle = VK_NULL_HANDLE;
+}
+
+VulkanPipeline::~VulkanPipeline()
+{
+    if (m_Handle)
+    {
+        m_Device.GetHandle().destroyPipeline(m_Handle);
     }
+}
 
-    // 按 set 分组 bindings
-    std::map<uint32_t, std::vector<DescriptorBindingInfo> > bindingsBySet;
-    for (auto &b : m_DescriptorBindings) {
-        bindingsBySet[b.set].push_back(b);
-    }
 
-    // 确定最大 set 编号，resize vector
-    uint32_t maxSet = bindingsBySet.empty() ? 0 : static_cast<uint32_t>(bindingsBySet.rbegin()->first) + 1;
-    m_DescriptorSetLayouts.assign(maxSet, nullptr);
+// ============================================================================
+// VulkanGraphicsPipeline
+// ============================================================================
 
-    // 为每个 set 创建 DescriptorSetLayout
-    for (auto &[set, bindings] : bindingsBySet) {
-        std::vector<vk::DescriptorSetLayoutBinding> raw_bindings;
-        raw_bindings.reserve(bindings.size());
-        for (auto &b : bindings) {
-            raw_bindings.push_back(vk::DescriptorSetLayoutBinding{
-                .binding = b.binding,
-                .descriptorType = b.descriptorType,
-                .descriptorCount = b.descriptorCount,
-                .stageFlags = b.stageFlags,
-            });
-        }
-        vk::DescriptorSetLayoutCreateInfo layout_info{
-            .bindingCount = static_cast<uint32_t>(raw_bindings.size()),
-            .pBindings = raw_bindings.data(),
-        };
-        m_DescriptorSetLayouts[set] = device.createDescriptorSetLayout(layout_info);
-    }
+VulkanGraphicsPipeline::VulkanGraphicsPipeline(VulkanDevice       &device,
+                                               VkPipelineCache     pipeline_cache,
+                                               VulkanPipelineState &pipeline_state) :
+    VulkanPipeline(device)
+{
+    // 复制外部状态
+    m_State = pipeline_state;
 
-    // 创建 PipelineLayout（包含所有 set）
-    vk::PipelineLayoutCreateInfo pipeline_layout_info{
-        .setLayoutCount = maxSet,
-        .pSetLayouts = m_DescriptorSetLayouts.data(),
-    };
-    m_PipelineLayout = device.createPipelineLayout(pipeline_layout_info);
+    // 构建管线创建信息
+    auto bundle = m_State.BuildCreateInfo();
 
-    // 从 vertex shader 自动反射 vertex input layout
-    VertexInputState vertex_input = vertShader.ReflectVertexInput();
+    // 创建 VkPipeline
+    auto result = m_Device.GetHandle().createGraphicsPipeline(
+        vk::PipelineCache{pipeline_cache},
+        bundle.pipelineInfo);
 
-    vk::VertexInputBindingDescription binding_description{
-        .binding = 0, .stride = vertex_input.stride, .inputRate = vk::VertexInputRate::eVertex};
-
-    vk::PipelineVertexInputStateCreateInfo vertex_input_state{
-        .vertexBindingDescriptionCount = 1,
-        .pVertexBindingDescriptions = &binding_description,
-        .vertexAttributeDescriptionCount = static_cast<uint32_t>(vertex_input.attributes.size()),
-        .pVertexAttributeDescriptions = vertex_input.attributes.data()};
-
-    vk::PipelineInputAssemblyStateCreateInfo input_assembly{.topology = vk::PrimitiveTopology::eTriangleList};
-    vk::PipelineRasterizationStateCreateInfo raster{.polygonMode = vk::PolygonMode::eFill, .lineWidth = 1.0f};
-
-    std::vector<vk::DynamicState> dynamic_states = {
-        vk::DynamicState::eViewport, vk::DynamicState::eScissor, vk::DynamicState::eCullMode,
-        vk::DynamicState::eFrontFace, vk::DynamicState::ePrimitiveTopology};
-
-    vk::PipelineColorBlendAttachmentState blend_attachment{
-        .colorWriteMask = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
-                          vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA};
-
-    vk::PipelineColorBlendStateCreateInfo blend{.attachmentCount = 1, .pAttachments = &blend_attachment};
-    vk::PipelineViewportStateCreateInfo viewport{.viewportCount = 1, .scissorCount = 1};
-
-    bool hasDepth = depth_format != vk::Format{};
-    vk::PipelineDepthStencilStateCreateInfo depth_stencil{
-        .depthTestEnable = hasDepth,
-        .depthWriteEnable = hasDepth,
-        .depthCompareOp = hasDepth ? vk::CompareOp::eLess : vk::CompareOp::eAlways,
-    };
-    vk::PipelineMultisampleStateCreateInfo multisample{.rasterizationSamples = vk::SampleCountFlagBits::e1};
-
-    vk::PipelineDynamicStateCreateInfo dynamic_state_info{
-        .dynamicStateCount = static_cast<uint32_t>(dynamic_states.size()),
-        .pDynamicStates = dynamic_states.data()};
-
-    // 使用 VulkanShader 提供的 stage create info
-    std::array<vk::PipelineShaderStageCreateInfo, 2> shader_stages = {{
-        vertShader.GetStageCreateInfo(),
-        fragShader.GetStageCreateInfo(),
-    }};
-
-    vk::PipelineRenderingCreateInfo pipeline_rendering_info{
-        .colorAttachmentCount = 1,
-        .pColorAttachmentFormats = &color_format,
-        .depthAttachmentFormat = depth_format,
-    };
-
-    vk::GraphicsPipelineCreateInfo pipeline_create_info{
-        .pNext = &pipeline_rendering_info,
-        .stageCount = static_cast<uint32_t>(shader_stages.size()),
-        .pStages = shader_stages.data(),
-        .pVertexInputState = &vertex_input_state,
-        .pInputAssemblyState = &input_assembly,
-        .pViewportState = &viewport,
-        .pRasterizationState = &raster,
-        .pMultisampleState = &multisample,
-        .pDepthStencilState = &depth_stencil,
-        .pColorBlendState = &blend,
-        .pDynamicState = &dynamic_state_info,
-        .layout = m_PipelineLayout,
-        .renderPass = VK_NULL_HANDLE,
-        .subpass = 0,
-    };
-
-    auto result = device.createGraphicsPipeline(vk::PipelineCache{}, pipeline_create_info);
-    if (result.result != vk::Result::eSuccess) {
+    if (result.result != vk::Result::eSuccess)
+    {
         throw std::runtime_error("Failed to create graphics pipeline");
     }
-    m_Pipeline = result.value;
+
+    m_Handle = result.value;
+
+    // 清除脏标记，标记当前状态为已创建管线
+    m_State.ClearAllDirty();
 }
 
-void VulkanPipeline::Cleanup() {
-    if (m_Device) {
-        if (m_Pipeline)
-            m_Device.destroyPipeline(m_Pipeline);
-        if (m_PipelineLayout)
-            m_Device.destroyPipelineLayout(m_PipelineLayout);
-        for (auto &layout : m_DescriptorSetLayouts) {
-            if (layout)
-                m_Device.destroyDescriptorSetLayout(layout);
-        }
-    }
-    m_DescriptorSetLayouts.clear();
-    m_PipelineLayout = nullptr;
-    m_Pipeline = nullptr;
-    m_Device = nullptr;
+VulkanGraphicsPipeline::~VulkanGraphicsPipeline()
+{
+    // 基类析构会销毁 m_Handle
 }
 
-uint32_t VulkanPipeline::GetBindingByName(const std::string &name) const {
-    for (auto &b : m_DescriptorBindings) {
-        if (b.name == name)
-            return b.binding;
-    }
-    return UINT32_MAX;
+void VulkanGraphicsPipeline::Bind(vk::CommandBuffer cmd) const
+{
+    cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, m_Handle);
 }
+
+
+// ============================================================================
+// VulkanComputePipeline
+// ============================================================================
+// TODO: 计算管线使用 vk::ComputePipelineCreateInfo，需要从 VulkanPipelineState
+//       中提取 compute shader 阶段和 pipeline layout。当前 VulkanPipelineState
+//       主要针对图形管线设计，计算管线功能待后续补充。
+// ============================================================================
+
+VulkanComputePipeline::VulkanComputePipeline(VulkanDevice       &device,
+                                             VkPipelineCache     /*pipeline_cache*/,
+                                             VulkanPipelineState & /*pipeline_state*/) :
+    VulkanPipeline(device)
+{
+    throw std::runtime_error("Compute pipeline not yet implemented");
+}
+
+VulkanComputePipeline::~VulkanComputePipeline() = default;
 
 } // namespace GE

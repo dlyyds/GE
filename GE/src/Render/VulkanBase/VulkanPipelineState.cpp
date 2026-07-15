@@ -270,11 +270,15 @@ std::vector<vk::DynamicState> VulkanPipelineState::GetEnabledDynamicStates() con
 {
     std::vector<vk::DynamicState> states;
 
+    // 视口/剪刀矩形总是动态（现代 Vulkan 应用无理由在创建时固定）
+    states.push_back(vk::DynamicState::eViewport);
+    states.push_back(vk::DynamicState::eScissor);
+
     // 输入装配
     if (topology.IsDynamic())
         states.push_back(vk::DynamicState::ePrimitiveTopology);
 
-    // 视口
+    // 视口计数（仅当用户显式设为动态时启用 WithCount 变体）
     if (viewportCount.IsDynamic())
         states.push_back(vk::DynamicState::eViewportWithCount);
     if (scissorCount.IsDynamic())

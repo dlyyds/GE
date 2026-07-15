@@ -5,7 +5,7 @@ set(CMAKE_CXX_STANDARD 20)
 project(GE)
 
 
-set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
 
 #set(CMAKE_BUILD_TYPE Debug)
 #set(CMAKE_BUILD_TYPE Release)
@@ -49,10 +49,6 @@ file(GLOB GE_SRC
         ${CMAKE_SOURCE_DIR}/GE/src/Render/*.cpp
         ${CMAKE_SOURCE_DIR}/GE/src/Render/VulkanBase/*.cpp
         ${CMAKE_SOURCE_DIR}/GE/third_party/stb/stb_image.cpp
-        ${CMAKE_SOURCE_DIR}/GE/third_party/SPIRV-Cross/spirv_cross.cpp
-        ${CMAKE_SOURCE_DIR}/GE/third_party/SPIRV-Cross/spirv_cross_parsed_ir.cpp
-        ${CMAKE_SOURCE_DIR}/GE/third_party/SPIRV-Cross/spirv_parser.cpp
-        ${CMAKE_SOURCE_DIR}/GE/third_party/SPIRV-Cross/spirv_cfg.cpp
         ${CMAKE_SOURCE_DIR}/GE/third_party/tinyobjloader/tiny_obj_loader.cpp
 
 )
@@ -68,7 +64,6 @@ target_include_directories(${GE_NAME} PUBLIC
         ${CMAKE_SOURCE_DIR}/GE/third_party/vma
         ${CMAKE_SOURCE_DIR}/GE/third_party/GLFW/include
         ${CMAKE_SOURCE_DIR}/GE/third_party/stb
-        ${CMAKE_SOURCE_DIR}/GE/third_party/SPIRV-Cross
         ${CMAKE_SOURCE_DIR}/GE/third_party/tinyobjloader
         ${Vulkan_INCLUDE_DIRS}
         ${Vulkan_INCLUDE_DIRS}/spirv_cross
@@ -93,6 +88,15 @@ target_link_libraries(${GE_NAME} PUBLIC
         yaml-cpp::yaml-cpp
         ${Vulkan_LIBRARIES}
 )
+
+# 链接 Vulkan SDK 自带的 SPIRV-Cross 预编译库
+if(DEFINED ENV{VULKAN_SDK})
+    target_link_libraries(${GE_NAME} PUBLIC
+        "$ENV{VULKAN_SDK}/Lib/spirv-cross-glsl$<$<CONFIG:Debug>:d>.lib"
+        "$ENV{VULKAN_SDK}/Lib/spirv-cross-core$<$<CONFIG:Debug>:d>.lib"
+    )
+endif()
+
 
 
 # 开启预编译头 PCH

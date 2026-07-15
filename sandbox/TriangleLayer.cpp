@@ -46,12 +46,28 @@ void TriangleLayer::OnAttach() {
     m_PipelineState.depthFormat             = {};
     m_PipelineState.stencilFormat           = {};
 
+    // 顶点输入（匹配着色器的 vertex input 布局）
+    // location 0: vec2 position (offset 0)
+    // location 1: vec3 color   (offset 8)
+    // stride: 20
+    m_PipelineState.vertexBindingDescriptions = {{{
+        0, 20, vk::VertexInputRate::eVertex,
+    }}};
+    m_PipelineState.vertexAttributeDescriptions = {{{
+        {0, 0, vk::Format::eR32G32Sfloat,   0},                           // position
+        {1, 0, vk::Format::eR32G32B32Sfloat, static_cast<uint32_t>(2 * sizeof(float))},  // color
+    }}};
+
+    // 混合附件（与 colorAttachmentFormats 数量匹配）
+    m_PipelineState.SetBlendAttachments({GE::BlendAttachment{}});
+
     // 标记为动态状态（运行时通过 vkCmdSet* 更新）
+    // 注意：viewport/scissor 矩形已在 GetEnabledDynamicStates() 中始终启用，
+    //       但 viewportCount/scissorCount 保持静态（值固定为 1），
+    //       运行时用 vkCmdSetViewport / vkCmdSetScissor 更新矩形即可。
     m_PipelineState.cullMode.SetDynamic(true);
     m_PipelineState.frontFace.SetDynamic(true);
     m_PipelineState.topology.SetDynamic(true);
-    m_PipelineState.viewportCount.SetDynamic(true);
-    m_PipelineState.scissorCount.SetDynamic(true);
 
     // ── 4. 创建图形管线 ──────────────────────────────────────────────
     m_Pipeline = std::make_unique<VulkanGraphicsPipeline>(

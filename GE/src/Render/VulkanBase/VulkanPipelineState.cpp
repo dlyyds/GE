@@ -377,11 +377,9 @@ PipelineCreateBundle VulkanPipelineState::BuildCreateInfo(vk::PipelineCreateFlag
         {
             bundle.shaderStageCreateInfos.push_back(
                 vk::PipelineShaderStageCreateInfo{
-                    {},
-                    mod->get_stage(),
-                    mod->GetHandle(),
-                    mod->get_entry_point().c_str(),
-                    nullptr     // pSpecializationInfo
+                    .stage  = mod->get_stage(),
+                    .module = mod->GetHandle(),
+                    .pName  = mod->get_entry_point().c_str(),
                 });
         }
     }
@@ -415,134 +413,127 @@ PipelineCreateBundle VulkanPipelineState::BuildCreateInfo(vk::PipelineCreateFlag
     bundle.colorAttachmentFormats = colorAttachmentFormats.Get();
 
     // ---- 6. 构建各 CreateInfo ----
+    // 注意：项目禁用 vulkan.hpp 构造函数，使用 aggregate init，
+    // 必须用 designated initializer 显式指定字段。
 
     // VertexInput
     bundle.vertexInputInfo = vk::PipelineVertexInputStateCreateInfo{
-        {},
-        static_cast<uint32_t>(bundle.vertexBindings.size()),
-        bundle.vertexBindings.data(),
-        static_cast<uint32_t>(bundle.vertexAttributes.size()),
-        bundle.vertexAttributes.data()
+        .vertexBindingDescriptionCount   = static_cast<uint32_t>(bundle.vertexBindings.size()),
+        .pVertexBindingDescriptions      = bundle.vertexBindings.data(),
+        .vertexAttributeDescriptionCount = static_cast<uint32_t>(bundle.vertexAttributes.size()),
+        .pVertexAttributeDescriptions    = bundle.vertexAttributes.data(),
     };
 
     // InputAssembly
     bundle.inputAssemblyInfo = vk::PipelineInputAssemblyStateCreateInfo{
-        {},
-        topology.Get(),
-        primitiveRestartEnable.Get()
+        .topology              = topology.Get(),
+        .primitiveRestartEnable = primitiveRestartEnable.Get(),
     };
 
     // Tessellation
     bundle.tessellationInfo = vk::PipelineTessellationStateCreateInfo{
-        {},
-        patchControlPoints.Get()
+        .patchControlPoints = patchControlPoints.Get(),
     };
 
     // Viewport（如果动态，Vulkan 忽略 viewport/scissor 数据）
     bundle.viewportInfo = vk::PipelineViewportStateCreateInfo{
-        {},
-        viewportCount.Get(),
-        nullptr,    // pViewports — 动态时忽略
-        scissorCount.Get(),
-        nullptr     // pScissors  — 动态时忽略
+        .viewportCount = viewportCount.Get(),
+        .pViewports    = nullptr,    // 动态时忽略
+        .scissorCount  = scissorCount.Get(),
+        .pScissors     = nullptr,    // 动态时忽略
     };
 
     // Rasterization
     bundle.rasterizationInfo = vk::PipelineRasterizationStateCreateInfo{
-        {},
-        depthClampEnable.Get(),
-        rasterizerDiscardEnable.Get(),
-        polygonMode.Get(),
-        cullMode.Get(),
-        frontFace.Get(),
-        depthBiasEnable.Get(),
-        0.0f,   // depthBiasConstantFactor
-        0.0f,   // depthBiasClamp
-        0.0f,   // depthBiasSlopeFactor
-        1.0f    // lineWidth
+        .depthClampEnable        = depthClampEnable.Get(),
+        .rasterizerDiscardEnable = rasterizerDiscardEnable.Get(),
+        .polygonMode             = polygonMode.Get(),
+        .cullMode                = cullMode.Get(),
+        .frontFace               = frontFace.Get(),
+        .depthBiasEnable         = depthBiasEnable.Get(),
+        .depthBiasConstantFactor = 0.0f,
+        .depthBiasClamp          = 0.0f,
+        .depthBiasSlopeFactor    = 0.0f,
+        .lineWidth               = 1.0f,
     };
 
     // Multisample
     bundle.sampleMaskData = sampleMask.Get();
     bundle.multisampleInfo = vk::PipelineMultisampleStateCreateInfo{
-        {},
-        rasterizationSamples.Get(),
-        sampleShadingEnable.Get(),
-        minSampleShading.Get(),
-        &bundle.sampleMaskData,
-        alphaToCoverageEnable.Get(),
-        alphaToOneEnable.Get()
+        .rasterizationSamples  = rasterizationSamples.Get(),
+        .sampleShadingEnable   = sampleShadingEnable.Get(),
+        .minSampleShading      = minSampleShading.Get(),
+        .pSampleMask           = &bundle.sampleMaskData,
+        .alphaToCoverageEnable = alphaToCoverageEnable.Get(),
+        .alphaToOneEnable      = alphaToOneEnable.Get(),
     };
 
     // DepthStencil
     bundle.depthStencilInfo = vk::PipelineDepthStencilStateCreateInfo{
-        {},
-        depthTestEnable.Get(),
-        depthWriteEnable.Get(),
-        depthCompareOp.Get(),
-        depthBoundsTestEnable.Get(),
-        stencilTestEnable.Get(),
-        vk::StencilOpState{
-            stencilFront.failOp.Get(),
-            stencilFront.passOp.Get(),
-            stencilFront.depthFailOp.Get(),
-            stencilFront.compareOp.Get()
-        },
-        vk::StencilOpState{
-            stencilBack.failOp.Get(),
-            stencilBack.passOp.Get(),
-            stencilBack.depthFailOp.Get(),
-            stencilBack.compareOp.Get()
-        },
-        0.0f,   // minDepthBounds
-        0.0f    // maxDepthBounds
+        .depthTestEnable       = depthTestEnable.Get(),
+        .depthWriteEnable      = depthWriteEnable.Get(),
+        .depthCompareOp        = depthCompareOp.Get(),
+        .depthBoundsTestEnable = depthBoundsTestEnable.Get(),
+        .stencilTestEnable     = stencilTestEnable.Get(),
+        .front                 = vk::StencilOpState{
+                                    stencilFront.failOp.Get(),
+                                    stencilFront.passOp.Get(),
+                                    stencilFront.depthFailOp.Get(),
+                                    stencilFront.compareOp.Get(),
+                                },
+        .back                  = vk::StencilOpState{
+                                    stencilBack.failOp.Get(),
+                                    stencilBack.passOp.Get(),
+                                    stencilBack.depthFailOp.Get(),
+                                    stencilBack.compareOp.Get(),
+                                },
+        .minDepthBounds        = 0.0f,
+        .maxDepthBounds        = 0.0f,
     };
 
     // ColorBlend
     bundle.colorBlendInfo = vk::PipelineColorBlendStateCreateInfo{
-        {},
-        logicOpEnable.Get(),
-        logicOp.Get(),
-        static_cast<uint32_t>(bundle.blendAttachmentStates.size()),
-        bundle.blendAttachmentStates.data(),
-        {{0.0f, 0.0f, 0.0f, 0.0f}}   // blendConstants
+        .logicOpEnable   = logicOpEnable.Get(),
+        .logicOp         = logicOp.Get(),
+        .attachmentCount = static_cast<uint32_t>(bundle.blendAttachmentStates.size()),
+        .pAttachments    = bundle.blendAttachmentStates.data(),
+        .blendConstants  = {{0.0f, 0.0f, 0.0f, 0.0f}},
     };
 
     // DynamicState
     bundle.dynamicStateInfo = vk::PipelineDynamicStateCreateInfo{
-        {},
-        static_cast<uint32_t>(bundle.dynamicStates.size()),
-        bundle.dynamicStates.data()
+        .dynamicStateCount = static_cast<uint32_t>(bundle.dynamicStates.size()),
+        .pDynamicStates    = bundle.dynamicStates.data(),
     };
 
     // DynamicRendering
     bundle.renderingInfo = vk::PipelineRenderingCreateInfo{
-        0,
-        static_cast<uint32_t>(bundle.colorAttachmentFormats.size()),
-        bundle.colorAttachmentFormats.data(),
-        depthFormat.Get(),
-        stencilFormat.Get()
+        .viewMask                 = 0,
+        .colorAttachmentCount     = static_cast<uint32_t>(bundle.colorAttachmentFormats.size()),
+        .pColorAttachmentFormats  = bundle.colorAttachmentFormats.data(),
+        .depthAttachmentFormat    = depthFormat.Get(),
+        .stencilAttachmentFormat  = stencilFormat.Get(),
     };
 
     // ---- 7. 主 CreateInfo ----
     bundle.pipelineInfo = vk::GraphicsPipelineCreateInfo{
-        flags,
-        static_cast<uint32_t>(bundle.shaderStageCreateInfos.size()),
-        bundle.shaderStageCreateInfos.data(),
-        &bundle.vertexInputInfo,
-        &bundle.inputAssemblyInfo,
-        &bundle.tessellationInfo,
-        &bundle.viewportInfo,
-        &bundle.rasterizationInfo,
-        &bundle.multisampleInfo,
-        &bundle.depthStencilInfo,
-        &bundle.colorBlendInfo,
-        &bundle.dynamicStateInfo,
-        pipelineLayout.Get() ? pipelineLayout.Get()->GetHandle() : VK_NULL_HANDLE,
-        VK_NULL_HANDLE,     // renderPass — Dynamic Rendering 不用
-        0,                  // subpass
-        VK_NULL_HANDLE,     // basePipelineHandle
-        -1                  // basePipelineIndex
+        .flags               = flags,
+        .stageCount          = static_cast<uint32_t>(bundle.shaderStageCreateInfos.size()),
+        .pStages             = bundle.shaderStageCreateInfos.data(),
+        .pVertexInputState   = &bundle.vertexInputInfo,
+        .pInputAssemblyState = &bundle.inputAssemblyInfo,
+        .pTessellationState  = &bundle.tessellationInfo,
+        .pViewportState      = &bundle.viewportInfo,
+        .pRasterizationState = &bundle.rasterizationInfo,
+        .pMultisampleState   = &bundle.multisampleInfo,
+        .pDepthStencilState  = &bundle.depthStencilInfo,
+        .pColorBlendState    = &bundle.colorBlendInfo,
+        .pDynamicState       = &bundle.dynamicStateInfo,
+        .layout              = pipelineLayout.Get() ? pipelineLayout.Get()->GetHandle() : VK_NULL_HANDLE,
+        .renderPass          = VK_NULL_HANDLE,     // Dynamic Rendering 不用
+        .subpass             = 0,
+        .basePipelineHandle  = VK_NULL_HANDLE,
+        .basePipelineIndex   = -1,
     };
 
     // pNext 链：renderingInfo → pipelineInfo

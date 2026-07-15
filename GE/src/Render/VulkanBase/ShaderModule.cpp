@@ -85,7 +85,10 @@ ShaderModule::ShaderModule(VulkanDevice            &device,
                             reinterpret_cast<const char *>(spirv.data() + spirv.size())});
 
     // 创建 Vulkan ShaderModule 句柄
-    vk::ShaderModuleCreateInfo moduleCI{{}, spirv};
+    vk::ShaderModuleCreateInfo moduleCI{
+        .codeSize = spirv.size() * sizeof(uint32_t),
+        .pCode    = spirv.data(),
+    };
     m_Handle = device.GetHandle().createShaderModule(moduleCI);
 }
 

@@ -50,13 +50,13 @@ void TriangleLayer::OnAttach() {
     // location 0: vec2 position (offset 0)
     // location 1: vec3 color   (offset 8)
     // stride: 20
-    m_PipelineState.vertexBindingDescriptions = {{{
-        0, 20, vk::VertexInputRate::eVertex,
-    }}};
-    m_PipelineState.vertexAttributeDescriptions = {{{
-        {0, 0, vk::Format::eR32G32Sfloat,   0},                           // position
+    m_PipelineState.vertexBindingDescriptions = std::vector<vk::VertexInputBindingDescription>{
+        {0, 20, vk::VertexInputRate::eVertex},
+    };
+    m_PipelineState.vertexAttributeDescriptions = std::vector<vk::VertexInputAttributeDescription>{
+        {0, 0, vk::Format::eR32G32Sfloat,   0},                                      // position
         {1, 0, vk::Format::eR32G32B32Sfloat, static_cast<uint32_t>(2 * sizeof(float))},  // color
-    }}};
+    };
 
     // 混合附件（与 colorAttachmentFormats 数量匹配）
     m_PipelineState.SetBlendAttachments({GE::BlendAttachment{}});

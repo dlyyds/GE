@@ -462,12 +462,15 @@ PipelineCreateBundle VulkanPipelineState::BuildCreateInfo(vk::PipelineCreateFlag
     };
 
     // Multisample
-    bundle.sampleMaskData = sampleMask.Get();
+    // pSampleMask=nullptr 表示"启用所有 sample"，
+    // 指向 0 则"禁用所有 sample"（导致什么都画不出来）。
+    auto sampleMaskVal = sampleMask.Get();
+    bundle.sampleMaskData = sampleMaskVal;
     bundle.multisampleInfo = vk::PipelineMultisampleStateCreateInfo{
         .rasterizationSamples  = rasterizationSamples.Get(),
         .sampleShadingEnable   = sampleShadingEnable.Get(),
         .minSampleShading      = minSampleShading.Get(),
-        .pSampleMask           = &bundle.sampleMaskData,
+        .pSampleMask           = sampleMaskVal ? &bundle.sampleMaskData : nullptr,
         .alphaToCoverageEnable = alphaToCoverageEnable.Get(),
         .alphaToOneEnable      = alphaToOneEnable.Get(),
     };

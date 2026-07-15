@@ -23,6 +23,7 @@
  */
 
 #include "Render/VulkanBase/VulkanPipelineState.h"
+#include "Render/VulkanBase/VulkanPipelineLayout.h"
 
 #include <algorithm>
 #include <cstring>
@@ -535,7 +536,7 @@ PipelineCreateBundle VulkanPipelineState::BuildCreateInfo(vk::PipelineCreateFlag
         &bundle.depthStencilInfo,
         &bundle.colorBlendInfo,
         &bundle.dynamicStateInfo,
-        pipelineLayout.Get(),
+        pipelineLayout.Get() ? pipelineLayout.Get()->GetHandle() : VK_NULL_HANDLE,
         VK_NULL_HANDLE,     // renderPass — Dynamic Rendering 不用
         0,                  // subpass
         VK_NULL_HANDLE,     // basePipelineHandle

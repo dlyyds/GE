@@ -355,8 +355,8 @@ class VulkanPipelineState
     // ----- 着色器阶段（始终静态） -----
     StaticParam<std::vector<ShaderStageInfo>> shaderStages{};
 
-    // ----- 管线布局（始终静态） -----
-    StaticParam<vk::PipelineLayout> pipelineLayout{};
+    // ----- 管线布局（始终静态，指向外部所有的 VulkanPipelineLayout） -----
+    StaticParam<VulkanPipelineLayout *> pipelineLayout{nullptr};
 
     // ----- 顶点输入（始终静态） -----
     StaticParam<std::vector<vk::VertexInputBindingDescription>>   vertexBindingDescriptions{};

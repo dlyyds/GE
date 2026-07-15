@@ -68,6 +68,8 @@ void TriangleLayer::OnAttach() {
     m_PipelineState.cullMode.SetDynamic(true);
     m_PipelineState.frontFace.SetDynamic(true);
     m_PipelineState.topology.SetDynamic(true);
+    m_PipelineState.depthTestEnable = VK_FALSE;    // 无 depth attachment
+    m_PipelineState.depthWriteEnable = VK_FALSE;
 
     // ── 4. 创建图形管线 ──────────────────────────────────────────────
     m_Pipeline = std::make_unique<VulkanGraphicsPipeline>(
@@ -119,7 +121,10 @@ void TriangleLayer::OnUpdate(Timestep &ts) {
                                   clearValue);
     renderInfo.Begin(cmd);
 
-    // ── 动态状态（管线已将这些状态标记为 Dynamic） ──────────────────
+    // ── 绑定管线（必须先 bind，再设动态状态 —— bind 会重置动态状态） ──
+    m_Pipeline->Bind(cmd);
+
+    // ── 动态状态 ──────────────────────────────────────────────────────
     vk::Viewport vp;
     vp.width  = static_cast<float>(extent.width);
     vp.height = static_cast<float>(extent.height);
@@ -135,9 +140,6 @@ void TriangleLayer::OnUpdate(Timestep &ts) {
     cmd.setCullMode(vk::CullModeFlagBits::eNone);
     cmd.setFrontFace(vk::FrontFace::eCounterClockwise);
     cmd.setPrimitiveTopology(vk::PrimitiveTopology::eTriangleList);
-
-    // ── 绑定管线 ──────────────────────────────────────────────────────
-    m_Pipeline->Bind(cmd);
 
     // ── 绑定顶点 buffer ───────────────────────────────────────────────
     vk::Buffer vb = m_VertexBuffer.GetBuffer();

@@ -3,16 +3,16 @@
 #include "GE/GE.h"
 #include "GE/Render/VulkanBase/VulkanBuffer.h"
 #include "GE/Render/VulkanBase/VulkanPipeline.h"
-#include "GE/Render/VulkanBase/VulkanShader.h"
+#include "GE/Render/VulkanBase/VulkanPipelineLayout.h"
+#include "GE/Render/VulkanBase/ShaderModule.h"
 
 namespace GE {
 
-/// 不使用 Renderer 的纯粹 Vulkan 三角形绘制层。
-/// 演示如何直接操作 Vulkan API 来绘制一个彩色三角形。
+/// 使用新 API 的纯 Vulkan 三角形绘制层。
 class TriangleLayer : public Layer {
 public:
     TriangleLayer();
-    ~TriangleLayer() override = default;
+    ~TriangleLayer() override;
 
     void OnAttach() override;
     void OnDetach() override;
@@ -21,10 +21,12 @@ public:
     void OnImGuiRender() override;
 
 private:
-    VulkanShader   m_VertShader;
-    VulkanShader   m_FragShader;
-    VulkanPipeline m_Pipeline;
-    VulkanBuffer   m_VertexBuffer;
+    std::unique_ptr<ShaderModule>           m_VertShader;
+    std::unique_ptr<ShaderModule>           m_FragShader;
+    std::unique_ptr<VulkanPipelineLayout>   m_PipelineLayout;
+    VulkanPipelineState                     m_PipelineState;
+    std::unique_ptr<VulkanGraphicsPipeline> m_Pipeline;
+    VulkanBuffer                            m_VertexBuffer;
 };
 
 } // namespace GE

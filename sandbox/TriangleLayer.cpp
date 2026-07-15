@@ -1,5 +1,5 @@
 //
-// 不使用 Renderer 的纯 Vulkan 三角形绘制 —— 演示直接操作 Vulkan API
+// 不使用 Renderer 的纯 Vulkan 三角形绘制 —— 演示新 Pipeline/State API
 //
 
 #include "TriangleLayer.h"
@@ -14,35 +14,60 @@ namespace GE {
 TriangleLayer::TriangleLayer() : Layer("TriangleLayer") {
 }
 
+TriangleLayer::~TriangleLayer() = default;
+
 void TriangleLayer::OnAttach() {
-    auto &ctx = Application::GetVulkanContext();
-    auto device = ctx.GetVkDevice();
-    auto allocator = ctx.GetVmaAllocator();
+    auto &ctx       = Application::GetVulkanContext();
+    auto &device    = ctx.GetDevice();          // VulkanDevice &
+    auto  allocator = ctx.GetVmaAllocator();
     auto &swapchain = Application::GetSwapchain();
-    auto colorFmt = swapchain.GetFormat();
+    auto  colorFmt  = swapchain.GetFormat();
 
-    // ── 1. 加载着色器 ────────────────────────────────────────────
-    m_VertShader.Init(device, "assets/shaders/glsl/triangle_raw.vert.spv",
-                      vk::ShaderStageFlagBits::eVertex);
-    m_FragShader.Init(device, "assets/shaders/glsl/triangle_raw.frag.spv",
-                      vk::ShaderStageFlagBits::eFragment);
+    // ── 1. 创建 ShaderModule（包含 SPIR-V 加载 + vk::ShaderModule 创建）─
+    m_VertShader = std::make_unique<ShaderModule>(
+        device, vk::ShaderStageFlagBits::eVertex,
+        ShaderSource("assets/shaders/glsl/triangle_raw.vert.spv"),
+        "main", ShaderVariant{});
 
-    // ── 2. 创建管线 ──────────────────────────────────────────────
-    // 我们的着色器没有 descriptor binding，所以管线没有任何 set layout。
-    // 也不开启深度测试。
-    m_Pipeline.Init(device, colorFmt, m_VertShader, m_FragShader);
+    m_FragShader = std::make_unique<ShaderModule>(
+        device, vk::ShaderStageFlagBits::eFragment,
+        ShaderSource("assets/shaders/glsl/triangle_raw.frag.spv"),
+        "main", ShaderVariant{});
 
-    // ── 3. 创建顶点 buffer ───────────────────────────────────────
+    // ── 2. 创建 PipelineLayout（从着色器反射 descriptor set）─────────
+    m_PipelineLayout = std::make_unique<VulkanPipelineLayout>(
+        device,
+        std::vector<ShaderModule *>{m_VertShader.get(), m_FragShader.get()});
+
+    // ── 3. 配置 PipelineState ────────────────────────────────────────
+    m_PipelineState.Reset();
+    m_PipelineState.pipelineLayout          = m_PipelineLayout.get();
+    m_PipelineState.colorAttachmentFormats  = {{colorFmt}};
+    m_PipelineState.depthFormat             = {};
+    m_PipelineState.stencilFormat           = {};
+
+    // 标记为动态状态（运行时通过 vkCmdSet* 更新）
+    m_PipelineState.cullMode.SetDynamic(true);
+    m_PipelineState.frontFace.SetDynamic(true);
+    m_PipelineState.topology.SetDynamic(true);
+    m_PipelineState.viewportCount.SetDynamic(true);
+    m_PipelineState.scissorCount.SetDynamic(true);
+
+    // ── 4. 创建图形管线 ──────────────────────────────────────────────
+    m_Pipeline = std::make_unique<VulkanGraphicsPipeline>(
+        device, VK_NULL_HANDLE, m_PipelineState);
+
+    // ── 5. 创建顶点 buffer ───────────────────────────────────────────
     // 每个顶点：位置 vec2（8 字节）+ 颜色 vec3（12 字节）, stride = 20
     struct Vertex {
-        float x, y; // position (location 0)
-        float r, g, b; // color    (location 1)
+        float x, y;     // position (location 0)
+        float r, g, b;  // color    (location 1)
     };
 
     Vertex vertices[] = {
-        {-0.5f, -0.5f, 1.0f, 0.0f, 0.0f}, // 左下 — 红
-        {0.5f, -0.5f, 0.0f, 1.0f, 0.0f}, // 右下 — 绿
-        {0.0f, 0.5f, 0.0f, 0.0f, 1.0f}, // 顶部 — 蓝
+        {-0.5f, -0.5f, 1.0f, 0.0f, 0.0f},   // 左下 — 红
+        { 0.5f, -0.5f, 0.0f, 1.0f, 0.0f},   // 右下 — 绿
+        { 0.0f,  0.5f, 0.0f, 0.0f, 1.0f},   // 顶部 — 蓝
     };
 
     m_VertexBuffer.Init(allocator, sizeof(vertices),
@@ -51,19 +76,22 @@ void TriangleLayer::OnAttach() {
 }
 
 void TriangleLayer::OnDetach() {
-    // 按创建逆序销毁资源
+    // 按创建逆序销毁
     m_VertexBuffer.Destroy();
-    m_Pipeline.Cleanup();
-    m_FragShader.Cleanup();
-    m_VertShader.Cleanup();
+
+    // unique_ptr 自动析构，顺序：Pipeline → PipelineLayout → ShaderModules
+    m_Pipeline.reset();
+    m_PipelineLayout.reset();
+    m_VertShader.reset();
+    m_FragShader.reset();
 }
 
 void TriangleLayer::OnUpdate(Timestep &ts) {
-    auto cmd = Application::GetFrameCmd();
-    auto extent = Application::GetSwapchain().GetExtent();
+    auto cmd        = Application::GetFrameCmd();
+    auto extent     = Application::GetSwapchain().GetExtent();
     auto imageIndex = Application::GetFrameImageIndex();
 
-    // ── 开始动态渲染 ──────────────────────────────────────────────
+    // ── 开始动态渲染 ──────────────────────────────────────────────────
     vk::ClearValue clearValue;
     clearValue.color = std::array<float, 4>{0.0f, 0.0f, 0.0f, 1.0f};
 
@@ -75,16 +103,16 @@ void TriangleLayer::OnUpdate(Timestep &ts) {
                                   clearValue);
     renderInfo.Begin(cmd);
 
-    // ── 动态状态 ──────────────────────────────────────────────────
+    // ── 动态状态（管线已将这些状态标记为 Dynamic） ──────────────────
     vk::Viewport vp;
-    vp.width = static_cast<float>(extent.width);
+    vp.width  = static_cast<float>(extent.width);
     vp.height = static_cast<float>(extent.height);
     vp.minDepth = 0.0f;
     vp.maxDepth = 1.0f;
     cmd.setViewport(0, vp);
 
     vk::Rect2D scissor;
-    scissor.extent.width = extent.width;
+    scissor.extent.width  = extent.width;
     scissor.extent.height = extent.height;
     cmd.setScissor(0, scissor);
 
@@ -92,17 +120,17 @@ void TriangleLayer::OnUpdate(Timestep &ts) {
     cmd.setFrontFace(vk::FrontFace::eCounterClockwise);
     cmd.setPrimitiveTopology(vk::PrimitiveTopology::eTriangleList);
 
-    // ── 绑定管线 ──────────────────────────────────────────────────
-    m_Pipeline.Bind(cmd);
+    // ── 绑定管线 ──────────────────────────────────────────────────────
+    m_Pipeline->Bind(cmd);
 
-    // ── 绑定顶点 buffer ───────────────────────────────────────────
+    // ── 绑定顶点 buffer ───────────────────────────────────────────────
     vk::Buffer vb = m_VertexBuffer.GetBuffer();
     cmd.bindVertexBuffers(0, vb, {0});
 
-    // ── 绘制 3 个顶点 ─────────────────────────────────────────────
+    // ── 绘制 3 个顶点 ─────────────────────────────────────────────────
     cmd.draw(3, 1, 0, 0);
 
-    // ── 结束渲染 ──────────────────────────────────────────────────
+    // ── 结束渲染 ──────────────────────────────────────────────────────
     VulkanRenderingInfo::End(cmd);
 }
 
@@ -113,7 +141,7 @@ void TriangleLayer::OnEvent(Event &event) {
 void TriangleLayer::OnImGuiRender() {
     ImGui::Begin("TriangleLayer");
     ImGui::Text("直接使用 Vulkan 绘制的彩色三角形");
-    ImGui::Text("不使用 Renderer，直接操作 Vulkan API");
+    ImGui::Text("新 Pipeline/State API");
     ImGui::Separator();
     ImGui::Text("着色器：triangle_raw.vert / triangle_raw.frag");
     ImGui::Text("无 UBO、无纹理、无深度测试 — 最简管线");

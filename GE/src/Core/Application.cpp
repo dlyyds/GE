@@ -153,6 +153,12 @@ void Application::Run() {
 
             // 2. Acquire next image
             auto [result, imageIndex] = swapchain.AcquireNextImage(acquireSem);
+            if (result == vk::Result::eErrorOutOfDateKHR || result == vk::Result::eSuboptimalKHR) {
+                m_RecycledSemaphores.push_back(acquireSem);
+                RecreateSwapchain();
+                m_Window->OnUpdate();
+                continue;
+            }
             if (result != vk::Result::eSuccess) {
                 m_RecycledSemaphores.push_back(acquireSem);
                 m_Window->OnUpdate();
@@ -226,11 +232,11 @@ void Application::Run() {
                 };
                 try {
                     auto presentResult = queue.presentKHR(presentInfo);
-                    if (presentResult == vk::Result::eErrorOutOfDateKHR) {
-                        m_Minimized = true;
+                    if (presentResult == vk::Result::eErrorOutOfDateKHR || presentResult == vk::Result::eSuboptimalKHR) {
+                        RecreateSwapchain();
                     }
                 } catch (vk::OutOfDateKHRError &) {
-                    m_Minimized = true;
+                    RecreateSwapchain();
                 }
             }
 
@@ -257,12 +263,62 @@ void Application::OnEvent(Event &e) {
 
 void Application::Close() { m_Running = false; }
 
+void Application::RecreateSwapchain() {
+    auto vkDevice    = m_VulkanContext->GetVkDevice();
+    auto windowWidth = m_Window->GetWidth();
+    auto windowHeight = m_Window->GetHeight();
+
+    if (windowWidth == 0 || windowHeight == 0) {
+        m_Minimized = true;
+        return;
+    }
+    m_Minimized = false;
+
+    // 等待 GPU 完成所有未完成的工作
+    vkDevice.waitIdle();
+
+    // 1. 销毁旧 image views
+    for (auto v : m_SwapchainImageViews)
+        vkDevice.destroyImageView(v);
+    m_SwapchainImageViews.clear();
+
+    // 2. 使用重建构造函数创建新 swapchain（沿用旧 swapchain 的参数，仅更新 extent）
+    auto newSwapchain = std::make_unique<VulkanSwapchain>(
+        *m_Swapchain,
+        vk::Extent2D{windowWidth, windowHeight});
+    m_Swapchain = std::move(newSwapchain);
+
+    // 3. 为新 swapchain images 创建 image views
+    auto images = m_Swapchain->GetImages();
+    m_SwapchainImageViews.reserve(images.size());
+    for (auto img : images) {
+        m_SwapchainImageViews.push_back(image_utils::CreateView(
+            vkDevice, img, vk::ImageViewType::e2D, m_Swapchain->GetFormat()));
+    }
+
+    // 4. image count 变化时调整 per-frame 资源数组
+    if (m_PerFrame.size() != images.size()) {
+        for (auto &pf : m_PerFrame)
+            pf.Destroy(vkDevice);
+        m_PerFrame.clear();
+
+        auto &dev = *m_VulkanContext;
+        auto queueIndex = dev.GetDevice().GetQueueByFlags(vk::QueueFlagBits::eGraphics, 0).GetFamilyIndex();
+        m_PerFrame.resize(images.size());
+        for (auto &pf : m_PerFrame)
+            pf.Init(vkDevice, queueIndex);
+    }
+
+    GE_CORE_INFO("Swapchain recreated: {}x{}", windowWidth, windowHeight);
+}
+
 bool Application::OnWindowResized(const WindowResizeEvent &e) {
     if (e.GetWidth() == 0 || e.GetHeight() == 0) {
         m_Minimized = true;
         return false;
     }
     m_Minimized = false;
+    RecreateSwapchain();
     return false;
 }
 

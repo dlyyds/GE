@@ -71,6 +71,8 @@ public:
 private:
     void Run();
 
+    void RecreateSwapchain();
+
     bool OnWindowClose(WindowCloseEvent &e);
 
     bool OnWindowResized(const WindowResizeEvent &e);

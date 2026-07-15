@@ -252,17 +252,6 @@ struct BlendAttachment
 };
 
 
-/**
- * @brief 着色器阶段信息（始终静态）。
- */
-struct ShaderStageInfo
-{
-    vk::ShaderStageFlagBits stage{};
-    vk::ShaderModule        module{};
-    std::string             entryPoint{"main"};
-};
-
-
 // ============================================================================
 // PipelineCreateBundle —— 一键构建 VkGraphicsPipelineCreateInfo
 // ============================================================================
@@ -352,8 +341,8 @@ class VulkanPipelineState
     StaticParam<vk::Format>              depthFormat{};
     StaticParam<vk::Format>              stencilFormat{};
 
-    // ----- 着色器阶段（始终静态） -----
-    StaticParam<std::vector<ShaderStageInfo>> shaderStages{};
+    // ----- 着色器阶段（始终静态，从 pipelineLayout->GetShaderModules() 获取） -----
+    // 无需单独存储，BuildCreateInfo 中从 VulkanPipelineLayout 提取。
 
     // ----- 管线布局（始终静态，指向外部所有的 VulkanPipelineLayout） -----
     StaticParam<VulkanPipelineLayout *> pipelineLayout{nullptr};

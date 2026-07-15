@@ -183,6 +183,8 @@ class ShaderModule
 
     ShaderModule(ShaderModule &&other);
 
+    ~ShaderModule();
+
     ShaderModule &operator=(const ShaderModule &) = delete;
 
     ShaderModule &operator=(ShaderModule &&) = delete;
@@ -196,6 +198,9 @@ class ShaderModule
     const std::vector<ShaderResource> &get_resources() const;
 
     const std::vector<uint32_t> &get_binary() const;
+
+    /// 获取 Vulkan ShaderModule 句柄。
+    vk::ShaderModule GetHandle() const { return m_Handle; }
 
     inline const std::string &get_debug_name() const
     {
@@ -234,6 +239,9 @@ class ShaderModule
 
     /// 反射出的资源列表
     std::vector<ShaderResource> resources;
+
+    /// Vulkan ShaderModule 句柄
+    vk::ShaderModule m_Handle{};
 };
 
 } // namespace GE

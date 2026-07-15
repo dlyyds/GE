@@ -83,6 +83,18 @@ ShaderModule::ShaderModule(VulkanDevice            &device,
     std::hash<std::string> hasher{};
     id = hasher(std::string{reinterpret_cast<const char *>(spirv.data()),
                             reinterpret_cast<const char *>(spirv.data() + spirv.size())});
+
+    // 创建 Vulkan ShaderModule 句柄
+    vk::ShaderModuleCreateInfo moduleCI{{}, spirv};
+    m_Handle = device.GetHandle().createShaderModule(moduleCI);
+}
+
+ShaderModule::~ShaderModule()
+{
+    if (m_Handle)
+    {
+        device.GetHandle().destroyShaderModule(m_Handle);
+    }
 }
 
 ShaderModule::ShaderModule(ShaderModule &&other) :
@@ -91,10 +103,12 @@ ShaderModule::ShaderModule(ShaderModule &&other) :
     stage{other.stage},
     entry_point{other.entry_point},
     debug_name{other.debug_name},
-    spirv{other.spirv},
-    resources{other.resources}
+    spirv{std::move(other.spirv)},
+    resources{std::move(other.resources)},
+    m_Handle{other.m_Handle}
 {
-    other.stage = {};
+    other.stage  = {};
+    other.m_Handle = nullptr;
 }
 
 size_t ShaderModule::get_id() const

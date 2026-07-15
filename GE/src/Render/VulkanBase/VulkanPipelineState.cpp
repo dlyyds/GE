@@ -24,6 +24,7 @@
 
 #include "Render/VulkanBase/VulkanPipelineState.h"
 #include "Render/VulkanBase/VulkanPipelineLayout.h"
+#include "Render/VulkanBase/ShaderModule.h"
 
 #include <algorithm>
 #include <cstring>
@@ -62,7 +63,6 @@ void VulkanPipelineState::Reset()
     colorAttachmentFormats   = {};
     depthFormat              = {};
     stencilFormat            = {};
-    shaderStages             = {};
     pipelineLayout           = {};
     vertexBindingDescriptions   = {};
     vertexAttributeDescriptions = {};
@@ -140,7 +140,6 @@ bool VulkanPipelineState::HasPipelineDirty() const
     if (colorAttachmentFormats.IsValueDirty()
         || depthFormat.IsValueDirty()
         || stencilFormat.IsValueDirty()
-        || shaderStages.IsValueDirty()
         || pipelineLayout.IsValueDirty()
         || vertexBindingDescriptions.IsValueDirty()
         || vertexAttributeDescriptions.IsValueDirty()
@@ -224,7 +223,6 @@ void VulkanPipelineState::ClearAllDirty()
     colorAttachmentFormats.ClearDirty();
     depthFormat.ClearDirty();
     stencilFormat.ClearDirty();
-    shaderStages.ClearDirty();
     pipelineLayout.ClearDirty();
     vertexBindingDescriptions.ClearDirty();
     vertexAttributeDescriptions.ClearDirty();
@@ -369,19 +367,23 @@ PipelineCreateBundle VulkanPipelineState::BuildCreateInfo(vk::PipelineCreateFlag
 {
     PipelineCreateBundle bundle;
 
-    // ---- 1. 着色器阶段 ----
-    const auto &stages = shaderStages.Get();
-    bundle.shaderStageCreateInfos.reserve(stages.size());
-    for (const auto &s : stages)
+    // ---- 1. 着色器阶段（从 pipelineLayout 提取） ----
+    const auto *layout = pipelineLayout.Get();
+    if (layout)
     {
-        bundle.shaderStageCreateInfos.push_back(
-            vk::PipelineShaderStageCreateInfo{
-                {},
-                s.stage,
-                s.module,
-                s.entryPoint.c_str(),
-                nullptr     // pSpecializationInfo
-            });
+        const auto &modules = layout->GetShaderModules();
+        bundle.shaderStageCreateInfos.reserve(modules.size());
+        for (const auto *mod : modules)
+        {
+            bundle.shaderStageCreateInfos.push_back(
+                vk::PipelineShaderStageCreateInfo{
+                    {},
+                    mod->get_stage(),
+                    mod->GetHandle(),
+                    mod->get_entry_point().c_str(),
+                    nullptr     // pSpecializationInfo
+                });
+        }
     }
 
     // ---- 2. 动态状态 ----

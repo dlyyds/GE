@@ -248,7 +248,10 @@ vk::ImageUsageFlags composite_image_flags(const std::set<vk::ImageUsageFlagBits>
 // ============================================================================
 
 inline vk::ImageCompressionPropertiesEXT query_applied_compression(vk::Device device, vk::Image image) {
-    vk::ImageSubresource2EXT subresource{vk::ImageAspectFlagBits::eColor, 0, 0};
+    vk::ImageSubresource2EXT subresource{};
+    subresource.imageSubresource.aspectMask = vk::ImageAspectFlagBits::eColor;
+    subresource.imageSubresource.mipLevel   = 0;
+    subresource.imageSubresource.arrayLayer = 0;
     auto chain = device.getImageSubresourceLayout2EXT<vk::SubresourceLayout2, vk::ImageCompressionPropertiesEXT>(
         image, subresource);
     return chain.template get<vk::ImageCompressionPropertiesEXT>();

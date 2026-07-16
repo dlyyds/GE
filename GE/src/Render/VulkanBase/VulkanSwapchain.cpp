@@ -36,7 +36,7 @@ inline uint32_t choose_image_count(uint32_t request_image_count,
 // choose_extent — 根据 surface 能力选择 extent
 // ============================================================================
 
-vk::Extent2D choose_extent(vk::Extent2D        request_extent,
+vk::Extent2D choose_extent(vk::Extent2D request_extent,
                            const vk::Extent2D &min_image_extent,
                            const vk::Extent2D &max_image_extent,
                            const vk::Extent2D &current_extent) {
@@ -51,7 +51,7 @@ vk::Extent2D choose_extent(vk::Extent2D        request_extent,
         return current_extent;
     }
 
-    request_extent.width  = clamp(request_extent.width,  min_image_extent.width,  max_image_extent.width);
+    request_extent.width = clamp(request_extent.width, min_image_extent.width, max_image_extent.width);
     request_extent.height = clamp(request_extent.height, min_image_extent.height, max_image_extent.height);
 
     return request_extent;
@@ -61,7 +61,7 @@ vk::Extent2D choose_extent(vk::Extent2D        request_extent,
 // choose_present_mode — 根据 surface 支持的呈现模式选择
 // ============================================================================
 
-vk::PresentModeKHR choose_present_mode(vk::PresentModeKHR                     request_present_mode,
+vk::PresentModeKHR choose_present_mode(vk::PresentModeKHR request_present_mode,
                                        const std::vector<vk::PresentModeKHR> &available_present_modes,
                                        const std::vector<vk::PresentModeKHR> &present_mode_priority_list) {
     // 尝试查找请求的呈现模式
@@ -69,9 +69,9 @@ vk::PresentModeKHR choose_present_mode(vk::PresentModeKHR                     re
     if (present_mode_it == available_present_modes.end()) {
         // 请求的模式不支持，从优先级列表中查找
         auto const chosen_it = std::ranges::find_if(present_mode_priority_list,
-            [&available_present_modes](vk::PresentModeKHR pm) {
-                return std::ranges::find(available_present_modes, pm) != available_present_modes.end();
-            });
+                                                    [&available_present_modes](vk::PresentModeKHR pm) {
+                                                        return std::ranges::find(available_present_modes, pm) != available_present_modes.end();
+                                                    });
 
         // 如果都没找到，始终默认 FIFO
         vk::PresentModeKHR const chosen = (chosen_it != present_mode_priority_list.end())
@@ -91,7 +91,7 @@ vk::PresentModeKHR choose_present_mode(vk::PresentModeKHR                     re
 // choose_surface_format — 根据 surface 支持的格式选择
 // ============================================================================
 
-vk::SurfaceFormatKHR choose_surface_format(const vk::SurfaceFormatKHR               requested_surface_format,
+vk::SurfaceFormatKHR choose_surface_format(const vk::SurfaceFormatKHR requested_surface_format,
                                            const std::vector<vk::SurfaceFormatKHR> &available_surface_formats,
                                            const std::vector<vk::SurfaceFormatKHR> &surface_format_priority_list) {
     // 尝试查找请求的格式
@@ -100,9 +100,9 @@ vk::SurfaceFormatKHR choose_surface_format(const vk::SurfaceFormatKHR           
     if (format_it == available_surface_formats.end()) {
         // 请求的格式不支持，从优先级列表中查找
         auto const chosen_it = std::ranges::find_if(surface_format_priority_list,
-            [&available_surface_formats](vk::SurfaceFormatKHR sf) {
-                return std::ranges::find(available_surface_formats, sf) != available_surface_formats.end();
-            });
+                                                    [&available_surface_formats](vk::SurfaceFormatKHR sf) {
+                                                        return std::ranges::find(available_surface_formats, sf) != available_surface_formats.end();
+                                                    });
 
         // 如果都没找到，默认使用第一个可用格式
         vk::SurfaceFormatKHR const &chosen = (chosen_it != surface_format_priority_list.end())
@@ -133,7 +133,7 @@ inline uint32_t choose_image_array_layers(uint32_t request_image_array_layers, u
 // ============================================================================
 
 vk::SurfaceTransformFlagBitsKHR choose_transform(vk::SurfaceTransformFlagBitsKHR request_transform,
-                                                 vk::SurfaceTransformFlagsKHR    supported_transform,
+                                                 vk::SurfaceTransformFlagsKHR supported_transform,
                                                  vk::SurfaceTransformFlagBitsKHR current_transform) {
     if (request_transform & supported_transform) {
         return request_transform;
@@ -149,7 +149,7 @@ vk::SurfaceTransformFlagBitsKHR choose_transform(vk::SurfaceTransformFlagBitsKHR
 // ============================================================================
 
 vk::CompositeAlphaFlagBitsKHR choose_composite_alpha(vk::CompositeAlphaFlagBitsKHR request_composite_alpha,
-                                                     vk::CompositeAlphaFlagsKHR    supported_composite_alpha) {
+                                                     vk::CompositeAlphaFlagsKHR supported_composite_alpha) {
     if (request_composite_alpha & supported_composite_alpha) {
         return request_composite_alpha;
     }
@@ -162,9 +162,9 @@ vk::CompositeAlphaFlagBitsKHR choose_composite_alpha(vk::CompositeAlphaFlagBitsK
     };
 
     auto const chosen_it = std::ranges::find_if(alpha_priority_list,
-        [&supported_composite_alpha](vk::CompositeAlphaFlagBitsKHR alpha) {
-            return static_cast<bool>(alpha & supported_composite_alpha);
-        });
+                                                [&supported_composite_alpha](vk::CompositeAlphaFlagBitsKHR alpha) {
+                                                    return static_cast<bool>(alpha & supported_composite_alpha);
+                                                });
 
     if (chosen_it == alpha_priority_list.end()) {
         throw std::runtime_error("No compatible composite alpha found.");
@@ -189,8 +189,8 @@ bool validate_format_feature(vk::ImageUsageFlagBits image_usage, vk::FormatFeatu
 // ============================================================================
 
 std::set<vk::ImageUsageFlagBits> choose_image_usage(const std::set<vk::ImageUsageFlagBits> &requested_image_usage_flags,
-                                                    vk::ImageUsageFlags                     supported_image_usage,
-                                                    vk::FormatFeatureFlags                  supported_features) {
+                                                    vk::ImageUsageFlags supported_image_usage,
+                                                    vk::FormatFeatureFlags supported_features) {
     std::set<vk::ImageUsageFlagBits> validated;
     for (auto flag : requested_image_usage_flags) {
         if ((flag & supported_image_usage) && validate_format_feature(flag, supported_features)) {
@@ -210,9 +210,10 @@ std::set<vk::ImageUsageFlagBits> choose_image_usage(const std::set<vk::ImageUsag
         };
 
         auto const priority_it = std::ranges::find_if(usage_priority_list,
-            [&supported_image_usage, &supported_features](auto usage) {
-                return static_cast<bool>(usage & supported_image_usage) && validate_format_feature(usage, supported_features);
-            });
+                                                      [&supported_image_usage, &supported_features](auto usage) {
+                                                          return static_cast<bool>(usage & supported_image_usage) && validate_format_feature(
+                                                                     usage, supported_features);
+                                                      });
 
         if (priority_it != usage_priority_list.end()) {
             validated.insert(*priority_it);
@@ -247,15 +248,6 @@ vk::ImageUsageFlags composite_image_flags(const std::set<vk::ImageUsageFlagBits>
 // query_applied_compression — 查询 swapchain image 实际应用的压缩参数
 // ============================================================================
 
-inline vk::ImageCompressionPropertiesEXT query_applied_compression(vk::Device device, vk::Image image) {
-    vk::ImageSubresource2EXT subresource{};
-    subresource.imageSubresource.aspectMask = vk::ImageAspectFlagBits::eColor;
-    subresource.imageSubresource.mipLevel   = 0;
-    subresource.imageSubresource.arrayLayer = 0;
-    auto chain = device.getImageSubresourceLayout2EXT<vk::SubresourceLayout2, vk::ImageCompressionPropertiesEXT>(
-        image, subresource);
-    return chain.template get<vk::ImageCompressionPropertiesEXT>();
-}
 
 } // anonymous namespace
 
@@ -263,150 +255,150 @@ inline vk::ImageCompressionPropertiesEXT query_applied_compression(vk::Device de
 // 重建构造函数：仅修改 extent
 // ============================================================================
 
-VulkanSwapchain::VulkanSwapchain(VulkanSwapchain &old_swapchain, const vk::Extent2D &extent) :
-    VulkanSwapchain{old_swapchain,
-                    old_swapchain.m_Device,
-                    old_swapchain.m_Surface,
-                    old_swapchain.m_Properties.present_mode,
-                    old_swapchain.m_PresentModePriorityList,
-                    old_swapchain.m_SurfaceFormatPriorityList,
-                    extent,
-                    old_swapchain.m_Properties.image_count,
-                    old_swapchain.m_Properties.pre_transform,
-                    old_swapchain.m_ImageUsageFlags,
-                    old_swapchain.m_RequestedCompression,
-                    old_swapchain.m_RequestedCompressionFixedRate} {}
+VulkanSwapchain::VulkanSwapchain(VulkanSwapchain &old_swapchain, const vk::Extent2D &extent) : VulkanSwapchain{old_swapchain,
+    old_swapchain.m_Device,
+    old_swapchain.m_Surface,
+    old_swapchain.m_Properties.present_mode,
+    old_swapchain.m_PresentModePriorityList,
+    old_swapchain.m_SurfaceFormatPriorityList,
+    extent,
+    old_swapchain.m_Properties.image_count,
+    old_swapchain.m_Properties.pre_transform,
+    old_swapchain.m_ImageUsageFlags,
+    old_swapchain.m_RequestedCompression,
+    old_swapchain.m_RequestedCompressionFixedRate} {
+}
 
 // ============================================================================
 // 重建构造函数：仅修改 image count
 // ============================================================================
 
-VulkanSwapchain::VulkanSwapchain(VulkanSwapchain &old_swapchain, uint32_t image_count) :
-    VulkanSwapchain{old_swapchain,
-                    old_swapchain.m_Device,
-                    old_swapchain.m_Surface,
-                    old_swapchain.m_Properties.present_mode,
-                    old_swapchain.m_PresentModePriorityList,
-                    old_swapchain.m_SurfaceFormatPriorityList,
-                    old_swapchain.m_Properties.extent,
-                    image_count,
-                    old_swapchain.m_Properties.pre_transform,
-                    old_swapchain.m_ImageUsageFlags,
-                    old_swapchain.m_RequestedCompression,
-                    old_swapchain.m_RequestedCompressionFixedRate} {}
+VulkanSwapchain::VulkanSwapchain(VulkanSwapchain &old_swapchain, uint32_t image_count) : VulkanSwapchain{old_swapchain,
+    old_swapchain.m_Device,
+    old_swapchain.m_Surface,
+    old_swapchain.m_Properties.present_mode,
+    old_swapchain.m_PresentModePriorityList,
+    old_swapchain.m_SurfaceFormatPriorityList,
+    old_swapchain.m_Properties.extent,
+    image_count,
+    old_swapchain.m_Properties.pre_transform,
+    old_swapchain.m_ImageUsageFlags,
+    old_swapchain.m_RequestedCompression,
+    old_swapchain.m_RequestedCompressionFixedRate} {
+}
 
 // ============================================================================
 // 重建构造函数：仅修改 image usage
 // ============================================================================
 
-VulkanSwapchain::VulkanSwapchain(VulkanSwapchain &old_swapchain, const std::set<vk::ImageUsageFlagBits> &image_usage_flags) :
-    VulkanSwapchain{old_swapchain,
-                    old_swapchain.m_Device,
-                    old_swapchain.m_Surface,
-                    old_swapchain.m_Properties.present_mode,
-                    old_swapchain.m_PresentModePriorityList,
-                    old_swapchain.m_SurfaceFormatPriorityList,
-                    old_swapchain.m_Properties.extent,
-                    old_swapchain.m_Properties.image_count,
-                    old_swapchain.m_Properties.pre_transform,
-                    image_usage_flags,
-                    old_swapchain.m_RequestedCompression,
-                    old_swapchain.m_RequestedCompressionFixedRate} {}
+VulkanSwapchain::VulkanSwapchain(VulkanSwapchain &old_swapchain, const std::set<vk::ImageUsageFlagBits> &image_usage_flags) : VulkanSwapchain{
+    old_swapchain,
+    old_swapchain.m_Device,
+    old_swapchain.m_Surface,
+    old_swapchain.m_Properties.present_mode,
+    old_swapchain.m_PresentModePriorityList,
+    old_swapchain.m_SurfaceFormatPriorityList,
+    old_swapchain.m_Properties.extent,
+    old_swapchain.m_Properties.image_count,
+    old_swapchain.m_Properties.pre_transform,
+    image_usage_flags,
+    old_swapchain.m_RequestedCompression,
+    old_swapchain.m_RequestedCompressionFixedRate} {
+}
 
 // ============================================================================
 // 重建构造函数：修改 extent + transform
 // ============================================================================
 
-VulkanSwapchain::VulkanSwapchain(VulkanSwapchain                     &swapchain,
-                                 const vk::Extent2D                  &extent,
-                                 const vk::SurfaceTransformFlagBitsKHR transform) :
-    VulkanSwapchain{swapchain,
-                    swapchain.m_Device,
-                    swapchain.m_Surface,
-                    swapchain.m_Properties.present_mode,
-                    swapchain.m_PresentModePriorityList,
-                    swapchain.m_SurfaceFormatPriorityList,
-                    extent,
-                    swapchain.m_Properties.image_count,
-                    transform,
-                    swapchain.m_ImageUsageFlags,
-                    swapchain.m_RequestedCompression,
-                    swapchain.m_RequestedCompressionFixedRate} {}
+VulkanSwapchain::VulkanSwapchain(VulkanSwapchain &swapchain,
+                                 const vk::Extent2D &extent,
+                                 const vk::SurfaceTransformFlagBitsKHR transform) : VulkanSwapchain{swapchain,
+    swapchain.m_Device,
+    swapchain.m_Surface,
+    swapchain.m_Properties.present_mode,
+    swapchain.m_PresentModePriorityList,
+    swapchain.m_SurfaceFormatPriorityList,
+    extent,
+    swapchain.m_Properties.image_count,
+    transform,
+    swapchain.m_ImageUsageFlags,
+    swapchain.m_RequestedCompression,
+    swapchain.m_RequestedCompressionFixedRate} {
+}
 
 // ============================================================================
 // 重建构造函数：修改压缩设置
 // ============================================================================
 
-VulkanSwapchain::VulkanSwapchain(VulkanSwapchain                       &swapchain,
-                                 vk::ImageCompressionFlagsEXT           requested_compression,
-                                 vk::ImageCompressionFixedRateFlagsEXT  requested_compression_fixed_rate) :
-    VulkanSwapchain{swapchain,
-                    swapchain.m_Device,
-                    swapchain.m_Surface,
-                    swapchain.m_Properties.present_mode,
-                    swapchain.m_PresentModePriorityList,
-                    swapchain.m_SurfaceFormatPriorityList,
-                    swapchain.m_Properties.extent,
-                    swapchain.m_Properties.image_count,
-                    swapchain.m_Properties.pre_transform,
-                    swapchain.m_ImageUsageFlags,
-                    requested_compression,
-                    requested_compression_fixed_rate} {}
+VulkanSwapchain::VulkanSwapchain(VulkanSwapchain &swapchain,
+                                 vk::ImageCompressionFlagsEXT requested_compression,
+                                 vk::ImageCompressionFixedRateFlagsEXT requested_compression_fixed_rate) : VulkanSwapchain{swapchain,
+    swapchain.m_Device,
+    swapchain.m_Surface,
+    swapchain.m_Properties.present_mode,
+    swapchain.m_PresentModePriorityList,
+    swapchain.m_SurfaceFormatPriorityList,
+    swapchain.m_Properties.extent,
+    swapchain.m_Properties.image_count,
+    swapchain.m_Properties.pre_transform,
+    swapchain.m_ImageUsageFlags,
+    requested_compression,
+    requested_compression_fixed_rate} {
+}
 
 // ============================================================================
 // 主构造函数（公开入口）→ 委托到完整构造函数
 // ============================================================================
 
-VulkanSwapchain::VulkanSwapchain(VulkanDevice                                  &device,
-                                 vk::SurfaceKHR                                 surface,
-                                 vk::PresentModeKHR                             present_mode,
-                                 const std::vector<vk::PresentModeKHR>         &present_mode_priority_list,
-                                 const std::vector<vk::SurfaceFormatKHR>       &surface_format_priority_list,
-                                 const vk::Extent2D                            &extent,
-                                 uint32_t                                       image_count,
-                                 vk::SurfaceTransformFlagBitsKHR                transform,
-                                 const std::set<vk::ImageUsageFlagBits>        &image_usage_flags,
-                                 vk::ImageCompressionFlagsEXT                   requested_compression,
-                                 vk::ImageCompressionFixedRateFlagsEXT          requested_compression_fixed_rate) :
-    VulkanSwapchain{*this,
-                    device,
-                    surface,
-                    present_mode,
-                    present_mode_priority_list,
-                    surface_format_priority_list,
-                    extent,
-                    image_count,
-                    transform,
-                    image_usage_flags,
-                    requested_compression,
-                    requested_compression_fixed_rate} {}
+VulkanSwapchain::VulkanSwapchain(VulkanDevice &device,
+                                 vk::SurfaceKHR surface,
+                                 vk::PresentModeKHR present_mode,
+                                 const std::vector<vk::PresentModeKHR> &present_mode_priority_list,
+                                 const std::vector<vk::SurfaceFormatKHR> &surface_format_priority_list,
+                                 const vk::Extent2D &extent,
+                                 uint32_t image_count,
+                                 vk::SurfaceTransformFlagBitsKHR transform,
+                                 const std::set<vk::ImageUsageFlagBits> &image_usage_flags,
+                                 vk::ImageCompressionFlagsEXT requested_compression,
+                                 vk::ImageCompressionFixedRateFlagsEXT requested_compression_fixed_rate) : VulkanSwapchain{*this,
+    device,
+    surface,
+    present_mode,
+    present_mode_priority_list,
+    surface_format_priority_list,
+    extent,
+    image_count,
+    transform,
+    image_usage_flags,
+    requested_compression,
+    requested_compression_fixed_rate} {
+}
 
 // ============================================================================
 // 完整构造函数（所有构造函数最终委托至此）
 // ============================================================================
 
-VulkanSwapchain::VulkanSwapchain(VulkanSwapchain                               &old_swapchain,
-                                 VulkanDevice                                  &device,
-                                 vk::SurfaceKHR                                 surface,
-                                 vk::PresentModeKHR                             present_mode,
-                                 std::vector<vk::PresentModeKHR> const         &present_mode_priority_list,
-                                 const std::vector<vk::SurfaceFormatKHR>       &surface_format_priority_list,
-                                 const vk::Extent2D                            &extent,
-                                 uint32_t                                       image_count,
-                                 vk::SurfaceTransformFlagBitsKHR                transform,
-                                 const std::set<vk::ImageUsageFlagBits>        &image_usage_flags,
-                                 vk::ImageCompressionFlagsEXT                   requested_compression,
-                                 vk::ImageCompressionFixedRateFlagsEXT          requested_compression_fixed_rate) :
-    m_Device{device},
+VulkanSwapchain::VulkanSwapchain(VulkanSwapchain &old_swapchain,
+                                 VulkanDevice &device,
+                                 vk::SurfaceKHR surface,
+                                 vk::PresentModeKHR present_mode,
+                                 std::vector<vk::PresentModeKHR> const &present_mode_priority_list,
+                                 const std::vector<vk::SurfaceFormatKHR> &surface_format_priority_list,
+                                 const vk::Extent2D &extent,
+                                 uint32_t image_count,
+                                 vk::SurfaceTransformFlagBitsKHR transform,
+                                 const std::set<vk::ImageUsageFlagBits> &image_usage_flags,
+                                 vk::ImageCompressionFlagsEXT requested_compression,
+                                 vk::ImageCompressionFixedRateFlagsEXT requested_compression_fixed_rate) : m_Device{device},
     m_Surface{surface},
     m_RequestedCompression{requested_compression},
     m_RequestedCompressionFixedRate{requested_compression_fixed_rate} {
     // 存储优先级列表
-    this->m_PresentModePriorityList   = present_mode_priority_list;
+    this->m_PresentModePriorityList = present_mode_priority_list;
     this->m_SurfaceFormatPriorityList = surface_format_priority_list;
 
     auto &vkDevice = m_Device.GetHandle();
-    auto  gpu      = m_Device.GetGpu().GetHandle();
+    auto gpu = m_Device.GetGpu().GetHandle();
 
     // 日志：surface 支持的格式
     std::vector<vk::SurfaceFormatKHR> surface_formats = gpu.getSurfaceFormatsKHR(m_Surface);
@@ -425,37 +417,37 @@ VulkanSwapchain::VulkanSwapchain(VulkanSwapchain                               &
     // 基于 surface capabilities 选择最佳属性
     vk::SurfaceCapabilitiesKHR const caps = gpu.getSurfaceCapabilitiesKHR(m_Surface);
 
-    m_Properties.old_swapchain  = old_swapchain.m_Handle;
-    m_Properties.image_count    = choose_image_count(image_count, caps.minImageCount, caps.maxImageCount);
-    m_Properties.extent         = choose_extent(extent, caps.minImageExtent, caps.maxImageExtent, caps.currentExtent);
+    m_Properties.old_swapchain = old_swapchain.m_Handle;
+    m_Properties.image_count = choose_image_count(image_count, caps.minImageCount, caps.maxImageCount);
+    m_Properties.extent = choose_extent(extent, caps.minImageExtent, caps.maxImageExtent, caps.currentExtent);
     m_Properties.surface_format = choose_surface_format(m_Properties.surface_format, surface_formats, surface_format_priority_list);
-    m_Properties.array_layers   = choose_image_array_layers(1U, caps.maxImageArrayLayers);
+    m_Properties.array_layers = choose_image_array_layers(1U, caps.maxImageArrayLayers);
 
     vk::FormatProperties const format_props = gpu.getFormatProperties(m_Properties.surface_format.format);
-    this->m_ImageUsageFlags                 = choose_image_usage(image_usage_flags, caps.supportedUsageFlags, format_props.optimalTilingFeatures);
+    this->m_ImageUsageFlags = choose_image_usage(image_usage_flags, caps.supportedUsageFlags, format_props.optimalTilingFeatures);
 
-    m_Properties.image_usage     = composite_image_flags(this->m_ImageUsageFlags);
-    m_Properties.pre_transform   = choose_transform(transform, caps.supportedTransforms, caps.currentTransform);
+    m_Properties.image_usage = composite_image_flags(this->m_ImageUsageFlags);
+    m_Properties.pre_transform = choose_transform(transform, caps.supportedTransforms, caps.currentTransform);
     m_Properties.composite_alpha = choose_composite_alpha(vk::CompositeAlphaFlagBitsKHR::eInherit, caps.supportedCompositeAlpha);
-    m_Properties.present_mode    = choose_present_mode(present_mode, present_modes, present_mode_priority_list);
+    m_Properties.present_mode = choose_present_mode(present_mode, present_modes, present_mode_priority_list);
 
     // 创建 Vulkan swapchain
     vk::SwapchainCreateInfoKHR create_info{
-        .surface          = m_Surface,
-        .minImageCount    = m_Properties.image_count,
-        .imageFormat      = m_Properties.surface_format.format,
-        .imageColorSpace  = m_Properties.surface_format.colorSpace,
-        .imageExtent      = m_Properties.extent,
+        .surface = m_Surface,
+        .minImageCount = m_Properties.image_count,
+        .imageFormat = m_Properties.surface_format.format,
+        .imageColorSpace = m_Properties.surface_format.colorSpace,
+        .imageExtent = m_Properties.extent,
         .imageArrayLayers = m_Properties.array_layers,
-        .imageUsage       = m_Properties.image_usage,
-        .preTransform     = m_Properties.pre_transform,
-        .compositeAlpha   = m_Properties.composite_alpha,
-        .presentMode      = m_Properties.present_mode,
-        .oldSwapchain     = m_Properties.old_swapchain,
+        .imageUsage = m_Properties.image_usage,
+        .preTransform = m_Properties.pre_transform,
+        .compositeAlpha = m_Properties.composite_alpha,
+        .presentMode = m_Properties.present_mode,
+        .oldSwapchain = m_Properties.old_swapchain,
     };
 
     // 压缩控制
-    auto                           fixed_rate_flags = requested_compression_fixed_rate;
+    auto fixed_rate_flags = requested_compression_fixed_rate;
     vk::ImageCompressionControlEXT compression_control;
     compression_control.flags = requested_compression;
     if (m_Device.IsExtensionEnabled(VK_EXT_IMAGE_COMPRESSION_CONTROL_SWAPCHAIN_EXTENSION_NAME)) {
@@ -464,7 +456,7 @@ VulkanSwapchain::VulkanSwapchain(VulkanSwapchain                               &
         if (vk::ImageCompressionFlagBitsEXT::eFixedRateExplicit == requested_compression) {
             // 不支持多平面格式的压缩
             compression_control.compressionControlPlaneCount = 1;
-            compression_control.pFixedRateFlags              = &fixed_rate_flags;
+            compression_control.pFixedRateFlags = &fixed_rate_flags;
         } else if (vk::ImageCompressionFlagBitsEXT::eDisabled == requested_compression) {
             GE_CORE_WARN("(VulkanSwapchain) 禁用默认（无损）压缩，可能对性能产生负面影响");
         }
@@ -472,7 +464,7 @@ VulkanSwapchain::VulkanSwapchain(VulkanSwapchain                               &
         if (vk::ImageCompressionFlagBitsEXT::eDefault != requested_compression) {
             GE_CORE_WARN("(VulkanSwapchain) 无法控制压缩，因为 VK_EXT_image_compression_control_swapchain 未启用");
 
-            this->m_RequestedCompression            = vk::ImageCompressionFlagBitsEXT::eDefault;
+            this->m_RequestedCompression = vk::ImageCompressionFlagBitsEXT::eDefault;
             this->m_RequestedCompressionFixedRate = vk::ImageCompressionFixedRateFlagBitsEXT::eNone;
         }
     }
@@ -517,17 +509,22 @@ VulkanSwapchain::~VulkanSwapchain() {
 // 移动构造函数
 // ============================================================================
 
-VulkanSwapchain::VulkanSwapchain(VulkanSwapchain &&other) noexcept :
-    m_Device{other.m_Device},
-    m_Surface{std::exchange(other.m_Surface, nullptr)},
-    m_Handle{std::exchange(other.m_Handle, nullptr)},
-    m_Images{std::exchange(other.m_Images, {})},
-    m_Properties{std::exchange(other.m_Properties, {})},
-    m_PresentModePriorityList{std::exchange(other.m_PresentModePriorityList, {})},
-    m_SurfaceFormatPriorityList{std::exchange(other.m_SurfaceFormatPriorityList, {})},
-    m_ImageUsageFlags{std::move(other.m_ImageUsageFlags)},
-    m_RequestedCompression{std::exchange(other.m_RequestedCompression, vk::ImageCompressionFlagBitsEXT::eDefault)},
-    m_RequestedCompressionFixedRate{std::exchange(other.m_RequestedCompressionFixedRate, vk::ImageCompressionFixedRateFlagBitsEXT::eNone)} {}
+VulkanSwapchain::VulkanSwapchain(VulkanSwapchain &&other) noexcept : m_Device{other.m_Device},
+                                                                     m_Surface{std::exchange(other.m_Surface, nullptr)},
+                                                                     m_Handle{std::exchange(other.m_Handle, nullptr)},
+                                                                     m_Images{std::exchange(other.m_Images, {})},
+                                                                     m_Properties{std::exchange(other.m_Properties, {})},
+                                                                     m_PresentModePriorityList{std::exchange(other.m_PresentModePriorityList, {})},
+                                                                     m_SurfaceFormatPriorityList
+                                                                     {std::exchange(other.m_SurfaceFormatPriorityList, {})},
+                                                                     m_ImageUsageFlags{std::move(other.m_ImageUsageFlags)},
+                                                                     m_RequestedCompression{
+                                                                         std::exchange(other.m_RequestedCompression,
+                                                                                       vk::ImageCompressionFlagBitsEXT::eDefault)},
+                                                                     m_RequestedCompressionFixedRate{
+                                                                         std::exchange(other.m_RequestedCompressionFixedRate,
+                                                                                       vk::ImageCompressionFixedRateFlagBitsEXT::eNone)} {
+}
 
 // ============================================================================
 // IsValid

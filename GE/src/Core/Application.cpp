@@ -9,7 +9,7 @@
 #include "Debug/Assert.h"
 #include "ImGui/ImGuiLayer.h"
 
-#include "Render/VulkanBase/VulkanHppImage.h"
+#include "Render/VulkanBase/VulkanImage.h"
 #include "Render/VulkanBase/VulkanRenderingInfo.h"
 
 #include <Events/ApplicationEvent.h>

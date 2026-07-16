@@ -16,12 +16,12 @@
  */
 
 /**
- * @file VulkanHppImage.h
- * @brief 从 Vulkan-Samples 适配的 HPPImage（VMA 管理 Image）+ Builder + 工具函数。
+ * @file VulkanImage.h
+ * @brief 从 Vulkan-Samples 适配的 VulkanImage（VMA 管理 Image）+ Builder + 工具函数。
  *
- * 替换旧的 VulkanImage 类，提供：
- * - HPPImageBuilder：Builder 模式创建 Image
- * - HPPImage：RAII 风格的 VMA 托管 vk::Image
+ * 替换早期基于 C API 的 VulkanImage 类，提供：
+ * - VulkanImageBuilder：Builder 模式创建 Image
+ * - VulkanImage：RAII 风格的 VMA 托管 vk::Image
  * - image_utils 命名空间下的工具函数（TransitionLayout、CreateView 等）
  */
 
@@ -39,96 +39,96 @@
 namespace GE
 {
 // 前向声明
-class VulkanHppImageView;
+class VulkanImageView;
 
-using VulkanHppImagePtr = std::unique_ptr<class VulkanHppImage>;
+using VulkanImagePtr = std::unique_ptr<class VulkanImage>;
 
 // ============================================================================
-// HPPImageBuilder — Builder 模式创建 HPPImage
+// VulkanImageBuilder — Builder 模式创建 VulkanImage
 // ============================================================================
 
-class VulkanHppImageBuilder : public allocated::BuilderBase<VulkanHppImageBuilder, vk::ImageCreateInfo>
+class VulkanImageBuilder : public allocated::BuilderBase<VulkanImageBuilder, vk::ImageCreateInfo>
 {
   private:
-	using Parent = allocated::BuilderBase<VulkanHppImageBuilder, vk::ImageCreateInfo>;
+	using Parent = allocated::BuilderBase<VulkanImageBuilder, vk::ImageCreateInfo>;
 
   public:
-	VulkanHppImageBuilder(vk::Extent3D const &extent) :
+	VulkanImageBuilder(vk::Extent3D const &extent) :
 	    Parent(vk::ImageCreateInfo{.imageType = vk::ImageType::e2D, .format = vk::Format::eR8G8B8A8Unorm, .extent = extent, .mipLevels = 1, .arrayLayers = 1})
 	{
 	}
 
-	VulkanHppImageBuilder(vk::Extent2D const &extent) :
-	    VulkanHppImageBuilder(vk::Extent3D{extent.width, extent.height, 1})
+	VulkanImageBuilder(vk::Extent2D const &extent) :
+	    VulkanImageBuilder(vk::Extent3D{extent.width, extent.height, 1})
 	{
 	}
 
-	VulkanHppImageBuilder(uint32_t width, uint32_t height = 1, uint32_t depth = 1) :
-	    VulkanHppImageBuilder(vk::Extent3D{width, height, depth})
+	VulkanImageBuilder(uint32_t width, uint32_t height = 1, uint32_t depth = 1) :
+	    VulkanImageBuilder(vk::Extent3D{width, height, depth})
 	{
 	}
 
-	VulkanHppImageBuilder &with_format(vk::Format format)
+	VulkanImageBuilder &with_format(vk::Format format)
 	{
 		create_info.format = format;
 		return *this;
 	}
 
-	VulkanHppImageBuilder &with_image_type(vk::ImageType type)
+	VulkanImageBuilder &with_image_type(vk::ImageType type)
 	{
 		create_info.imageType = type;
 		return *this;
 	}
 
-	VulkanHppImageBuilder &with_array_layers(uint32_t layers)
+	VulkanImageBuilder &with_array_layers(uint32_t layers)
 	{
 		create_info.arrayLayers = layers;
 		return *this;
 	}
 
-	VulkanHppImageBuilder &with_mip_levels(uint32_t levels)
+	VulkanImageBuilder &with_mip_levels(uint32_t levels)
 	{
 		create_info.mipLevels = levels;
 		return *this;
 	}
 
-	VulkanHppImageBuilder &with_sample_count(vk::SampleCountFlagBits sample_count)
+	VulkanImageBuilder &with_sample_count(vk::SampleCountFlagBits sample_count)
 	{
 		create_info.samples = sample_count;
 		return *this;
 	}
 
-	VulkanHppImageBuilder &with_tiling(vk::ImageTiling tiling)
+	VulkanImageBuilder &with_tiling(vk::ImageTiling tiling)
 	{
 		create_info.tiling = tiling;
 		return *this;
 	}
 
-	VulkanHppImageBuilder &with_usage(vk::ImageUsageFlags usage)
+	VulkanImageBuilder &with_usage(vk::ImageUsageFlags usage)
 	{
 		create_info.usage = usage;
 		return *this;
 	}
 
-	VulkanHppImageBuilder &with_flags(vk::ImageCreateFlags flags)
+	VulkanImageBuilder &with_flags(vk::ImageCreateFlags flags)
 	{
 		create_info.flags = flags;
 		return *this;
 	}
 
-	VulkanHppImage   build(GE::VulkanDevice &device) const;
-	VulkanHppImagePtr build_unique(GE::VulkanDevice &device) const;
+	VulkanImage   build(GE::VulkanDevice &device) const;
+	VulkanImagePtr build_unique(GE::VulkanDevice &device) const;
 };
 
 // ============================================================================
-// HPPImage — RAII VMA 托管的 VkImage
+// VulkanImage — RAII VMA 托管的 VkImage
 // ============================================================================
 
-class VulkanHppImage : public allocated::Allocated<vk::Image>
+class VulkanImage : public allocated::Allocated<vk::Image>
 {
   public:
 	/// 包装已有句柄（如 swapchain image）
-	VulkanHppImage(VulkanDevice          &device,
+	VulkanImage(VulkanDevice          &device,
 	               vk::Image              handle,
 	               const vk::Extent3D    &extent,
 	               vk::Format             format,
@@ -136,10 +136,10 @@ class VulkanHppImage : public allocated::Allocated<vk::Image>
 	               vk::SampleCountFlagBits sample_count = vk::SampleCountFlagBits::e1);
 
 	/// 通过 Builder 创建新 Image
-	VulkanHppImage(VulkanDevice &device, VulkanHppImageBuilder const &builder);
+	VulkanImage(VulkanDevice &device, VulkanImageBuilder const &builder);
 
 	/// 便捷构造函数：直接参数创建新 Image（推荐使用 Builder）
-	VulkanHppImage(VulkanDevice   &device,
+	VulkanImage(VulkanDevice   &device,
 	               const vk::Extent3D    &extent,
 	               vk::Format             format,
 	               vk::ImageUsageFlags    image_usage,
@@ -152,15 +152,15 @@ class VulkanHppImage : public allocated::Allocated<vk::Image>
 	               uint32_t               num_queue_families = 0,
 	               const uint32_t        *queue_families     = nullptr);
 
-	VulkanHppImage(const VulkanHppImage &) = delete;
+	VulkanImage(const VulkanImage &) = delete;
 
-	VulkanHppImage(VulkanHppImage &&other) noexcept;
+	VulkanImage(VulkanImage &&other) noexcept;
 
-	~VulkanHppImage();
+	~VulkanImage();
 
-	VulkanHppImage &operator=(const VulkanHppImage &) = delete;
+	VulkanImage &operator=(const VulkanImage &) = delete;
 
-	VulkanHppImage &operator=(VulkanHppImage &&) = delete;
+	VulkanImage &operator=(VulkanImage &&) = delete;
 
 	/** @brief 映射内存到 host-visible 地址 */
 	uint8_t *map();
@@ -173,12 +173,12 @@ class VulkanHppImage : public allocated::Allocated<vk::Image>
 	vk::ImageTiling             get_tiling() const;
 	vk::ImageSubresource        get_subresource() const;
 	uint32_t                    get_array_layer_count() const;
-	std::unordered_set<VulkanHppImageView *> &get_views();
+	std::unordered_set<VulkanImageView *> &get_views();
 
   private:
 	vk::ImageCreateInfo                           create_info;
 	vk::ImageSubresource                          subresource;
-	std::unordered_set<VulkanHppImageView *>      views;        ///< 引用此 Image 的 View
+	std::unordered_set<VulkanImageView *>      views;        ///< 引用此 Image 的 View
 };
 
 // ============================================================================
@@ -188,7 +188,7 @@ class VulkanHppImage : public allocated::Allocated<vk::Image>
 namespace image_utils
 {
 /**
- * @brief 创建 ImageView（简易版，用于 swapchain image 等无需 HPPImageView 包装的场景）。
+ * @brief 创建 ImageView（简易版，用于 swapchain image 等无需 VulkanImageView 包装的场景）。
  */
 vk::ImageView CreateView(vk::Device device, vk::Image image,
                          vk::ImageViewType type, vk::Format format,

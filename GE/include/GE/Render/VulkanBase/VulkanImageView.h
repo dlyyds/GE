@@ -16,8 +16,8 @@
  */
 
 /**
- * @file VulkanHppImageView.h
- * @brief 从 Vulkan-Samples 适配的 HPPImageView（RAII 风格的 vk::ImageView 封装）。
+ * @file VulkanImageView.h
+ * @brief 从 Vulkan-Samples 适配的 VulkanImageView（RAII 风格的 vk::ImageView 封装）。
  */
 
 #pragma once
@@ -29,18 +29,18 @@
 namespace GE
 {
 
-class VulkanHppImage;
+class VulkanImage;
 
 /**
  * @brief RAII 风格的 vk::ImageView 封装。
  *
  * 构造时创建 ImageView，析构时自动销毁。
- * 与 VulkanHppImage 关联，在 Image 被移动时自动更新引用。
+ * 与 VulkanImage 关联，在 Image 被移动时自动更新引用。
  */
-class VulkanHppImageView : public VulkanResourceBase<vk::ImageView>
+class VulkanImageView : public VulkanResourceBase<vk::ImageView>
 {
   public:
-	VulkanHppImageView(VulkanHppImage &image,
+	VulkanImageView(VulkanImage &image,
 	                   vk::ImageViewType    view_type,
 	                   vk::Format           format           = vk::Format::eUndefined,
 	                   uint32_t             base_mip_level   = 0,
@@ -48,21 +48,21 @@ class VulkanHppImageView : public VulkanResourceBase<vk::ImageView>
 	                   uint32_t             n_mip_levels     = 0,
 	                   uint32_t             n_array_layers   = 0);
 
-	VulkanHppImageView(VulkanHppImageView &) = delete;
-	VulkanHppImageView(VulkanHppImageView &&other);
-	~VulkanHppImageView() override;
+	VulkanImageView(VulkanImageView &) = delete;
+	VulkanImageView(VulkanImageView &&other);
+	~VulkanImageView() override;
 
-	VulkanHppImageView &operator=(const VulkanHppImageView &) = delete;
-	VulkanHppImageView &operator=(VulkanHppImageView &&)      = delete;
+	VulkanImageView &operator=(const VulkanImageView &) = delete;
+	VulkanImageView &operator=(VulkanImageView &&)      = delete;
 
 	vk::Format                    get_format() const;
-	VulkanHppImage const         &get_image() const;
-	void                          set_image(VulkanHppImage &image);
+	VulkanImage const         &get_image() const;
+	void                          set_image(VulkanImage &image);
 	vk::ImageSubresourceLayers    get_subresource_layers() const;
 	vk::ImageSubresourceRange     get_subresource_range() const;
 
   private:
-	VulkanHppImage             *image              = nullptr;
+	VulkanImage             *image              = nullptr;
 	vk::Format                  format;
 	vk::ImageSubresourceRange   subresource_range;
 };

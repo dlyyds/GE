@@ -15,8 +15,8 @@
  * limitations under the License.
  */
 
-#include "Render/VulkanBase/VulkanHppImageView.h"
-#include "Render/VulkanBase/VulkanHppImage.h"
+#include "Render/VulkanBase/VulkanImageView.h"
+#include "Render/VulkanBase/VulkanImage.h"
 
 #include <vulkan/vulkan_format_traits.hpp>
 
@@ -25,7 +25,7 @@
 namespace GE
 {
 
-VulkanHppImageView::VulkanHppImageView(VulkanHppImage &img,
+VulkanImageView::VulkanImageView(VulkanImage &img,
                                        vk::ImageViewType    view_type,
                                        vk::Format           format,
                                        uint32_t             mip_level,
@@ -62,7 +62,7 @@ VulkanHppImageView::VulkanHppImageView(VulkanHppImage &img,
 	image->get_views().emplace(this);
 }
 
-VulkanHppImageView::VulkanHppImageView(VulkanHppImageView &&other) :
+VulkanImageView::VulkanImageView(VulkanImageView &&other) :
     VulkanResourceBase<vk::ImageView>{std::move(other)},
     image{other.image},
     format{other.format},
@@ -76,7 +76,7 @@ VulkanHppImageView::VulkanHppImageView(VulkanHppImageView &&other) :
 	other.SetHandle(nullptr);
 }
 
-VulkanHppImageView::~VulkanHppImageView()
+VulkanImageView::~VulkanImageView()
 {
 	if (GetHandle())
 	{
@@ -84,26 +84,26 @@ VulkanHppImageView::~VulkanHppImageView()
 	}
 }
 
-vk::Format VulkanHppImageView::get_format() const
+vk::Format VulkanImageView::get_format() const
 {
 	return format;
 }
 
-const VulkanHppImage &VulkanHppImageView::get_image() const
+const VulkanImage &VulkanImageView::get_image() const
 {
 	if (!image)
 	{
-		throw std::runtime_error("VulkanHppImageView is referring an invalid image");
+		throw std::runtime_error("VulkanImageView is referring an invalid image");
 	}
 	return *image;
 }
 
-void VulkanHppImageView::set_image(VulkanHppImage &img)
+void VulkanImageView::set_image(VulkanImage &img)
 {
 	image = &img;
 }
 
-vk::ImageSubresourceLayers VulkanHppImageView::get_subresource_layers() const
+vk::ImageSubresourceLayers VulkanImageView::get_subresource_layers() const
 {
 	return vk::ImageSubresourceLayers{
 	    subresource_range.aspectMask,
@@ -113,7 +113,7 @@ vk::ImageSubresourceLayers VulkanHppImageView::get_subresource_layers() const
 	};
 }
 
-vk::ImageSubresourceRange VulkanHppImageView::get_subresource_range() const
+vk::ImageSubresourceRange VulkanImageView::get_subresource_range() const
 {
 	return subresource_range;
 }

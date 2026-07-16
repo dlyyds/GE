@@ -15,8 +15,8 @@
  * limitations under the License.
  */
 
-#include "Render/VulkanBase/VulkanHppImage.h"
-#include "Render/VulkanBase/VulkanHppImageView.h"
+#include "Render/VulkanBase/VulkanImage.h"
+#include "Render/VulkanBase/VulkanImageView.h"
 #include "Core/Log.h"
 
 #include <algorithm>
@@ -45,24 +45,24 @@ inline vk::ImageType find_image_type(vk::Extent3D const &extent)
 }        // namespace
 
 // ============================================================================
-// VulkanHppImageBuilder
+// VulkanImageBuilder
 // ============================================================================
 
-VulkanHppImage VulkanHppImageBuilder::build(GE::VulkanDevice &device) const
+VulkanImage VulkanImageBuilder::build(GE::VulkanDevice &device) const
 {
-	return VulkanHppImage(device, *this);
+	return VulkanImage(device, *this);
 }
 
-VulkanHppImagePtr VulkanHppImageBuilder::build_unique(GE::VulkanDevice &device) const
+VulkanImagePtr VulkanImageBuilder::build_unique(GE::VulkanDevice &device) const
 {
-	return std::make_unique<VulkanHppImage>(device, *this);
+	return std::make_unique<VulkanImage>(device, *this);
 }
 
 // ============================================================================
-// VulkanHppImage — 便捷构造函数（委托给 Builder）
+// VulkanImage — 便捷构造函数（委托给 Builder）
 // ============================================================================
 
-VulkanHppImage::VulkanHppImage(VulkanDevice   &device,
+VulkanImage::VulkanImage(VulkanDevice   &device,
                                const vk::Extent3D    &extent,
                                vk::Format             format,
                                vk::ImageUsageFlags    image_usage,
@@ -74,8 +74,8 @@ VulkanHppImage::VulkanHppImage(VulkanDevice   &device,
                                vk::ImageCreateFlags    flags,
                                uint32_t                num_queue_families,
                                const uint32_t         *queue_families) :
-    VulkanHppImage{device,
-                   VulkanHppImageBuilder{extent}
+    VulkanImage{device,
+                   VulkanImageBuilder{extent}
                        .with_format(format)
                        .with_mip_levels(mip_levels)
                        .with_array_layers(array_layers)
@@ -87,10 +87,10 @@ VulkanHppImage::VulkanHppImage(VulkanDevice   &device,
 {}
 
 // ============================================================================
-// VulkanHppImage — Builder 构造函数
+// VulkanImage — Builder 构造函数
 // ============================================================================
 
-VulkanHppImage::VulkanHppImage(VulkanDevice &device, VulkanHppImageBuilder const &builder) :
+VulkanImage::VulkanImage(VulkanDevice &device, VulkanImageBuilder const &builder) :
     allocated::Allocated<vk::Image>{builder.get_allocation_create_info(), &device},
     create_info{builder.get_create_info()}
 {
@@ -104,10 +104,10 @@ VulkanHppImage::VulkanHppImage(VulkanDevice &device, VulkanHppImageBuilder const
 }
 
 // ============================================================================
-// VulkanHppImage — 包装已有句柄
+// VulkanImage — 包装已有句柄
 // ============================================================================
 
-VulkanHppImage::VulkanHppImage(VulkanDevice   &device,
+VulkanImage::VulkanImage(VulkanDevice   &device,
                                vk::Image               handle,
                                const vk::Extent3D     &extent,
                                vk::Format              format,
@@ -126,10 +126,10 @@ VulkanHppImage::VulkanHppImage(VulkanDevice   &device,
 }
 
 // ============================================================================
-// VulkanHppImage — 移动构造
+// VulkanImage — 移动构造
 // ============================================================================
 
-VulkanHppImage::VulkanHppImage(VulkanHppImage &&other) noexcept :
+VulkanImage::VulkanImage(VulkanImage &&other) noexcept :
     allocated::Allocated<vk::Image>{std::move(other)},
     create_info(std::exchange(other.create_info, {})),
     subresource(std::exchange(other.subresource, {})),
@@ -143,19 +143,19 @@ VulkanHppImage::VulkanHppImage(VulkanHppImage &&other) noexcept :
 }
 
 // ============================================================================
-// VulkanHppImage — 析构
+// VulkanImage — 析构
 // ============================================================================
 
-VulkanHppImage::~VulkanHppImage()
+VulkanImage::~VulkanImage()
 {
 	destroy_image(GetHandle());
 }
 
 // ============================================================================
-// VulkanHppImage — 方法
+// VulkanImage — 方法
 // ============================================================================
 
-uint8_t *VulkanHppImage::map()
+uint8_t *VulkanImage::map()
 {
 	if (create_info.tiling != vk::ImageTiling::eLinear)
 	{
@@ -164,47 +164,47 @@ uint8_t *VulkanHppImage::map()
 	return allocated::Allocated<vk::Image>::map();
 }
 
-vk::ImageType VulkanHppImage::get_type() const
+vk::ImageType VulkanImage::get_type() const
 {
 	return create_info.imageType;
 }
 
-const vk::Extent3D &VulkanHppImage::get_extent() const
+const vk::Extent3D &VulkanImage::get_extent() const
 {
 	return create_info.extent;
 }
 
-vk::Format VulkanHppImage::get_format() const
+vk::Format VulkanImage::get_format() const
 {
 	return create_info.format;
 }
 
-vk::SampleCountFlagBits VulkanHppImage::get_sample_count() const
+vk::SampleCountFlagBits VulkanImage::get_sample_count() const
 {
 	return create_info.samples;
 }
 
-vk::ImageUsageFlags VulkanHppImage::get_usage() const
+vk::ImageUsageFlags VulkanImage::get_usage() const
 {
 	return create_info.usage;
 }
 
-vk::ImageTiling VulkanHppImage::get_tiling() const
+vk::ImageTiling VulkanImage::get_tiling() const
 {
 	return create_info.tiling;
 }
 
-vk::ImageSubresource VulkanHppImage::get_subresource() const
+vk::ImageSubresource VulkanImage::get_subresource() const
 {
 	return subresource;
 }
 
-uint32_t VulkanHppImage::get_array_layer_count() const
+uint32_t VulkanImage::get_array_layer_count() const
 {
 	return create_info.arrayLayers;
 }
 
-std::unordered_set<VulkanHppImageView *> &VulkanHppImage::get_views()
+std::unordered_set<VulkanImageView *> &VulkanImage::get_views()
 {
 	return views;
 }

@@ -255,19 +255,19 @@ void VulkanDevice::AddQueue(size_t global_index, uint32_t family_index,
 
 void VulkanDevice::CopyBuffer(VulkanBuffer const &src, VulkanBuffer &dst,
                               vk::Queue queue, vk::BufferCopy const *copy_region) {
-    assert(dst.GetSize() <= src.GetSize());
-    assert(src.GetBuffer());
+    assert(dst.get_size() <= src.get_size());
+    assert(src.GetHandle());
 
     vk::CommandBuffer cmd_buf = CreateCommandBuffer(vk::CommandBufferLevel::ePrimary, true);
 
     vk::BufferCopy buffer_copy;
     if (copy_region == nullptr) {
-        buffer_copy.size = src.GetSize();
+        buffer_copy.size = src.get_size();
     } else {
         buffer_copy = *copy_region;
     }
 
-    cmd_buf.copyBuffer(src.GetBuffer(), dst.GetBuffer(), buffer_copy);
+    cmd_buf.copyBuffer(src.GetHandle(), dst.GetHandle(), buffer_copy);
 
     FlushCommandBuffer(cmd_buf, queue, true, nullptr);
 }

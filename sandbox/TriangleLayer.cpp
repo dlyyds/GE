@@ -88,14 +88,15 @@ void TriangleLayer::OnAttach() {
         { 0.0f,  0.5f, 0.0f, 0.0f, 1.0f},   // 顶部 — 蓝
     };
 
-    m_VertexBuffer.Init(allocator, sizeof(vertices),
-                        vk::BufferUsageFlagBits::eVertexBuffer);
-    m_VertexBuffer.Upload(vertices, sizeof(vertices));
+    m_VertexBuffer = std::make_unique<VulkanBuffer>(
+        device, sizeof(vertices),
+        vk::BufferUsageFlagBits::eVertexBuffer);
+    m_VertexBuffer->update(vertices, sizeof(vertices));
 }
 
 void TriangleLayer::OnDetach() {
     // 按创建逆序销毁
-    m_VertexBuffer.Destroy();
+    m_VertexBuffer.reset();
 
     // unique_ptr 自动析构，顺序：Pipeline → PipelineLayout → ShaderModules
     m_Pipeline.reset();
@@ -142,7 +143,7 @@ void TriangleLayer::OnUpdate(Timestep &ts) {
     cmd.setPrimitiveTopology(vk::PrimitiveTopology::eTriangleList);
 
     // ── 绑定顶点 buffer ───────────────────────────────────────────────
-    vk::Buffer vb = m_VertexBuffer.GetBuffer();
+    vk::Buffer vb = m_VertexBuffer->GetHandle();
     cmd.bindVertexBuffers(0, vb, {0});
 
     // ── 绘制 3 个顶点 ─────────────────────────────────────────────────

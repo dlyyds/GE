@@ -26,7 +26,7 @@ private:
     std::unique_ptr<VulkanPipelineLayout>   m_PipelineLayout;
     VulkanPipelineState                     m_PipelineState;
     std::unique_ptr<VulkanGraphicsPipeline> m_Pipeline;
-    VulkanBuffer                            m_VertexBuffer;
+    std::unique_ptr<VulkanBuffer>           m_VertexBuffer;
 };
 
 } // namespace GE

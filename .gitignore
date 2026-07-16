@@ -79,6 +79,7 @@ logs/
 # Sandbox specific
 # ============================================
 sandbox/sandbox.exe
+sandbox/imgui.ini
 
 # ============================================
 # Old/outdated paths (kept for safety)

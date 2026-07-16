@@ -37,7 +37,7 @@ Application::Application(const std::string &name, ApplicationCommandLineArgs arg
     // 2. 创建 Swapchain（匹配 HPPSwapchain 构造函数）
     auto &dev = m_VulkanContext->GetDevice();
     m_Swapchain = std::make_unique<VulkanSwapchain>(
-        dev.GetHandle(), dev.GetGpu().GetHandle(), m_VulkanContext->GetSurface(),
+        dev, m_VulkanContext->GetSurface(),
         vk::PresentModeKHR::eMailbox,
         std::vector<vk::PresentModeKHR>{vk::PresentModeKHR::eMailbox, vk::PresentModeKHR::eFifo},
         std::vector<vk::SurfaceFormatKHR>{

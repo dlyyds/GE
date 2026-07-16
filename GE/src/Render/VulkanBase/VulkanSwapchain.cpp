@@ -406,7 +406,7 @@ VulkanSwapchain::VulkanSwapchain(VulkanSwapchain                               &
     this->m_SurfaceFormatPriorityList = surface_format_priority_list;
 
     auto &vkDevice = m_Device.GetHandle();
-    auto &gpu      = m_Device.GetGpu().GetHandle();
+    auto  gpu      = m_Device.GetGpu().GetHandle();
 
     // 日志：surface 支持的格式
     std::vector<vk::SurfaceFormatKHR> surface_formats = gpu.getSurfaceFormatsKHR(m_Surface);

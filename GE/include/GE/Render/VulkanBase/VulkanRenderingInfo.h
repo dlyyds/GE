@@ -73,11 +73,11 @@ public:
     }
 
     /// 带 resolve attachment 的 color attachment（MSAA → resolve）。
+    /// 注意：resolve attachment 没有独立的 storeOp，由主 attachment 的 storeOp 决定。
     void AddColorAttachmentWithResolve(vk::ImageView imageView,
                                        vk::ImageView resolveImageView,
                                        vk::AttachmentLoadOp loadOp,
                                        vk::AttachmentStoreOp storeOp,
-                                       vk::AttachmentStoreOp resolveStoreOp,
                                        vk::ClearValue clearValue = {},
                                        vk::ImageLayout layout = vk::ImageLayout::eColorAttachmentOptimal,
                                        vk::ImageLayout resolveLayout = vk::ImageLayout::eColorAttachmentOptimal,
@@ -136,11 +136,12 @@ public:
         m_HasDepth = true;
     }
 
+    /// 带 resolve attachment 的 depth attachment。
+    /// 注意：resolve attachment 没有独立的 storeOp，由主 attachment 的 storeOp 决定。
     void SetDepthAttachmentWithResolve(vk::ImageView imageView,
                                        vk::ImageView resolveImageView,
                                        vk::AttachmentLoadOp loadOp,
                                        vk::AttachmentStoreOp storeOp,
-                                       vk::AttachmentStoreOp resolveStoreOp,
                                        vk::ClearDepthStencilValue clearDepthStencil = {1.0f, 0},
                                        vk::ImageLayout layout = vk::ImageLayout::eDepthStencilAttachmentOptimal,
                                        vk::ImageLayout resolveLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal,

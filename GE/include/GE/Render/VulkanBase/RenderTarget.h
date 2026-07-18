@@ -117,18 +117,6 @@ public:
     RenderTarget &operator=(const RenderTarget &) = delete;
     RenderTarget &operator=(RenderTarget &&) = delete;
 
-    // --- 重建（窗口 resize 等场景）---
-
-    /**
-     * @brief 重建 RenderTarget（修改 extent 或格式时）。
-     * @param newDesc 新的配置描述符
-     * @param newSwapchainView 新的 swapchain VulkanImageView（可选，nullptr 表示不更新）
-     */
-    void Recreate(const RenderTargetDesc &newDesc,
-                  VulkanImageView *newSwapchainView = nullptr);
-
-    // --- 访问器 ---
-
     [[nodiscard]] vk::Extent2D GetExtent() const { return m_Desc.extent; }
     [[nodiscard]] vk::Format   GetColorFormat() const { return m_Desc.colorFormat; }
     [[nodiscard]] vk::Format   GetDepthFormat() const { return m_Desc.depthFormat; }

@@ -38,21 +38,6 @@ RenderTarget::RenderTarget(RenderTarget &&other) noexcept
 }
 
 // ============================================================================
-// 重建
-// ============================================================================
-
-void RenderTarget::Recreate(const RenderTargetDesc &newDesc,
-                            VulkanImageView *newSwapchainView) {
-    DestroyResources();
-
-    m_Desc = newDesc;
-    // m_SwapchainView 为引用成员，不能重新绑定；
-    // 若需要更新 swapchain view，应重新构造 RenderTarget。
-
-    CreateResources();
-}
-
-// ============================================================================
 // 访问器
 // ============================================================================
 

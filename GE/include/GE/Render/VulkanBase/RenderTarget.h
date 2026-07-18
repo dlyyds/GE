@@ -21,7 +21,9 @@
 #include "Render/VulkanBase/VulkanImage.h"
 #include "Render/VulkanBase/VulkanImageView.h"
 
+#include <functional>
 #include <memory>
+#include <optional>
 #include <vector>
 
 namespace GE {
@@ -110,14 +112,6 @@ public:
                  const RenderTargetDesc &desc,
                  VulkanImageView &swapchainView);
 
-    /**
-     * @brief 创建离屏 RenderTarget（不绑定 swapchain，用于 MRT / 后处理）。
-     * @param device   Vulkan 设备
-     * @param desc     渲染目标配置（colorFormat 必须明确指定）
-     */
-    RenderTarget(VulkanDevice &device,
-                 const RenderTargetDesc &desc);
-
     ~RenderTarget();
 
     RenderTarget(const RenderTarget &) = delete;
@@ -147,9 +141,16 @@ public:
     [[nodiscard]] const RenderTargetDesc &GetDesc() const { return m_Desc; }
 
     // 原始句柄访问（供高级场景使用）
-    [[nodiscard]] vk::ImageView GetSwapchainView() const { return m_SwapchainView ? m_SwapchainView->GetHandle() : nullptr; }
-    [[nodiscard]] const VulkanImageView *GetSwapchainImageView() const { return m_SwapchainView; }
-    [[nodiscard]] VulkanImageView *GetSwapchainImageView() { return m_SwapchainView; }
+    [[nodiscard]] bool HasSwapchainView() const { return m_SwapchainView.has_value(); }
+    [[nodiscard]] vk::ImageView GetSwapchainView() const {
+        return m_SwapchainView ? m_SwapchainView->get().GetHandle() : nullptr;
+    }
+    [[nodiscard]] VulkanImageView &GetSwapchainImageView() {
+        return m_SwapchainView->get();
+    }
+    [[nodiscard]] const VulkanImageView &GetSwapchainImageView() const {
+        return m_SwapchainView->get();
+    }
     [[nodiscard]] vk::ImageView GetColorResolveView() const;  ///< MSAA 时返回多采样缓冲的 view，非 MSAA 时返回 swapchainView
     [[nodiscard]] vk::ImageView GetDepthView() const;
 
@@ -177,8 +178,8 @@ private:
 
     // --- 附件资源 ---
 
-    // Swapchain 颜色附件（外部引用，不拥有所有权）
-    VulkanImageView *m_SwapchainView = nullptr;
+    // Swapchain 颜色附件（外部引用，不拥有所有权，可选——离屏时无此附件）
+    std::optional<std::reference_wrapper<VulkanImageView>> m_SwapchainView;
 
     // MSAA 多采样颜色缓冲（内部创建）
     std::unique_ptr<VulkanImage>     m_MSAAColorImage;

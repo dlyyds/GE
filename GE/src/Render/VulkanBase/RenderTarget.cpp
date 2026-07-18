@@ -17,16 +17,7 @@ namespace GE {
 RenderTarget::RenderTarget(VulkanDevice &device,
                            const RenderTargetDesc &desc,
                            VulkanImageView &swapchainView)
-    : m_Device(device), m_Desc(desc), m_SwapchainView(&swapchainView) {
-    GE_CORE_ASSERT(m_SwapchainView != nullptr, "Swapchain image view 不能为 null");
-    CreateResources();
-}
-
-RenderTarget::RenderTarget(VulkanDevice &device,
-                           const RenderTargetDesc &desc)
-    : m_Device(device), m_Desc(desc), m_SwapchainView(nullptr) {
-    GE_CORE_ASSERT(desc.colorFormat != vk::Format::eUndefined,
-                   "离屏 RenderTarget 必须指定 colorFormat");
+    : m_Device(device), m_Desc(desc), m_SwapchainView(swapchainView) {
     CreateResources();
 }
 
@@ -44,7 +35,7 @@ RenderTarget::RenderTarget(RenderTarget &&other) noexcept
       m_DepthView(std::move(other.m_DepthView)),
       m_DepthResolveImage(std::move(other.m_DepthResolveImage)),
       m_DepthResolveView(std::move(other.m_DepthResolveView)) {
-    other.m_SwapchainView = nullptr;
+    other.m_SwapchainView.reset();
 }
 
 // ============================================================================
@@ -57,7 +48,7 @@ void RenderTarget::Recreate(const RenderTargetDesc &newDesc,
 
     m_Desc = newDesc;
     if (newSwapchainView != nullptr) {
-        m_SwapchainView = newSwapchainView;
+        m_SwapchainView = *newSwapchainView;
     }
 
     CreateResources();
@@ -71,7 +62,7 @@ vk::ImageView RenderTarget::GetColorResolveView() const {
     if (HasMSAA() && m_MSAAColorView != nullptr) {
         return m_MSAAColorView->GetHandle();
     }
-    return m_SwapchainView != nullptr ? m_SwapchainView->GetHandle() : nullptr;
+    return m_SwapchainView.has_value() ? m_SwapchainView->get().GetHandle() : nullptr;
 }
 
 vk::ImageView RenderTarget::GetDepthView() const {

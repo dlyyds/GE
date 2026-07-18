@@ -471,13 +471,18 @@ VulkanSwapchain::VulkanSwapchain(VulkanSwapchain &old_swapchain,
 
     m_Handle = vkDevice.createSwapchainKHR(create_info);
 
-    // 获取 swapchain images
-    m_Images = vkDevice.getSwapchainImagesKHR(m_Handle);
+    // 获取 swapchain images 并包装为 VulkanImage
+    auto rawImages = vkDevice.getSwapchainImagesKHR(m_Handle);
+    m_Images.reserve(rawImages.size());
+    for (auto &img : rawImages) {
+        m_Images.emplace_back(m_Device, img, vk::Extent3D{m_Properties.extent.width, m_Properties.extent.height, 1},
+                              m_Properties.surface_format.format, m_Properties.image_usage);
+    }
 
     // 验证固定速率压缩是否被应用
     if (m_Device.IsExtensionEnabled(VK_EXT_IMAGE_COMPRESSION_CONTROL_SWAPCHAIN_EXTENSION_NAME) &&
         vk::ImageCompressionFlagBitsEXT::eFixedRateDefault == requested_compression) {
-        const auto applied_compression_fixed_rate = query_applied_compression(vkDevice, m_Images[0]).imageCompressionFixedRateFlags;
+        const auto applied_compression_fixed_rate = query_applied_compression(vkDevice, m_Images[0].GetHandle()).imageCompressionFixedRateFlags;
 
         if (applied_compression_fixed_rate != requested_compression_fixed_rate) {
             GE_CORE_WARN("(VulkanSwapchain) 请求的固定速率压缩 ({}) 未被应用，image 实际使用 {}",
@@ -572,7 +577,7 @@ vk::Format VulkanSwapchain::GetFormat() const {
     return m_Properties.surface_format.format;
 }
 
-const std::vector<vk::Image> &VulkanSwapchain::GetImages() const {
+const std::vector<VulkanImage> &VulkanSwapchain::GetImages() const {
     return m_Images;
 }
 

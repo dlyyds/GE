@@ -5,6 +5,7 @@
 #include <vulkan/vulkan.hpp>
 
 #include "Render/VulkanBase/VulkanDevice.h"
+#include "Render/VulkanBase/VulkanImage.h"
 
 namespace GE {
 
@@ -88,7 +89,7 @@ public:
 
     const vk::Extent2D &GetExtent() const;
     vk::Format GetFormat() const;
-    const std::vector<vk::Image> &GetImages() const;
+    const std::vector<VulkanImage> &GetImages() const;
     vk::SurfaceTransformFlagBitsKHR GetTransform() const;
     vk::SurfaceKHR GetSurface() const;
     vk::ImageUsageFlags GetUsage() const;
@@ -98,7 +99,7 @@ private:
     VulkanDevice       &m_Device;                     ///< 逻辑设备引用
     vk::SurfaceKHR      m_Surface{};                  ///< 呈现 surface
     vk::SwapchainKHR    m_Handle{};                   ///< Vulkan swapchain 句柄
-    std::vector<vk::Image> m_Images;                  ///< swapchain images
+    std::vector<VulkanImage> m_Images;                ///< swapchain images
 
     VulkanSwapchainProperties m_Properties;           ///< swapchain 属性
 

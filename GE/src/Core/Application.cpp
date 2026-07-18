@@ -48,7 +48,7 @@ Application::Application(const std::string &name, ApplicationCommandLineArgs arg
 
     // 3. 创建 swapchain image views + per-frame 资源
     {
-        auto images = m_Swapchain->GetImages();
+        auto &images = m_Swapchain->GetImages();
         auto imageCount = images.size();
         auto vkDevice = dev.GetHandle();
         auto queueIndex = dev.GetQueueByFlags(vk::QueueFlagBits::eGraphics, 0).GetFamilyIndex();
@@ -57,7 +57,7 @@ Application::Application(const std::string &name, ApplicationCommandLineArgs arg
         m_SwapchainImageViews.reserve(imageCount);
         for (auto &img : images) {
             m_SwapchainImageViews.push_back(image_utils::CreateView(
-                vkDevice, img, vk::ImageViewType::e2D, m_Swapchain->GetFormat()));
+                vkDevice, img.GetHandle(), vk::ImageViewType::e2D, m_Swapchain->GetFormat()));
         }
 
         // PerFrame（command pool / fence / semaphores）
@@ -178,7 +178,7 @@ void Application::Run() {
             // 4. Begin command buffer + layout transition
             auto cmd = pf.GetCommandBuffer();
             cmd.begin(vk::CommandBufferBeginInfo{.flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
-            image_utils::TransitionLayout(cmd, swapchain.GetImages()[imageIndex],
+            image_utils::TransitionLayout(cmd, swapchain.GetImages()[imageIndex].GetHandle(),
                                           vk::ImageLayout::eUndefined, vk::ImageLayout::eColorAttachmentOptimal);
 
             // 5. 存储帧状态（供 Renderer / ImGuiLayer 通过 Application 访问）
@@ -196,7 +196,7 @@ void Application::Run() {
             ImGuiLayer::End();
 
             // 8. Transition to present + end command buffer
-            image_utils::TransitionLayout(cmd, swapchain.GetImages()[imageIndex],
+            image_utils::TransitionLayout(cmd, swapchain.GetImages()[imageIndex].GetHandle(),
                                           vk::ImageLayout::eColorAttachmentOptimal, vk::ImageLayout::ePresentSrcKHR);
             cmd.end();
 
@@ -289,11 +289,11 @@ void Application::RecreateSwapchain() {
     m_Swapchain = std::move(newSwapchain);
 
     // 3. 为新 swapchain images 创建 image views
-    auto images = m_Swapchain->GetImages();
+    auto &images = m_Swapchain->GetImages();
     m_SwapchainImageViews.reserve(images.size());
-    for (auto img : images) {
+    for (auto &img : images) {
         m_SwapchainImageViews.push_back(image_utils::CreateView(
-            vkDevice, img, vk::ImageViewType::e2D, m_Swapchain->GetFormat()));
+            vkDevice, img.GetHandle(), vk::ImageViewType::e2D, m_Swapchain->GetFormat()));
     }
 
     // 4. image count 变化时调整 per-frame 资源数组

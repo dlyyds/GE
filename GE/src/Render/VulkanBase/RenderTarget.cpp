@@ -4,6 +4,7 @@
  */
 
 #include "Render/VulkanBase/RenderTarget.h"
+#include "Debug/Assert.h"
 #include "Render/VulkanBase/VulkanDevice.h"
 #include "Render/VulkanBase/VulkanCommon.h"
 
@@ -60,82 +61,6 @@ void RenderTarget::Recreate(const RenderTargetDesc &newDesc,
     }
 
     CreateResources();
-}
-
-// ============================================================================
-// 配置 VulkanRenderingInfo
-// ============================================================================
-
-void RenderTarget::SetupRenderingInfo(VulkanRenderingInfo &renderInfo,
-                                      const vk::Rect2D &renderArea) const {
-    renderInfo.Reset();
-    renderInfo.SetRenderArea(renderArea);
-    renderInfo.SetLayerCount(m_Desc.layerCount);
-
-    // --- 颜色附件 ---
-    if (HasMSAA()) {
-        // MSAA：多采样缓冲作为主附件，resolve 到 swapchain
-        GE_CORE_ASSERT(m_MSAAColorView != nullptr, "MSAA 颜色缓冲未创建");
-        GE_CORE_ASSERT(m_SwapchainView != nullptr, "MSAA 模式下需要 swapchain view 作为 resolve 目标");
-
-        renderInfo.AddColorAttachmentWithResolve(
-            m_MSAAColorView->GetHandle(),   // 多采样缓冲
-            m_SwapchainView,                // resolve 目标（单采样 swapchain）
-            m_Desc.colorLoadOp,
-            m_Desc.colorStoreOp,
-            m_Desc.colorClearValue,
-            vk::ImageLayout::eColorAttachmentOptimal,
-            vk::ImageLayout::eColorAttachmentOptimal,
-            vk::ResolveModeFlagBits::eAverage);
-    } else {
-        // 非 MSAA：直接写入 swapchain（或离屏纹理）
-        vk::ImageView colorView = m_SwapchainView != nullptr
-                                      ? m_SwapchainView
-                                      : m_MSAAColorView->GetHandle();
-        renderInfo.AddColorAttachment(
-            colorView,
-            m_Desc.colorLoadOp,
-            m_Desc.colorStoreOp,
-            m_Desc.colorClearValue);
-    }
-
-    // --- 深度/模板附件 ---
-    if (m_Desc.enableDepth && m_DepthView != nullptr) {
-        vk::ClearDepthStencilValue clearDS = m_Desc.depthClearValue.depthStencil;
-
-        if (m_Desc.enableStencil) {
-            // 共享 depth/stencil attachment
-            renderInfo.SetDepthStencilAttachment(
-                m_DepthView->GetHandle(),
-                m_Desc.depthLoadOp,
-                m_Desc.depthStoreOp,
-                m_Desc.stencilLoadOp,
-                m_Desc.stencilStoreOp,
-                clearDS);
-        } else {
-            // 仅深度
-            if (HasMSAA() && m_DepthResolveView != nullptr) {
-                // MSAA 深度 + resolve（未来扩展）
-                renderInfo.SetDepthAttachmentWithResolve(
-                    m_DepthView->GetHandle(),
-                    m_DepthResolveView->GetHandle(),
-                    m_Desc.depthLoadOp,
-                    m_Desc.depthStoreOp,
-                    clearDS);
-            } else {
-                renderInfo.SetDepthAttachment(
-                    m_DepthView->GetHandle(),
-                    m_Desc.depthLoadOp,
-                    m_Desc.depthStoreOp,
-                    clearDS);
-            }
-        }
-    }
-}
-
-void RenderTarget::SetupRenderingInfo(VulkanRenderingInfo &renderInfo) const {
-    vk::Rect2D renderArea{{0, 0}, m_Desc.extent};
-    SetupRenderingInfo(renderInfo, renderArea);
 }
 
 // ============================================================================

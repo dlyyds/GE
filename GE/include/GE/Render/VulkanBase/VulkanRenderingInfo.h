@@ -9,6 +9,8 @@
 
 namespace GE {
 
+class RenderTarget;  // 前置声明，用于 FromRenderTarget 工厂方法
+
 /// Dynamic rendering 辅助类。
 /// 封装 vk::RenderingInfo，用固定数组替代 vector 避免每帧堆分配。
 /// 最大支持 4 个 color attachment（1 color + 3 resolve 的典型场景）。
@@ -17,6 +19,25 @@ public:
     static constexpr uint32_t MAX_COLOR_ATTACHMENTS = 4;
 
     VulkanRenderingInfo() = default;
+
+    // ── 工厂方法 ────────────────────────────────────────────────
+
+    /**
+     * @brief 从 RenderTarget 构造 VulkanRenderingInfo。
+     *
+     * 自动配置所有附件：
+     * - MSAA：多采样缓冲作为主附件，resolve 到 swapchain
+     * - 非 MSAA：直接写入 swapchain 或离屏纹理
+     * - 深度/模板：根据 RenderTarget 配置自动设置
+     *
+     * @param rt          渲染目标
+     * @param renderArea  渲染区域（默认使用 rt.GetExtent()）
+     * @return 配置好的 VulkanRenderingInfo
+     */
+    static VulkanRenderingInfo FromRenderTarget(const RenderTarget &rt,
+                                                 const vk::Rect2D &renderArea);
+
+    static VulkanRenderingInfo FromRenderTarget(const RenderTarget &rt);
 
     // ── Render Area ───────────────────────────────────────────────────
 

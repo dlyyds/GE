@@ -219,12 +219,6 @@ void RenderTarget::CreateDepthBuffer() {
     // 如果需要采样深度（如阴影贴图），添加 eSampled
     // usage |= vk::ImageUsageFlagBits::eSampled;
 
-    // 确定 aspect mask
-    vk::ImageAspectFlags aspect = vk::ImageAspectFlagBits::eDepth;
-    if (is_depth_stencil_format(static_cast<VkFormat>(depthFormat))) {
-        aspect |= vk::ImageAspectFlagBits::eStencil;
-    }
-
     m_DepthImage = std::make_unique<VulkanImage>(
         m_Device,
         VulkanImageBuilder(m_Desc.extent.width, m_Desc.extent.height)
@@ -232,13 +226,14 @@ void RenderTarget::CreateDepthBuffer() {
             .with_sample_count(m_Desc.sampleCount)  // MSAA 时与颜色附件相同采样数
             .with_usage(usage));
 
+    // VulkanImageView 构造函数会自动根据格式推断 aspect mask：
+    // - depth-only 格式（D16/D32F）→ eDepth
+    // - depth-stencil 格式（D24S8/D32FS8）→ eDepth | eStencil
     m_DepthView = std::make_unique<VulkanImageView>(
         *m_DepthImage,
         vk::ImageViewType::e2D,
         depthFormat,
         0, 0, 1, 1);  // baseMip, baseArray, mipLevels, arrayLayers
-    // 注意：VulkanImageView 构造函数内部会根据格式自动选择 aspect，
-    // 但这里我们显式处理 depth/stencil 格式
 }
 
 vk::Format RenderTarget::PickDepthFormat() const {

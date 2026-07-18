@@ -41,8 +41,25 @@ VulkanImageView::VulkanImageView(VulkanImage &img,
 		this->format = format = image->get_format();
 	}
 
+	// 自动推断 aspect mask：遍历所有组件（D=Depth, S=Stencil）
+	vk::ImageAspectFlags aspect = {};
+	for (uint32_t i = 0;; ++i)
+	{
+		std::string name = vk::componentName(format, i);
+		if (name.empty())
+			break;
+		if (name == "D")
+			aspect |= vk::ImageAspectFlagBits::eDepth;
+		if (name == "S")
+			aspect |= vk::ImageAspectFlagBits::eStencil;
+	}
+	if (aspect == vk::ImageAspectFlags{})
+	{
+		aspect = vk::ImageAspectFlagBits::eColor;
+	}
+
 	subresource_range = vk::ImageSubresourceRange{
-	    .aspectMask     = (std::string(vk::componentName(format, 0)) == "D") ? vk::ImageAspectFlagBits::eDepth : vk::ImageAspectFlagBits::eColor,
+	    .aspectMask     = aspect,
 	    .baseMipLevel   = mip_level,
 	    .levelCount     = n_mip_levels == 0 ? image->get_subresource().mipLevel : n_mip_levels,
 	    .baseArrayLayer = array_layer,

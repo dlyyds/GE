@@ -213,7 +213,7 @@ public:
             .storeOp = stencilStoreOp,
             .clearValue = cv,
         };
-        m_HasDepth   = true;
+        m_HasDepth = true;
         m_HasStencil = true;
     }
 

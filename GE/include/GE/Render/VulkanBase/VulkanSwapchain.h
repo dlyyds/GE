@@ -90,6 +90,7 @@ public:
     const vk::Extent2D &GetExtent() const;
     vk::Format GetFormat() const;
     const std::vector<VulkanImage> &GetImages() const;
+    std::vector<VulkanImage> &GetImages();
     vk::SurfaceTransformFlagBitsKHR GetTransform() const;
     vk::SurfaceKHR GetSurface() const;
     vk::ImageUsageFlags GetUsage() const;

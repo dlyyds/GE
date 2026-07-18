@@ -14,6 +14,7 @@
 #include "ImGui/ImGuiLayer.h"
 
 #include "Render/VulkanBase/VulkanContext.h"
+#include "Render/VulkanBase/VulkanImageView.h"
 #include "Render/VulkanBase/VulkanSwapchain.h"
 #include "Render/VulkanBase/VulkanPerFrame.h"
 
@@ -66,7 +67,7 @@ public:
     /// 帧渲染辅助：当前帧的 command buffer 和 image index。
     static vk::CommandBuffer GetFrameCmd() { return Get().m_CurrentCmd; }
     static uint32_t GetFrameImageIndex() { return Get().m_CurrentImageIndex; }
-    static vk::ImageView GetFrameImageView(uint32_t index) { return Get().m_SwapchainImageViews[index]; }
+    static vk::ImageView GetFrameImageView(uint32_t index) { return Get().m_SwapchainImageViews[index].GetHandle(); }
 
 private:
     void Run();
@@ -98,7 +99,7 @@ private:
 
 
     // -- 帧管理（已从 VulkanSwapchain 剥离） --
-    std::vector<vk::ImageView> m_SwapchainImageViews;
+    std::vector<VulkanImageView> m_SwapchainImageViews;
     std::vector<VulkanPerFrame> m_PerFrame;
     std::vector<vk::Semaphore> m_RecycledSemaphores;
     vk::CommandBuffer m_CurrentCmd = nullptr;

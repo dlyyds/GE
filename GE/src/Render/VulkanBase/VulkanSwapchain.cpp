@@ -581,6 +581,10 @@ const std::vector<VulkanImage> &VulkanSwapchain::GetImages() const {
     return m_Images;
 }
 
+std::vector<VulkanImage> &VulkanSwapchain::GetImages() {
+    return m_Images;
+}
+
 vk::SurfaceTransformFlagBitsKHR VulkanSwapchain::GetTransform() const {
     return m_Properties.pre_transform;
 }

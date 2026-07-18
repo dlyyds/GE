@@ -56,8 +56,8 @@ Application::Application(const std::string &name, ApplicationCommandLineArgs arg
         // ImageViews
         m_SwapchainImageViews.reserve(imageCount);
         for (auto &img : images) {
-            m_SwapchainImageViews.push_back(image_utils::CreateView(
-                vkDevice, img.GetHandle(), vk::ImageViewType::e2D, m_Swapchain->GetFormat()));
+            m_SwapchainImageViews.emplace_back(
+                img, vk::ImageViewType::e2D, m_Swapchain->GetFormat());
         }
 
         // PerFrame（command pool / fence / semaphores）
@@ -88,10 +88,8 @@ Application::~Application() {
 
     // 4. 关闭渲染器（释放 RingBuffer）
 
-    // 5. 销毁 per-frame 资源
+    // 5. 销毁 per-frame 资源（VulkanImageView 为 RAII，析构时自动销毁）
     auto vkDevice = m_VulkanContext->GetVkDevice();
-    for (auto v : m_SwapchainImageViews)
-        vkDevice.destroyImageView(v);
     m_SwapchainImageViews.clear();
 
     for (auto &pf : m_PerFrame)
@@ -277,9 +275,7 @@ void Application::RecreateSwapchain() {
     // 等待 GPU 完成所有未完成的工作
     vkDevice.waitIdle();
 
-    // 1. 销毁旧 image views
-    for (auto v : m_SwapchainImageViews)
-        vkDevice.destroyImageView(v);
+    // 1. 销毁旧 image views（VulkanImageView 为 RAII，clear 时自动销毁）
     m_SwapchainImageViews.clear();
 
     // 2. 使用重建构造函数创建新 swapchain（沿用旧 swapchain 的参数，仅更新 extent）
@@ -292,8 +288,8 @@ void Application::RecreateSwapchain() {
     auto &images = m_Swapchain->GetImages();
     m_SwapchainImageViews.reserve(images.size());
     for (auto &img : images) {
-        m_SwapchainImageViews.push_back(image_utils::CreateView(
-            vkDevice, img.GetHandle(), vk::ImageViewType::e2D, m_Swapchain->GetFormat()));
+        m_SwapchainImageViews.emplace_back(
+            img, vk::ImageViewType::e2D, m_Swapchain->GetFormat());
     }
 
     // 4. image count 变化时调整 per-frame 资源数组

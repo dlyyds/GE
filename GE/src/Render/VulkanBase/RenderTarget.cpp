@@ -35,7 +35,6 @@ RenderTarget::RenderTarget(RenderTarget &&other) noexcept
       m_DepthView(std::move(other.m_DepthView)),
       m_DepthResolveImage(std::move(other.m_DepthResolveImage)),
       m_DepthResolveView(std::move(other.m_DepthResolveView)) {
-    other.m_SwapchainView.reset();
 }
 
 // ============================================================================
@@ -47,9 +46,8 @@ void RenderTarget::Recreate(const RenderTargetDesc &newDesc,
     DestroyResources();
 
     m_Desc = newDesc;
-    if (newSwapchainView != nullptr) {
-        m_SwapchainView = *newSwapchainView;
-    }
+    // m_SwapchainView 为引用成员，不能重新绑定；
+    // 若需要更新 swapchain view，应重新构造 RenderTarget。
 
     CreateResources();
 }
@@ -62,7 +60,7 @@ vk::ImageView RenderTarget::GetColorResolveView() const {
     if (HasMSAA() && m_MSAAColorView != nullptr) {
         return m_MSAAColorView->GetHandle();
     }
-    return m_SwapchainView.has_value() ? m_SwapchainView->get().GetHandle() : nullptr;
+    return m_SwapchainView.GetHandle();
 }
 
 vk::ImageView RenderTarget::GetDepthView() const {

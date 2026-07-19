@@ -80,6 +80,138 @@ inline void hash_combine(size_t &seed, const T &v)
 
 namespace std {
 
+// ---- vulkan.hpp 类型特化（vulkan.hpp 未提供 std::hash 特化） ----
+
+// vk::Flags<T> 转换为底层整数类型
+template <typename T>
+struct hash<vk::Flags<T>>
+{
+    size_t operator()(vk::Flags<T> const &flags) const
+    {
+        return std::hash<typename vk::Flags<T>::MaskType>()(static_cast<typename vk::Flags<T>::MaskType>(flags));
+    }
+};
+
+template <>
+struct hash<vk::Extent3D>
+{
+    size_t operator()(vk::Extent3D const &extent) const
+    {
+        size_t result = 0;
+        GE::detail::hash_combine(result, extent.width);
+        GE::detail::hash_combine(result, extent.height);
+        GE::detail::hash_combine(result, extent.depth);
+        return result;
+    }
+};
+
+template <>
+struct hash<vk::Extent2D>
+{
+    size_t operator()(vk::Extent2D const &extent) const
+    {
+        size_t result = 0;
+        GE::detail::hash_combine(result, extent.width);
+        GE::detail::hash_combine(result, extent.height);
+        return result;
+    }
+};
+
+template <>
+struct hash<vk::Offset2D>
+{
+    size_t operator()(vk::Offset2D const &offset) const
+    {
+        size_t result = 0;
+        GE::detail::hash_combine(result, offset.x);
+        GE::detail::hash_combine(result, offset.y);
+        return result;
+    }
+};
+
+template <>
+struct hash<vk::Offset3D>
+{
+    size_t operator()(vk::Offset3D const &offset) const
+    {
+        size_t result = 0;
+        GE::detail::hash_combine(result, offset.x);
+        GE::detail::hash_combine(result, offset.y);
+        GE::detail::hash_combine(result, offset.z);
+        return result;
+    }
+};
+
+template <>
+struct hash<vk::Rect2D>
+{
+    size_t operator()(vk::Rect2D const &rect) const
+    {
+        size_t result = 0;
+        GE::detail::hash_combine(result, rect.offset);
+        GE::detail::hash_combine(result, rect.extent);
+        return result;
+    }
+};
+
+template <>
+struct hash<vk::Viewport>
+{
+    size_t operator()(vk::Viewport const &viewport) const
+    {
+        size_t result = 0;
+        GE::detail::hash_combine(result, viewport.x);
+        GE::detail::hash_combine(result, viewport.y);
+        GE::detail::hash_combine(result, viewport.width);
+        GE::detail::hash_combine(result, viewport.height);
+        GE::detail::hash_combine(result, viewport.minDepth);
+        GE::detail::hash_combine(result, viewport.maxDepth);
+        return result;
+    }
+};
+
+template <>
+struct hash<vk::ImageSubresource>
+{
+    size_t operator()(vk::ImageSubresource const &sub) const
+    {
+        size_t result = 0;
+        GE::detail::hash_combine(result, sub.aspectMask);
+        GE::detail::hash_combine(result, sub.mipLevel);
+        GE::detail::hash_combine(result, sub.arrayLayer);
+        return result;
+    }
+};
+
+template <>
+struct hash<vk::ImageSubresourceLayers>
+{
+    size_t operator()(vk::ImageSubresourceLayers const &layers) const
+    {
+        size_t result = 0;
+        GE::detail::hash_combine(result, layers.aspectMask);
+        GE::detail::hash_combine(result, layers.mipLevel);
+        GE::detail::hash_combine(result, layers.baseArrayLayer);
+        GE::detail::hash_combine(result, layers.layerCount);
+        return result;
+    }
+};
+
+template <>
+struct hash<vk::ImageSubresourceRange>
+{
+    size_t operator()(vk::ImageSubresourceRange const &range) const
+    {
+        size_t result = 0;
+        GE::detail::hash_combine(result, range.aspectMask);
+        GE::detail::hash_combine(result, range.baseMipLevel);
+        GE::detail::hash_combine(result, range.levelCount);
+        GE::detail::hash_combine(result, range.baseArrayLayer);
+        GE::detail::hash_combine(result, range.layerCount);
+        return result;
+    }
+};
+
 // ---- std::map / std::vector 泛型 hash ----
 
 template <typename Key, typename Value>

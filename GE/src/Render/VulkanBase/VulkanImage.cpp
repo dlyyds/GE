@@ -115,6 +115,7 @@ VulkanImage::VulkanImage(VulkanDevice   &device,
                                vk::SampleCountFlagBits sample_count) :
     allocated::Allocated<vk::Image>{handle, &device}
 {
+	create_info.usage      = image_usage;
 	create_info.samples     = sample_count;
 	create_info.format      = format;
 	create_info.extent      = extent;

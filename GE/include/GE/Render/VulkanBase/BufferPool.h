@@ -44,58 +44,56 @@
 #include <vulkan/vulkan.hpp>
 #include <vk_mem_alloc.h>
 
-namespace GE
-{
+namespace GE {
 
 /**
  * @brief 一个 Vulkan buffer 子分配块。
  *        不同的 BufferAllocation（offset 和 size 不同）可能来自同一个底层 VulkanBuffer。
  */
-class BufferAllocation
-{
-  public:
-	BufferAllocation()                              = default;
-	BufferAllocation(const BufferAllocation &)      = default;
-	BufferAllocation(BufferAllocation &&)           = default;
-	BufferAllocation &operator=(const BufferAllocation &) = default;
-	BufferAllocation &operator=(BufferAllocation &&)      = default;
+class BufferAllocation {
+public:
+    BufferAllocation() = default;
 
-	BufferAllocation(VulkanBuffer &buffer, vk::DeviceSize size, vk::DeviceSize offset);
+    BufferAllocation(const BufferAllocation &) = default;
 
-	/** @brief 是否为空分配（size == 0 或 buffer 为空） */
-	bool empty() const;
+    BufferAllocation(BufferAllocation &&) = default;
 
-	/** @brief 获取底层 VulkanBuffer */
-	VulkanBuffer &get_buffer();
+    BufferAllocation &operator=(const BufferAllocation &) = default;
 
-	/** @brief 获取子分配偏移 */
-	vk::DeviceSize get_offset() const;
+    BufferAllocation &operator=(BufferAllocation &&) = default;
 
-	/** @brief 获取子分配大小 */
-	vk::DeviceSize get_size() const;
+    BufferAllocation(VulkanBuffer &buffer, vk::DeviceSize size, vk::DeviceSize offset);
 
-	/** @brief 更新 buffer 数据 */
-	void update(const std::vector<uint8_t> &data, uint32_t offset = 0);
+    /** @brief 是否为空分配（size == 0 或 buffer 为空） */
+    bool empty() const;
 
-	/** @brief 更新单个对象数据到 buffer */
-	template <typename T>
-	void update(const T &value, uint32_t offset = 0)
-	{
-		assert(m_Buffer && "Invalid buffer pointer");
-		if (static_cast<vk::DeviceSize>(offset) + sizeof(T) <= m_Size)
-		{
-			m_Buffer->update(&value, sizeof(T), static_cast<size_t>(m_Offset) + offset);
-		}
-		else
-		{
-			GE_CORE_ERROR("BufferAllocation::update: 数据超出分配范围，忽略更新");
-		}
-	}
+    /** @brief 获取底层 VulkanBuffer */
+    VulkanBuffer &get_buffer();
 
-  private:
-	VulkanBuffer  *m_Buffer = nullptr;
-	vk::DeviceSize m_Offset = 0;
-	vk::DeviceSize m_Size   = 0;
+    /** @brief 获取子分配偏移 */
+    vk::DeviceSize get_offset() const;
+
+    /** @brief 获取子分配大小 */
+    vk::DeviceSize get_size() const;
+
+    /** @brief 更新 buffer 数据 */
+    void update(const std::vector<uint8_t> &data, uint32_t offset = 0);
+
+    /** @brief 更新单个对象数据到 buffer */
+    template <typename T>
+    void update(const T &value, uint32_t offset = 0) {
+        assert(m_Buffer && "Invalid buffer pointer");
+        if (static_cast<vk::DeviceSize>(offset) + sizeof(T) <= m_Size) {
+            m_Buffer->update(&value, sizeof(T), static_cast<size_t>(m_Offset) + offset);
+        } else {
+            GE_CORE_ERROR("BufferAllocation::update: 数据超出分配范围，忽略更新");
+        }
+    }
+
+private:
+    VulkanBuffer *m_Buffer = nullptr;
+    vk::DeviceSize m_Offset = 0;
+    vk::DeviceSize m_Size = 0;
 };
 
 // ============================================================================
@@ -108,46 +106,49 @@ class BufferAllocation
  * 通过递增 offset 的方式线性分配，每次 allocate 返回一个 BufferAllocation 视图。
  * 可通过 reset() 重置 offset 以复用底层 buffer。
  */
-class BufferBlock
-{
-  public:
-	BufferBlock()                             = delete;
-	BufferBlock(const BufferBlock &)          = delete;
-	BufferBlock(BufferBlock &&)               = default;
-	BufferBlock &operator=(const BufferBlock &) = delete;
-	BufferBlock &operator=(BufferBlock &&)      = default;
+class BufferBlock {
+public:
+    BufferBlock() = delete;
 
-	BufferBlock(VulkanDevice &device, vk::DeviceSize size, vk::BufferUsageFlags usage, VmaMemoryUsage memory_usage);
+    BufferBlock(const BufferBlock &) = delete;
 
-	/**
-	 * @brief 从当前 buffer block 中分配一段空间。
-	 * @return 若空间不足，返回空的 BufferAllocation。
-	 */
-	BufferAllocation allocate(vk::DeviceSize size);
+    BufferBlock(BufferBlock &&) = default;
 
-	/**
-	 * @brief 检查能否分配指定大小的空间。
-	 * @param size 需要分配的字节数。
-	 * @return true 表示可以分配。
-	 */
-	bool can_allocate(vk::DeviceSize size) const;
+    BufferBlock &operator=(const BufferBlock &) = delete;
 
-	/** @brief 获取底层 buffer 大小 */
-	vk::DeviceSize get_size() const;
+    BufferBlock &operator=(BufferBlock &&) = default;
 
-	/** @brief 重置 offset，复用底层 buffer（不会清空数据） */
-	void reset();
+    BufferBlock(VulkanDevice &device, vk::DeviceSize size, vk::BufferUsageFlags usage, VmaMemoryUsage memory_usage);
 
-  private:
-	/** @brief 计算当前对齐后的 offset */
-	vk::DeviceSize aligned_offset() const;
+    /**
+     * @brief 从当前 buffer block 中分配一段空间。
+     * @return 若空间不足，返回空的 BufferAllocation。
+     */
+    BufferAllocation allocate(vk::DeviceSize size);
 
-	/** @brief 根据 usage 确定对齐要求 */
-	vk::DeviceSize determine_alignment(vk::BufferUsageFlags usage, vk::PhysicalDeviceLimits const &limits) const;
+    /**
+     * @brief 检查能否分配指定大小的空间。
+     * @param size 需要分配的字节数。
+     * @return true 表示可以分配。
+     */
+    bool can_allocate(vk::DeviceSize size) const;
 
-	VulkanBuffer   m_Buffer;
-	vk::DeviceSize m_Alignment = 0;   ///< 内存对齐（根据 usage 不同而变化）
-	vk::DeviceSize m_Offset    = 0;   ///< 当前 offset，每次分配后递增
+    /** @brief 获取底层 buffer 大小 */
+    vk::DeviceSize get_size() const;
+
+    /** @brief 重置 offset，复用底层 buffer（不会清空数据） */
+    void reset();
+
+private:
+    /** @brief 计算当前对齐后的 offset */
+    vk::DeviceSize aligned_offset() const;
+
+    /** @brief 根据 usage 确定对齐要求 */
+    vk::DeviceSize determine_alignment(vk::BufferUsageFlags usage, vk::PhysicalDeviceLimits const &limits) const;
+
+    VulkanBuffer m_Buffer;
+    vk::DeviceSize m_Alignment = 0; ///< 内存对齐（根据 usage 不同而变化）
+    vk::DeviceSize m_Offset = 0; ///< 当前 offset，每次分配后递增
 };
 
 // ============================================================================
@@ -163,200 +164,162 @@ class BufferBlock
  * 新帧开始时可以调用 reset() 重置所有 block 的 offset。
  * 最小分配块大小为 256KB，若请求超过该大小则创建专用 block。
  */
-class BufferPool
-{
-  public:
-	BufferPool(VulkanDevice            &device,
-	           vk::DeviceSize           block_size,
-	           vk::BufferUsageFlags     usage,
-	           VmaMemoryUsage           memory_usage = VMA_MEMORY_USAGE_CPU_TO_GPU);
+class BufferPool {
+public:
+    BufferPool(VulkanDevice &device,
+               vk::DeviceSize block_size,
+               vk::BufferUsageFlags usage,
+               VmaMemoryUsage memory_usage = VMA_MEMORY_USAGE_CPU_TO_GPU);
 
-	/**
-	 * @brief 请求一个能容纳 minimum_size 的 BufferBlock。
-	 * @param minimal  若为 true，则只查找大小恰好等于 minimum_size 的 block。
-	 * @return 引用到可用的 BufferBlock。
-	 */
-	BufferBlock &request_buffer_block(vk::DeviceSize minimum_size, bool minimal = false);
+    /**
+     * @brief 请求一个能容纳 minimum_size 的 BufferBlock。
+     * @param minimal  若为 true，则只查找大小恰好等于 minimum_size 的 block。
+     * @return 引用到可用的 BufferBlock。
+     */
+    BufferBlock &request_buffer_block(vk::DeviceSize minimum_size, bool minimal = false);
 
-	/** @brief 重置所有 block 的 offset（复用底层 buffer，不清除数据） */
-	void reset();
+    /** @brief 重置所有 block 的 offset（复用底层 buffer，不清除数据） */
+    void reset();
 
-  private:
-	VulkanDevice                                       &m_Device;
-	std::vector<std::unique_ptr<BufferBlock>>           m_BufferBlocks;   ///< 所有已分配的 block（使用 unique_ptr 保证 vector 扩容时地址不变）
-	vk::DeviceSize                                      m_BlockSize = 0;  ///< 默认最小 block 大小
-	vk::BufferUsageFlags                                m_Usage;
-	VmaMemoryUsage                                      m_MemoryUsage{};
+private:
+    VulkanDevice &m_Device;
+    std::vector<std::unique_ptr<BufferBlock> > m_BufferBlocks; ///< 所有已分配的 block（使用 unique_ptr 保证 vector 扩容时地址不变）
+    vk::DeviceSize m_BlockSize = 0; ///< 默认最小 block 大小
+    vk::BufferUsageFlags m_Usage;
+    VmaMemoryUsage m_MemoryUsage{};
 };
 
 // ============================================================================
 // BufferAllocation 实现
 // ============================================================================
 
-inline BufferAllocation::BufferAllocation(VulkanBuffer &buffer, vk::DeviceSize size, vk::DeviceSize offset) :
-    m_Buffer(&buffer),
+inline BufferAllocation::BufferAllocation(VulkanBuffer &buffer, vk::DeviceSize size, vk::DeviceSize offset) : m_Buffer(&buffer),
     m_Offset(offset),
-    m_Size(size)
-{
+    m_Size(size) {
 }
 
-inline bool BufferAllocation::empty() const
-{
-	return m_Size == 0 || m_Buffer == nullptr;
+inline bool BufferAllocation::empty() const {
+    return m_Size == 0 || m_Buffer == nullptr;
 }
 
-inline VulkanBuffer &BufferAllocation::get_buffer()
-{
-	assert(m_Buffer && "Invalid buffer pointer");
-	return *m_Buffer;
+inline VulkanBuffer &BufferAllocation::get_buffer() {
+    assert(m_Buffer && "Invalid buffer pointer");
+    return *m_Buffer;
 }
 
-inline vk::DeviceSize BufferAllocation::get_offset() const
-{
-	return m_Offset;
+inline vk::DeviceSize BufferAllocation::get_offset() const {
+    return m_Offset;
 }
 
-inline vk::DeviceSize BufferAllocation::get_size() const
-{
-	return m_Size;
+inline vk::DeviceSize BufferAllocation::get_size() const {
+    return m_Size;
 }
 
-inline void BufferAllocation::update(const std::vector<uint8_t> &data, uint32_t offset)
-{
-	assert(m_Buffer && "Invalid buffer pointer");
+inline void BufferAllocation::update(const std::vector<uint8_t> &data, uint32_t offset) {
+    assert(m_Buffer && "Invalid buffer pointer");
 
-	if (offset + data.size() <= m_Size)
-	{
-		m_Buffer->update(data, static_cast<size_t>(m_Offset) + offset);
-	}
-	else
-	{
-		GE_CORE_ERROR("BufferAllocation::update: 数据超出分配范围，忽略更新");
-	}
+    if (offset + data.size() <= m_Size) {
+        m_Buffer->update(data, static_cast<size_t>(m_Offset) + offset);
+    } else {
+        GE_CORE_ERROR("BufferAllocation::update: 数据超出分配范围，忽略更新");
+    }
 }
 
 // ============================================================================
 // BufferBlock 实现
 // ============================================================================
 
-inline BufferBlock::BufferBlock(VulkanDevice &device, vk::DeviceSize size, vk::BufferUsageFlags usage, VmaMemoryUsage memory_usage) :
-    m_Buffer(device, size, usage, memory_usage)
-{
-	m_Alignment = determine_alignment(usage, device.GetGpu().GetProperties().limits);
+inline BufferBlock::BufferBlock(VulkanDevice &device, vk::DeviceSize size, vk::BufferUsageFlags usage, VmaMemoryUsage memory_usage) : m_Buffer(
+    device, size, usage, memory_usage) {
+    m_Alignment = determine_alignment(usage, device.GetGpu().GetProperties().limits);
 }
 
-inline BufferAllocation BufferBlock::allocate(vk::DeviceSize size)
-{
-	if (can_allocate(size))
-	{
-		auto aligned = aligned_offset();
-		m_Offset     = aligned + size;
-		return BufferAllocation{m_Buffer, size, aligned};
-	}
+inline BufferAllocation BufferBlock::allocate(vk::DeviceSize size) {
+    if (can_allocate(size)) {
+        auto aligned = aligned_offset();
+        m_Offset = aligned + size;
+        return BufferAllocation{m_Buffer, size, aligned};
+    }
 
-	// 空间不足，返回空分配
-	return BufferAllocation{};
+    // 空间不足，返回空分配
+    return BufferAllocation{};
 }
 
-inline bool BufferBlock::can_allocate(vk::DeviceSize size) const
-{
-	assert(size > 0 && "Allocation size must be greater than zero");
-	return (aligned_offset() + size <= m_Buffer.get_size());
+inline bool BufferBlock::can_allocate(vk::DeviceSize size) const {
+    assert(size > 0 && "Allocation size must be greater than zero");
+    return (aligned_offset() + size <= m_Buffer.get_size());
 }
 
-inline vk::DeviceSize BufferBlock::get_size() const
-{
-	return m_Buffer.get_size();
+inline vk::DeviceSize BufferBlock::get_size() const {
+    return m_Buffer.get_size();
 }
 
-inline void BufferBlock::reset()
-{
-	m_Offset = 0;
+inline void BufferBlock::reset() {
+    m_Offset = 0;
 }
 
-inline vk::DeviceSize BufferBlock::aligned_offset() const
-{
-	return (m_Offset + m_Alignment - 1) & ~(m_Alignment - 1);
+inline vk::DeviceSize BufferBlock::aligned_offset() const {
+    return (m_Offset + m_Alignment - 1) & ~(m_Alignment - 1);
 }
 
-inline vk::DeviceSize BufferBlock::determine_alignment(vk::BufferUsageFlags usage, vk::PhysicalDeviceLimits const &limits) const
-{
-	if (usage == vk::BufferUsageFlagBits::eUniformBuffer)
-	{
-		return limits.minUniformBufferOffsetAlignment;
-	}
-	else if (usage == vk::BufferUsageFlagBits::eStorageBuffer)
-	{
-		return limits.minStorageBufferOffsetAlignment;
-	}
-	else if (usage == vk::BufferUsageFlagBits::eUniformTexelBuffer)
-	{
-		return limits.minTexelBufferOffsetAlignment;
-	}
-	else if (usage == vk::BufferUsageFlagBits::eIndexBuffer ||
-	         usage == vk::BufferUsageFlagBits::eVertexBuffer ||
-	         usage == vk::BufferUsageFlagBits::eIndirectBuffer)
-	{
-		// 用于计算 offset，要求值为 2 的幂
-		return 16;
-	}
-	else
-	{
-		throw std::runtime_error("BufferBlock::determine_alignment: 不支持的 BufferUsage");
-	}
+inline vk::DeviceSize BufferBlock::determine_alignment(vk::BufferUsageFlags usage, vk::PhysicalDeviceLimits const &limits) const {
+    if (usage == vk::BufferUsageFlagBits::eUniformBuffer) {
+        return limits.minUniformBufferOffsetAlignment;
+    } else if (usage == vk::BufferUsageFlagBits::eStorageBuffer) {
+        return limits.minStorageBufferOffsetAlignment;
+    } else if (usage == vk::BufferUsageFlagBits::eUniformTexelBuffer) {
+        return limits.minTexelBufferOffsetAlignment;
+    } else if (usage == vk::BufferUsageFlagBits::eIndexBuffer ||
+               usage == vk::BufferUsageFlagBits::eVertexBuffer ||
+               usage == vk::BufferUsageFlagBits::eIndirectBuffer) {
+        // 用于计算 offset，要求值为 2 的幂
+        return 16;
+    } else {
+        throw std::runtime_error("BufferBlock::determine_alignment: 不支持的 BufferUsage");
+    }
 }
 
 // ============================================================================
 // BufferPool 实现
 // ============================================================================
 
-inline BufferPool::BufferPool(VulkanDevice       &device,
-                              vk::DeviceSize      block_size,
+inline BufferPool::BufferPool(VulkanDevice &device,
+                              vk::DeviceSize block_size,
                               vk::BufferUsageFlags usage,
-                              VmaMemoryUsage      memory_usage) :
-    m_Device(device),
-    m_BlockSize(block_size),
-    m_Usage(usage),
-    m_MemoryUsage(memory_usage)
-{
+                              VmaMemoryUsage memory_usage) : m_Device(device),
+                                                             m_BlockSize(block_size),
+                                                             m_Usage(usage),
+                                                             m_MemoryUsage(memory_usage) {
 }
 
-inline BufferBlock &BufferPool::request_buffer_block(vk::DeviceSize minimum_size, bool minimal)
-{
-	// 查找能容纳 minimum_size 的 block
-	auto it = std::find_if(m_BufferBlocks.begin(), m_BufferBlocks.end(),
-	                       [&minimum_size, minimal](auto const &buffer_block) {
-		                       if (minimal)
-		                       {
-			                       return (buffer_block->get_size() == minimum_size) && buffer_block->can_allocate(minimum_size);
-		                       }
-		                       return buffer_block->can_allocate(minimum_size);
-	                       });
+inline BufferBlock &BufferPool::request_buffer_block(vk::DeviceSize minimum_size, bool minimal) {
+    // 查找能容纳 minimum_size 的 block
+    auto it = std::find_if(m_BufferBlocks.begin(), m_BufferBlocks.end(),
+                           [&minimum_size, minimal](auto const &buffer_block) {
+                               if (minimal) {
+                                   return (buffer_block->get_size() == minimum_size) && buffer_block->can_allocate(minimum_size);
+                               }
+                               return buffer_block->can_allocate(minimum_size);
+                           });
 
-	if (it == m_BufferBlocks.end())
-	{
-		GE_CORE_INFO("BufferPool: 创建第 {} 个 BufferBlock（usage = {}）",
-		              m_BufferBlocks.size(), vk::to_string(m_Usage));
+    if (it == m_BufferBlocks.end()) {
+        GE_CORE_INFO("BufferPool: 创建第 {} 个 BufferBlock（usage = {}）",
+                     m_BufferBlocks.size(), vk::to_string(m_Usage));
 
-		vk::DeviceSize new_block_size = minimal ? minimum_size : std::max(m_BlockSize, minimum_size);
+        vk::DeviceSize new_block_size = minimal ? minimum_size : std::max(m_BlockSize, minimum_size);
 
-		// 创建新 block
-		it = m_BufferBlocks.emplace(m_BufferBlocks.end(),
-		                            std::make_unique<BufferBlock>(m_Device, new_block_size, m_Usage, m_MemoryUsage));
-	}
+        // 创建新 block
+        it = m_BufferBlocks.emplace(m_BufferBlocks.end(),
+                                    std::make_unique<BufferBlock>(m_Device, new_block_size, m_Usage, m_MemoryUsage));
+    }
 
-	return *it->get();
+    return *it->get();
 }
 
-inline void BufferPool::reset()
-{
-	// 注意：重置 BufferPool 不会清除 BufferBlock 本身，只是重置 offset。
-	// 实际的 VkBuffer 在 DescriptorSet 的哈希中用作 key，
-	// 因此复用 buffer 可以保持 descriptor set 的哈希不变。
-	for (auto &buffer_block : m_BufferBlocks)
-	{
-		buffer_block->reset();
-	}
+inline void BufferPool::reset() {
+    for (auto &buffer_block : m_BufferBlocks) {
+        buffer_block->reset();
+    }
 }
 
 } // namespace GE

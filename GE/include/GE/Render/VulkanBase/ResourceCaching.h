@@ -406,7 +406,7 @@ T &request_resource(
     size_t      res_id   = resources.size();
 
     // 仅在非 Debug 模式下捕获异常
-#ifndef DEBUG
+#ifndef NDEBUG
     try
     {
 #endif
@@ -420,7 +420,7 @@ T &request_resource(
         }
 
         res_it = res_ins_it.first;
-#ifndef DEBUG
+#ifndef NDEBUG
     }
     catch (const std::exception &e)
     {

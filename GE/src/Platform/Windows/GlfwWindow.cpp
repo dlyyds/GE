@@ -33,12 +33,6 @@ void GlfwWindow::Init(const WindowProperties &props) {
     GE_PROFILE_FUNCTION();
 
     properties = props;
-    m_Data.Title = props.title;
-    m_Data.Width = props.extent.width;
-    m_Data.Height = props.extent.height;
-    m_Data.VSync = props.vsync;
-    m_Data.Resizable = props.resizable;
-    m_Data.Mode = props.mode;
 
     if (s_GLFWWindowCount == 0) {
         GE_PROFILE_SCOPE("glfwInit");
@@ -51,108 +45,106 @@ void GlfwWindow::Init(const WindowProperties &props) {
 
     // 设置窗口提示
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    glfwWindowHint(GLFW_RESIZABLE, m_Data.Resizable ? GLFW_TRUE : GLFW_FALSE);
+    glfwWindowHint(GLFW_RESIZABLE, properties.resizable ? GLFW_TRUE : GLFW_FALSE);
 
     // 全屏模式
     GLFWmonitor *monitor = nullptr;
-    if (m_Data.Mode == WindowMode::Fullscreen) {
+    if (properties.mode == WindowMode::Fullscreen) {
         monitor = glfwGetPrimaryMonitor();
-    } else if (m_Data.Mode == WindowMode::FullscreenBorderless) {
+    } else if (properties.mode == WindowMode::FullscreenBorderless) {
         monitor = glfwGetPrimaryMonitor();
         const GLFWvidmode *mode = glfwGetVideoMode(monitor);
-        m_Data.Width = mode->width;
-        m_Data.Height = mode->height;
+        properties.extent.width = mode->width;
+        properties.extent.height = mode->height;
     }
 
     {
         GE_PROFILE_SCOPE("glfwCreateWindow");
         m_Window = glfwCreateWindow(
-            static_cast<int>(m_Data.Width),
-            static_cast<int>(m_Data.Height),
-            m_Data.Title.c_str(),
+            static_cast<int>(properties.extent.width),
+            static_cast<int>(properties.extent.height),
+            properties.title.c_str(),
             monitor, nullptr);
 
-        GE_CORE_INFO("Creating window {0} ({1}, {2})", m_Data.Title, m_Data.Width, m_Data.Height);
+        GE_CORE_INFO("Creating window {0} ({1}, {2})",
+                     properties.title, properties.extent.width, properties.extent.height);
     }
 
-    glfwSetWindowUserPointer(m_Window, &m_Data);
+    glfwSetWindowUserPointer(m_Window, this);
 
     // 垂直同步
-    SetVSync(m_Data.VSync);
+    SetVSync(properties.vsync);
 
     glfwSetWindowSizeCallback(m_Window, [](GLFWwindow *window, int width, int height) {
-        WindowData &data = *(WindowData *)glfwGetWindowUserPointer(window);
-        data.Width = static_cast<uint32_t>(width);
-        data.Height = static_cast<uint32_t>(height);
+        auto &self = *(GlfwWindow *)glfwGetWindowUserPointer(window);
+        self.properties.extent.width = static_cast<uint32_t>(width);
+        self.properties.extent.height = static_cast<uint32_t>(height);
         WindowResizeEvent event(width, height);
-        data.EventCallback(event);
+        self.m_EventCallback(event);
     });
 
     glfwSetWindowCloseCallback(m_Window, [](GLFWwindow *window) {
-        WindowData &data = *(WindowData *)glfwGetWindowUserPointer(window);
+        auto &self = *(GlfwWindow *)glfwGetWindowUserPointer(window);
         WindowCloseEvent event;
-        data.EventCallback(event);
+        self.m_EventCallback(event);
     });
 
     glfwSetKeyCallback(m_Window,
                        [](GLFWwindow *window, int keyCode, int scancode, int action, int mods) {
-                           WindowData &data = *(WindowData *)glfwGetWindowUserPointer(window);
+                           auto &self = *(GlfwWindow *)glfwGetWindowUserPointer(window);
                            KeyCode key = static_cast<KeyCode>(keyCode);
                            switch (action) {
                            case GLFW_PRESS: {
                                KeyPressedEvent event(key, 0);
-                               data.EventCallback(event);
+                               self.m_EventCallback(event);
                                break;
                            }
                            case GLFW_RELEASE: {
                                KeyReleasedEvent event(key);
-                               data.EventCallback(event);
+                               self.m_EventCallback(event);
                                break;
                            }
                            case GLFW_REPEAT: {
                                KeyPressedEvent event(key, 1);
-                               data.EventCallback(event);
+                               self.m_EventCallback(event);
                                break;
                            }
                            }
                        });
 
     glfwSetCharCallback(m_Window, [](GLFWwindow *window, uint32_t keycode) {
-        WindowData &data = *(WindowData *)glfwGetWindowUserPointer(window);
-
+        auto &self = *(GlfwWindow *)glfwGetWindowUserPointer(window);
         KeyTypedEvent event(static_cast<KeyCode>(keycode));
-        data.EventCallback(event);
+        self.m_EventCallback(event);
     });
 
     glfwSetMouseButtonCallback(m_Window, [](GLFWwindow *window, int button, int action, int mods) {
-        WindowData &data = *(WindowData *)glfwGetWindowUserPointer(window);
+        auto &self = *(GlfwWindow *)glfwGetWindowUserPointer(window);
 
         switch (action) {
         case GLFW_PRESS: {
             MouseButtonPressedEvent event(static_cast<MouseCode>(button));
-            data.EventCallback(event);
+            self.m_EventCallback(event);
             break;
         }
         case GLFW_RELEASE: {
             MouseButtonReleasedEvent event(static_cast<MouseCode>(button));
-            data.EventCallback(event);
+            self.m_EventCallback(event);
             break;
         }
         }
     });
 
     glfwSetScrollCallback(m_Window, [](GLFWwindow *window, double xOffset, double yOffset) {
-        WindowData &data = *(WindowData *)glfwGetWindowUserPointer(window);
-
+        auto &self = *(GlfwWindow *)glfwGetWindowUserPointer(window);
         MouseScrolledEvent event((float)xOffset, (float)yOffset);
-        data.EventCallback(event);
+        self.m_EventCallback(event);
     });
 
     glfwSetCursorPosCallback(m_Window, [](GLFWwindow *window, double xPos, double yPos) {
-        WindowData &data = *(WindowData *)glfwGetWindowUserPointer(window);
-
+        auto &self = *(GlfwWindow *)glfwGetWindowUserPointer(window);
         MouseMovedEvent event((float)xPos, (float)yPos);
-        data.EventCallback(event);
+        self.m_EventCallback(event);
     });
 }
 
@@ -181,24 +173,24 @@ void GlfwWindow::Close() {
 }
 
 void GlfwWindow::SetVSync(VsyncMode mode) {
-    m_Data.VSync = mode;
+    properties.vsync = mode;
 }
 
 VsyncMode GlfwWindow::GetVSync() const {
-    return m_Data.VSync;
+    return properties.vsync;
 }
 
 void GlfwWindow::SetResizable(bool resizable) {
-    m_Data.Resizable = resizable;
+    properties.resizable = resizable;
     glfwSetWindowAttrib(m_Window, GLFW_RESIZABLE, resizable ? GLFW_TRUE : GLFW_FALSE);
 }
 
 bool GlfwWindow::IsResizable() const {
-    return m_Data.Resizable;
+    return properties.resizable;
 }
 
 WindowMode GlfwWindow::GetWindowMode() const {
-    return m_Data.Mode;
+    return properties.mode;
 }
 
 Extent GlfwWindow::Resize(const Extent &new_extent) {

@@ -28,8 +28,8 @@ public:
 
     void Close() override;
 
-    [[nodiscard]] uint32_t GetWidth() const override { return m_Data.Width; }
-    [[nodiscard]] uint32_t GetHeight() const override { return m_Data.Height; }
+    [[nodiscard]] uint32_t GetWidth() const override { return properties.extent.width; }
+    [[nodiscard]] uint32_t GetHeight() const override { return properties.extent.height; }
 
     [[nodiscard]] void *GetGlfwWindow() const override {
         return m_Window;
@@ -44,9 +44,8 @@ public:
 
     [[nodiscard]] std::vector<const char *> GetRequiredSurfaceExtensions() const override;
 
-    // 窗口属性
     void SetEventCallback(const EventCallbackFn &callback) override {
-        m_Data.EventCallback = callback;
+        m_EventCallback = callback;
     }
 
     void SetVSync(VsyncMode mode) override;
@@ -76,17 +75,7 @@ private:
 private:
     GLFWwindow *m_Window;
 
-    struct WindowData {
-        std::string Title;
-        uint32_t Width, Height;
-        VsyncMode VSync;
-        bool Resizable;
-        WindowMode Mode;
-
-        EventCallbackFn EventCallback;
-    };
-
-    WindowData m_Data;
+    EventCallbackFn m_EventCallback;
 };
 
 } // namespace GE

@@ -23,6 +23,9 @@
  * - hash_combine / hash_param：用于生成参数的复合 hash
  * - request_resource<T>()：查找缓存，未命中则创建并插入
  * - std::hash 特化：支持 GE 自定义类型作为 unordered_map 的 key
+ *
+ * vulkan.hpp 类型的 std::hash 特化由 <vulkan/vulkan_hash.hpp> 提供，
+ * 本文件仅补充 GE 自定义类型的 std::hash 特化。
  */
 
 #pragma once
@@ -38,6 +41,7 @@
 #include "Render/VulkanBase/ShaderModule.h"
 
 #include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan_hash.hpp>
 
 #include <glm/gtx/hash.hpp>
 
@@ -75,142 +79,11 @@ inline void hash_combine(size_t &seed, const T &v)
 } // namespace GE
 
 // ============================================================================
-// std::hash 特化 — 使 GE 类型可用作 unordered_map 的 key
+// std::hash 特化 — 补充 GE 自定义类型
+// vulkan.hpp 类型的 hash 特化由 <vulkan/vulkan_hash.hpp> 提供
 // ============================================================================
 
 namespace std {
-
-// ---- vulkan.hpp 类型特化（vulkan.hpp 未提供 std::hash 特化） ----
-
-// vk::Flags<T> 转换为底层整数类型
-template <typename T>
-struct hash<vk::Flags<T>>
-{
-    size_t operator()(vk::Flags<T> const &flags) const
-    {
-        return std::hash<typename vk::Flags<T>::MaskType>()(static_cast<typename vk::Flags<T>::MaskType>(flags));
-    }
-};
-
-template <>
-struct hash<vk::Extent3D>
-{
-    size_t operator()(vk::Extent3D const &extent) const
-    {
-        size_t result = 0;
-        GE::detail::hash_combine(result, extent.width);
-        GE::detail::hash_combine(result, extent.height);
-        GE::detail::hash_combine(result, extent.depth);
-        return result;
-    }
-};
-
-template <>
-struct hash<vk::Extent2D>
-{
-    size_t operator()(vk::Extent2D const &extent) const
-    {
-        size_t result = 0;
-        GE::detail::hash_combine(result, extent.width);
-        GE::detail::hash_combine(result, extent.height);
-        return result;
-    }
-};
-
-template <>
-struct hash<vk::Offset2D>
-{
-    size_t operator()(vk::Offset2D const &offset) const
-    {
-        size_t result = 0;
-        GE::detail::hash_combine(result, offset.x);
-        GE::detail::hash_combine(result, offset.y);
-        return result;
-    }
-};
-
-template <>
-struct hash<vk::Offset3D>
-{
-    size_t operator()(vk::Offset3D const &offset) const
-    {
-        size_t result = 0;
-        GE::detail::hash_combine(result, offset.x);
-        GE::detail::hash_combine(result, offset.y);
-        GE::detail::hash_combine(result, offset.z);
-        return result;
-    }
-};
-
-template <>
-struct hash<vk::Rect2D>
-{
-    size_t operator()(vk::Rect2D const &rect) const
-    {
-        size_t result = 0;
-        GE::detail::hash_combine(result, rect.offset);
-        GE::detail::hash_combine(result, rect.extent);
-        return result;
-    }
-};
-
-template <>
-struct hash<vk::Viewport>
-{
-    size_t operator()(vk::Viewport const &viewport) const
-    {
-        size_t result = 0;
-        GE::detail::hash_combine(result, viewport.x);
-        GE::detail::hash_combine(result, viewport.y);
-        GE::detail::hash_combine(result, viewport.width);
-        GE::detail::hash_combine(result, viewport.height);
-        GE::detail::hash_combine(result, viewport.minDepth);
-        GE::detail::hash_combine(result, viewport.maxDepth);
-        return result;
-    }
-};
-
-template <>
-struct hash<vk::ImageSubresource>
-{
-    size_t operator()(vk::ImageSubresource const &sub) const
-    {
-        size_t result = 0;
-        GE::detail::hash_combine(result, sub.aspectMask);
-        GE::detail::hash_combine(result, sub.mipLevel);
-        GE::detail::hash_combine(result, sub.arrayLayer);
-        return result;
-    }
-};
-
-template <>
-struct hash<vk::ImageSubresourceLayers>
-{
-    size_t operator()(vk::ImageSubresourceLayers const &layers) const
-    {
-        size_t result = 0;
-        GE::detail::hash_combine(result, layers.aspectMask);
-        GE::detail::hash_combine(result, layers.mipLevel);
-        GE::detail::hash_combine(result, layers.baseArrayLayer);
-        GE::detail::hash_combine(result, layers.layerCount);
-        return result;
-    }
-};
-
-template <>
-struct hash<vk::ImageSubresourceRange>
-{
-    size_t operator()(vk::ImageSubresourceRange const &range) const
-    {
-        size_t result = 0;
-        GE::detail::hash_combine(result, range.aspectMask);
-        GE::detail::hash_combine(result, range.baseMipLevel);
-        GE::detail::hash_combine(result, range.levelCount);
-        GE::detail::hash_combine(result, range.baseArrayLayer);
-        GE::detail::hash_combine(result, range.layerCount);
-        return result;
-    }
-};
 
 // ---- std::map / std::vector 泛型 hash ----
 
@@ -349,8 +222,6 @@ struct hash<GE::VulkanImage>
     size_t operator()(GE::VulkanImage const &image) const
     {
         size_t result = 0;
-        // 注意：VulkanImage 没有 get_memory() / get_sample_count() 等方法，
-        // 这里使用可用的 getter 构造 hash
         GE::detail::hash_combine(result, image.get_type());
         GE::detail::hash_combine(result, image.get_extent());
         GE::detail::hash_combine(result, image.get_format());
@@ -386,7 +257,6 @@ struct hash<GE::VulkanDescriptorSet>
     {
         size_t result = 0;
         GE::detail::hash_combine(result, descriptor_set.GetHandle());
-        // 当 VulkanDescriptorSet 有 get_layout() / get_buffer_infos() 等方法时，可在此扩展
         return result;
     }
 };
@@ -396,10 +266,8 @@ struct hash<GE::VulkanDescriptorSet>
 template <>
 struct hash<GE::VulkanPipelineState>
 {
-    size_t operator()(GE::VulkanPipelineState const &pipeline_state) const
+    size_t operator()(GE::VulkanPipelineState const & /*pipeline_state*/) const
     {
-        // 使用 vk::Pipeline 句柄作为 hash 基础
-        // 当 VulkanPipelineState 有更多 getter 时，可在此扩展
         return std::hash<vk::Pipeline>()(VK_NULL_HANDLE);
     }
 };
@@ -426,37 +294,8 @@ struct hash<GE::VulkanComputePipeline>
     }
 };
 
-// ---- vk::DescriptorBufferInfo ----
-
-template <>
-struct hash<vk::DescriptorBufferInfo>
-{
-    size_t operator()(vk::DescriptorBufferInfo const &info) const
-    {
-        size_t result = 0;
-        GE::detail::hash_combine(result, info.buffer);
-        GE::detail::hash_combine(result, info.range);
-        GE::detail::hash_combine(result, info.offset);
-        return result;
-    }
-};
-
-// ---- vk::DescriptorImageInfo ----
-
-template <>
-struct hash<vk::DescriptorImageInfo>
-{
-    size_t operator()(vk::DescriptorImageInfo const &info) const
-    {
-        size_t result = 0;
-        GE::detail::hash_combine(result, info.imageView);
-        GE::detail::hash_combine(result, info.imageLayout);
-        GE::detail::hash_combine(result, info.sampler);
-        return result;
-    }
-};
-
 // ---- vk::WriteDescriptorSet ----
+// vulkan_hash.hpp 未提供此类型的 hash，此处补充
 
 template <>
 struct hash<vk::WriteDescriptorSet>
@@ -502,7 +341,6 @@ struct hash<vk::WriteDescriptorSet>
                 break;
 
             default:
-                // 暂不支持的类型
                 break;
         }
 
@@ -640,7 +478,6 @@ T &request_resource(
     }
     catch (const std::exception &e)
     {
-        // 资源创建失败，记录错误并重新抛出
         throw std::runtime_error{std::string{"创建失败: #"} + std::to_string(res_id) + " 缓存对象 (" + res_type + "): " + e.what()};
     }
 #endif

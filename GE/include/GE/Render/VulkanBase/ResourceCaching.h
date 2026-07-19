@@ -39,6 +39,8 @@
 
 #include <vulkan/vulkan.hpp>
 
+#include <glm/gtx/hash.hpp>
+
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -51,6 +53,7 @@
 
 // ============================================================================
 // hash_combine — 通用 hash 组合函数
+// 使用 GLM 内置的 hash_combine 实现（与 Vulkan-Samples 原版一致）
 // ============================================================================
 
 namespace GE {
@@ -65,8 +68,7 @@ template <class T>
 inline void hash_combine(size_t &seed, const T &v)
 {
     std::hash<T> hasher;
-    // 使用黄金比例的二进制展开，使相邻 hash 值均匀分布
-    seed ^= hasher(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+    glm::detail::hash_combine(seed, hasher(v));
 }
 
 } // namespace detail

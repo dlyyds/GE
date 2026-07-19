@@ -294,60 +294,6 @@ struct hash<GE::VulkanComputePipeline>
     }
 };
 
-// ---- vk::WriteDescriptorSet ----
-// vulkan_hash.hpp 未提供此类型的 hash，此处补充
-
-template <>
-struct hash<vk::WriteDescriptorSet>
-{
-    size_t operator()(vk::WriteDescriptorSet const &wds) const
-    {
-        size_t result = 0;
-        GE::detail::hash_combine(result, wds.dstSet);
-        GE::detail::hash_combine(result, wds.dstBinding);
-        GE::detail::hash_combine(result, wds.dstArrayElement);
-        GE::detail::hash_combine(result, wds.descriptorCount);
-        GE::detail::hash_combine(result, wds.descriptorType);
-
-        switch (wds.descriptorType)
-        {
-            case vk::DescriptorType::eSampler:
-            case vk::DescriptorType::eCombinedImageSampler:
-            case vk::DescriptorType::eSampledImage:
-            case vk::DescriptorType::eStorageImage:
-            case vk::DescriptorType::eInputAttachment:
-                for (uint32_t i = 0; i < wds.descriptorCount; i++)
-                {
-                    GE::detail::hash_combine(result, wds.pImageInfo[i]);
-                }
-                break;
-
-            case vk::DescriptorType::eUniformTexelBuffer:
-            case vk::DescriptorType::eStorageTexelBuffer:
-                for (uint32_t i = 0; i < wds.descriptorCount; i++)
-                {
-                    GE::detail::hash_combine(result, wds.pTexelBufferView[i]);
-                }
-                break;
-
-            case vk::DescriptorType::eUniformBuffer:
-            case vk::DescriptorType::eStorageBuffer:
-            case vk::DescriptorType::eUniformBufferDynamic:
-            case vk::DescriptorType::eStorageBufferDynamic:
-                for (uint32_t i = 0; i < wds.descriptorCount; i++)
-                {
-                    GE::detail::hash_combine(result, wds.pBufferInfo[i]);
-                }
-                break;
-
-            default:
-                break;
-        }
-
-        return result;
-    }
-};
-
 } // namespace std
 
 // ============================================================================

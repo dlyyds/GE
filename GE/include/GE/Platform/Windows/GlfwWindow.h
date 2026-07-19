@@ -16,11 +16,17 @@ namespace GE {
 
 class GlfwWindow final : public Window {
 public:
-    explicit GlfwWindow(const WindowProps &props);
+    explicit GlfwWindow(const WindowProperties &props);
 
     ~GlfwWindow() override;
 
     void OnUpdate() override;
+
+    void ProcessEvents() override;
+
+    bool ShouldClose() override;
+
+    void Close() override;
 
     [[nodiscard]] uint32_t GetWidth() const override { return m_Data.Width; }
     [[nodiscard]] uint32_t GetHeight() const override { return m_Data.Height; }
@@ -34,20 +40,38 @@ public:
     }
 
     VkSurfaceKHR CreateVulkanSurface(VkInstance instance) override;
+    VkSurfaceKHR CreateVulkanSurface(VkInstance instance, VkPhysicalDevice physical_device) override;
 
-    // Window attributes
+    [[nodiscard]] std::vector<const char *> GetRequiredSurfaceExtensions() const override;
+
+    // 窗口属性
     void SetEventCallback(const EventCallbackFn &callback) override {
         m_Data.EventCallback = callback;
     }
 
-    void SetVSync(bool enabled) override;
+    void SetVSync(VsyncMode mode) override;
 
-    [[nodiscard]] bool IsVSync() const override;
+    [[nodiscard]] VsyncMode GetVSync() const override;
+
+    void SetResizable(bool resizable) override;
+
+    [[nodiscard]] bool IsResizable() const override;
+
+    [[nodiscard]] WindowMode GetWindowMode() const override;
+
+    Extent Resize(const Extent &new_extent) override;
+
+    [[nodiscard]] float GetDpiFactor() const override;
+
+    [[nodiscard]] float GetContentScaleFactor() const override;
+
+    bool GetDisplayPresentInfo(VkDisplayPresentInfoKHR *info,
+                               uint32_t src_width, uint32_t src_height) const override;
 
 private:
-    virtual void Init(const WindowProps &props);
+    void Init(const WindowProperties &props);
 
-    virtual void Shutdown();
+    void Shutdown();
 
 private:
     GLFWwindow *m_Window;
@@ -55,7 +79,9 @@ private:
     struct WindowData {
         std::string Title;
         uint32_t Width, Height;
-        bool VSync;
+        VsyncMode VSync;
+        bool Resizable;
+        WindowMode Mode;
 
         EventCallbackFn EventCallback;
     };

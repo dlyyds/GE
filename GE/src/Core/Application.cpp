@@ -28,7 +28,7 @@ Application::Application(const std::string &name, ApplicationCommandLineArgs arg
     GE_CORE_ASSERT(!s_Instance, "Application already exists!");
     s_Instance = this;
 
-    m_Window = Window::Create(WindowProps(name, 1600, 900));
+    m_Window = Window::Create(WindowProperties(name, 1600, 900));
     m_Window->SetEventCallback(GE_BIND_EVENT_FN(Application::OnEvent));
 
     // 1. 初始化 Vulkan 上下文（构造中完成 Instance → Surface → Device → VMA）

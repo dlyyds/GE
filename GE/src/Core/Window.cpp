@@ -7,7 +7,7 @@
 
 namespace GE {
 
-Scope<Window> Window::Create(const WindowProps &props) {
+Scope<Window> Window::Create(const WindowProperties &props) {
     GE_PROFILE_FUNCTION();
 
 #ifdef GE_PLATFORM_WINDOWS

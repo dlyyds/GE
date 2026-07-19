@@ -32,6 +32,7 @@
 
 #include "Render/VulkanBase/VulkanCommon.h"
 #include "Render/VulkanBase/VulkanDescriptorSet.h"
+#include "Render/VulkanBase/VulkanDescriptorPool.h"
 #include "Render/VulkanBase/VulkanDescriptorSetLayout.h"
 #include "Render/VulkanBase/VulkanImage.h"
 #include "Render/VulkanBase/VulkanImageView.h"
@@ -43,6 +44,9 @@
 #include <vulkan/vulkan.hpp>
 #include <vulkan/vulkan_hash.hpp>
 
+#ifndef GLM_ENABLE_EXPERIMENTAL
+#define GLM_ENABLE_EXPERIMENTAL
+#endif
 #include <glm/gtx/hash.hpp>
 
 #include <cstddef>
@@ -69,8 +73,7 @@ namespace detail {
  * @param v    要组合的值
  */
 template <class T>
-inline void hash_combine(size_t &seed, const T &v)
-{
+inline void hash_combine(size_t &seed, const T &v) {
     std::hash<T> hasher;
     glm::detail::hash_combine(seed, hasher(v));
 }
@@ -88,14 +91,11 @@ namespace std {
 // ---- std::map / std::vector 泛型 hash ----
 
 template <typename Key, typename Value>
-struct hash<std::map<Key, Value>>
-{
-    size_t operator()(std::map<Key, Value> const &bindings) const
-    {
+struct hash<std::map<Key, Value> > {
+    size_t operator()(std::map<Key, Value> const &bindings) const {
         size_t result = 0;
         GE::detail::hash_combine(result, bindings.size());
-        for (auto const &binding : bindings)
-        {
+        for (auto const &binding : bindings) {
             GE::detail::hash_combine(result, binding.first);
             GE::detail::hash_combine(result, binding.second);
         }
@@ -104,14 +104,11 @@ struct hash<std::map<Key, Value>>
 };
 
 template <typename T>
-struct hash<std::vector<T>>
-{
-    size_t operator()(std::vector<T> const &values) const
-    {
+struct hash<std::vector<T> > {
+    size_t operator()(std::vector<T> const &values) const {
         size_t result = 0;
         GE::detail::hash_combine(result, values.size());
-        for (auto const &value : values)
-        {
+        for (auto const &value : values) {
             GE::detail::hash_combine(result, value);
         }
         return result;
@@ -121,10 +118,8 @@ struct hash<std::vector<T>>
 // ---- GE::LoadStoreInfo ----
 
 template <>
-struct hash<GE::LoadStoreInfo>
-{
-    size_t operator()(GE::LoadStoreInfo const &lsi) const
-    {
+struct hash<GE::LoadStoreInfo> {
+    size_t operator()(GE::LoadStoreInfo const &lsi) const {
         size_t result = 0;
         GE::detail::hash_combine(result, lsi.load_op);
         GE::detail::hash_combine(result, lsi.store_op);
@@ -135,10 +130,8 @@ struct hash<GE::LoadStoreInfo>
 // ---- GE::ShaderModule ----
 
 template <>
-struct hash<GE::ShaderModule>
-{
-    size_t operator()(GE::ShaderModule const &shader_module) const
-    {
+struct hash<GE::ShaderModule> {
+    size_t operator()(GE::ShaderModule const &shader_module) const {
         return std::hash<size_t>()(shader_module.get_id());
     }
 };
@@ -146,10 +139,8 @@ struct hash<GE::ShaderModule>
 // ---- GE::ShaderResource ----
 
 template <>
-struct hash<GE::ShaderResource>
-{
-    size_t operator()(GE::ShaderResource const &sr) const
-    {
+struct hash<GE::ShaderResource> {
+    size_t operator()(GE::ShaderResource const &sr) const {
         size_t result = 0;
         GE::detail::hash_combine(result, sr.stages);
         GE::detail::hash_combine(result, sr.type);
@@ -173,10 +164,8 @@ struct hash<GE::ShaderResource>
 // ---- GE::ShaderVariant ----
 
 template <>
-struct hash<GE::ShaderVariant>
-{
-    size_t operator()(GE::ShaderVariant const &variant) const
-    {
+struct hash<GE::ShaderVariant> {
+    size_t operator()(GE::ShaderVariant const &variant) const {
         return std::hash<size_t>()(variant.get_id());
     }
 };
@@ -184,10 +173,8 @@ struct hash<GE::ShaderVariant>
 // ---- GE::ShaderSource ----
 
 template <>
-struct hash<GE::ShaderSource>
-{
-    size_t operator()(GE::ShaderSource const &source) const
-    {
+struct hash<GE::ShaderSource> {
+    size_t operator()(GE::ShaderSource const &source) const {
         return std::hash<size_t>()(source.get_id());
     }
 };
@@ -195,21 +182,27 @@ struct hash<GE::ShaderSource>
 // ---- GE::VulkanDescriptorSetLayout ----
 
 template <>
-struct hash<GE::VulkanDescriptorSetLayout>
-{
-    size_t operator()(GE::VulkanDescriptorSetLayout const &layout) const
-    {
+struct hash<GE::VulkanDescriptorSetLayout> {
+    size_t operator()(GE::VulkanDescriptorSetLayout const &layout) const {
         return std::hash<vk::DescriptorSetLayout>()(layout.GetHandle());
+    }
+};
+
+// ---- GE::VulkanDescriptorPool ----
+
+template <>
+struct hash<GE::VulkanDescriptorPool> {
+    size_t operator()(GE::VulkanDescriptorPool const &pool) const {
+        // 使用 DescriptorSetLayout 的句柄作为 hash 基础
+        return std::hash<vk::DescriptorSetLayout>()(pool.GetDescriptorSetLayout().GetHandle());
     }
 };
 
 // ---- GE::VulkanPipelineLayout ----
 
 template <>
-struct hash<GE::VulkanPipelineLayout>
-{
-    size_t operator()(GE::VulkanPipelineLayout const &layout) const
-    {
+struct hash<GE::VulkanPipelineLayout> {
+    size_t operator()(GE::VulkanPipelineLayout const &layout) const {
         return std::hash<vk::PipelineLayout>()(layout.GetHandle());
     }
 };
@@ -217,10 +210,8 @@ struct hash<GE::VulkanPipelineLayout>
 // ---- GE::VulkanImage ----
 
 template <>
-struct hash<GE::VulkanImage>
-{
-    size_t operator()(GE::VulkanImage const &image) const
-    {
+struct hash<GE::VulkanImage> {
+    size_t operator()(GE::VulkanImage const &image) const {
         size_t result = 0;
         GE::detail::hash_combine(result, image.get_type());
         GE::detail::hash_combine(result, image.get_extent());
@@ -236,10 +227,8 @@ struct hash<GE::VulkanImage>
 // ---- GE::VulkanImageView ----
 
 template <>
-struct hash<GE::VulkanImageView>
-{
-    size_t operator()(GE::VulkanImageView const &image_view) const
-    {
+struct hash<GE::VulkanImageView> {
+    size_t operator()(GE::VulkanImageView const &image_view) const {
         size_t result = 0;
         GE::detail::hash_combine(result, image_view.GetHandle());
         GE::detail::hash_combine(result, image_view.get_format());
@@ -251,10 +240,8 @@ struct hash<GE::VulkanImageView>
 // ---- GE::VulkanDescriptorSet ----
 
 template <>
-struct hash<GE::VulkanDescriptorSet>
-{
-    size_t operator()(GE::VulkanDescriptorSet const &descriptor_set) const
-    {
+struct hash<GE::VulkanDescriptorSet> {
+    size_t operator()(GE::VulkanDescriptorSet const &descriptor_set) const {
         size_t result = 0;
         GE::detail::hash_combine(result, descriptor_set.GetHandle());
         return result;
@@ -264,10 +251,8 @@ struct hash<GE::VulkanDescriptorSet>
 // ---- GE::VulkanPipelineState ----
 
 template <>
-struct hash<GE::VulkanPipelineState>
-{
-    size_t operator()(GE::VulkanPipelineState const & /*pipeline_state*/) const
-    {
+struct hash<GE::VulkanPipelineState> {
+    size_t operator()(GE::VulkanPipelineState const & /*pipeline_state*/) const {
         return std::hash<vk::Pipeline>()(VK_NULL_HANDLE);
     }
 };
@@ -275,10 +260,8 @@ struct hash<GE::VulkanPipelineState>
 // ---- GE::VulkanGraphicsPipeline ----
 
 template <>
-struct hash<GE::VulkanGraphicsPipeline>
-{
-    size_t operator()(GE::VulkanGraphicsPipeline const &pipeline) const
-    {
+struct hash<GE::VulkanGraphicsPipeline> {
+    size_t operator()(GE::VulkanGraphicsPipeline const &pipeline) const {
         return std::hash<vk::Pipeline>()(pipeline.GetHandle());
     }
 };
@@ -286,10 +269,8 @@ struct hash<GE::VulkanGraphicsPipeline>
 // ---- GE::VulkanComputePipeline ----
 
 template <>
-struct hash<GE::VulkanComputePipeline>
-{
-    size_t operator()(GE::VulkanComputePipeline const &pipeline) const
-    {
+struct hash<GE::VulkanComputePipeline> {
+    size_t operator()(GE::VulkanComputePipeline const &pipeline) const {
         return std::hash<vk::Pipeline>()(pipeline.GetHandle());
     }
 };
@@ -307,8 +288,7 @@ namespace detail {
  * @brief 对单个值计算 hash 并组合到 seed 中。
  */
 template <typename T>
-inline void hash_param(size_t &seed, const T &value)
-{
+inline void hash_param(size_t &seed, const T &value) {
     hash_combine(seed, value);
 }
 
@@ -316,16 +296,14 @@ inline void hash_param(size_t &seed, const T &value)
  * @brief 对 VkPipelineCache 忽略 hash（不参与缓存 key）。
  */
 template <>
-inline void hash_param(size_t & /*seed*/, const VkPipelineCache & /*value*/)
-{
+inline void hash_param(size_t & /*seed*/, const VkPipelineCache & /*value*/) {
 }
 
 /**
  * @brief 对 vector<uint8_t> 按字符串形式计算 hash。
  */
 template <>
-inline void hash_param(size_t &seed, const std::vector<uint8_t> &value)
-{
+inline void hash_param(size_t &seed, const std::vector<uint8_t> &value) {
     hash_combine(seed, std::string{value.begin(), value.end()});
 }
 
@@ -333,8 +311,7 @@ inline void hash_param(size_t &seed, const std::vector<uint8_t> &value)
  * @brief 递归变参 hash：组合第一个参数，再递归处理剩余参数。
  */
 template <typename T, typename... Args>
-inline void hash_param(size_t &seed, const T &first_arg, const Args &...args)
-{
+inline void hash_param(size_t &seed, const T &first_arg, const Args &... args) {
     hash_param(seed, first_arg);
     hash_param(seed, args...);
 }
@@ -347,28 +324,6 @@ inline void hash_param(size_t &seed, const T &first_arg, const Args &...args)
 // ============================================================================
 
 namespace GE {
-namespace detail {
-
-/**
- * @brief 辅助类，用于记录资源创建信息（默认无操作）。
- *
- * 当需要支持资源回放录制时，可特化此模板。
- */
-template <class T, class... A>
-struct ResourceRecordHelper
-{
-    size_t record(/* HPPResourceRecord &recorder, */ A &.../*args*/)
-    {
-        return 0;
-    }
-
-    void index(/* HPPResourceRecord &recorder, */ size_t /*index*/, T & /*resource*/)
-    {
-    }
-};
-
-} // namespace detail
-
 /**
  * @brief 请求一个已缓存的资源，若不存在则创建并缓存。
  *
@@ -389,41 +344,35 @@ template <class T, class... A>
 T &request_resource(
     VulkanDevice &device,
     std::unordered_map<size_t, T> &resources,
-    A &...args)
-{
+    A &... args) {
     size_t hash{0U};
     detail::hash_param(hash, args...);
 
     auto res_it = resources.find(hash);
 
-    if (res_it != resources.end())
-    {
+    if (res_it != resources.end()) {
         return res_it->second;
     }
 
     // 未命中缓存，创建新资源
     const char *res_type = typeid(T).name();
-    size_t      res_id   = resources.size();
+    size_t res_id = resources.size();
 
     // 仅在非 Debug 模式下捕获异常
 #ifndef NDEBUG
-    try
-    {
+    try {
 #endif
         T resource(device, args...);
 
         auto res_ins_it = resources.emplace(hash, std::move(resource));
 
-        if (!res_ins_it.second)
-        {
+        if (!res_ins_it.second) {
             throw std::runtime_error{std::string{"插入失败: #"} + std::to_string(res_id) + " 缓存对象 (" + res_type + ")"};
         }
 
         res_it = res_ins_it.first;
 #ifndef NDEBUG
-    }
-    catch (const std::exception &e)
-    {
+    } catch (const std::exception &e) {
         throw std::runtime_error{std::string{"创建失败: #"} + std::to_string(res_id) + " 缓存对象 (" + res_type + "): " + e.what()};
     }
 #endif

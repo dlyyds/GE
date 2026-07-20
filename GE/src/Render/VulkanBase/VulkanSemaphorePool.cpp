@@ -65,6 +65,11 @@ void VulkanSemaphorePool::ReleaseOwnedSemaphore(vk::Semaphore semaphore) {
 
 void VulkanSemaphorePool::Reset() {
     m_ActiveSemaphoreCount = 0;
+
+    // 将已归还所有权的 semaphore 回收回可用池中
+    for (auto &sem : m_ReleasedSemaphores) {
+        m_Semaphores.push_back(sem);
+    }
     m_ReleasedSemaphores.clear();
 }
 

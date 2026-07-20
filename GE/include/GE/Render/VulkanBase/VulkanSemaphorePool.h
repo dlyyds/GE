@@ -60,16 +60,18 @@ public:
     /**
      * @brief 请求一个 semaphore。
      *        优先返回池中已分配但当前未使用的 semaphore，否则创建新 semaphore。
+     * @param debug_name 可选的调试名称，传入后在 RenderDoc 中可见。
      * @return vk::Semaphore 句柄（池内管理，调用方无需销毁）。
      */
-    vk::Semaphore RequestSemaphore();
+    vk::Semaphore RequestSemaphore(const char *debug_name = nullptr);
 
     /**
      * @brief 请求一个 semaphore 并转移所有权给调用方。
      *        调用方负责在适当时机销毁返回的 semaphore。
+     * @param debug_name 可选的调试名称，传入后在 RenderDoc 中可见。
      * @return vk::Semaphore 句柄（调用方拥有所有权）。
      */
-    vk::Semaphore RequestSemaphoreWithOwnership();
+    vk::Semaphore RequestSemaphoreWithOwnership(const char *debug_name = nullptr);
 
     /**
      * @brief 归还拥有所有权的 semaphore 到池中。

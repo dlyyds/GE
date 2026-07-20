@@ -17,6 +17,9 @@
 
 #include "Render/VulkanBase/VulkanSemaphorePool.h"
 #include "Render/VulkanBase/VulkanDevice.h"
+#include "Render/VulkanBase/VulkanDebug.h"
+
+#include <format>
 
 namespace GE {
 
@@ -33,7 +36,7 @@ VulkanSemaphorePool::~VulkanSemaphorePool() {
     m_ReleasedSemaphores.clear();
 }
 
-vk::Semaphore VulkanSemaphorePool::RequestSemaphore() {
+vk::Semaphore VulkanSemaphorePool::RequestSemaphore(const char *debug_name) {
     // 检查是否有已释放的 semaphore（所有权已归还）
     if (!m_ReleasedSemaphores.empty()) {
         auto sem = m_ReleasedSemaphores.back();
@@ -49,14 +52,37 @@ vk::Semaphore VulkanSemaphorePool::RequestSemaphore() {
     // 创建新 semaphore
     auto vkDevice = m_Device.GetHandle();
     auto sem = vkDevice.createSemaphore(vk::SemaphoreCreateInfo{});
+
+    // 设置 Debug Name
+    if (debug_name) {
+        m_Device.GetDebugUtils().SetDebugName(
+            vkDevice, vk::ObjectType::eSemaphore, (uint64_t)static_cast<VkSemaphore>(sem), debug_name);
+    } else {
+        auto name = std::format("SemaphorePool_{}", m_Semaphores.size());
+        m_Device.GetDebugUtils().SetDebugName(
+            vkDevice, vk::ObjectType::eSemaphore, (uint64_t)static_cast<VkSemaphore>(sem), name.c_str());
+    }
+
     m_Semaphores.push_back(sem);
     m_ActiveSemaphoreCount++;
     return sem;
 }
 
-vk::Semaphore VulkanSemaphorePool::RequestSemaphoreWithOwnership() {
+vk::Semaphore VulkanSemaphorePool::RequestSemaphoreWithOwnership(const char *debug_name) {
     auto vkDevice = m_Device.GetHandle();
-    return vkDevice.createSemaphore(vk::SemaphoreCreateInfo{});
+    auto sem = vkDevice.createSemaphore(vk::SemaphoreCreateInfo{});
+
+    // 设置 Debug Name
+    if (debug_name) {
+        m_Device.GetDebugUtils().SetDebugName(
+            vkDevice, vk::ObjectType::eSemaphore, (uint64_t)static_cast<VkSemaphore>(sem), debug_name);
+    } else {
+        auto name = std::format("SemaphoreOwned_{}", m_Semaphores.size());
+        m_Device.GetDebugUtils().SetDebugName(
+            vkDevice, vk::ObjectType::eSemaphore, (uint64_t)static_cast<VkSemaphore>(sem), name.c_str());
+    }
+
+    return sem;
 }
 
 void VulkanSemaphorePool::ReleaseOwnedSemaphore(vk::Semaphore semaphore) {

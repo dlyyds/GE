@@ -33,13 +33,12 @@ namespace GE {
 // 构造函数
 // ============================================================================
 
-VulkanRenderContext::VulkanRenderContext(VulkanDevice                           &device,
-                                         vk::SurfaceKHR                          surface,
-                                         const Window                           &window,
-                                         vk::PresentModeKHR                      present_mode,
-                                         const std::vector<vk::PresentModeKHR>  &present_mode_priority_list,
-                                         const std::vector<vk::SurfaceFormatKHR> &surface_format_priority_list) :
-    m_Device(device),
+VulkanRenderContext::VulkanRenderContext(VulkanDevice &device,
+                                         vk::SurfaceKHR surface,
+                                         const Window &window,
+                                         vk::PresentModeKHR present_mode,
+                                         const std::vector<vk::PresentModeKHR> &present_mode_priority_list,
+                                         const std::vector<vk::SurfaceFormatKHR> &surface_format_priority_list) : m_Device(device),
     m_Window(window),
     m_Queue(device.GetQueueByFlags(vk::QueueFlagBits::eGraphics, 0)),
     m_SurfaceExtent{window.GetExtent().width, window.GetExtent().height} {
@@ -50,20 +49,20 @@ VulkanRenderContext::VulkanRenderContext(VulkanDevice                           
 // 初始化 swapchain
 // ============================================================================
 
-void VulkanRenderContext::InitializeSwapchain(vk::SurfaceKHR                           surface,
-                                               vk::PresentModeKHR                       present_mode,
-                                               const std::vector<vk::PresentModeKHR>   &present_mode_priority_list,
-                                               const std::vector<vk::SurfaceFormatKHR> &surface_format_priority_list) {
+void VulkanRenderContext::InitializeSwapchain(vk::SurfaceKHR surface,
+                                              vk::PresentModeKHR present_mode,
+                                              const std::vector<vk::PresentModeKHR> &present_mode_priority_list,
+                                              const std::vector<vk::SurfaceFormatKHR> &surface_format_priority_list) {
     if (surface) {
         vk::SurfaceCapabilitiesKHR surface_properties = m_Device.GetGpu().GetHandle().getSurfaceCapabilitiesKHR(surface);
 
         if (surface_properties.currentExtent.width == 0xFFFFFFFF) {
             m_Swapchain = std::make_unique<VulkanSwapchain>(m_Device, surface, present_mode,
-                                                             present_mode_priority_list, surface_format_priority_list,
-                                                             m_SurfaceExtent);
+                                                            present_mode_priority_list, surface_format_priority_list,
+                                                            m_SurfaceExtent);
         } else {
             m_Swapchain = std::make_unique<VulkanSwapchain>(m_Device, surface, present_mode,
-                                                             present_mode_priority_list, surface_format_priority_list);
+                                                            present_mode_priority_list, surface_format_priority_list);
         }
     }
 }
@@ -99,7 +98,7 @@ void VulkanRenderContext::BeginFrame() {
     auto &prev_frame = *m_Frames[m_ActiveFrameIndex];
 
     // 获取 acquire semaphore（所有权转移，供不同帧上下文使用）
-    m_AcquiredSemaphore = prev_frame.GetSemaphorePool().RequestSemaphoreWithOwnership();
+    m_AcquiredSemaphore = prev_frame.GetSemaphorePool().RequestSemaphoreWithOwnership("AcquireSemaphore");
 
     if (m_Swapchain) {
         vk::Result result;
@@ -115,7 +114,7 @@ void VulkanRenderContext::BeginFrame() {
             if (swapchain_updated) {
                 // 需要销毁并重新分配 acquired_semaphore，因为它可能已被 signal
                 m_Device.GetHandle().destroySemaphore(m_AcquiredSemaphore);
-                m_AcquiredSemaphore = prev_frame.GetSemaphorePool().RequestSemaphoreWithOwnership();
+                m_AcquiredSemaphore = prev_frame.GetSemaphorePool().RequestSemaphoreWithOwnership("AcquireSemaphore");
                 std::tie(result, m_ActiveFrameIndex) = m_Swapchain->AcquireNextImage(m_AcquiredSemaphore);
             }
         }
@@ -141,10 +140,10 @@ void VulkanRenderContext::EndFrame(vk::Semaphore semaphore) {
 
         vk::PresentInfoKHR present_info{
             .waitSemaphoreCount = 1,
-            .pWaitSemaphores    = &semaphore,
-            .swapchainCount     = 1,
-            .pSwapchains        = &vk_swapchain,
-            .pImageIndices      = &m_ActiveFrameIndex,
+            .pWaitSemaphores = &semaphore,
+            .swapchainCount = 1,
+            .pSwapchains = &vk_swapchain,
+            .pImageIndices = &m_ActiveFrameIndex,
         };
 
         // 检查是否支持显示呈现信息
@@ -199,7 +198,7 @@ VulkanRenderFrame &VulkanRenderContext::GetLastRenderedFrame() {
     return *m_Frames[m_ActiveFrameIndex];
 }
 
-std::vector<std::unique_ptr<VulkanRenderFrame>> &VulkanRenderContext::GetRenderFrames() {
+std::vector<std::unique_ptr<VulkanRenderFrame> > &VulkanRenderContext::GetRenderFrames() {
     return m_Frames;
 }
 
@@ -272,10 +271,10 @@ void VulkanRenderContext::Prepare(size_t thread_count) {
 
         // 为每个 swapchain image 创建 RenderTarget 和 RenderFrame
         RenderTargetDesc desc;
-        desc.extent      = m_SurfaceExtent;
+        desc.extent = m_SurfaceExtent;
         desc.colorFormat = m_Swapchain->GetFormat();
         desc.sampleCount = vk::SampleCountFlagBits::e1;
-        desc.enableMSAA  = false;
+        desc.enableMSAA = false;
         desc.enableDepth = false;
 
         for (auto &image_handle : m_Swapchain->GetImages()) {
@@ -292,7 +291,7 @@ void VulkanRenderContext::Prepare(size_t thread_count) {
     // TODO: 离屏渲染模式（无 swapchain）
 
     m_ThreadCount = thread_count;
-    m_Prepared    = true;
+    m_Prepared = true;
 }
 
 void VulkanRenderContext::Recreate() {
@@ -302,14 +301,14 @@ void VulkanRenderContext::Recreate() {
     auto frame_it = m_Frames.begin();
 
     RenderTargetDesc desc;
-    desc.extent      = swapchain_extent;
+    desc.extent = swapchain_extent;
     desc.colorFormat = m_Swapchain->GetFormat();
     desc.sampleCount = vk::SampleCountFlagBits::e1;
-    desc.enableMSAA  = false;
+    desc.enableMSAA = false;
     desc.enableDepth = false;
 
     for (auto &image_handle : m_Swapchain->GetImages()) {
-        auto image_view   = std::make_unique<VulkanImageView>(image_handle, vk::ImageViewType::e2D, m_Swapchain->GetFormat());
+        auto image_view = std::make_unique<VulkanImageView>(image_handle, vk::ImageViewType::e2D, m_Swapchain->GetFormat());
         auto render_target = std::make_unique<RenderTarget>(m_Device, desc, std::move(image_view));
 
         if (frame_it != m_Frames.end()) {
@@ -338,16 +337,16 @@ void VulkanRenderContext::RecreateSwapchain() {
     vk::Extent3D extent{swapchain_extent.width, swapchain_extent.height, 1};
 
     RenderTargetDesc desc;
-    desc.extent      = swapchain_extent;
+    desc.extent = swapchain_extent;
     desc.colorFormat = m_Swapchain->GetFormat();
     desc.sampleCount = vk::SampleCountFlagBits::e1;
-    desc.enableMSAA  = false;
+    desc.enableMSAA = false;
     desc.enableDepth = false;
 
     auto frame_it = m_Frames.begin();
 
     for (auto &image_handle : m_Swapchain->GetImages()) {
-        auto image_view   = std::make_unique<VulkanImageView>(image_handle, vk::ImageViewType::e2D, m_Swapchain->GetFormat());
+        auto image_view = std::make_unique<VulkanImageView>(image_handle, vk::ImageViewType::e2D, m_Swapchain->GetFormat());
         auto render_target = std::make_unique<RenderTarget>(m_Device, desc, std::move(image_view));
 
         (*frame_it)->UpdateRenderTarget(std::move(render_target));
@@ -412,7 +411,7 @@ void VulkanRenderContext::UpdateSwapchainImpl(const vk::Extent2D &extent, vk::Su
     // 清除 framebuffer 缓存
     // 注意：当前项目未实现 ResourceCaching 的 framebuffer 缓存清除
 
-    auto width  = extent.width;
+    auto width = extent.width;
     auto height = extent.height;
     if (transform == vk::SurfaceTransformFlagBitsKHR::eRotate90 || transform == vk::SurfaceTransformFlagBitsKHR::eRotate270) {
         // 预旋转：始终使用原生方向
@@ -460,28 +459,28 @@ void VulkanRenderContext::Submit(const std::vector<vk::CommandBuffer> &command_b
     if (m_Swapchain) {
         assert(m_AcquiredSemaphore && "没有 acquired_semaphore，可能已被 consume？");
         render_semaphore = Submit(m_Queue, command_buffers, m_AcquiredSemaphore,
-                                   vk::PipelineStageFlagBits::eColorAttachmentOutput);
+                                  vk::PipelineStageFlagBits::eColorAttachmentOutput);
     }
 
     EndFrame(render_semaphore);
 }
 
-vk::Semaphore VulkanRenderContext::Submit(const VulkanQueue           &queue,
-                                           const std::vector<vk::CommandBuffer> &command_buffers,
-                                           vk::Semaphore                wait_semaphore,
-                                           vk::PipelineStageFlags       wait_pipeline_stage) {
+vk::Semaphore VulkanRenderContext::Submit(const VulkanQueue &queue,
+                                          const std::vector<vk::CommandBuffer> &command_buffers,
+                                          vk::Semaphore wait_semaphore,
+                                          vk::PipelineStageFlags wait_pipeline_stage) {
     VulkanRenderFrame &frame = *m_Frames[m_ActiveFrameIndex];
 
-    vk::Semaphore signal_semaphore = frame.GetSemaphorePool().RequestSemaphore();
+    vk::Semaphore signal_semaphore = frame.GetSemaphorePool().RequestSemaphore("SignalSemaphore");
 
     vk::SubmitInfo submit_info{
-        .waitSemaphoreCount   = 1,
-        .pWaitSemaphores      = &wait_semaphore,
-        .pWaitDstStageMask    = &wait_pipeline_stage,
-        .commandBufferCount   = static_cast<uint32_t>(command_buffers.size()),
-        .pCommandBuffers      = command_buffers.data(),
+        .waitSemaphoreCount = 1,
+        .pWaitSemaphores = &wait_semaphore,
+        .pWaitDstStageMask = &wait_pipeline_stage,
+        .commandBufferCount = static_cast<uint32_t>(command_buffers.size()),
+        .pCommandBuffers = command_buffers.data(),
         .signalSemaphoreCount = 1,
-        .pSignalSemaphores    = &signal_semaphore,
+        .pSignalSemaphores = &signal_semaphore,
     };
 
     vk::Fence fence = frame.GetFencePool().RequestFence();
@@ -493,7 +492,7 @@ vk::Semaphore VulkanRenderContext::Submit(const VulkanQueue           &queue,
 void VulkanRenderContext::Submit(const VulkanQueue &queue, const std::vector<vk::CommandBuffer> &command_buffers) {
     vk::SubmitInfo submit_info{
         .commandBufferCount = static_cast<uint32_t>(command_buffers.size()),
-        .pCommandBuffers    = command_buffers.data(),
+        .pCommandBuffers = command_buffers.data(),
     };
 
     vk::Fence fence = m_Frames[m_ActiveFrameIndex]->GetFencePool().RequestFence();
@@ -522,9 +521,8 @@ VulkanRenderContext::~VulkanRenderContext() {
         m_AcquiredSemaphore = nullptr;
     }
 
-    // 显式清理 unique_ptr，确保析构顺序正确
-    m_Frames.clear();      // 先销毁 RenderFrame（其内部资源可能引用 Device）
-    m_Swapchain.reset();   // 再销毁 Swapchain
+    m_Frames.clear();
+    m_Swapchain.reset();
 }
 
 } // namespace GE

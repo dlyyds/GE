@@ -149,18 +149,19 @@ void ImGuiLayer::End() {
 
     ImGui::Render();
 
-    auto cmd = Application::GetFrameCmd();
+    auto cmd   = Application::GetFrameCmd();
+    auto vkCmd = cmd->GetHandle();
 
     // Render ImGui on top with loadOp = eLoad to preserve the scene.
     VulkanRenderingInfo render_info;
     render_info.SetRenderArea(0, 0, static_cast<uint32_t>(io.DisplaySize.x),
                               static_cast<uint32_t>(io.DisplaySize.y));
-    render_info.AddColorAttachment(Application::GetFrameImageView(),
+    render_info.AddColorAttachment(Application::GetFrameImageView().GetHandle(),
                                    vk::AttachmentLoadOp::eLoad,
                                    vk::AttachmentStoreOp::eStore);
-    render_info.Begin(cmd);
-    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
-    render_info.End(cmd);
+    render_info.Begin(vkCmd);
+    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), vkCmd);
+    render_info.End(vkCmd);
 }
 
 void ImGuiLayer::OnImGuiRender() {

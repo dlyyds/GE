@@ -107,6 +107,7 @@ void TriangleLayer::OnDetach() {
 
 void TriangleLayer::OnUpdate(Timestep &ts) {
     auto cmd        = Application::GetFrameCmd();
+    auto vkCmd      = cmd->GetHandle();
     auto extent     = Application::GetSwapchain().GetExtent();
 
     // ── 开始动态渲染 ──────────────────────────────────────────────────
@@ -115,14 +116,14 @@ void TriangleLayer::OnUpdate(Timestep &ts) {
 
     VulkanRenderingInfo renderInfo;
     renderInfo.SetRenderArea(0, 0, extent.width, extent.height);
-    renderInfo.AddColorAttachment(Application::GetFrameImageView(),
+    renderInfo.AddColorAttachment(Application::GetFrameImageView().GetHandle(),
                                   vk::AttachmentLoadOp::eClear,
                                   vk::AttachmentStoreOp::eStore,
                                   clearValue);
-    renderInfo.Begin(cmd);
+    renderInfo.Begin(vkCmd);
 
     // ── 绑定管线（必须先 bind，再设动态状态 —— bind 会重置动态状态） ──
-    m_Pipeline->Bind(cmd);
+    m_Pipeline->Bind(vkCmd);
 
     // ── 动态状态 ──────────────────────────────────────────────────────
     vk::Viewport vp;
@@ -130,26 +131,26 @@ void TriangleLayer::OnUpdate(Timestep &ts) {
     vp.height = static_cast<float>(extent.height);
     vp.minDepth = 0.0f;
     vp.maxDepth = 1.0f;
-    cmd.setViewport(0, vp);
+    vkCmd.setViewport(0, vp);
 
     vk::Rect2D scissor;
     scissor.extent.width  = extent.width;
     scissor.extent.height = extent.height;
-    cmd.setScissor(0, scissor);
+    vkCmd.setScissor(0, scissor);
 
-    cmd.setCullMode(vk::CullModeFlagBits::eNone);
-    cmd.setFrontFace(vk::FrontFace::eCounterClockwise);
-    cmd.setPrimitiveTopology(vk::PrimitiveTopology::eTriangleList);
+    vkCmd.setCullMode(vk::CullModeFlagBits::eNone);
+    vkCmd.setFrontFace(vk::FrontFace::eCounterClockwise);
+    vkCmd.setPrimitiveTopology(vk::PrimitiveTopology::eTriangleList);
 
     // ── 绑定顶点 buffer ───────────────────────────────────────────────
     vk::Buffer vb = m_VertexBuffer->GetHandle();
-    cmd.bindVertexBuffers(0, vb, {0});
+    vkCmd.bindVertexBuffers(0, vb, {0});
 
     // ── 绘制 3 个顶点 ─────────────────────────────────────────────────
-    cmd.draw(3, 1, 0, 0);
+    vkCmd.draw(3, 1, 0, 0);
 
     // ── 结束渲染 ──────────────────────────────────────────────────────
-    VulkanRenderingInfo::End(cmd);
+    VulkanRenderingInfo::End(vkCmd);
 }
 
 void TriangleLayer::OnEvent(Event &event) {

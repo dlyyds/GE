@@ -63,10 +63,10 @@ public:
     static VulkanRenderContext &GetRenderContext() { return *Get().m_RenderContext; }
 
 
-    /// 帧渲染辅助：当前帧的 command buffer 和 image view。
-    static vk::CommandBuffer GetFrameCmd() { return Get().m_ActiveFrameCmd ? Get().m_ActiveFrameCmd->GetHandle() : nullptr; }
+    /// 帧渲染辅助：当前帧的 command buffer 和 image view（返回封装对象）。
+    static VulkanCommandBuffer *GetFrameCmd() { return Get().m_ActiveFrameCmd.get(); }
     static uint32_t GetFrameImageIndex() { return GetRenderContext().GetActiveFrameIndex(); }
-    static vk::ImageView GetFrameImageView() { return GetRenderContext().GetActiveFrame().GetRenderTarget().GetSwapchainView().GetHandle(); }
+    static VulkanImageView &GetFrameImageView() { return GetRenderContext().GetActiveFrame().GetRenderTarget().GetSwapchainView(); }
 
 private:
     void Run();

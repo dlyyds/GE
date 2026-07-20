@@ -104,13 +104,13 @@ void Application::Run() {
 
         if (!m_Minimized) {
             // 1. Begin frame — 自动 acquire next image，处理 surface 变化
-            auto cmd = m_RenderContext->Begin();
-            cmd->Begin(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
+            m_ActiveFrameCmd = m_RenderContext->Begin();
+            m_ActiveFrameCmd->Begin(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
             // 2. Transition to color attachment
             auto &swapchain = m_RenderContext->GetSwapchain();
             auto &img = swapchain.GetImages()[m_RenderContext->GetActiveFrameIndex()];
-            image_utils::TransitionLayout(cmd->GetHandle(), img.GetHandle(),
+            image_utils::TransitionLayout(m_ActiveFrameCmd->GetHandle(), img.GetHandle(),
                                           vk::ImageLayout::eUndefined,
                                           vk::ImageLayout::eColorAttachmentOptimal);
 
@@ -125,13 +125,16 @@ void Application::Run() {
             ImGuiLayer::End();
 
             // 5. Transition to present + end command buffer
-            image_utils::TransitionLayout(cmd->GetHandle(), img.GetHandle(),
+            image_utils::TransitionLayout(m_ActiveFrameCmd->GetHandle(), img.GetHandle(),
                                           vk::ImageLayout::eColorAttachmentOptimal,
                                           vk::ImageLayout::ePresentSrcKHR);
-            cmd->End();
+            m_ActiveFrameCmd->End();
 
             // 6. Submit + present（内部调用 EndFrame）
-            m_RenderContext->Submit(cmd->GetHandle());
+            m_RenderContext->Submit(m_ActiveFrameCmd->GetHandle());
+
+            // 7. 清除帧状态
+            m_ActiveFrameCmd.reset();
         }
         m_Window->OnUpdate();
     }

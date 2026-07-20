@@ -84,7 +84,8 @@ std::shared_ptr<VulkanCommandBuffer> VulkanRenderContext::Begin(CommandBufferRes
     }
 
     const auto &queue = m_Device.GetQueueByFlags(vk::QueueFlagBits::eGraphics, 0);
-    return GetActiveFrame().GetCommandPool(queue, reset_mode).RequestCommandBuffer();
+    auto cmd = GetActiveFrame().GetCommandPool(queue, reset_mode).RequestCommandBuffer();
+    return cmd;
 }
 
 void VulkanRenderContext::BeginFrame() {

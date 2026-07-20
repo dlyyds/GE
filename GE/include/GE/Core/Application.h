@@ -64,7 +64,7 @@ public:
 
 
     /// 帧渲染辅助：当前帧的 command buffer 和 image view。
-    static vk::CommandBuffer GetFrameCmd() { return GetRenderContext().GetActiveFrameCmd(); }
+    static vk::CommandBuffer GetFrameCmd() { return Get().m_ActiveFrameCmd ? Get().m_ActiveFrameCmd->GetHandle() : nullptr; }
     static uint32_t GetFrameImageIndex() { return GetRenderContext().GetActiveFrameIndex(); }
     static vk::ImageView GetFrameImageView() { return GetRenderContext().GetActiveFrame().GetRenderTarget().GetSwapchainView(); }
 
@@ -95,6 +95,9 @@ private:
     // -- Vulkan 资源 --
     std::unique_ptr<VulkanContext> m_VulkanContext;
     std::unique_ptr<VulkanRenderContext> m_RenderContext;
+
+    /// 当前帧的 command buffer（封装对象，生命周期由 Application 管理）。
+    std::shared_ptr<VulkanCommandBuffer> m_ActiveFrameCmd;
 
 private:
     static Application *s_Instance;

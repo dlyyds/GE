@@ -130,6 +130,7 @@ public:
      */
     VulkanRenderFrame &GetActiveFrame();
 
+    
     /**
      * @brief 获取当前活跃帧索引。
      * @return 当前活跃帧索引。

@@ -15,8 +15,7 @@
 
 #include "Render/VulkanBase/VulkanContext.h"
 #include "Render/VulkanBase/VulkanImageView.h"
-#include "Render/VulkanBase/VulkanSwapchain.h"
-#include "Render/VulkanBase/VulkanPerFrame.h"
+#include "Render/VulkanBase/VulkanRenderContext.h"
 
 int main(int argc, char **argv);
 
@@ -61,7 +60,8 @@ public:
     /// 访问 Vulkan 全局上下文（提供给 Layer 等创建 Vulkan 资源用）。
     static VulkanContext &GetVulkanContext() { return *Get().m_VulkanContext; }
 
-    static VulkanSwapchain &GetSwapchain() { return *Get().m_Swapchain; }
+    static const VulkanSwapchain &GetSwapchain() { return Get().m_RenderContext->GetSwapchain(); }
+    static VulkanRenderContext &GetRenderContext() { return *Get().m_RenderContext; }
 
 
     /// 帧渲染辅助：当前帧的 command buffer 和 image index。
@@ -95,13 +95,11 @@ private:
 
     // -- Vulkan 资源 --
     std::unique_ptr<VulkanContext> m_VulkanContext;
-    std::unique_ptr<VulkanSwapchain> m_Swapchain;
+    std::unique_ptr<VulkanRenderContext> m_RenderContext;
 
 
-    // -- 帧管理（已从 VulkanSwapchain 剥离） --
+    // -- 帧管理辅助 --
     std::vector<VulkanImageView> m_SwapchainImageViews;
-    std::vector<VulkanPerFrame> m_PerFrame;
-    std::vector<vk::Semaphore> m_RecycledSemaphores;
     vk::CommandBuffer m_CurrentCmd = nullptr;
     uint32_t m_CurrentImageIndex = ~0u;
 

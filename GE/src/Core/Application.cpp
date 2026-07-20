@@ -11,6 +11,7 @@
 
 #include "Render/VulkanBase/VulkanImage.h"
 #include "Render/VulkanBase/VulkanRenderingInfo.h"
+#include "Render/VulkanBase/VulkanRenderContext.h"
 
 #include <Events/ApplicationEvent.h>
 
@@ -34,37 +35,32 @@ Application::Application(const std::string &name, ApplicationCommandLineArgs arg
     // 1. 初始化 Vulkan 上下文（构造中完成 Instance → Surface → Device → VMA）
     m_VulkanContext = std::make_unique<VulkanContext>(*m_Window);
 
-    // 2. 创建 Swapchain（匹配 HPPSwapchain 构造函数）
+    // 2. 创建 RenderContext（内部创建 Swapchain 和 RenderFrame 管理）
     auto &dev = m_VulkanContext->GetDevice();
-    m_Swapchain = std::make_unique<VulkanSwapchain>(
-        dev, m_VulkanContext->GetSurface(),
+    m_RenderContext = std::make_unique<VulkanRenderContext>(
+        dev, m_VulkanContext->GetSurface(), *m_Window,
         vk::PresentModeKHR::eMailbox,
         std::vector<vk::PresentModeKHR>{vk::PresentModeKHR::eMailbox, vk::PresentModeKHR::eFifo},
         std::vector<vk::SurfaceFormatKHR>{
             {vk::Format::eR8G8B8A8Srgb, vk::ColorSpaceKHR::eSrgbNonlinear},
             {vk::Format::eB8G8R8A8Srgb, vk::ColorSpaceKHR::eSrgbNonlinear},
-        },
-        vk::Extent2D{m_Window->GetWidth(), m_Window->GetHeight()});
+        });
 
-    // 3. 创建 swapchain image views + per-frame 资源
+    // 3. 创建 swapchain image views + 准备 RenderContext
     {
-        auto &images = m_Swapchain->GetImages();
+        auto &swapchain = m_RenderContext->GetSwapchain();
+        auto &images = swapchain.GetImages();
         auto imageCount = images.size();
-        auto vkDevice = dev.GetHandle();
-        auto queueIndex = dev.GetQueueByFlags(vk::QueueFlagBits::eGraphics, 0).GetFamilyIndex();
 
         // ImageViews
         m_SwapchainImageViews.reserve(imageCount);
         for (auto &img : images) {
             m_SwapchainImageViews.emplace_back(
-                img, vk::ImageViewType::e2D, m_Swapchain->GetFormat());
+                img, vk::ImageViewType::e2D, swapchain.GetFormat());
         }
 
-        // PerFrame（command pool / fence / semaphores）
-        m_PerFrame.resize(imageCount);
-        for (auto &pf : m_PerFrame) {
-            pf.Init(vkDevice, queueIndex);
-        }
+        // 准备 RenderFrames（为每个 swapchain image 创建 RenderFrame）
+        m_RenderContext->Prepare();
     }
 
     // 5. 初始化渲染器（RingBuffer 等）
@@ -86,24 +82,15 @@ Application::~Application() {
     m_LayerStack.Clear();
     m_ImGuiLayer.reset();
 
-    // 4. 关闭渲染器（释放 RingBuffer）
+    // 3. 关闭渲染器（释放 RingBuffer）
 
-    // 5. 销毁 per-frame 资源（VulkanImageView 为 RAII，析构时自动销毁）
-    auto vkDevice = m_VulkanContext->GetVkDevice();
+    // 4. 销毁 per-frame 资源
     m_SwapchainImageViews.clear();
 
-    for (auto &pf : m_PerFrame)
-        pf.Destroy(vkDevice);
-    m_PerFrame.clear();
+    // 5. 销毁 RenderContext（内部销毁 RenderFrames 和 Swapchain）
+    m_RenderContext.reset();
 
-    for (auto sem : m_RecycledSemaphores)
-        vkDevice.destroySemaphore(sem);
-    m_RecycledSemaphores.clear();
-
-    // 6. 销毁 Swapchain（unique_ptr 析构自动触发 VulkanSwapchain 析构）
-    m_Swapchain.reset();
-
-    // 7. 销毁 Vulkan 上下文（unique_ptr 析构自动触发 VulkanContext::Destroy）
+    // 6. 销毁 Vulkan 上下文（unique_ptr 析构自动触发 VulkanContext::Destroy）
     m_VulkanContext.reset();
 
     s_Instance = nullptr;
@@ -128,117 +115,45 @@ void Application::Run() {
                 // 重置
                 m_FrameTimeAccumulator = 0.0f;
                 m_FrameCount = 0;
-
-                //    GE_CORE_INFO("fps: {0}", m_FPS);
             }
         }
 
         m_LastFrameTime = time;
 
         if (!m_Minimized) {
-            auto vkDevice = m_VulkanContext->GetVkDevice();
-            auto queue = m_VulkanContext->GetVkQueue();
-            auto &swapchain = *m_Swapchain;
+            // 1. Begin frame — 自动 acquire next image，处理 surface 变化
+            auto cmd = m_RenderContext->Begin();
 
-            // 1. 准备 acquire semaphore（优先从回收池取）
-            vk::Semaphore acquireSem;
-            if (m_RecycledSemaphores.empty()) {
-                acquireSem = vkDevice.createSemaphore(vk::SemaphoreCreateInfo{});
-            } else {
-                acquireSem = m_RecycledSemaphores.back();
-                m_RecycledSemaphores.pop_back();
-            }
-
-            // 2. Acquire next image
-            auto [result, imageIndex] = swapchain.AcquireNextImage(acquireSem);
-            if (result == vk::Result::eErrorOutOfDateKHR || result == vk::Result::eSuboptimalKHR) {
-                m_RecycledSemaphores.push_back(acquireSem);
-                RecreateSwapchain();
-                m_Window->OnUpdate();
-                continue;
-            }
-            if (result != vk::Result::eSuccess) {
-                m_RecycledSemaphores.push_back(acquireSem);
-                m_Window->OnUpdate();
-                continue;
-            }
-
-            // 3. Per-frame 同步 + 交换 acquire semaphore
-            auto &pf = m_PerFrame[imageIndex];
-            pf.WaitAndResetFence(vkDevice);
-            pf.ResetCommandPool(vkDevice);
-
-            vk::Semaphore oldSem = pf.TakeAcquireSemaphore();
-            if (oldSem)
-                m_RecycledSemaphores.push_back(oldSem);
-            pf.GiveAcquireSemaphore(acquireSem);
-
-            // 4. Begin command buffer + layout transition
-            auto cmd = pf.GetCommandBuffer();
-            cmd.begin(vk::CommandBufferBeginInfo{.flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
-            image_utils::TransitionLayout(cmd, swapchain.GetImages()[imageIndex].GetHandle(),
-                                          vk::ImageLayout::eUndefined, vk::ImageLayout::eColorAttachmentOptimal);
-
-            // 5. 存储帧状态（供 Renderer / ImGuiLayer 通过 Application 访问）
+            // 2. 存储帧状态（供 Layer 通过 Application 访问）
             m_CurrentCmd = cmd;
-            m_CurrentImageIndex = imageIndex;
+            m_CurrentImageIndex = m_RenderContext->GetActiveFrameIndex();
 
-            // 6. OnUpdate（内部调用 Renderer::BeginScene + draw + EndScene）
+            // 3. Transition to color attachment
+            auto &swapchain = m_RenderContext->GetSwapchain();
+            auto &img = swapchain.GetImages()[m_CurrentImageIndex];
+            image_utils::TransitionLayout(cmd, img.GetHandle(),
+                                          vk::ImageLayout::eUndefined,
+                                          vk::ImageLayout::eColorAttachmentOptimal);
+
+            // 4. OnUpdate（内部调用 Renderer::BeginScene + draw + EndScene）
             for (auto &layer : m_LayerStack)
                 layer->OnUpdate(timestep);
 
-            // 7. ImGui
+            // 5. ImGui
             ImGuiLayer::Begin();
             for (auto &layer : m_LayerStack)
                 layer->OnImGuiRender();
             ImGuiLayer::End();
 
-            // 8. Transition to present + end command buffer
-            image_utils::TransitionLayout(cmd, swapchain.GetImages()[imageIndex].GetHandle(),
-                                          vk::ImageLayout::eColorAttachmentOptimal, vk::ImageLayout::ePresentSrcKHR);
-            cmd.end();
+            // 6. Transition to present
+            image_utils::TransitionLayout(cmd, img.GetHandle(),
+                                          vk::ImageLayout::eColorAttachmentOptimal,
+                                          vk::ImageLayout::ePresentSrcKHR);
 
-            // 9. Submit
-            {
-                vk::PipelineStageFlags waitStage = vk::PipelineStageFlagBits::eColorAttachmentOutput;
-                vk::Semaphore acquire = pf.GetAcquireSemaphore();
-                vk::Semaphore release = pf.GetReleaseSemaphore();
-                vk::Fence fence = pf.GetSubmitFence();
+            // 7. End frame — 自动 submit + present
+            m_RenderContext->EndFrame(vk::Semaphore{nullptr});
 
-                vk::SubmitInfo submitInfo{
-                    .waitSemaphoreCount = 1,
-                    .pWaitSemaphores = &acquire,
-                    .pWaitDstStageMask = &waitStage,
-                    .commandBufferCount = 1,
-                    .pCommandBuffers = &cmd,
-                    .signalSemaphoreCount = 1,
-                    .pSignalSemaphores = &release,
-                };
-                queue.submit(submitInfo, fence);
-            }
-
-            // 10. Present
-            {
-                vk::Semaphore release = pf.GetReleaseSemaphore();
-                auto swapchainHandle = swapchain.GetHandle();
-                vk::PresentInfoKHR presentInfo{
-                    .waitSemaphoreCount = 1,
-                    .pWaitSemaphores = &release,
-                    .swapchainCount = 1,
-                    .pSwapchains = &swapchainHandle,
-                    .pImageIndices = &imageIndex,
-                };
-                try {
-                    auto presentResult = queue.presentKHR(presentInfo);
-                    if (presentResult == vk::Result::eErrorOutOfDateKHR || presentResult == vk::Result::eSuboptimalKHR) {
-                        RecreateSwapchain();
-                    }
-                } catch (vk::OutOfDateKHRError &) {
-                    RecreateSwapchain();
-                }
-            }
-
-            // 11. 清除帧状态
+            // 8. 清除帧状态
             m_CurrentCmd = nullptr;
             m_CurrentImageIndex = ~0u;
         }
@@ -278,31 +193,16 @@ void Application::RecreateSwapchain() {
     // 1. 销毁旧 image views（VulkanImageView 为 RAII，clear 时自动销毁）
     m_SwapchainImageViews.clear();
 
-    // 2. 使用重建构造函数创建新 swapchain（沿用旧 swapchain 的参数，仅更新 extent）
-    auto newSwapchain = std::make_unique<VulkanSwapchain>(
-        *m_Swapchain,
-        vk::Extent2D{windowWidth, windowHeight});
-    m_Swapchain = std::move(newSwapchain);
+    // 2. 使用 RenderContext 更新 swapchain 的 extent
+    m_RenderContext->UpdateSwapchain(vk::Extent2D{windowWidth, windowHeight});
 
     // 3. 为新 swapchain images 创建 image views
-    auto &images = m_Swapchain->GetImages();
+    auto &swapchain = m_RenderContext->GetSwapchain();
+    auto &images = swapchain.GetImages();
     m_SwapchainImageViews.reserve(images.size());
     for (auto &img : images) {
         m_SwapchainImageViews.emplace_back(
-            img, vk::ImageViewType::e2D, m_Swapchain->GetFormat());
-    }
-
-    // 4. image count 变化时调整 per-frame 资源数组
-    if (m_PerFrame.size() != images.size()) {
-        for (auto &pf : m_PerFrame)
-            pf.Destroy(vkDevice);
-        m_PerFrame.clear();
-
-        auto &dev = *m_VulkanContext;
-        auto queueIndex = dev.GetDevice().GetQueueByFlags(vk::QueueFlagBits::eGraphics, 0).GetFamilyIndex();
-        m_PerFrame.resize(images.size());
-        for (auto &pf : m_PerFrame)
-            pf.Init(vkDevice, queueIndex);
+            img, vk::ImageViewType::e2D, swapchain.GetFormat());
     }
 
     GE_CORE_INFO("Swapchain recreated: {}x{}", windowWidth, windowHeight);

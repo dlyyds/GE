@@ -29,7 +29,11 @@ VulkanCommandPool::VulkanCommandPool(VulkanCommandPool &&other) noexcept :
 
 VulkanCommandPool::~VulkanCommandPool() {
     if (m_Handle) {
-        // Command buffers are freed automatically when the pool is destroyed
+        // 先释放所有 command buffer（shared_ptr 析构会调用 freeCommandBuffers）
+        m_PrimaryCommandBuffers.clear();
+        m_SecondaryCommandBuffers.clear();
+
+        // 再销毁 pool（此时不再有活跃的 command buffer）
         m_Device.GetHandle().destroyCommandPool(m_Handle);
     }
 }
@@ -40,20 +44,14 @@ std::shared_ptr<VulkanCommandBuffer> VulkanCommandPool::RequestCommandBuffer(vk:
 
     // 如果有回收的 command buffer，直接复用
     if (activeCount < pool.size()) {
-        auto cmd = pool[activeCount++];
-        return std::make_shared<VulkanCommandBuffer>(*this, level, cmd);
+        return pool[activeCount++];
     }
 
     // 否则分配新的
-    vk::CommandBufferAllocateInfo allocInfo{
-        .commandPool = m_Handle,
-        .level = level,
-        .commandBufferCount = 1,
-    };
-    auto cmd = m_Device.GetHandle().allocateCommandBuffers(allocInfo)[0];
+    auto cmd = std::make_shared<VulkanCommandBuffer>(*this, level);
     pool.push_back(cmd);
     activeCount++;
-    return std::make_shared<VulkanCommandBuffer>(*this, level, cmd);
+    return cmd;
 }
 
 void VulkanCommandPool::ResetPool() {

@@ -521,6 +521,10 @@ VulkanRenderContext::~VulkanRenderContext() {
         m_Device.GetHandle().destroySemaphore(m_AcquiredSemaphore);
         m_AcquiredSemaphore = nullptr;
     }
+
+    // 显式清理 unique_ptr，确保析构顺序正确
+    m_Frames.clear();      // 先销毁 RenderFrame（其内部资源可能引用 Device）
+    m_Swapchain.reset();   // 再销毁 Swapchain
 }
 
 } // namespace GE

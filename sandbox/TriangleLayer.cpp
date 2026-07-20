@@ -106,8 +106,8 @@ void TriangleLayer::OnDetach() {
 }
 
 void TriangleLayer::OnUpdate(Timestep &ts) {
-    auto cmd        = Application::GetFrameCmd();
-    auto vkCmd      = cmd->GetHandle();
+    auto &cmd       = Application::GetFrameCmd();
+    auto vkCmd      = cmd.GetHandle();
     auto extent     = Application::GetSwapchain().GetExtent();
 
     // ── 开始动态渲染 ──────────────────────────────────────────────────

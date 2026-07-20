@@ -64,7 +64,7 @@ public:
 
 
     /// 帧渲染辅助：当前帧的 command buffer 和 image view（返回封装对象）。
-    static VulkanCommandBuffer *GetFrameCmd() { return Get().m_ActiveFrameCmd.get(); }
+    static VulkanCommandBuffer &GetFrameCmd() { return *Get().m_ActiveFrameCmd; }
     static uint32_t GetFrameImageIndex() { return GetRenderContext().GetActiveFrameIndex(); }
     static VulkanImageView &GetFrameImageView() { return GetRenderContext().GetActiveFrame().GetRenderTarget().GetSwapchainView(); }
 

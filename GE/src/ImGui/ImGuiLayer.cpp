@@ -149,8 +149,8 @@ void ImGuiLayer::End() {
 
     ImGui::Render();
 
-    auto cmd   = Application::GetFrameCmd();
-    auto vkCmd = cmd->GetHandle();
+    auto &cmd   = Application::GetFrameCmd();
+    auto vkCmd = cmd.GetHandle();
 
     // Render ImGui on top with loadOp = eLoad to preserve the scene.
     VulkanRenderingInfo render_info;

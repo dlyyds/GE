@@ -308,4 +308,24 @@ void VulkanRenderFrame::UpdateRenderTarget(std::unique_ptr<RenderTarget> &&rende
     m_RenderTarget = std::move(render_target);
 }
 
+// ============================================================================
+// 析构
+// ============================================================================
+
+VulkanRenderFrame::~VulkanRenderFrame() {
+    // 显式按依赖顺序清理，防止 unique_ptr 默认反序析构导致的问题
+    // 清空 descriptor sets/pools（可能引用 Device）
+    m_DescriptorSets.clear();
+    m_DescriptorPools.clear();
+
+    // 清空 command pools（持有 VkCommandPool，需在 Device 销毁前释放）
+    m_CommandPools.clear();
+
+    // 清空 buffer pools（持有 VkBuffer，需在 Device 销毁前释放）
+    m_BufferPools.clear();
+
+    // 销毁 RenderTarget（内部持有 VulkanImageView）
+    m_RenderTarget.reset();
+}
+
 } // namespace GE

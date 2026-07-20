@@ -120,7 +120,7 @@ public:
 
     VulkanRenderFrame(VulkanRenderFrame &&) = default;
 
-    ~VulkanRenderFrame() = default;
+    ~VulkanRenderFrame();
 
     VulkanRenderFrame &operator=(const VulkanRenderFrame &) = delete;
 

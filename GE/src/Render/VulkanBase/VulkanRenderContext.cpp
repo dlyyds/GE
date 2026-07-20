@@ -279,17 +279,14 @@ void VulkanRenderContext::Prepare(size_t thread_count) {
         desc.enableDepth = false;
 
         for (auto &image_handle : m_Swapchain->GetImages()) {
-            // 创建 swapchain image 的 view
+            // 创建 swapchain image 的 view 并移交所有权给 RenderTarget
             auto image_view = std::make_unique<VulkanImageView>(image_handle, vk::ImageViewType::e2D, m_Swapchain->GetFormat());
 
-            // 创建 RenderTarget
-            auto render_target = std::make_unique<RenderTarget>(m_Device, desc, *image_view);
+            // 创建 RenderTarget（取得 image_view 所有权）
+            auto render_target = std::make_unique<RenderTarget>(m_Device, desc, std::move(image_view));
 
             // 创建 RenderFrame
             m_Frames.emplace_back(std::make_unique<VulkanRenderFrame>(m_Device, std::move(render_target), thread_count));
-
-            // 释放 image_view 所有权（RenderTarget 持有引用，需确保生命周期）
-            image_view.release();
         }
     }
     // TODO: 离屏渲染模式（无 swapchain）
@@ -313,7 +310,7 @@ void VulkanRenderContext::Recreate() {
 
     for (auto &image_handle : m_Swapchain->GetImages()) {
         auto image_view   = std::make_unique<VulkanImageView>(image_handle, vk::ImageViewType::e2D, m_Swapchain->GetFormat());
-        auto render_target = std::make_unique<RenderTarget>(m_Device, desc, *image_view);
+        auto render_target = std::make_unique<RenderTarget>(m_Device, desc, std::move(image_view));
 
         if (frame_it != m_Frames.end()) {
             (*frame_it)->UpdateRenderTarget(std::move(render_target));
@@ -322,7 +319,6 @@ void VulkanRenderContext::Recreate() {
             m_Frames.emplace_back(std::make_unique<VulkanRenderFrame>(m_Device, std::move(render_target), m_ThreadCount));
         }
 
-        image_view.release();
         ++frame_it;
     }
 
@@ -352,10 +348,9 @@ void VulkanRenderContext::RecreateSwapchain() {
 
     for (auto &image_handle : m_Swapchain->GetImages()) {
         auto image_view   = std::make_unique<VulkanImageView>(image_handle, vk::ImageViewType::e2D, m_Swapchain->GetFormat());
-        auto render_target = std::make_unique<RenderTarget>(m_Device, desc, *image_view);
+        auto render_target = std::make_unique<RenderTarget>(m_Device, desc, std::move(image_view));
 
         (*frame_it)->UpdateRenderTarget(std::move(render_target));
-        image_view.release();
         ++frame_it;
     }
 }

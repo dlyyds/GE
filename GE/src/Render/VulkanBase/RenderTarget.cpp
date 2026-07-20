@@ -16,8 +16,8 @@ namespace GE {
 
 RenderTarget::RenderTarget(VulkanDevice &device,
                            const RenderTargetDesc &desc,
-                           VulkanImageView &swapchainView)
-    : m_Device(device), m_Desc(desc), m_SwapchainView(swapchainView) {
+                           std::unique_ptr<VulkanImageView> swapchainView)
+    : m_Device(device), m_Desc(desc), m_SwapchainView(std::move(swapchainView)) {
     CreateResources();
 }
 
@@ -28,7 +28,7 @@ RenderTarget::~RenderTarget() {
 RenderTarget::RenderTarget(RenderTarget &&other) noexcept
     : m_Device(other.m_Device),
       m_Desc(other.m_Desc),
-      m_SwapchainView(other.m_SwapchainView),
+      m_SwapchainView(std::move(other.m_SwapchainView)),
       m_MSAAColorImage(std::move(other.m_MSAAColorImage)),
       m_MSAAColorView(std::move(other.m_MSAAColorView)),
       m_DepthImage(std::move(other.m_DepthImage)),
@@ -45,14 +45,14 @@ VulkanImageView &RenderTarget::GetColorResolveView() {
     if (HasMSAA() && m_MSAAColorView != nullptr) {
         return *m_MSAAColorView;
     }
-    return m_SwapchainView;
+    return *m_SwapchainView;
 }
 
 const VulkanImageView &RenderTarget::GetColorResolveView() const {
     if (HasMSAA() && m_MSAAColorView != nullptr) {
         return *m_MSAAColorView;
     }
-    return m_SwapchainView;
+    return *m_SwapchainView;
 }
 
 VulkanImageView &RenderTarget::GetDepthView() {
@@ -88,7 +88,7 @@ void RenderTarget::DestroyResources() {
     m_DepthImage.reset();
     m_MSAAColorView.reset();
     m_MSAAColorImage.reset();
-    // m_SwapchainView 为外部引用，不销毁
+    m_SwapchainView.reset();
 }
 
 // ============================================================================

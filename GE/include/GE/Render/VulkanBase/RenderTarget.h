@@ -104,11 +104,11 @@ public:
      * @brief 创建 RenderTarget（绑定到 swapchain image view）。
      * @param device        Vulkan 设备
      * @param desc          渲染目标配置
-     * @param swapchainView 交换链当前帧的 VulkanImageView（外部引用，不拥有所有权）
+     * @param swapchainView 交换链当前帧的 VulkanImageView（取得所有权）
      */
     RenderTarget(VulkanDevice &device,
                  const RenderTargetDesc &desc,
-                 VulkanImageView &swapchainView);
+                 std::unique_ptr<VulkanImageView> swapchainView);
 
     ~RenderTarget();
 
@@ -127,9 +127,9 @@ public:
     [[nodiscard]] const RenderTargetDesc &GetDesc() const { return m_Desc; }
 
     // 封装对象访问（推荐使用）
-    [[nodiscard]] bool HasSwapchainView() const { return true; }
-    [[nodiscard]] VulkanImageView &GetSwapchainView() { return m_SwapchainView; }
-    [[nodiscard]] const VulkanImageView &GetSwapchainView() const { return m_SwapchainView; }
+    [[nodiscard]] bool HasSwapchainView() const { return m_SwapchainView != nullptr; }
+    [[nodiscard]] VulkanImageView &GetSwapchainView() { return *m_SwapchainView; }
+    [[nodiscard]] const VulkanImageView &GetSwapchainView() const { return *m_SwapchainView; }
     [[nodiscard]] VulkanImageView &GetColorResolveView();   ///< MSAA 时返回多采样缓冲的 view，非 MSAA 时返回 swapchainView
     [[nodiscard]] const VulkanImageView &GetColorResolveView() const;
     [[nodiscard]] VulkanImageView &GetDepthView();
@@ -159,8 +159,8 @@ private:
 
     // --- 附件资源 ---
 
-    // Swapchain 颜色附件（外部引用，不拥有所有权）
-    VulkanImageView &m_SwapchainView;
+    // Swapchain 颜色附件（拥有所有权）
+    std::unique_ptr<VulkanImageView> m_SwapchainView;
 
     // MSAA 多采样颜色缓冲（内部创建）
     std::unique_ptr<VulkanImage>     m_MSAAColorImage;

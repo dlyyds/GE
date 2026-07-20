@@ -41,15 +41,28 @@ RenderTarget::RenderTarget(RenderTarget &&other) noexcept
 // 访问器
 // ============================================================================
 
-vk::ImageView RenderTarget::GetColorResolveView() const {
+VulkanImageView &RenderTarget::GetColorResolveView() {
     if (HasMSAA() && m_MSAAColorView != nullptr) {
-        return m_MSAAColorView->GetHandle();
+        return *m_MSAAColorView;
     }
-    return m_SwapchainView.GetHandle();
+    return m_SwapchainView;
 }
 
-vk::ImageView RenderTarget::GetDepthView() const {
-    return m_DepthView != nullptr ? m_DepthView->GetHandle() : nullptr;
+const VulkanImageView &RenderTarget::GetColorResolveView() const {
+    if (HasMSAA() && m_MSAAColorView != nullptr) {
+        return *m_MSAAColorView;
+    }
+    return m_SwapchainView;
+}
+
+VulkanImageView &RenderTarget::GetDepthView() {
+    GE_CORE_ASSERT(m_DepthView != nullptr, "深度附件未创建，请检查 enableDepth 配置");
+    return *m_DepthView;
+}
+
+const VulkanImageView &RenderTarget::GetDepthView() const {
+    GE_CORE_ASSERT(m_DepthView != nullptr, "深度附件未创建，请检查 enableDepth 配置");
+    return *m_DepthView;
 }
 
 // ============================================================================

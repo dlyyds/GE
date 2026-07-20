@@ -126,13 +126,14 @@ public:
     [[nodiscard]] vk::SampleCountFlagBits GetSampleCount() const { return m_Desc.sampleCount; }
     [[nodiscard]] const RenderTargetDesc &GetDesc() const { return m_Desc; }
 
-    // 原始句柄访问（供高级场景使用）
+    // 封装对象访问（推荐使用）
     [[nodiscard]] bool HasSwapchainView() const { return true; }
-    [[nodiscard]] vk::ImageView GetSwapchainView() const { return m_SwapchainView.GetHandle(); }
-    [[nodiscard]] VulkanImageView &GetSwapchainImageView() { return m_SwapchainView; }
-    [[nodiscard]] const VulkanImageView &GetSwapchainImageView() const { return m_SwapchainView; }
-    [[nodiscard]] vk::ImageView GetColorResolveView() const;  ///< MSAA 时返回多采样缓冲的 view，非 MSAA 时返回 swapchainView
-    [[nodiscard]] vk::ImageView GetDepthView() const;
+    [[nodiscard]] VulkanImageView &GetSwapchainView() { return m_SwapchainView; }
+    [[nodiscard]] const VulkanImageView &GetSwapchainView() const { return m_SwapchainView; }
+    [[nodiscard]] VulkanImageView &GetColorResolveView();   ///< MSAA 时返回多采样缓冲的 view，非 MSAA 时返回 swapchainView
+    [[nodiscard]] const VulkanImageView &GetColorResolveView() const;
+    [[nodiscard]] VulkanImageView &GetDepthView();
+    [[nodiscard]] const VulkanImageView &GetDepthView() const;
 
     // --- MRT 扩展（未来）---
     // void AddColorAttachment(...);

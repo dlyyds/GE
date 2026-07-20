@@ -108,7 +108,6 @@ void TriangleLayer::OnDetach() {
 void TriangleLayer::OnUpdate(Timestep &ts) {
     auto cmd        = Application::GetFrameCmd();
     auto extent     = Application::GetSwapchain().GetExtent();
-    auto imageIndex = Application::GetFrameImageIndex();
 
     // ── 开始动态渲染 ──────────────────────────────────────────────────
     vk::ClearValue clearValue;
@@ -116,7 +115,7 @@ void TriangleLayer::OnUpdate(Timestep &ts) {
 
     VulkanRenderingInfo renderInfo;
     renderInfo.SetRenderArea(0, 0, extent.width, extent.height);
-    renderInfo.AddColorAttachment(Application::GetFrameImageView(imageIndex),
+    renderInfo.AddColorAttachment(Application::GetFrameImageView(),
                                   vk::AttachmentLoadOp::eClear,
                                   vk::AttachmentStoreOp::eStore,
                                   clearValue);

@@ -14,7 +14,6 @@
 #include "ImGui/ImGuiLayer.h"
 
 #include "Render/VulkanBase/VulkanContext.h"
-#include "Render/VulkanBase/VulkanImageView.h"
 #include "Render/VulkanBase/VulkanRenderContext.h"
 
 int main(int argc, char **argv);
@@ -64,10 +63,10 @@ public:
     static VulkanRenderContext &GetRenderContext() { return *Get().m_RenderContext; }
 
 
-    /// 帧渲染辅助：当前帧的 command buffer 和 image index。
-    static vk::CommandBuffer GetFrameCmd() { return Get().m_CurrentCmd; }
-    static uint32_t GetFrameImageIndex() { return Get().m_CurrentImageIndex; }
-    static vk::ImageView GetFrameImageView(uint32_t index) { return Get().m_SwapchainImageViews[index].GetHandle(); }
+    /// 帧渲染辅助：当前帧的 command buffer 和 image view。
+    static vk::CommandBuffer GetFrameCmd() { return GetRenderContext().GetActiveFrameCmd(); }
+    static uint32_t GetFrameImageIndex() { return GetRenderContext().GetActiveFrameIndex(); }
+    static vk::ImageView GetFrameImageView() { return GetRenderContext().GetActiveFrame().GetRenderTarget().GetSwapchainView(); }
 
 private:
     void Run();
@@ -96,12 +95,6 @@ private:
     // -- Vulkan 资源 --
     std::unique_ptr<VulkanContext> m_VulkanContext;
     std::unique_ptr<VulkanRenderContext> m_RenderContext;
-
-
-    // -- 帧管理辅助 --
-    std::vector<VulkanImageView> m_SwapchainImageViews;
-    vk::CommandBuffer m_CurrentCmd = nullptr;
-    uint32_t m_CurrentImageIndex = ~0u;
 
 private:
     static Application *s_Instance;

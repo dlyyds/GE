@@ -150,13 +150,12 @@ void ImGuiLayer::End() {
     ImGui::Render();
 
     auto cmd = Application::GetFrameCmd();
-    auto imageIndex = Application::GetFrameImageIndex();
 
     // Render ImGui on top with loadOp = eLoad to preserve the scene.
     VulkanRenderingInfo render_info;
     render_info.SetRenderArea(0, 0, static_cast<uint32_t>(io.DisplaySize.x),
                               static_cast<uint32_t>(io.DisplaySize.y));
-    render_info.AddColorAttachment(Application::GetFrameImageView(imageIndex),
+    render_info.AddColorAttachment(Application::GetFrameImageView(),
                                    vk::AttachmentLoadOp::eLoad,
                                    vk::AttachmentStoreOp::eStore);
     render_info.Begin(cmd);

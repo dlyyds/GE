@@ -9,7 +9,6 @@
 #include "Debug/Assert.h"
 #include "ImGui/ImGuiLayer.h"
 
-#include "Render/VulkanBase/VulkanImage.h"
 #include "Render/VulkanBase/VulkanRenderingInfo.h"
 #include "Render/VulkanBase/VulkanRenderContext.h"
 
@@ -46,22 +45,8 @@ Application::Application(const std::string &name, ApplicationCommandLineArgs arg
             {vk::Format::eB8G8R8A8Srgb, vk::ColorSpaceKHR::eSrgbNonlinear},
         });
 
-    // 3. 创建 swapchain image views + 准备 RenderContext
-    {
-        auto &swapchain = m_RenderContext->GetSwapchain();
-        auto &images = swapchain.GetImages();
-        auto imageCount = images.size();
-
-        // ImageViews
-        m_SwapchainImageViews.reserve(imageCount);
-        for (auto &img : images) {
-            m_SwapchainImageViews.emplace_back(
-                img, vk::ImageViewType::e2D, swapchain.GetFormat());
-        }
-
-        // 准备 RenderFrames（为每个 swapchain image 创建 RenderFrame）
-        m_RenderContext->Prepare();
-    }
+    // 3. 准备 RenderContext（内部创建 RenderFrames）
+    m_RenderContext->Prepare();
 
     // 5. 初始化渲染器（RingBuffer 等）
     //  Renderer::Get().Init(m_VulkanContext, m_Swapchain);
@@ -84,10 +69,7 @@ Application::~Application() {
 
     // 3. 关闭渲染器（释放 RingBuffer）
 
-    // 4. 销毁 per-frame 资源
-    m_SwapchainImageViews.clear();
-
-    // 5. 销毁 RenderContext（内部销毁 RenderFrames 和 Swapchain）
+    // 4. 销毁 RenderContext（内部销毁 RenderFrames 和 Swapchain）
     m_RenderContext.reset();
 
     // 6. 销毁 Vulkan 上下文（unique_ptr 析构自动触发 VulkanContext::Destroy）
@@ -125,39 +107,31 @@ void Application::Run() {
             auto cmd = m_RenderContext->Begin();
             cmd->Begin(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
-            // 2. 存储帧状态（供 Layer 通过 Application 访问）
-            m_CurrentCmd = cmd->GetHandle();
-            m_CurrentImageIndex = m_RenderContext->GetActiveFrameIndex();
-
-            // 3. Transition to color attachment
+            // 2. Transition to color attachment
             auto &swapchain = m_RenderContext->GetSwapchain();
-            auto &img = swapchain.GetImages()[m_CurrentImageIndex];
+            auto &img = swapchain.GetImages()[m_RenderContext->GetActiveFrameIndex()];
             image_utils::TransitionLayout(cmd->GetHandle(), img.GetHandle(),
                                           vk::ImageLayout::eUndefined,
                                           vk::ImageLayout::eColorAttachmentOptimal);
 
-            // 4. OnUpdate（内部调用 Renderer::BeginScene + draw + EndScene）
+            // 3. OnUpdate（内部调用 Renderer::BeginScene + draw + EndScene）
             for (auto &layer : m_LayerStack)
                 layer->OnUpdate(timestep);
 
-            // 5. ImGui
+            // 4. ImGui
             ImGuiLayer::Begin();
             for (auto &layer : m_LayerStack)
                 layer->OnImGuiRender();
             ImGuiLayer::End();
 
-            // 6. Transition to present + end command buffer
+            // 5. Transition to present + end command buffer
             image_utils::TransitionLayout(cmd->GetHandle(), img.GetHandle(),
                                           vk::ImageLayout::eColorAttachmentOptimal,
                                           vk::ImageLayout::ePresentSrcKHR);
             cmd->End();
 
-            // 7. Submit + present（内部调用 EndFrame）
+            // 6. Submit + present（内部调用 EndFrame）
             m_RenderContext->Submit(cmd->GetHandle());
-
-            // 8. 清除帧状态
-            m_CurrentCmd = nullptr;
-            m_CurrentImageIndex = ~0u;
         }
         m_Window->OnUpdate();
     }
@@ -192,20 +166,8 @@ void Application::RecreateSwapchain() {
     // 等待 GPU 完成所有未完成的工作
     vkDevice.waitIdle();
 
-    // 1. 销毁旧 image views（VulkanImageView 为 RAII，clear 时自动销毁）
-    m_SwapchainImageViews.clear();
-
-    // 2. 使用 RenderContext 更新 swapchain 的 extent
+    // 使用 RenderContext 重建 swapchain（内部更新 RenderFrames 的 RenderTarget）
     m_RenderContext->UpdateSwapchain(vk::Extent2D{windowWidth, windowHeight});
-
-    // 3. 为新 swapchain images 创建 image views
-    auto &swapchain = m_RenderContext->GetSwapchain();
-    auto &images = swapchain.GetImages();
-    m_SwapchainImageViews.reserve(images.size());
-    for (auto &img : images) {
-        m_SwapchainImageViews.emplace_back(
-            img, vk::ImageViewType::e2D, swapchain.GetFormat());
-    }
 
     GE_CORE_INFO("Swapchain recreated: {}x{}", windowWidth, windowHeight);
 }

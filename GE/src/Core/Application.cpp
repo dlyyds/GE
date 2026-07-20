@@ -145,13 +145,14 @@ void Application::Run() {
                 layer->OnImGuiRender();
             ImGuiLayer::End();
 
-            // 6. Transition to present
+            // 6. Transition to present + end command buffer
             image_utils::TransitionLayout(cmd, img.GetHandle(),
                                           vk::ImageLayout::eColorAttachmentOptimal,
                                           vk::ImageLayout::ePresentSrcKHR);
+            cmd.end();
 
-            // 7. End frame — 自动 submit + present
-            m_RenderContext->EndFrame(vk::Semaphore{nullptr});
+            // 7. Submit + present（内部调用 EndFrame）
+            m_RenderContext->Submit(cmd);
 
             // 8. 清除帧状态
             m_CurrentCmd = nullptr;

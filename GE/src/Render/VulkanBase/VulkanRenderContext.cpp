@@ -457,65 +457,66 @@ void VulkanRenderContext::Submit(vk::CommandBuffer command_buffer) {
 }
 
 void VulkanRenderContext::Submit(const std::vector<vk::CommandBuffer> &command_buffers) {
-    SubmitImpl(command_buffers);
-}
-
-void VulkanRenderContext::SubmitImpl(const std::vector<vk::CommandBuffer> &command_buffers) {
     assert(m_FrameActive && "RenderContext 未激活，无法提交 command buffer。请先调用 Begin()");
 
     vk::Semaphore render_semaphore = nullptr;
 
     if (m_Swapchain) {
         assert(m_AcquiredSemaphore && "没有 acquired_semaphore，可能已被 consume？");
-        render_semaphore = SubmitImpl(m_Queue, command_buffers, m_AcquiredSemaphore,
-                                       vk::PipelineStageFlagBits::eColorAttachmentOutput);
-    } else {
-        SubmitImpl(m_Queue, command_buffers);
+
+        VulkanRenderFrame &frame = *m_Frames[m_ActiveFrameIndex];
+        render_semaphore = frame.GetSemaphorePool().RequestSemaphore();
+
+        auto wait_semaphore = m_AcquiredSemaphore;
+        vk::PipelineStageFlags wait_stage = vk::PipelineStageFlagBits::eColorAttachmentOutput;
+        vk::SubmitInfo submit_info{
+            .waitSemaphoreCount = 1,
+            .pWaitSemaphores    = &wait_semaphore,
+            .pWaitDstStageMask  = &wait_stage,
+            .commandBufferCount = static_cast<uint32_t>(command_buffers.size()),
+            .pCommandBuffers    = command_buffers.data(),
+            .signalSemaphoreCount = 1,
+            .pSignalSemaphores  = &render_semaphore,
+        };
+
+        vk::Fence fence = frame.GetFencePool().RequestFence();
+        m_Queue.GetHandle().submit(submit_info, fence);
     }
 
     EndFrame(render_semaphore);
 }
 
-vk::Semaphore VulkanRenderContext::SubmitImpl(const VulkanQueue           &queue,
-                                               const std::vector<vk::CommandBuffer> &command_buffers,
-                                               vk::Semaphore                wait_semaphore,
-                                               vk::PipelineStageFlags       wait_pipeline_stage) {
+vk::Semaphore VulkanRenderContext::Submit(const VulkanQueue           &queue,
+                                           const std::vector<vk::CommandBuffer> &command_buffers,
+                                           vk::Semaphore                wait_semaphore,
+                                           vk::PipelineStageFlags       wait_pipeline_stage) {
     VulkanRenderFrame &frame = *m_Frames[m_ActiveFrameIndex];
 
     vk::Semaphore signal_semaphore = frame.GetSemaphorePool().RequestSemaphore();
 
     vk::SubmitInfo submit_info{
+        .waitSemaphoreCount   = 1,
+        .pWaitSemaphores      = &wait_semaphore,
+        .pWaitDstStageMask    = &wait_pipeline_stage,
         .commandBufferCount   = static_cast<uint32_t>(command_buffers.size()),
         .pCommandBuffers      = command_buffers.data(),
         .signalSemaphoreCount = 1,
         .pSignalSemaphores    = &signal_semaphore,
     };
 
-    if (wait_semaphore != nullptr) {
-        submit_info.waitSemaphoreCount = 1;
-        submit_info.pWaitSemaphores    = &wait_semaphore;
-        submit_info.pWaitDstStageMask  = &wait_pipeline_stage;
-    }
-
     vk::Fence fence = frame.GetFencePool().RequestFence();
-
     queue.GetHandle().submit(submit_info, fence);
 
     return signal_semaphore;
 }
 
 void VulkanRenderContext::Submit(const VulkanQueue &queue, const std::vector<vk::CommandBuffer> &command_buffers) {
-    SubmitImpl(queue, command_buffers);
-}
-
-void VulkanRenderContext::SubmitImpl(const VulkanQueue &queue, const std::vector<vk::CommandBuffer> &command_buffers) {
     vk::SubmitInfo submit_info{
         .commandBufferCount = static_cast<uint32_t>(command_buffers.size()),
         .pCommandBuffers    = command_buffers.data(),
     };
 
     vk::Fence fence = m_Frames[m_ActiveFrameIndex]->GetFencePool().RequestFence();
-
     queue.GetHandle().submit(submit_info, fence);
 }
 

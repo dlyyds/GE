@@ -282,15 +282,6 @@ private:
                              const std::vector<vk::PresentModeKHR>   &present_mode_priority_list,
                              const std::vector<vk::SurfaceFormatKHR> &surface_format_priority_list);
 
-    void SubmitImpl(const std::vector<vk::CommandBuffer> &command_buffers);
-
-    vk::Semaphore SubmitImpl(const VulkanQueue           &queue,
-                              const std::vector<vk::CommandBuffer> &command_buffers,
-                              vk::Semaphore                wait_semaphore,
-                              vk::PipelineStageFlags       wait_pipeline_stage);
-
-    void SubmitImpl(const VulkanQueue &queue, const std::vector<vk::CommandBuffer> &command_buffers);
-
     void UpdateSwapchainImpl(const vk::Extent2D &extent, vk::SurfaceTransformFlagBitsKHR transform);
 
     // ========================================================================

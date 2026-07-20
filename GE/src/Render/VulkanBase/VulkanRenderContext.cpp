@@ -508,4 +508,19 @@ void VulkanRenderContext::WaitFrame() {
     GetActiveFrame().Reset();
 }
 
+// ============================================================================
+// 析构
+// ============================================================================
+
+VulkanRenderContext::~VulkanRenderContext() {
+    // 确保帧已结束，释放 acquire semaphore（防止异常析构时泄漏）
+    if (m_FrameActive) {
+        m_FrameActive = false;
+    }
+    if (m_AcquiredSemaphore) {
+        m_Device.GetHandle().destroySemaphore(m_AcquiredSemaphore);
+        m_AcquiredSemaphore = nullptr;
+    }
+}
+
 } // namespace GE

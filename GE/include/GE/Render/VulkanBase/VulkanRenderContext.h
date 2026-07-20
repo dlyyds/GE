@@ -85,7 +85,7 @@ public:
     VulkanRenderContext(const VulkanRenderContext &) = delete;
     VulkanRenderContext(VulkanRenderContext &&)      = delete;
 
-    virtual ~VulkanRenderContext() = default;
+    virtual ~VulkanRenderContext();
 
     VulkanRenderContext &operator=(const VulkanRenderContext &) = delete;
     VulkanRenderContext &operator=(VulkanRenderContext &&) = delete;

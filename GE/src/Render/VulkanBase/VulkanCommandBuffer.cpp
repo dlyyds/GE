@@ -19,6 +19,13 @@ VulkanCommandBuffer::VulkanCommandBuffer(VulkanCommandPool &pool, vk::CommandBuf
     SetHandle(this->GetDevice().GetHandle().allocateCommandBuffers(alloc_info).front());
 }
 
+VulkanCommandBuffer::VulkanCommandBuffer(VulkanCommandPool &pool,
+                                          vk::CommandBufferLevel level,
+                                          vk::CommandBuffer handle) : VulkanResourceBase(handle, &pool.GetDevice()),
+                                                                       m_Pool(pool),
+                                                                       m_Level(level) {
+}
+
 VulkanCommandBuffer::VulkanCommandBuffer(VulkanCommandBuffer &&other) noexcept : VulkanResourceBase(std::move(other)),
                                                                                  m_Pool(other.m_Pool),
                                                                                  m_Level(std::exchange(

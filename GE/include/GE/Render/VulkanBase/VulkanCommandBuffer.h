@@ -12,8 +12,14 @@ class VulkanCommandPool;
 /// 继承 VulkanResourceBase<vk::CommandBuffer>，获得句柄管理 + 调试命名支持。
 class VulkanCommandBuffer : public VulkanResourceBase<vk::CommandBuffer> {
 public:
+    /// 从 pool 分配新的 command buffer。
     explicit VulkanCommandBuffer(VulkanCommandPool &pool,
                                  vk::CommandBufferLevel level = vk::CommandBufferLevel::ePrimary);
+
+    /// 包装已有的 command buffer handle（由 pool 预分配）。
+    VulkanCommandBuffer(VulkanCommandPool &pool,
+                        vk::CommandBufferLevel level,
+                        vk::CommandBuffer handle);
 
     VulkanCommandBuffer(const VulkanCommandBuffer &) = delete;
 

@@ -123,15 +123,16 @@ void Application::Run() {
         if (!m_Minimized) {
             // 1. Begin frame — 自动 acquire next image，处理 surface 变化
             auto cmd = m_RenderContext->Begin();
+            cmd->Begin(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
             // 2. 存储帧状态（供 Layer 通过 Application 访问）
-            m_CurrentCmd = cmd;
+            m_CurrentCmd = cmd->GetHandle();
             m_CurrentImageIndex = m_RenderContext->GetActiveFrameIndex();
 
             // 3. Transition to color attachment
             auto &swapchain = m_RenderContext->GetSwapchain();
             auto &img = swapchain.GetImages()[m_CurrentImageIndex];
-            image_utils::TransitionLayout(cmd, img.GetHandle(),
+            image_utils::TransitionLayout(cmd->GetHandle(), img.GetHandle(),
                                           vk::ImageLayout::eUndefined,
                                           vk::ImageLayout::eColorAttachmentOptimal);
 
@@ -146,13 +147,13 @@ void Application::Run() {
             ImGuiLayer::End();
 
             // 6. Transition to present + end command buffer
-            image_utils::TransitionLayout(cmd, img.GetHandle(),
+            image_utils::TransitionLayout(cmd->GetHandle(), img.GetHandle(),
                                           vk::ImageLayout::eColorAttachmentOptimal,
                                           vk::ImageLayout::ePresentSrcKHR);
-            cmd.end();
+            cmd->End();
 
             // 7. Submit + present（内部调用 EndFrame）
-            m_RenderContext->Submit(cmd);
+            m_RenderContext->Submit(cmd->GetHandle());
 
             // 8. 清除帧状态
             m_CurrentCmd = nullptr;

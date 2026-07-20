@@ -72,7 +72,7 @@ void VulkanRenderContext::InitializeSwapchain(vk::SurfaceKHR                    
 // 帧循环
 // ============================================================================
 
-vk::CommandBuffer VulkanRenderContext::Begin(CommandBufferResetMode reset_mode) {
+std::shared_ptr<VulkanCommandBuffer> VulkanRenderContext::Begin(CommandBufferResetMode reset_mode) {
     assert(m_Prepared && "VulkanRenderContext 未准备渲染，请先调用 Prepare()");
 
     if (!m_FrameActive) {
@@ -463,24 +463,8 @@ void VulkanRenderContext::Submit(const std::vector<vk::CommandBuffer> &command_b
 
     if (m_Swapchain) {
         assert(m_AcquiredSemaphore && "没有 acquired_semaphore，可能已被 consume？");
-
-        VulkanRenderFrame &frame = *m_Frames[m_ActiveFrameIndex];
-        render_semaphore = frame.GetSemaphorePool().RequestSemaphore();
-
-        auto wait_semaphore = m_AcquiredSemaphore;
-        vk::PipelineStageFlags wait_stage = vk::PipelineStageFlagBits::eColorAttachmentOutput;
-        vk::SubmitInfo submit_info{
-            .waitSemaphoreCount = 1,
-            .pWaitSemaphores    = &wait_semaphore,
-            .pWaitDstStageMask  = &wait_stage,
-            .commandBufferCount = static_cast<uint32_t>(command_buffers.size()),
-            .pCommandBuffers    = command_buffers.data(),
-            .signalSemaphoreCount = 1,
-            .pSignalSemaphores  = &render_semaphore,
-        };
-
-        vk::Fence fence = frame.GetFencePool().RequestFence();
-        m_Queue.GetHandle().submit(submit_info, fence);
+        render_semaphore = Submit(m_Queue, command_buffers, m_AcquiredSemaphore,
+                                   vk::PipelineStageFlagBits::eColorAttachmentOutput);
     }
 
     EndFrame(render_semaphore);

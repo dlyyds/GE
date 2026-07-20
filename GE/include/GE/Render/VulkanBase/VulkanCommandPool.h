@@ -1,10 +1,12 @@
 #pragma once
 
+#include <memory>
 #include <vector>
 #include <vulkan/vulkan.hpp>
 
 namespace GE {
 
+class VulkanCommandBuffer;
 class VulkanDevice;
 
 /// Vulkan CommandPool 封装，管理 command pool 及其分配的 command buffers。
@@ -24,8 +26,8 @@ public:
     [[nodiscard]] VulkanDevice   &GetDevice() const { return m_Device; }
     [[nodiscard]] uint32_t        GetQueueFamilyIndex() const { return m_QueueFamilyIndex; }
 
-    /// 从 pool 分配一个 command buffer。
-    vk::CommandBuffer RequestCommandBuffer(vk::CommandBufferLevel level = vk::CommandBufferLevel::ePrimary);
+    /// 从 pool 分配一个 command buffer，返回 shared_ptr 封装。
+    std::shared_ptr<VulkanCommandBuffer> RequestCommandBuffer(vk::CommandBufferLevel level = vk::CommandBufferLevel::ePrimary);
 
     /// 重置整个 pool（所有分配的 command buffer 立即失效）。
     void ResetPool();

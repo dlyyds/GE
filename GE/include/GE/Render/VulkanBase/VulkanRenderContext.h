@@ -33,6 +33,7 @@
 #pragma once
 
 #include "Core/GEWindow.h"
+#include "Render/VulkanBase/VulkanCommandBuffer.h"
 #include "Render/VulkanBase/VulkanCommandPool.h"
 #include "Render/VulkanBase/VulkanCommon.h"
 #include "Render/VulkanBase/VulkanDevice.h"
@@ -99,7 +100,7 @@ public:
      * @return 有效的 command buffer 句柄，用于录制提交命令。
      *         同时确保当前帧已激活（若尚未激活）。
      */
-    vk::CommandBuffer Begin(CommandBufferResetMode reset_mode = CommandBufferResetMode::ResetPool);
+    std::shared_ptr<VulkanCommandBuffer> Begin(CommandBufferResetMode reset_mode = CommandBufferResetMode::ResetPool);
 
     /**
      * @brief 开始新帧（acquire next image，处理 surface 变化）。

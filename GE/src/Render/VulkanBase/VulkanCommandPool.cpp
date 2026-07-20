@@ -1,4 +1,5 @@
 #include "Render/VulkanBase/VulkanCommandPool.h"
+#include "Render/VulkanBase/VulkanCommandBuffer.h"
 #include "Render/VulkanBase/VulkanDevice.h"
 
 #include <stdexcept>
@@ -33,13 +34,14 @@ VulkanCommandPool::~VulkanCommandPool() {
     }
 }
 
-vk::CommandBuffer VulkanCommandPool::RequestCommandBuffer(vk::CommandBufferLevel level) {
+std::shared_ptr<VulkanCommandBuffer> VulkanCommandPool::RequestCommandBuffer(vk::CommandBufferLevel level) {
     auto &pool = (level == vk::CommandBufferLevel::ePrimary) ? m_PrimaryCommandBuffers : m_SecondaryCommandBuffers;
     auto &activeCount = (level == vk::CommandBufferLevel::ePrimary) ? m_ActivePrimaryCount : m_ActiveSecondaryCount;
 
     // 如果有回收的 command buffer，直接复用
     if (activeCount < pool.size()) {
-        return pool[activeCount++];
+        auto cmd = pool[activeCount++];
+        return std::make_shared<VulkanCommandBuffer>(*this, level, cmd);
     }
 
     // 否则分配新的
@@ -51,7 +53,7 @@ vk::CommandBuffer VulkanCommandPool::RequestCommandBuffer(vk::CommandBufferLevel
     auto cmd = m_Device.GetHandle().allocateCommandBuffers(allocInfo)[0];
     pool.push_back(cmd);
     activeCount++;
-    return cmd;
+    return std::make_shared<VulkanCommandBuffer>(*this, level, cmd);
 }
 
 void VulkanCommandPool::ResetPool() {

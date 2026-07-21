@@ -35,6 +35,9 @@ add_subdirectory(GE/third_party/yaml-cpp)
 add_subdirectory(GE/third_party/imgui)
 add_subdirectory(GE/third_party/ImGuizmo)
 
+# Tracy 性能分析
+add_subdirectory(GE/third_party/tracy)
+
 find_package(Vulkan REQUIRED)
 
 
@@ -86,6 +89,7 @@ target_link_libraries(${GE_NAME} PUBLIC
         glfw
         imgui
         yaml-cpp::yaml-cpp
+        TracyClient
         ${Vulkan_LIBRARIES}
 )
 

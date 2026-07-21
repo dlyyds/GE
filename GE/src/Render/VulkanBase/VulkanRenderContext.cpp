@@ -23,6 +23,8 @@
 #include "Render/VulkanBase/VulkanRenderContext.h"
 #include "Render/VulkanBase/VulkanImage.h"
 
+#include <tracy/Tracy.hpp>
+
 #include <cassert>
 #include <stdexcept>
 #include <utility>
@@ -88,6 +90,7 @@ std::shared_ptr<VulkanCommandBuffer> VulkanRenderContext::Begin(CommandBufferRes
 }
 
 void VulkanRenderContext::BeginFrame() {
+    ZoneScoped;
     // 仅在存在 swapchain 时处理 surface 变化
     if (m_Swapchain) {
         HandleSurfaceChanges();
@@ -133,6 +136,7 @@ void VulkanRenderContext::BeginFrame() {
 }
 
 void VulkanRenderContext::EndFrame(vk::Semaphore semaphore) {
+    ZoneScoped;
     assert(m_FrameActive && "帧未激活，请先调用 BeginFrame");
 
     if (m_Swapchain) {
@@ -229,6 +233,7 @@ bool VulkanRenderContext::HasSwapchain() {
 }
 
 bool VulkanRenderContext::HandleSurfaceChanges(bool force_update) {
+    ZoneScoped;
     if (!m_Swapchain) {
         // 离屏渲染，无 swapchain
         return false;
@@ -331,9 +336,7 @@ void VulkanRenderContext::UpdateSwapchain(const vk::Extent2D &extent) {
     if (!m_Swapchain) {
         return;
     }
-
     m_Swapchain = std::make_unique<VulkanSwapchain>(*m_Swapchain, extent);
-
     Recreate();
 }
 
@@ -342,7 +345,6 @@ void VulkanRenderContext::UpdateSwapchain(uint32_t image_count) {
         return;
     }
 
-    
     m_Device.GetHandle().waitIdle();
 
     m_Swapchain = std::make_unique<VulkanSwapchain>(*m_Swapchain, image_count);
@@ -365,7 +367,6 @@ void VulkanRenderContext::UpdateSwapchain(const vk::Extent2D &extent, vk::Surfac
         return;
     }
 
-    
     auto width = extent.width;
     auto height = extent.height;
     if (transform == vk::SurfaceTransformFlagBitsKHR::eRotate90 || transform == vk::SurfaceTransformFlagBitsKHR::eRotate270) {

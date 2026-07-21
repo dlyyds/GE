@@ -55,6 +55,7 @@ void VulkanRenderContext::InitializeSwapchain(vk::SurfaceKHR surface,
                                               vk::PresentModeKHR present_mode,
                                               const std::vector<vk::PresentModeKHR> &present_mode_priority_list,
                                               const std::vector<vk::SurfaceFormatKHR> &surface_format_priority_list) {
+    ZoneScoped;
     if (surface) {
         vk::SurfaceCapabilitiesKHR surface_properties = m_Device.GetGpu().GetHandle().getSurfaceCapabilitiesKHR(surface);
 
@@ -267,6 +268,7 @@ bool VulkanRenderContext::HandleSurfaceChanges(bool force_update) {
 // ============================================================================
 
 void VulkanRenderContext::Prepare(size_t thread_count) {
+    ZoneScoped;
     m_Device.GetHandle().waitIdle();
 
     if (m_Swapchain) {
@@ -300,6 +302,7 @@ void VulkanRenderContext::Prepare(size_t thread_count) {
 }
 
 void VulkanRenderContext::Recreate() {
+    ZoneScoped;
     vk::Extent2D swapchain_extent = m_Swapchain->GetExtent();
     vk::Extent3D extent{swapchain_extent.width, swapchain_extent.height, 1};
 
@@ -333,6 +336,7 @@ void VulkanRenderContext::Recreate() {
 // ============================================================================
 
 void VulkanRenderContext::UpdateSwapchain(const vk::Extent2D &extent) {
+    ZoneScoped;
     if (!m_Swapchain) {
         return;
     }
@@ -341,6 +345,7 @@ void VulkanRenderContext::UpdateSwapchain(const vk::Extent2D &extent) {
 }
 
 void VulkanRenderContext::UpdateSwapchain(uint32_t image_count) {
+    ZoneScoped;
     if (!m_Swapchain) {
         return;
     }
@@ -353,6 +358,7 @@ void VulkanRenderContext::UpdateSwapchain(uint32_t image_count) {
 }
 
 void VulkanRenderContext::UpdateSwapchain(const std::set<vk::ImageUsageFlagBits> &image_usage_flags) {
+    ZoneScoped;
     if (!m_Swapchain) {
         return;
     }
@@ -363,6 +369,7 @@ void VulkanRenderContext::UpdateSwapchain(const std::set<vk::ImageUsageFlagBits>
 }
 
 void VulkanRenderContext::UpdateSwapchain(const vk::Extent2D &extent, vk::SurfaceTransformFlagBitsKHR transform) {
+    ZoneScoped;
     if (!m_Swapchain) {
         return;
     }
@@ -452,6 +459,7 @@ vk::Semaphore VulkanRenderContext::Submit(const VulkanQueue &queue,
 // ============================================================================
 
 void VulkanRenderContext::WaitFrame() {
+    ZoneScoped;
     GetActiveFrame().Reset();
 }
 
@@ -460,6 +468,7 @@ void VulkanRenderContext::WaitFrame() {
 // ============================================================================
 
 VulkanRenderContext::~VulkanRenderContext() {
+    ZoneScoped;
     // 确保帧已结束，释放 acquire semaphore（防止异常析构时泄漏）
     if (m_FrameActive) {
         m_FrameActive = false;

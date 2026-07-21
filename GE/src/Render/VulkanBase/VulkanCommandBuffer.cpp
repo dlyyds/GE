@@ -2,6 +2,8 @@
 #include "Render/VulkanBase/VulkanCommandPool.h"
 #include "Render/VulkanBase/VulkanDevice.h"
 
+#include <tracy/Tracy.hpp>
+
 #include <cassert>
 #include <utility>
 
@@ -41,6 +43,7 @@ VulkanCommandBuffer::~VulkanCommandBuffer() {
 
 void VulkanCommandBuffer::Begin(vk::CommandBufferUsageFlags flags,
                                 VulkanCommandBuffer *primary_cmd_buf) {
+    ZoneScoped;
     vk::CommandBufferBeginInfo begin_info{.flags = flags};
 
     if (m_Level == vk::CommandBufferLevel::eSecondary) {
@@ -56,10 +59,12 @@ void VulkanCommandBuffer::Begin(vk::CommandBufferUsageFlags flags,
 }
 
 void VulkanCommandBuffer::End() {
+    ZoneScoped;
     GetHandle().end();
 }
 
 void VulkanCommandBuffer::Reset() {
+    ZoneScoped;
     GetHandle().reset(vk::CommandBufferResetFlagBits::eReleaseResources);
 }
 

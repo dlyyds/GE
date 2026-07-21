@@ -6,6 +6,8 @@
 
 #include "Core/Log.h"
 
+#include <tracy/Tracy.hpp>
+
 #include <cassert>
 #include <stdexcept>
 
@@ -393,6 +395,7 @@ VulkanSwapchain::VulkanSwapchain(VulkanSwapchain &old_swapchain,
     m_Surface{surface},
     m_RequestedCompression{requested_compression},
     m_RequestedCompressionFixedRate{requested_compression_fixed_rate} {
+    ZoneScopedN("VulkanSwapchainCreate");
     // 存储优先级列表
     this->m_PresentModePriorityList = present_mode_priority_list;
     this->m_SurfaceFormatPriorityList = surface_format_priority_list;
@@ -560,6 +563,7 @@ vk::SwapchainKHR VulkanSwapchain::GetHandle() const {
 // ============================================================================
 
 std::pair<vk::Result, uint32_t> VulkanSwapchain::AcquireNextImage(vk::Semaphore image_acquired_semaphore, vk::Fence fence) const {
+    ZoneScoped;
     vk::ResultValue<uint32_t> rv = m_Device.GetHandle().acquireNextImageKHR(
         m_Handle, std::numeric_limits<uint64_t>::max(), image_acquired_semaphore, fence);
     return {rv.result, rv.value};

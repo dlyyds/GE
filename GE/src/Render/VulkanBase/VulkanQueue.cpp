@@ -19,6 +19,8 @@
 #include "Render/VulkanBase/VulkanDevice.h"
 #include "Render/VulkanBase/VulkanCommandBuffer.h"
 
+#include <tracy/Tracy.hpp>
+
 #include <utility>
 
 namespace GE {
@@ -71,6 +73,7 @@ vk::Bool32 VulkanQueue::SupportPresent() const {
 }
 
 void VulkanQueue::Submit(const VulkanCommandBuffer &command_buffer, vk::Fence fence) const {
+    ZoneScoped;
     vk::CommandBuffer cmd_handle = command_buffer.GetHandle();
     vk::SubmitInfo submit_info{
         .commandBufferCount = 1,
@@ -80,6 +83,7 @@ void VulkanQueue::Submit(const VulkanCommandBuffer &command_buffer, vk::Fence fe
 }
 
 vk::Result VulkanQueue::Present(const vk::PresentInfoKHR &present_info) const {
+    ZoneScoped;
     if (!m_CanPresent) {
         return vk::Result::eErrorIncompatibleDisplayKHR;
     }

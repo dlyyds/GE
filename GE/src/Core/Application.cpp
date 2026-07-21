@@ -78,11 +78,13 @@ Application::~Application() {
 void Application::Run() {
 
     while (m_Running) {
+        ZoneScopedN("MainLoop");
         const auto time = static_cast<float>(glfwGetTime());
         Timestep timestep = time - m_LastFrameTime;
 
         // 帧率计算
         {
+            ZoneScopedN("FPSUpdate");
             m_FrameTimeAccumulator += timestep;
             m_FrameCount++;
 
@@ -99,36 +101,56 @@ void Application::Run() {
         m_LastFrameTime = time;
 
         if (!m_Minimized) {
-            ZoneScopedN("Render");
+            ZoneScopedN("RenderFrame");
             // 1. Begin frame — 自动 acquire next image，处理 surface 变化
-            m_ActiveFrameCmd = m_RenderContext->Begin();
-            m_ActiveFrameCmd->Begin(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
+            {
+                ZoneScopedN("BeginFrame");
+                m_ActiveFrameCmd = m_RenderContext->Begin();
+                m_ActiveFrameCmd->Begin(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
+            }
 
             // 2. Transition to color attachment
-            auto &swapchain = m_RenderContext->GetSwapchain();
-            auto &img = swapchain.GetImages()[m_RenderContext->GetActiveFrameIndex()];
-            image_utils::TransitionLayout(m_ActiveFrameCmd->GetHandle(), img.GetHandle(),
-                                          vk::ImageLayout::eUndefined,
-                                          vk::ImageLayout::eColorAttachmentOptimal);
+            {
+                ZoneScopedN("TransitionToColor");
+                auto &swapchain = m_RenderContext->GetSwapchain();
+                auto &img = swapchain.GetImages()[m_RenderContext->GetActiveFrameIndex()];
+                image_utils::TransitionLayout(m_ActiveFrameCmd->GetHandle(), img.GetHandle(),
+                                              vk::ImageLayout::eUndefined,
+                                              vk::ImageLayout::eColorAttachmentOptimal);
+            }
 
             // 3. OnUpdate（内部调用 Renderer::BeginScene + draw + EndScene）
-            for (auto &layer : m_LayerStack)
-                layer->OnUpdate(timestep);
+            {
+                ZoneScopedN("OnUpdate");
+                for (auto &layer : m_LayerStack)
+                    layer->OnUpdate(timestep);
+            }
 
             // 4. ImGui
-            ImGuiLayer::Begin();
-            for (auto &layer : m_LayerStack)
-                layer->OnImGuiRender();
-            ImGuiLayer::End();
+            {
+                ZoneScopedN("ImGuiRender");
+                ImGuiLayer::Begin();
+                for (auto &layer : m_LayerStack)
+                    layer->OnImGuiRender();
+                ImGuiLayer::End();
+            }
 
             // 5. Transition to present + end command buffer
-            image_utils::TransitionLayout(m_ActiveFrameCmd->GetHandle(), img.GetHandle(),
-                                          vk::ImageLayout::eColorAttachmentOptimal,
-                                          vk::ImageLayout::ePresentSrcKHR);
-            m_ActiveFrameCmd->End();
+            {
+                ZoneScopedN("TransitionToPresent");
+                auto &swapchain = m_RenderContext->GetSwapchain();
+                auto &img = swapchain.GetImages()[m_RenderContext->GetActiveFrameIndex()];
+                image_utils::TransitionLayout(m_ActiveFrameCmd->GetHandle(), img.GetHandle(),
+                                              vk::ImageLayout::eColorAttachmentOptimal,
+                                              vk::ImageLayout::ePresentSrcKHR);
+                m_ActiveFrameCmd->End();
+            }
 
             // 6. Submit + present
-            m_RenderContext->SubmitAndPresent(m_ActiveFrameCmd->GetHandle());
+            {
+                ZoneScopedN("SubmitAndPresent");
+                m_RenderContext->SubmitAndPresent(m_ActiveFrameCmd->GetHandle());
+            }
 
             m_ActiveFrameCmd.reset();
         }

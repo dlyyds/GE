@@ -81,7 +81,11 @@ if "%CLEAN%"=="1" (
 :: ==========================================
 echo.
 echo [信息] CMake 配置中... (构建类型: %BUILD_TYPE%, 生成器: Ninja)
-cmake -B "%BUILD_DIR%" -G "Ninja" -DCMAKE_BUILD_TYPE=%BUILD_TYPE%
+cmake -B "%BUILD_DIR%" -G "Ninja" ^
+    -DCMAKE_BUILD_TYPE=%BUILD_TYPE% ^
+    -DCMAKE_C_COMPILER=cl.exe ^
+    -DCMAKE_CXX_COMPILER=cl.exe ^
+    -DTRACY_ENABLE=ON
 
 if %errorlevel% neq 0 (
     echo.

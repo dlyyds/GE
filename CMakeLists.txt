@@ -75,7 +75,7 @@ target_include_directories(${GE_NAME} PUBLIC
 target_compile_definitions(${GE_NAME} PUBLIC
         GLFW_INCLUDE_NONE
         GE_DEBUG
-        #TRACY_ENABLE         # 取消注释以启用 Tracy 性能分析
+        TRACY_ENABLE         # 取消注释以启用 Tracy 性能分析
         VK_USE_PLATFORM_WIN32_KHR
         VK_DEBUG
         VK_NO_PROTOTYPES
@@ -95,13 +95,12 @@ target_link_libraries(${GE_NAME} PUBLIC
 )
 
 # 链接 Vulkan SDK 自带的 SPIRV-Cross 预编译库
-if(DEFINED ENV{VULKAN_SDK})
+if (DEFINED ENV{VULKAN_SDK})
     target_link_libraries(${GE_NAME} PUBLIC
-        "$ENV{VULKAN_SDK}/Lib/spirv-cross-glsl$<$<CONFIG:Debug>:d>.lib"
-        "$ENV{VULKAN_SDK}/Lib/spirv-cross-core$<$<CONFIG:Debug>:d>.lib"
+            "$ENV{VULKAN_SDK}/Lib/spirv-cross-glsl$<$<CONFIG:Debug>:d>.lib"
+            "$ENV{VULKAN_SDK}/Lib/spirv-cross-core$<$<CONFIG:Debug>:d>.lib"
     )
-endif()
-
+endif ()
 
 
 # 开启预编译头 PCH

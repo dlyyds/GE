@@ -200,9 +200,9 @@ public:
     void Recreate();
 
     /**
-     * @brief 重建 swapchain。
+     * @brief 更新 RenderTarget（swapchain 重建后调用，为每个 image 重新创建 render target）。
      */
-    void RecreateSwapchain();
+    void UpdateRenderTargets();
 
     // ========================================================================
     // Swapchain 更新

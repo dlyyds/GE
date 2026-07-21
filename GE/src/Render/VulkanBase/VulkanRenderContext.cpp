@@ -326,7 +326,7 @@ void VulkanRenderContext::Recreate() {
     // 若后续实现，在此处添加
 }
 
-void VulkanRenderContext::RecreateSwapchain() {
+void VulkanRenderContext::UpdateRenderTargets() {
     m_Device.GetHandle().waitIdle();
 
     // 清除 framebuffer 缓存

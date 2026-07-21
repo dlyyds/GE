@@ -326,33 +326,6 @@ void VulkanRenderContext::Recreate() {
     // 若后续实现，在此处添加
 }
 
-void VulkanRenderContext::UpdateRenderTargets() {
-    m_Device.GetHandle().waitIdle();
-
-    // 清除 framebuffer 缓存
-    // 注意：当前项目未实现 ResourceCaching 的 framebuffer 缓存清除
-    // 若后续实现，在此处添加
-
-    vk::Extent2D swapchain_extent = m_Swapchain->GetExtent();
-    vk::Extent3D extent{swapchain_extent.width, swapchain_extent.height, 1};
-
-    RenderTargetDesc desc;
-    desc.extent = swapchain_extent;
-    desc.colorFormat = m_Swapchain->GetFormat();
-    desc.sampleCount = vk::SampleCountFlagBits::e1;
-    desc.enableMSAA = false;
-    desc.enableDepth = false;
-
-    auto frame_it = m_Frames.begin();
-
-    for (auto &image_handle : m_Swapchain->GetImages()) {
-        auto image_view = std::make_unique<VulkanImageView>(image_handle, vk::ImageViewType::e2D, m_Swapchain->GetFormat());
-        auto render_target = std::make_unique<RenderTarget>(m_Device, desc, std::move(image_view));
-
-        (*frame_it)->UpdateRenderTarget(std::move(render_target));
-        ++frame_it;
-    }
-}
 
 // ============================================================================
 // Swapchain 更新

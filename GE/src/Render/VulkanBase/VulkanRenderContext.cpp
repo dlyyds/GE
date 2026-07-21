@@ -400,10 +400,6 @@ void VulkanRenderContext::UpdateSwapchain(const std::set<vk::ImageUsageFlagBits>
 }
 
 void VulkanRenderContext::UpdateSwapchain(const vk::Extent2D &extent, vk::SurfaceTransformFlagBitsKHR transform) {
-    UpdateSwapchainImpl(extent, transform);
-}
-
-void VulkanRenderContext::UpdateSwapchainImpl(const vk::Extent2D &extent, vk::SurfaceTransformFlagBitsKHR transform) {
     if (!m_Swapchain) {
         return;
     }

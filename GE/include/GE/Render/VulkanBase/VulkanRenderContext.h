@@ -284,8 +284,6 @@ private:
                              const std::vector<vk::PresentModeKHR>   &present_mode_priority_list,
                              const std::vector<vk::SurfaceFormatKHR> &surface_format_priority_list);
 
-    void UpdateSwapchainImpl(const vk::Extent2D &extent, vk::SurfaceTransformFlagBitsKHR transform);
-
     // ========================================================================
     // 成员变量
     // ========================================================================

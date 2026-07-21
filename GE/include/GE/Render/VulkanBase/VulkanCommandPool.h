@@ -37,10 +37,10 @@ private:
     vk::CommandPool m_Handle          = nullptr;
     uint32_t        m_QueueFamilyIndex = 0;
 
-    std::vector<vk::CommandBuffer> m_PrimaryCommandBuffers;
-    uint32_t                       m_ActivePrimaryCount   = 0;
-    std::vector<vk::CommandBuffer> m_SecondaryCommandBuffers;
-    uint32_t                       m_ActiveSecondaryCount = 0;
+    std::vector<std::shared_ptr<VulkanCommandBuffer>> m_PrimaryCommandBuffers;
+    uint32_t                                            m_ActivePrimaryCount   = 0;
+    std::vector<std::shared_ptr<VulkanCommandBuffer>> m_SecondaryCommandBuffers;
+    uint32_t                                            m_ActiveSecondaryCount = 0;
 };
 
 } // namespace GE

@@ -48,9 +48,6 @@ Application::Application(const std::string &name, ApplicationCommandLineArgs arg
     // 3. 准备 RenderContext（内部创建 RenderFrames）
     m_RenderContext->Prepare();
 
-    // 5. 初始化渲染器（RingBuffer 等）
-    //  Renderer::Get().Init(m_VulkanContext, m_Swapchain);
-
     m_ImGuiLayer = CreateRef<ImGuiLayer>();
     PushOverlay(m_ImGuiLayer);
 
@@ -156,7 +153,7 @@ void Application::OnEvent(Event &e) {
 void Application::Close() { m_Running = false; }
 
 void Application::RecreateSwapchain() {
-    auto vkDevice    = m_VulkanContext->GetVkDevice();
+    auto vkDevice = m_VulkanContext->GetVkDevice();
     auto windowWidth = m_Window->GetWidth();
     auto windowHeight = m_Window->GetHeight();
 

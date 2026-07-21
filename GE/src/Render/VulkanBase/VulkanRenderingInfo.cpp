@@ -27,14 +27,10 @@ VulkanRenderingInfo VulkanRenderingInfo::FromRenderTarget(const RenderTarget &rt
         vk::ImageView swapchainView = rt.GetSwapchainView().GetHandle();
 
         info.AddColorAttachmentWithResolve(
-            msaaView,                       // 多采样缓冲
-            swapchainView,                  // resolve 目标（单采样 swapchain）
+            msaaView, // 多采样缓冲
+            swapchainView, // resolve 目标（单采样 swapchain）
             desc.colorLoadOp,
-            desc.colorStoreOp,
-            desc.colorClearValue,
-            vk::ImageLayout::eColorAttachmentOptimal,
-            vk::ImageLayout::eColorAttachmentOptimal,
-            vk::ResolveModeFlagBits::eAverage);
+            desc.colorStoreOp);
     } else {
         // 非 MSAA：直接写入 swapchain（或离屏纹理）
         vk::ImageView colorView = rt.GetSwapchainView().GetHandle()

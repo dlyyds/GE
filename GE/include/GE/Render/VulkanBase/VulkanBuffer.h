@@ -29,6 +29,7 @@
 
 #include "Render/VulkanBase/BuilderBase.h"
 #include "Render/VulkanBase/VulkanAllocated.h"
+#include <Render/VulkanBase/VulkanDevice.h>
 
 #include <vulkan/vulkan.hpp>
 #include <vk_mem_alloc.h>
@@ -37,8 +38,7 @@
 #include <memory>
 #include <vector>
 
-namespace GE
-{
+namespace GE {
 
 using VulkanBufferPtr = std::unique_ptr<class VulkanBuffer>;
 
@@ -46,102 +46,107 @@ using VulkanBufferPtr = std::unique_ptr<class VulkanBuffer>;
 // VulkanBufferBuilder — Builder 模式创建 VulkanBuffer
 // ============================================================================
 
-class VulkanBufferBuilder : public allocated::BuilderBase<VulkanBufferBuilder, vk::BufferCreateInfo>
-{
-  private:
-	using Parent = allocated::BuilderBase<VulkanBufferBuilder, vk::BufferCreateInfo>;
+class VulkanBufferBuilder : public allocated::BuilderBase<VulkanBufferBuilder, vk::BufferCreateInfo> {
+private:
+    using Parent = allocated::BuilderBase<VulkanBufferBuilder, vk::BufferCreateInfo>;
 
-  public:
-	/** @brief 使用指定大小构造 Builder */
-	explicit VulkanBufferBuilder(vk::DeviceSize size);
+public:
+    /** @brief 使用指定大小构造 Builder */
+    explicit VulkanBufferBuilder(vk::DeviceSize size);
 
-	VulkanBufferBuilder &with_flags(vk::BufferCreateFlags flags);
-	VulkanBufferBuilder &with_usage(vk::BufferUsageFlags usage);
-	VulkanBufferBuilder &with_alignment(vk::DeviceSize alignment);
+    VulkanBufferBuilder &with_flags(vk::BufferCreateFlags flags);
 
-	/** @brief 获取对齐要求 */
-	vk::DeviceSize get_alignment() const;
+    VulkanBufferBuilder &with_usage(vk::BufferUsageFlags usage);
 
-	VulkanBuffer    build(GE::VulkanDevice &device) const;
-	VulkanBufferPtr build_unique(GE::VulkanDevice &device) const;
+    VulkanBufferBuilder &with_alignment(vk::DeviceSize alignment);
 
-  private:
-	vk::DeviceSize m_Alignment{0};
+    /** @brief 获取对齐要求 */
+    vk::DeviceSize get_alignment() const;
+
+    VulkanBuffer build(GE::VulkanDevice &device) const;
+
+    VulkanBufferPtr build_unique(GE::VulkanDevice &device) const;
+
+private:
+    vk::DeviceSize m_Alignment{0};
 };
 
 // ============================================================================
 // VulkanBuffer — RAII VMA 托管的 VkBuffer
 // ============================================================================
 
-class VulkanBuffer : public allocated::Allocated<vk::Buffer>
-{
-  public:
-	using BufferUsageFlagsType = vk::BufferUsageFlags;
-	using DeviceSizeType       = vk::DeviceSize;
+class VulkanBuffer : public allocated::Allocated<vk::Buffer> {
+public:
+    using BufferUsageFlagsType = vk::BufferUsageFlags;
+    using DeviceSizeType = vk::DeviceSize;
 
-  public:
-	// ======================================================================
-	// 静态工厂方法
-	// ======================================================================
+public:
+    // ======================================================================
+    // 静态工厂方法
+    // ======================================================================
 
-	/** @brief 创建 staging buffer 并上传数据 */
-	static VulkanBuffer create_staging_buffer(VulkanDevice &device, vk::DeviceSize size, const void *data);
+    /** @brief 创建 staging buffer 并上传数据 */
+    static VulkanBuffer create_staging_buffer(VulkanDevice &device, vk::DeviceSize size, const void *data);
 
-	/** @brief 创建 staging buffer 并上传 vector 数据 */
-	template <typename T>
-	static VulkanBuffer create_staging_buffer(VulkanDevice &device, std::vector<T> const &data);
+    /** @brief 创建 staging buffer 并上传 vector 数据 */
+    template <typename T>
+    static VulkanBuffer create_staging_buffer(VulkanDevice &device, std::vector<T> const &data);
 
-	/** @brief 创建 staging buffer 并上传单个对象数据 */
-	template <typename T>
-	static VulkanBuffer create_staging_buffer(VulkanDevice &device, const T &data);
+    /** @brief 创建 staging buffer 并上传单个对象数据 */
+    template <typename T>
+    static VulkanBuffer create_staging_buffer(VulkanDevice &device, const T &data);
 
-	// ======================================================================
-	// 构造 / 析构
-	// ======================================================================
+    // ======================================================================
+    // 构造 / 析构
+    // ======================================================================
 
-	VulkanBuffer() = delete;
-	VulkanBuffer(const VulkanBuffer &) = delete;
-	VulkanBuffer(VulkanBuffer &&other) = default;
-	VulkanBuffer &operator=(const VulkanBuffer &) = delete;
-	VulkanBuffer &operator=(VulkanBuffer &&) = default;
+    VulkanBuffer() = delete;
 
-	/**
-	 * @brief 便捷构造函数：使用直接参数创建 Buffer
-	 * @param device                 Vulkan 设备
-	 * @param size                   缓冲区大小（字节）
-	 * @param buffer_usage           Buffer 使用标志
-	 * @param memory_usage           VMA 内存使用提示（默认 AUTO）
-	 * @param flags                  VMA allocation 创建标志
-	 * @param queue_family_indices   可选的队列族索引
-	 */
-	VulkanBuffer(VulkanDevice           &device,
-	             vk::DeviceSize          size,
-	             vk::BufferUsageFlags    buffer_usage,
-	             VmaMemoryUsage          memory_usage        = VMA_MEMORY_USAGE_AUTO,
-	             VmaAllocationCreateFlags flags               = VMA_ALLOCATION_CREATE_MAPPED_BIT |
-	                                                           VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT,
-	             const std::vector<uint32_t> &queue_family_indices = {});
+    VulkanBuffer(const VulkanBuffer &) = delete;
 
-	/** @brief Builder 构造函数 */
-	VulkanBuffer(VulkanDevice &device, VulkanBufferBuilder const &builder);
+    VulkanBuffer(VulkanBuffer &&other) = default;
 
-	~VulkanBuffer();
+    VulkanBuffer &operator=(const VulkanBuffer &) = delete;
 
-	// ======================================================================
-	// 方法
-	// ======================================================================
+    VulkanBuffer &operator=(VulkanBuffer &&) = default;
 
-	/**
-	 * @brief 获取 buffer 的设备地址
-	 * @note 需要 buffer 创建时带有 VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT 标志
-	 */
-	uint64_t get_device_address() const;
+    /**
+     * @brief 便捷构造函数：使用直接参数创建 Buffer
+     * @param device                 Vulkan 设备
+     * @param size                   缓冲区大小（字节）
+     * @param buffer_usage           Buffer 使用标志
+     * @param memory_usage           VMA 内存使用提示（默认 AUTO）
+     * @param flags                  VMA allocation 创建标志
+     * @param queue_family_indices   可选的队列族索引
+     */
+    VulkanBuffer(VulkanDevice &device,
+                 vk::DeviceSize size,
+                 vk::BufferUsageFlags buffer_usage,
+                 VmaMemoryUsage memory_usage = VMA_MEMORY_USAGE_AUTO,
+                 VmaAllocationCreateFlags flags = VMA_ALLOCATION_CREATE_MAPPED_BIT |
+                                                  VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT,
+                 const std::vector<uint32_t> &queue_family_indices = {});
 
-	/** @brief 获取 buffer 大小 */
-	vk::DeviceSize get_size() const;
+    /** @brief Builder 构造函数 */
+    VulkanBuffer(VulkanDevice &device, VulkanBufferBuilder const &builder);
 
-  private:
-	vk::DeviceSize m_Size{0};
+    ~VulkanBuffer();
+
+    // ======================================================================
+    // 方法
+    // ======================================================================
+
+    /**
+     * @brief 获取 buffer 的设备地址
+     * @note 需要 buffer 创建时带有 VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT 标志
+     */
+    uint64_t get_device_address() const;
+
+    /** @brief 获取 buffer 大小 */
+    vk::DeviceSize get_size() const;
+
+private:
+    vk::DeviceSize m_Size{0};
 };
 
 // ============================================================================
@@ -149,15 +154,13 @@ class VulkanBuffer : public allocated::Allocated<vk::Buffer>
 // ============================================================================
 
 template <typename T>
-inline VulkanBuffer VulkanBuffer::create_staging_buffer(VulkanDevice &device, const T &data)
-{
-	return create_staging_buffer(device, sizeof(T), &data);
+inline VulkanBuffer VulkanBuffer::create_staging_buffer(VulkanDevice &device, const T &data) {
+    return create_staging_buffer(device, sizeof(T), &data);
 }
 
 template <typename T>
-inline VulkanBuffer VulkanBuffer::create_staging_buffer(VulkanDevice &device, std::vector<T> const &data)
-{
-	return create_staging_buffer(device, data.size() * sizeof(T), data.data());
+inline VulkanBuffer VulkanBuffer::create_staging_buffer(VulkanDevice &device, std::vector<T> const &data) {
+    return create_staging_buffer(device, data.size() * sizeof(T), data.data());
 }
 
 } // namespace GE

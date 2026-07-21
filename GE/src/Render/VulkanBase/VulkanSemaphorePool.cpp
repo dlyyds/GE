@@ -23,15 +23,16 @@
 
 namespace GE {
 
-VulkanSemaphorePool::VulkanSemaphorePool(VulkanDevice &device) :
-    m_Device(device) {
+VulkanSemaphorePool::VulkanSemaphorePool(VulkanDevice &device) : m_Device(device) {
 }
 
 VulkanSemaphorePool::~VulkanSemaphorePool() {
+    Reset();
     auto vkDevice = m_Device.GetHandle();
     for (auto sem : m_Semaphores) {
         vkDevice.destroySemaphore(sem);
     }
+
     m_Semaphores.clear();
     m_ReleasedSemaphores.clear();
 }

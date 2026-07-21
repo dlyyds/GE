@@ -23,11 +23,11 @@
 #pragma once
 
 #include "Render/VulkanBase/VulkanResourceBase.h"
+#include <Render/VulkanBase/VulkanDevice.h>
 
 #include <vulkan/vulkan.hpp>
 
-namespace GE
-{
+namespace GE {
 
 class VulkanImage;
 
@@ -37,34 +37,40 @@ class VulkanImage;
  * 构造时创建 ImageView，析构时自动销毁。
  * 与 VulkanImage 关联，在 Image 被移动时自动更新引用。
  */
-class VulkanImageView : public VulkanResourceBase<vk::ImageView>
-{
-  public:
-	VulkanImageView(VulkanImage &image,
-	                   vk::ImageViewType    view_type,
-	                   vk::Format           format           = vk::Format::eUndefined,
-	                   uint32_t             base_mip_level   = 0,
-	                   uint32_t             base_array_layer = 0,
-	                   uint32_t             n_mip_levels     = 0,
-	                   uint32_t             n_array_layers   = 0);
+class VulkanImageView : public VulkanResourceBase<vk::ImageView> {
+public:
+    VulkanImageView(VulkanImage &image,
+                    vk::ImageViewType view_type,
+                    vk::Format format = vk::Format::eUndefined,
+                    uint32_t base_mip_level = 0,
+                    uint32_t base_array_layer = 0,
+                    uint32_t n_mip_levels = 0,
+                    uint32_t n_array_layers = 0);
 
-	VulkanImageView(VulkanImageView &) = delete;
-	VulkanImageView(VulkanImageView &&other);
-	~VulkanImageView() override;
+    VulkanImageView(VulkanImageView &) = delete;
 
-	VulkanImageView &operator=(const VulkanImageView &) = delete;
-	VulkanImageView &operator=(VulkanImageView &&)      = delete;
+    VulkanImageView(VulkanImageView &&other);
 
-	vk::Format                    get_format() const;
-	VulkanImage const         &get_image() const;
-	void                          set_image(VulkanImage &image);
-	vk::ImageSubresourceLayers    get_subresource_layers() const;
-	vk::ImageSubresourceRange     get_subresource_range() const;
+    ~VulkanImageView() override;
 
-  private:
-	VulkanImage             *image              = nullptr;
-	vk::Format                  format;
-	vk::ImageSubresourceRange   subresource_range;
+    VulkanImageView &operator=(const VulkanImageView &) = delete;
+
+    VulkanImageView &operator=(VulkanImageView &&) = delete;
+
+    vk::Format get_format() const;
+
+    VulkanImage const &get_image() const;
+
+    void set_image(VulkanImage &image);
+
+    vk::ImageSubresourceLayers get_subresource_layers() const;
+
+    vk::ImageSubresourceRange get_subresource_range() const;
+
+private:
+    VulkanImage *image = nullptr;
+    vk::Format format;
+    vk::ImageSubresourceRange subresource_range;
 };
 
-}        // namespace GE
+} // namespace GE

@@ -264,12 +264,12 @@ public:
 
     /// 重置所有 attachment 指针和计数器，允许对象重用。
     void Reset() {
-        m_RenderingInfo = {};
+        m_RenderingInfo = vk::RenderingInfo{};
         m_RenderingInfo.layerCount = 1;
         m_ColorAttachments = {};
         m_ColorAttachmentCount = 0;
-        m_DepthAttachment = {};
-        m_StencilAttachment = {};
+        m_DepthAttachment = vk::RenderingAttachmentInfo{};
+        m_StencilAttachment = vk::RenderingAttachmentInfo{};
     }
 
 private:

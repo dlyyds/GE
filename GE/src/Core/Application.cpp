@@ -11,6 +11,7 @@
 
 #include "Render/VulkanBase/VulkanRenderingInfo.h"
 #include "Render/VulkanBase/VulkanRenderContext.h"
+#include "tracy/Tracy.hpp"
 
 #include <Events/ApplicationEvent.h>
 
@@ -23,7 +24,6 @@ Application *Application::s_Instance = nullptr;
 
 Application::Application(const std::string &name, ApplicationCommandLineArgs args)
     : m_CommandLineArgs(args) {
-    GE_PROFILE_FUNCTION();
 
     GE_CORE_ASSERT(!s_Instance, "Application already exists!");
     s_Instance = this;
@@ -54,7 +54,7 @@ Application::Application(const std::string &name, ApplicationCommandLineArgs arg
 }
 
 Application::~Application() {
-    GE_PROFILE_FUNCTION();
+
     GE_CORE_INFO("Application Shoutdown");
 
     // 1. 等待 GPU 完成所有未完成的工作，然后才能安全释放资源
@@ -76,7 +76,6 @@ Application::~Application() {
 }
 
 void Application::Run() {
-    GE_PROFILE_FUNCTION();
 
     while (m_Running) {
         const auto time = static_cast<float>(glfwGetTime());
@@ -100,6 +99,7 @@ void Application::Run() {
         m_LastFrameTime = time;
 
         if (!m_Minimized) {
+            ZoneScopedN("Render");
             // 1. Begin frame — 自动 acquire next image，处理 surface 变化
             m_ActiveFrameCmd = m_RenderContext->Begin();
             m_ActiveFrameCmd->Begin(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
@@ -127,14 +127,15 @@ void Application::Run() {
                                           vk::ImageLayout::ePresentSrcKHR);
             m_ActiveFrameCmd->End();
 
-            // 6. Submit + present（内部调用 EndFrame）
-            m_RenderContext->Submit(m_ActiveFrameCmd->GetHandle());
+            // 6. Submit + present
+            m_RenderContext->SubmitAndPresent(m_ActiveFrameCmd->GetHandle());
 
-            // 7. 清除帧状态
             m_ActiveFrameCmd.reset();
         }
         m_Window->OnUpdate();
+        FrameMark;
     }
+
 }
 
 void Application::OnEvent(Event &e) {
@@ -188,13 +189,13 @@ bool Application::OnWindowClose(WindowCloseEvent &e) {
 }
 
 void Application::PushLayer(const Ref<Layer> &layer) {
-    GE_PROFILE_FUNCTION();
+
     m_LayerStack.PushLayer(layer);
     layer->OnAttach();
 }
 
 void Application::PushOverlay(const Ref<Layer> &layer) {
-    GE_PROFILE_FUNCTION();
+
     m_LayerStack.PushOverlay(layer);
     layer->OnAttach();
 }

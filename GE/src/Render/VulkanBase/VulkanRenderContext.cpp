@@ -402,12 +402,12 @@ vk::Semaphore VulkanRenderContext::RequestSemaphoreWithOwnership() {
 // 提交
 // ============================================================================
 
-void VulkanRenderContext::Submit(vk::CommandBuffer command_buffer) {
+void VulkanRenderContext::SubmitAndPresent(vk::CommandBuffer command_buffer) {
     std::vector<vk::CommandBuffer> command_buffers(1, command_buffer);
-    Submit(command_buffers);
+    SubmitAndPresent(command_buffers);
 }
 
-void VulkanRenderContext::Submit(const std::vector<vk::CommandBuffer> &command_buffers) {
+void VulkanRenderContext::SubmitAndPresent(const std::vector<vk::CommandBuffer> &command_buffers) {
     assert(m_FrameActive && "RenderContext 未激活，无法提交 command buffer。请先调用 Begin()");
 
     vk::Semaphore render_semaphore = nullptr;
@@ -425,6 +425,7 @@ vk::Semaphore VulkanRenderContext::Submit(const VulkanQueue &queue,
                                           const std::vector<vk::CommandBuffer> &command_buffers,
                                           vk::Semaphore wait_semaphore,
                                           vk::PipelineStageFlags wait_pipeline_stage) {
+    ZoneScoped;
     VulkanRenderFrame &frame = *m_Frames[m_ActiveFrameIndex];
 
     vk::Semaphore signal_semaphore = frame.GetSemaphorePool().RequestSemaphore("SignalSemaphore");
@@ -445,15 +446,6 @@ vk::Semaphore VulkanRenderContext::Submit(const VulkanQueue &queue,
     return signal_semaphore;
 }
 
-void VulkanRenderContext::Submit(const VulkanQueue &queue, const std::vector<vk::CommandBuffer> &command_buffers) {
-    vk::SubmitInfo submit_info{
-        .commandBufferCount = static_cast<uint32_t>(command_buffers.size()),
-        .pCommandBuffers = command_buffers.data(),
-    };
-
-    vk::Fence fence = m_Frames[m_ActiveFrameIndex]->GetFencePool().RequestFence();
-    queue.GetHandle().submit(submit_info, fence);
-}
 
 // ============================================================================
 // 等待帧

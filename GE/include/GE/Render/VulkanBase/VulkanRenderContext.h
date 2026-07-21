@@ -73,21 +73,23 @@ public:
      * @param present_mode_priority_list  呈现模式优先级列表
      * @param surface_format_priority_list surface 格式优先级列表
      */
-    VulkanRenderContext(VulkanDevice                           &device,
-                        vk::SurfaceKHR                          surface,
-                        const Window                           &window,
-                        vk::PresentModeKHR                      present_mode                 = vk::PresentModeKHR::eFifo,
-                        const std::vector<vk::PresentModeKHR>  &present_mode_priority_list   = {vk::PresentModeKHR::eFifo, vk::PresentModeKHR::eMailbox},
+    VulkanRenderContext(VulkanDevice &device,
+                        vk::SurfaceKHR surface,
+                        const Window &window,
+                        vk::PresentModeKHR present_mode = vk::PresentModeKHR::eFifo,
+                        const std::vector<vk::PresentModeKHR> &present_mode_priority_list = {vk::PresentModeKHR::eFifo, vk::PresentModeKHR::eMailbox},
                         const std::vector<vk::SurfaceFormatKHR> &surface_format_priority_list = {
                             {vk::Format::eR8G8B8A8Srgb, vk::ColorSpaceKHR::eSrgbNonlinear},
                             {vk::Format::eB8G8R8A8Srgb, vk::ColorSpaceKHR::eSrgbNonlinear}});
 
     VulkanRenderContext(const VulkanRenderContext &) = delete;
-    VulkanRenderContext(VulkanRenderContext &&)      = delete;
+
+    VulkanRenderContext(VulkanRenderContext &&) = delete;
 
     virtual ~VulkanRenderContext();
 
     VulkanRenderContext &operator=(const VulkanRenderContext &) = delete;
+
     VulkanRenderContext &operator=(VulkanRenderContext &&) = delete;
 
     // ========================================================================
@@ -130,7 +132,7 @@ public:
      */
     VulkanRenderFrame &GetActiveFrame();
 
-    
+
     /**
      * @brief 获取当前活跃帧索引。
      * @return 当前活跃帧索引。
@@ -148,7 +150,7 @@ public:
      * @brief 获取所有 RenderFrame。
      * @return RenderFrame 列表。
      */
-    std::vector<std::unique_ptr<VulkanRenderFrame>> &GetRenderFrames();
+    std::vector<std::unique_ptr<VulkanRenderFrame> > &GetRenderFrames();
 
     // ========================================================================
     // 设备与表面
@@ -227,8 +229,10 @@ public:
     // Semaphore 辅助
     // ========================================================================
 
-    void          ReleaseOwnedSemaphore(vk::Semaphore semaphore);
+    void ReleaseOwnedSemaphore(vk::Semaphore semaphore);
+
     vk::Semaphore RequestSemaphore();
+
     vk::Semaphore RequestSemaphoreWithOwnership();
 
     // ========================================================================
@@ -236,34 +240,30 @@ public:
     // ========================================================================
 
     /**
-     * @brief 提交 command buffer 到正确的队列。
+     * @brief 提交单个 command buffer 并 present（默认队列 + 自动同步）。
      * @param command_buffer 包含录制命令的 command buffer
      */
-    void Submit(vk::CommandBuffer command_buffer);
+    void SubmitAndPresent(vk::CommandBuffer command_buffer);
 
     /**
-     * @brief 提交多个 command buffer 到正确的队列。
+     * @brief 提交多个 command buffer 并 present（默认队列 + 自动同步）。
      * @param command_buffers 包含录制命令的 command buffer 列表
      */
-    void Submit(const std::vector<vk::CommandBuffer> &command_buffers);
+    void SubmitAndPresent(const std::vector<vk::CommandBuffer> &command_buffers);
 
     /**
-     * @brief 提交 command buffer 到指定队列，带等待 semaphore。
+     * @brief 提交 command buffer 到指定队列，带等待 semaphore，不 present。
      * @param queue              目标队列
      * @param command_buffers    包含录制命令的 command buffer 列表
      * @param wait_semaphore     等待的 semaphore
      * @param wait_pipeline_stage 等待的 pipeline stage
      * @return submit 完成后 signal 的 semaphore
      */
-    vk::Semaphore Submit(const VulkanQueue           &queue,
+    vk::Semaphore Submit(const VulkanQueue &queue,
                          const std::vector<vk::CommandBuffer> &command_buffers,
-                         vk::Semaphore                wait_semaphore,
-                         vk::PipelineStageFlags       wait_pipeline_stage);
+                         vk::Semaphore wait_semaphore,
+                         vk::PipelineStageFlags wait_pipeline_stage);
 
-    /**
-     * @brief 提交 command buffer 到指定队列。
-     */
-    void Submit(const VulkanQueue &queue, const std::vector<vk::CommandBuffer> &command_buffers);
 
     /**
      * @brief 等待当前帧完成渲染。
@@ -276,25 +276,25 @@ private:
     // ========================================================================
 
     void InitializeSwapchain(vk::SurfaceKHR surface, vk::PresentModeKHR present_mode,
-                             const std::vector<vk::PresentModeKHR>   &present_mode_priority_list,
+                             const std::vector<vk::PresentModeKHR> &present_mode_priority_list,
                              const std::vector<vk::SurfaceFormatKHR> &surface_format_priority_list);
 
     // ========================================================================
     // 成员变量
     // ========================================================================
 
-    vk::Semaphore                                 m_AcquiredSemaphore{nullptr};
-    uint32_t                                      m_ActiveFrameIndex{0};
-    VulkanDevice                                 &m_Device;
-    bool                                          m_FrameActive{false};
-    std::vector<std::unique_ptr<VulkanRenderFrame>> m_Frames;
-    vk::SurfaceTransformFlagBitsKHR               m_PreTransform{vk::SurfaceTransformFlagBitsKHR::eIdentity};
-    bool                                          m_Prepared{false};
-    const VulkanQueue                            &m_Queue;          // 若存在 swapchain，则为 present 支持的队列，否则为 graphics 队列
-    vk::Extent2D                                  m_SurfaceExtent{};
-    std::unique_ptr<VulkanSwapchain>              m_Swapchain;
-    size_t                                        m_ThreadCount{1};
-    const Window                                 &m_Window;
+    vk::Semaphore m_AcquiredSemaphore{nullptr};
+    uint32_t m_ActiveFrameIndex{0};
+    VulkanDevice &m_Device;
+    bool m_FrameActive{false};
+    std::vector<std::unique_ptr<VulkanRenderFrame> > m_Frames;
+    vk::SurfaceTransformFlagBitsKHR m_PreTransform{vk::SurfaceTransformFlagBitsKHR::eIdentity};
+    bool m_Prepared{false};
+    const VulkanQueue &m_Queue; // 若存在 swapchain，则为 present 支持的队列，否则为 graphics 队列
+    vk::Extent2D m_SurfaceExtent{};
+    std::unique_ptr<VulkanSwapchain> m_Swapchain;
+    size_t m_ThreadCount{1};
+    const Window &m_Window;
 };
 
 } // namespace GE

@@ -247,7 +247,7 @@ bool VulkanRenderContext::HandleSurfaceChanges(bool force_update) {
         // 重建 swapchain
         m_Device.GetHandle().waitIdle();
 
-        UpdateSwapchainImpl(surface_properties.currentExtent, m_PreTransform);
+        UpdateSwapchain(surface_properties.currentExtent, m_PreTransform);
 
         m_SurfaceExtent = surface_properties.currentExtent;
 

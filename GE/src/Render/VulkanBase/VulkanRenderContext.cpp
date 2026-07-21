@@ -320,10 +320,6 @@ void VulkanRenderContext::Recreate() {
 
         ++frame_it;
     }
-
-    // 清除 framebuffer 缓存（ResourceCaching）
-    // 注意：当前项目未实现 ResourceCaching 的 framebuffer 缓存清除
-    // 若后续实现，在此处添加
 }
 
 
@@ -336,9 +332,6 @@ void VulkanRenderContext::UpdateSwapchain(const vk::Extent2D &extent) {
         return;
     }
 
-    // 清除 framebuffer 缓存
-    // 注意：当前项目未实现 ResourceCaching 的 framebuffer 缓存清除
-
     m_Swapchain = std::make_unique<VulkanSwapchain>(*m_Swapchain, extent);
 
     Recreate();
@@ -349,9 +342,7 @@ void VulkanRenderContext::UpdateSwapchain(uint32_t image_count) {
         return;
     }
 
-    // 清除 framebuffer 缓存
-    // 注意：当前项目未实现 ResourceCaching 的 framebuffer 缓存清除
-
+    
     m_Device.GetHandle().waitIdle();
 
     m_Swapchain = std::make_unique<VulkanSwapchain>(*m_Swapchain, image_count);
@@ -364,9 +355,6 @@ void VulkanRenderContext::UpdateSwapchain(const std::set<vk::ImageUsageFlagBits>
         return;
     }
 
-    // 清除 framebuffer 缓存
-    // 注意：当前项目未实现 ResourceCaching 的 framebuffer 缓存清除
-
     m_Swapchain = std::make_unique<VulkanSwapchain>(*m_Swapchain, image_usage_flags);
 
     Recreate();
@@ -377,9 +365,7 @@ void VulkanRenderContext::UpdateSwapchain(const vk::Extent2D &extent, vk::Surfac
         return;
     }
 
-    // 清除 framebuffer 缓存
-    // 注意：当前项目未实现 ResourceCaching 的 framebuffer 缓存清除
-
+    
     auto width = extent.width;
     auto height = extent.height;
     if (transform == vk::SurfaceTransformFlagBitsKHR::eRotate90 || transform == vk::SurfaceTransformFlagBitsKHR::eRotate270) {

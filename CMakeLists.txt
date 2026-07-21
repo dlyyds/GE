@@ -75,6 +75,7 @@ target_include_directories(${GE_NAME} PUBLIC
 target_compile_definitions(${GE_NAME} PUBLIC
         GLFW_INCLUDE_NONE
         GE_DEBUG
+        #TRACY_ENABLE         # 取消注释以启用 Tracy 性能分析
         VK_USE_PLATFORM_WIN32_KHR
         VK_DEBUG
         VK_NO_PROTOTYPES

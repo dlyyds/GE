@@ -107,23 +107,10 @@ public:
     // Buffer / Image 工具
     // =================================================================
 
-    /// @brief 使用临时 command buffer 执行 buffer 拷贝。
-    void CopyBuffer(VulkanBuffer const &src, VulkanBuffer &dst,
-                    vk::Queue queue, vk::BufferCopy const *copy_region = nullptr);
-
     /// @brief 从内建 command pool 分配一个 command buffer。
     /// @param level  Command buffer 级别
     /// @param begin  是否立即开始录制
     [[nodiscard]] vk::CommandBuffer CreateCommandBuffer(vk::CommandBufferLevel level, bool begin = false) const;
-
-    /// @brief 创建一个 command pool。
-    vk::CommandPool CreateCommandPool(uint32_t queue_index,
-                                      vk::CommandPoolCreateFlags flags = {});
-
-    /// @brief 创建一个 image 及其绑定的 DeviceMemory。
-    [[nodiscard]] std::pair<vk::Image, vk::DeviceMemory> CreateImage(
-        vk::Format format, vk::Extent2D const &extent, uint32_t mip_levels,
-        vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties) const;
 
     /// @brief 创建内建的 command pool（供 CreateCommandBuffer / FlushCommandBuffer 使用）。
     void CreateInternalCommandPool();
@@ -143,14 +130,8 @@ public:
     // 访问器
     // =================================================================
 
-    /// @brief 获取内建 command pool。
-    VulkanCommandPool &GetCommandPool() const;
-
     /// @brief 获取 debug utils。
     DebugUtils const &GetDebugUtils() const;
-
-    /// @brief 获取内建 fence pool。
-    VulkanFencePool &GetFencePool() const;
 
     /// @brief 获取关联的 PhysicalDevice。
     PhysicalDevice const &GetGpu() const;
@@ -161,14 +142,8 @@ public:
     /// @brief 获取全局资源缓存。
     VulkanResourceCache &GetResourceCache() { return *m_ResourceCache; }
 
-    /// @brief 按队列族和索引获取队列。
-    VulkanQueue const &GetQueue(uint32_t queue_family_index, uint32_t queue_index) const;
-
     /// @brief 按队列能力标志获取队列。
     VulkanQueue const &GetQueueByFlags(vk::QueueFlags required_queue_flags, uint32_t queue_index) const;
-
-    /// @brief 获取支持 present 的队列。
-    VulkanQueue const &GetQueueByPresent(uint32_t queue_index) const;
 
     // =================================================================
     // 查询
@@ -176,12 +151,6 @@ public:
 
     /// @brief 检查扩展是否已启用。
     bool IsExtensionEnabled(const char *extension) const;
-
-    /// @brief 检查 image 格式是否受支持。
-    bool IsImageFormatSupported(vk::Format format) const;
-
-    /// @brief 等待设备空闲。
-    void WaitIdle() const;
 
 private:
     void Init(std::unordered_map<std::string, RequestMode> const &requested_extensions,

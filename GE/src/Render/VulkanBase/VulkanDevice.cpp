@@ -16,7 +16,6 @@
  */
 
 #include "Render/VulkanBase/VulkanDevice.h"
-#include "Render/VulkanBase/VulkanBuffer.h"
 #include "Render/VulkanBase/VulkanCommandPool.h"
 #include "Render/VulkanBase/VulkanDebug.h"
 #include "Render/VulkanBase/VulkanFencePool.h"
@@ -257,29 +256,6 @@ void VulkanDevice::AddQueue(size_t global_index, uint32_t family_index,
 }
 
 // ============================================================================
-// CopyBuffer
-// ============================================================================
-
-void VulkanDevice::CopyBuffer(VulkanBuffer const &src, VulkanBuffer &dst,
-                              vk::Queue queue, vk::BufferCopy const *copy_region) {
-    assert(dst.get_size() <= src.get_size());
-    assert(src.GetHandle());
-
-    vk::CommandBuffer cmd_buf = CreateCommandBuffer(vk::CommandBufferLevel::ePrimary, true);
-
-    vk::BufferCopy buffer_copy;
-    if (copy_region == nullptr) {
-        buffer_copy.size = src.get_size();
-    } else {
-        buffer_copy = *copy_region;
-    }
-
-    cmd_buf.copyBuffer(src.GetHandle(), dst.GetHandle(), buffer_copy);
-
-    FlushCommandBuffer(cmd_buf, queue, true, nullptr);
-}
-
-// ============================================================================
 // CreateCommandBuffer
 // ============================================================================
 
@@ -298,51 +274,6 @@ vk::CommandBuffer VulkanDevice::CreateCommandBuffer(vk::CommandBufferLevel level
     }
 
     return cmd_buf;
-}
-
-// ============================================================================
-// CreateCommandPool
-// ============================================================================
-
-vk::CommandPool VulkanDevice::CreateCommandPool(uint32_t queue_index, vk::CommandPoolCreateFlags flags) {
-    vk::CommandPoolCreateInfo pool_info{
-        .flags            = flags,
-        .queueFamilyIndex = queue_index,
-    };
-    return this->GetHandle().createCommandPool(pool_info);
-}
-
-// ============================================================================
-// CreateImage
-// ============================================================================
-
-std::pair<vk::Image, vk::DeviceMemory> VulkanDevice::CreateImage(
-    vk::Format format, vk::Extent2D const &extent, uint32_t mip_levels,
-    vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties) const {
-    vk::ImageCreateInfo image_info{
-        .imageType   = vk::ImageType::e2D,
-        .format      = format,
-        .extent      = {.width = extent.width, .height = extent.height, .depth = 1},
-        .mipLevels   = mip_levels,
-        .arrayLayers = 1,
-        .samples     = vk::SampleCountFlagBits::e1,
-        .tiling      = vk::ImageTiling::eOptimal,
-        .usage       = usage,
-    };
-
-    vk::Device device = this->GetHandle();
-    vk::Image image = device.createImage(image_info);
-
-    vk::MemoryRequirements mem_reqs = device.getImageMemoryRequirements(image);
-
-    vk::MemoryAllocateInfo mem_alloc{
-        .allocationSize  = mem_reqs.size,
-        .memoryTypeIndex = m_Gpu.GetMemoryType(mem_reqs.memoryTypeBits, properties),
-    };
-    vk::DeviceMemory memory = device.allocateMemory(mem_alloc);
-    device.bindImageMemory(image, memory, 0);
-
-    return {image, memory};
 }
 
 // ============================================================================
@@ -400,14 +331,6 @@ void VulkanDevice::FlushCommandBuffer(vk::CommandBuffer command_buffer, vk::Queu
 }
 
 // ============================================================================
-// GetCommandPool
-// ============================================================================
-
-VulkanCommandPool &VulkanDevice::GetCommandPool() const {
-    return *m_CommandPool;
-}
-
-// ============================================================================
 // GetDebugUtils
 // ============================================================================
 
@@ -416,29 +339,11 @@ DebugUtils const &VulkanDevice::GetDebugUtils() const {
 }
 
 // ============================================================================
-// GetFencePool
-// ============================================================================
-
-VulkanFencePool &VulkanDevice::GetFencePool() const {
-    return *m_FencePool;
-}
-
-// ============================================================================
 // GetGpu
 // ============================================================================
 
 PhysicalDevice const &VulkanDevice::GetGpu() const {
     return m_Gpu;
-}
-
-// ============================================================================
-// GetQueue
-// ============================================================================
-
-VulkanQueue const &VulkanDevice::GetQueue(uint32_t queue_family_index, uint32_t queue_index) const {
-    assert(queue_family_index < m_Queues.size() && "Queue family index out of bounds");
-    assert(queue_index < m_Queues[queue_family_index].size() && "Queue index out of bounds");
-    return m_Queues[queue_family_index][queue_index];
 }
 
 // ============================================================================
@@ -462,25 +367,6 @@ VulkanQueue const &VulkanDevice::GetQueueByFlags(vk::QueueFlags required_queue_f
 }
 
 // ============================================================================
-// GetQueueByPresent
-// ============================================================================
-
-VulkanQueue const &VulkanDevice::GetQueueByPresent(uint32_t queue_index) const {
-    auto queue_it = std::ranges::find_if(m_Queues,
-                                         [queue_index](std::vector<VulkanQueue> const &family) {
-                                             return !family.empty() &&
-                                                    queue_index < family[0].GetProperties().queueCount &&
-                                                    family[0].SupportPresent();
-                                         });
-
-    if (queue_it == m_Queues.end()) {
-        throw std::runtime_error("Queue not found");
-    }
-
-    return (*queue_it)[queue_index];
-}
-
-// ============================================================================
 // IsExtensionEnabled
 // ============================================================================
 
@@ -489,28 +375,6 @@ bool VulkanDevice::IsExtensionEnabled(const char *extension) const {
                                 [extension](const char *enabled) {
                                     return strcmp(extension, enabled) == 0;
                                 }) != m_EnabledExtensions.end();
-}
-
-// ============================================================================
-// IsImageFormatSupported
-// ============================================================================
-
-bool VulkanDevice::IsImageFormatSupported(vk::Format format) const {
-    vk::ImageFormatProperties format_properties;
-    return vk::Result::eErrorFormatNotSupported !=
-           m_Gpu.GetHandle().getImageFormatProperties(
-               format, vk::ImageType::e2D, vk::ImageTiling::eOptimal,
-               vk::ImageUsageFlagBits::eSampled, {}, &format_properties);
-}
-
-// ============================================================================
-// WaitIdle
-// ============================================================================
-
-void VulkanDevice::WaitIdle() const {
-    if (this->GetHandle()) {
-        this->GetHandle().waitIdle();
-    }
 }
 
 } // namespace GE

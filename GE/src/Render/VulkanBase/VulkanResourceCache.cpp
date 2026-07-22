@@ -50,121 +50,54 @@ ShaderModule &VulkanResourceCache::RequestShaderModule(vk::ShaderStageFlagBits s
                                                         const ShaderSource &shader_source,
                                                         const std::string &entry_point,
                                                         const ShaderVariant &shader_variant) {
-    // ShaderModule 的构造函数签名：
-    // ShaderModule(VulkanDevice &device, vk::ShaderStageFlagBits stage,
-    //              const ShaderSource &shader_source, const std::string &entry_point,
-    //              const ShaderVariant &shader_variant)
-    //
-    // 注意：hash_param 需要匹配构造函数参数列表（排除 device），
-    // 但 entry_point 是 const std::string & 而非 const std::string &...，
-    // 需要显式传递引用以避免拷贝。
-    std::lock_guard<std::mutex> guard(m_ShaderModuleMutex);
-
-    size_t hash{0U};
-    detail::hash_param(hash, stage, shader_source, entry_point, shader_variant);
-
-    auto res_it = m_ShaderModules.find(hash);
-    if (res_it != m_ShaderModules.end()) {
-        return res_it->second;
-    }
-
-    // 未命中缓存，创建新资源
-    ShaderModule resource(m_Device, stage, shader_source, entry_point, shader_variant);
-    auto res_ins_it = m_ShaderModules.emplace(hash, std::move(resource));
-    if (!res_ins_it.second) {
-        throw std::runtime_error{"插入 ShaderModule 缓存失败"};
-    }
-
-    return res_ins_it.first->second;
+    return RequestResource(m_ShaderModuleMutex, m_ShaderModules,
+                           [&](VulkanDevice &dev) -> ShaderModule {
+                               return ShaderModule(dev, stage, shader_source, entry_point, shader_variant);
+                           },
+                           stage, shader_source, entry_point, shader_variant);
 }
 
 VulkanPipelineLayout &VulkanResourceCache::RequestPipelineLayout(const std::vector<ShaderModule *> &shader_modules) {
-    std::lock_guard<std::mutex> guard(m_PipelineLayoutMutex);
-
-    size_t hash{0U};
-    detail::hash_param(hash, shader_modules);
-
-    auto res_it = m_PipelineLayouts.find(hash);
-    if (res_it != m_PipelineLayouts.end()) {
-        return res_it->second;
-    }
-
-    VulkanPipelineLayout resource(m_Device, shader_modules);
-    auto res_ins_it = m_PipelineLayouts.emplace(hash, std::move(resource));
-    if (!res_ins_it.second) {
-        throw std::runtime_error{"插入 PipelineLayout 缓存失败"};
-    }
-
-    return res_ins_it.first->second;
+    return RequestResource(m_PipelineLayoutMutex, m_PipelineLayouts,
+                           [&](VulkanDevice &dev) -> VulkanPipelineLayout {
+                               return VulkanPipelineLayout(dev, shader_modules);
+                           },
+                           shader_modules);
 }
 
 VulkanDescriptorSetLayout &VulkanResourceCache::RequestDescriptorSetLayout(uint32_t set_index,
                                                                              const std::vector<ShaderModule *> &shader_modules,
                                                                              const std::vector<ShaderResource> &set_resources) {
-    std::lock_guard<std::mutex> guard(m_DescriptorSetLayoutMutex);
-
-    size_t hash{0U};
-    detail::hash_param(hash, set_index, shader_modules, set_resources);
-
-    auto res_it = m_DescriptorSetLayouts.find(hash);
-    if (res_it != m_DescriptorSetLayouts.end()) {
-        return res_it->second;
-    }
-
-    VulkanDescriptorSetLayout resource(m_Device, set_index, shader_modules, set_resources);
-    auto res_ins_it = m_DescriptorSetLayouts.emplace(hash, std::move(resource));
-    if (!res_ins_it.second) {
-        throw std::runtime_error{"插入 DescriptorSetLayout 缓存失败"};
-    }
-
-    return res_ins_it.first->second;
+    return RequestResource(m_DescriptorSetLayoutMutex, m_DescriptorSetLayouts,
+                           [&](VulkanDevice &dev) -> VulkanDescriptorSetLayout {
+                               return VulkanDescriptorSetLayout(dev, set_index, shader_modules, set_resources);
+                           },
+                           set_index, shader_modules, set_resources);
 }
 
 VulkanGraphicsPipeline &VulkanResourceCache::RequestGraphicsPipeline(VkPipelineCache pipeline_cache,
                                                                        VulkanPipelineState &pipeline_state) {
-    std::lock_guard<std::mutex> guard(m_GraphicsPipelineMutex);
-
-    size_t hash{0U};
-    detail::hash_param(hash, pipeline_cache, pipeline_state);
-
-    auto res_it = m_GraphicsPipelines.find(hash);
-    if (res_it != m_GraphicsPipelines.end()) {
-        return res_it->second;
-    }
-
     // 优先使用成员变量中的 pipeline cache，若未设置则使用传入的
     VkPipelineCache effective_cache = m_PipelineCache ? m_PipelineCache : pipeline_cache;
 
-    VulkanGraphicsPipeline resource(m_Device, effective_cache, pipeline_state);
-    auto res_ins_it = m_GraphicsPipelines.emplace(hash, std::move(resource));
-    if (!res_ins_it.second) {
-        throw std::runtime_error{"插入 GraphicsPipeline 缓存失败"};
-    }
-
-    return res_ins_it.first->second;
+    return RequestResource(m_GraphicsPipelineMutex, m_GraphicsPipelines,
+                           [&](VulkanDevice &dev) -> VulkanGraphicsPipeline {
+                               return VulkanGraphicsPipeline(dev, effective_cache, pipeline_state);
+                           },
+                           // VkPipelineCache 的 hash_param 特化会忽略它，
+                           // 但这里仍传入以保持与构造函数参数列表一致
+                           pipeline_cache, pipeline_state);
 }
 
 VulkanComputePipeline &VulkanResourceCache::RequestComputePipeline(VkPipelineCache pipeline_cache,
                                                                      VulkanPipelineState &pipeline_state) {
-    std::lock_guard<std::mutex> guard(m_ComputePipelineMutex);
-
-    size_t hash{0U};
-    detail::hash_param(hash, pipeline_cache, pipeline_state);
-
-    auto res_it = m_ComputePipelines.find(hash);
-    if (res_it != m_ComputePipelines.end()) {
-        return res_it->second;
-    }
-
     VkPipelineCache effective_cache = m_PipelineCache ? m_PipelineCache : pipeline_cache;
 
-    VulkanComputePipeline resource(m_Device, effective_cache, pipeline_state);
-    auto res_ins_it = m_ComputePipelines.emplace(hash, std::move(resource));
-    if (!res_ins_it.second) {
-        throw std::runtime_error{"插入 ComputePipeline 缓存失败"};
-    }
-
-    return res_ins_it.first->second;
+    return RequestResource(m_ComputePipelineMutex, m_ComputePipelines,
+                           [&](VulkanDevice &dev) -> VulkanComputePipeline {
+                               return VulkanComputePipeline(dev, effective_cache, pipeline_state);
+                           },
+                           pipeline_cache, pipeline_state);
 }
 
 // ============================================================================

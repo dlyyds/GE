@@ -45,6 +45,7 @@ namespace GE {
 
 class DebugUtils;
 class VulkanBuffer;
+class VulkanCommandBuffer;
 class VulkanCommandPool;
 class VulkanFencePool;
 class VulkanResourceCache;
@@ -107,18 +108,19 @@ public:
     // Buffer / Image 工具
     // =================================================================
 
-    /// @brief 从内建 command pool 分配一个 command buffer。
+    /// @brief 从内建 command pool 请求一个 command buffer（封装后，自动管理生命周期）。
     /// @param level  Command buffer 级别
     /// @param begin  是否立即开始录制
-    [[nodiscard]] vk::CommandBuffer CreateCommandBuffer(vk::CommandBufferLevel level, bool begin = false) const;
+    [[nodiscard]] std::shared_ptr<VulkanCommandBuffer> RequestCommandBuffer(
+        vk::CommandBufferLevel level = vk::CommandBufferLevel::ePrimary, bool begin = false);
 
-    /// @brief 提交 command buffer、等待完成、可选释放。
+    /// @brief 提交 command buffer、等待完成。
     /// @param command_buffer     要刷新的 command buffer
     /// @param queue              提交到的队列
-    /// @param free               是否在提交后释放 command buffer
     /// @param signal_semaphore   可选，提交时 signal 的信号量
-    void FlushCommandBuffer(vk::CommandBuffer command_buffer, vk::Queue queue,
-                            bool free = true, vk::Semaphore signal_semaphore = nullptr) const;
+    void FlushCommandBuffer(std::shared_ptr<VulkanCommandBuffer> const &command_buffer,
+                            vk::Queue queue,
+                            vk::Semaphore signal_semaphore = nullptr) const;
 
     // =================================================================
     // 访问器
@@ -146,7 +148,7 @@ public:
     /// @brief 检查扩展是否已启用。
     bool IsExtensionEnabled(const char *extension) const;
 
-    /// @brief 等待设备空闲（调试/析构时使用，性能敏感路径避免调用）。
+    /// @brief 等待设备空闲（调试/析构时使用，性能敏感路径避免调用）
     void WaitIdle() const;
 
 private:

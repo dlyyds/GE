@@ -16,6 +16,7 @@
  */
 
 #include "Render/VulkanBase/VulkanDevice.h"
+#include "Render/VulkanBase/VulkanCommandBuffer.h"
 #include "Render/VulkanBase/VulkanCommandPool.h"
 #include "Render/VulkanBase/VulkanDebug.h"
 #include "Render/VulkanBase/VulkanFencePool.h"
@@ -256,41 +257,38 @@ void VulkanDevice::AddQueue(size_t global_index, uint32_t family_index,
 }
 
 // ============================================================================
-// CreateCommandBuffer
+// RequestCommandBuffer
 // ============================================================================
 
-vk::CommandBuffer VulkanDevice::CreateCommandBuffer(vk::CommandBufferLevel level, bool begin) const {
+std::shared_ptr<VulkanCommandBuffer> VulkanDevice::RequestCommandBuffer(
+    vk::CommandBufferLevel level, bool begin) {
     assert(m_CommandPool && "No command pool exists in the device");
 
-    vk::CommandBufferAllocateInfo alloc_info{
-        .commandPool        = m_CommandPool->GetHandle(),
-        .level              = level,
-        .commandBufferCount = 1,
-    };
-    vk::CommandBuffer cmd_buf = GetHandle().allocateCommandBuffers(alloc_info).front();
-
+    auto cmd = m_CommandPool->RequestCommandBuffer(level);
     if (begin) {
-        cmd_buf.begin(vk::CommandBufferBeginInfo{});
+        cmd->Begin(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
     }
-
-    return cmd_buf;
+    return cmd;
 }
 
 // ============================================================================
 // FlushCommandBuffer
 // ============================================================================
 
-void VulkanDevice::FlushCommandBuffer(vk::CommandBuffer command_buffer, vk::Queue queue,
-                                      bool free, vk::Semaphore signal_semaphore) const {
-    if (!command_buffer) {
+void VulkanDevice::FlushCommandBuffer(std::shared_ptr<VulkanCommandBuffer> const &command_buffer,
+                                      vk::Queue queue,
+                                      vk::Semaphore signal_semaphore) const {
+    if (!command_buffer || !command_buffer->HasHandle()) {
         return;
     }
 
-    command_buffer.end();
+    command_buffer->End();
+
+    vk::CommandBuffer native = command_buffer->GetHandle();
 
     vk::SubmitInfo submit_info{
         .commandBufferCount = 1,
-        .pCommandBuffers    = &command_buffer,
+        .pCommandBuffers    = &native,
     };
     if (signal_semaphore) {
         submit_info.setSignalSemaphores(signal_semaphore);
@@ -310,10 +308,7 @@ void VulkanDevice::FlushCommandBuffer(vk::CommandBuffer command_buffer, vk::Queu
     }
 
     GetHandle().destroyFence(fence);
-
-    if (m_CommandPool && free) {
-        GetHandle().freeCommandBuffers(m_CommandPool->GetHandle(), command_buffer);
-    }
+    // shared_ptr 超出作用域后自动归还 command buffer 到 pool
 }
 
 // ============================================================================

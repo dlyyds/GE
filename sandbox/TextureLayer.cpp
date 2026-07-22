@@ -70,7 +70,7 @@ void TextureLayer::OnAttach() {
         {0, 16, vk::VertexInputRate::eVertex},
     };
     m_PipelineState.vertexAttributeDescriptions = std::vector<vk::VertexInputAttributeDescription>{
-        {0, 0, vk::Format::eR32G32Sfloat, 0},                           // position
+        {0, 0, vk::Format::eR32G32Sfloat, 0}, // position
         {1, 0, vk::Format::eR32G32Sfloat, static_cast<uint32_t>(2 * sizeof(float))}, // uv
     };
 
@@ -94,8 +94,8 @@ void TextureLayer::OnAttach() {
 
     // 2x2 棋盘格 fallback
     static unsigned char fallbackPixels[] = {
-        255, 255, 255, 255,   0,   0,   0, 255,
-          0,   0,   0, 255, 255, 255, 255, 255,
+        255, 255, 255, 255, 0, 0, 0, 255,
+        0, 0, 0, 255, 255, 255, 255, 255,
     };
 
     // 使用 stb_image 加载 PNG（强制 RGBA 4 通道）
@@ -126,10 +126,10 @@ void TextureLayer::OnAttach() {
         vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled);
 
     // 使用临时 command buffer 上传纹理
-    vk::CommandBuffer uploadCmd = device.CreateCommandBuffer(vk::CommandBufferLevel::ePrimary, true);
+    auto uploadCmd = device.RequestCommandBuffer(vk::CommandBufferLevel::ePrimary, true);
 
     // 将图像布局从 undefined 转换为 transfer-dst
-    image_utils::TransitionLayout(uploadCmd, m_TextureImage->GetHandle(),
+    image_utils::TransitionLayout(uploadCmd->GetHandle(), m_TextureImage->GetHandle(),
                                   vk::ImageLayout::eUndefined,
                                   vk::ImageLayout::eTransferDstOptimal);
 
@@ -144,18 +144,16 @@ void TextureLayer::OnAttach() {
     copyRegion.imageSubresource.layerCount = 1;
     copyRegion.imageOffset = vk::Offset3D{0, 0, 0};
     copyRegion.imageExtent = vk::Extent3D{static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight), 1};
-    uploadCmd.copyBufferToImage(stagingBuffer.GetHandle(), m_TextureImage->GetHandle(),
-                                vk::ImageLayout::eTransferDstOptimal, copyRegion);
+    uploadCmd->GetHandle().copyBufferToImage(stagingBuffer.GetHandle(), m_TextureImage->GetHandle(),
+                                             vk::ImageLayout::eTransferDstOptimal, copyRegion);
 
     // 将图像布局转换为 shader-read-only
-    image_utils::TransitionLayout(uploadCmd, m_TextureImage->GetHandle(),
+    image_utils::TransitionLayout(uploadCmd->GetHandle(), m_TextureImage->GetHandle(),
                                   vk::ImageLayout::eTransferDstOptimal,
                                   vk::ImageLayout::eShaderReadOnlyOptimal);
 
-    uploadCmd.end();
-
-    // 提交并等待完成
-    device.FlushCommandBuffer(uploadCmd, gfxQueue, true);
+    // 提交并等待完成（shared_ptr 超出作用域后自动归还到 pool）
+    device.FlushCommandBuffer(uploadCmd, gfxQueue);
 
     // staging buffer 在 upload 完成后自动析构
 
@@ -167,25 +165,25 @@ void TextureLayer::OnAttach() {
 
     // ── 8. 通过缓存获取 Sampler ───────────────────────────────────────────
     m_TextureSampler = &cache.RequestSampler(
-        vk::Filter::eLinear,            // mag
-        vk::Filter::eLinear,            // min
+        vk::Filter::eLinear, // mag
+        vk::Filter::eLinear, // min
         vk::SamplerMipmapMode::eLinear, // mipmap
-        vk::SamplerAddressMode::eRepeat,// address U
-        vk::SamplerAddressMode::eRepeat,// address V
-        vk::SamplerAddressMode::eRepeat);// address W
+        vk::SamplerAddressMode::eRepeat, // address U
+        vk::SamplerAddressMode::eRepeat, // address V
+        vk::SamplerAddressMode::eRepeat); // address W
 
     // ── 9. 创建顶点 buffer（全屏四边形：位置 + UV）────────────────────────
     struct Vertex {
-        float x, y;  // position (location 0)
-        float u, v;  // uv       (location 1)
+        float x, y; // position (location 0)
+        float u, v; // uv       (location 1)
     };
 
     // 覆盖 NDC 的四边形，UV 从 0 到 1
     Vertex vertices[] = {
         {-1.0f, -1.0f, 0.0f, 0.0f}, // 左下
-        { 1.0f, -1.0f, 1.0f, 0.0f}, // 右下
-        { 1.0f,  1.0f, 1.0f, 1.0f}, // 右上
-        {-1.0f,  1.0f, 0.0f, 1.0f}, // 左上
+        {1.0f, -1.0f, 1.0f, 0.0f}, // 右下
+        {1.0f, 1.0f, 1.0f, 1.0f}, // 右上
+        {-1.0f, 1.0f, 0.0f, 1.0f}, // 左上
     };
 
     m_VertexBuffer = std::make_unique<VulkanBuffer>(
@@ -225,11 +223,11 @@ void TextureLayer::OnAttach() {
                            glm::vec3(0.0f, 0.0f, 0.0f),
                            glm::vec3(0.0f, 1.0f, 0.0f));
     ubo.projection = glm::perspective(glm::radians(45.0f),
-                                       static_cast<float>(swapchain.GetExtent().width) /
-                                       static_cast<float>(swapchain.GetExtent().height),
-                                       0.1f, 100.0f);
+                                      static_cast<float>(swapchain.GetExtent().width) /
+                                      static_cast<float>(swapchain.GetExtent().height),
+                                      0.1f, 100.0f);
     ubo.projection[1][1] *= -1.0f; // Vulkan NDC: Y 轴向下
-    ubo.color = glm::vec4(1.0f);   // 不参与混合，纹理颜色全显示
+    ubo.color = glm::vec4(1.0f); // 不参与混合，纹理颜色全显示
 
     m_UniformBuffer->update(&ubo, sizeof(ubo));
 }
@@ -277,9 +275,9 @@ void TextureLayer::OnUpdate(Timestep &ts) {
                            glm::vec3(0.0f, 0.0f, 0.0f),
                            glm::vec3(0.0f, 1.0f, 0.0f));
     ubo.projection = glm::perspective(glm::radians(45.0f),
-                                       static_cast<float>(extent.width) /
-                                       static_cast<float>(extent.height),
-                                       0.1f, 100.0f);
+                                      static_cast<float>(extent.width) /
+                                      static_cast<float>(extent.height),
+                                      0.1f, 100.0f);
     ubo.projection[1][1] *= -1.0f; // Vulkan NDC
     ubo.color = glm::vec4(1.0f);
 

@@ -277,20 +277,6 @@ vk::CommandBuffer VulkanDevice::CreateCommandBuffer(vk::CommandBufferLevel level
 }
 
 // ============================================================================
-// CreateInternalCommandPool / CreateInternalFencePool
-// ============================================================================
-
-void VulkanDevice::CreateInternalCommandPool() {
-    uint32_t family_index = GetQueueByFlags(
-        vk::QueueFlagBits::eGraphics | vk::QueueFlagBits::eCompute, 0).GetFamilyIndex();
-    m_CommandPool = std::make_unique<VulkanCommandPool>(*this, family_index);
-}
-
-void VulkanDevice::CreateInternalFencePool() {
-    m_FencePool = std::make_unique<VulkanFencePool>(this->GetHandle());
-}
-
-// ============================================================================
 // FlushCommandBuffer
 // ============================================================================
 

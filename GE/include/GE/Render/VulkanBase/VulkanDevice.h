@@ -112,12 +112,6 @@ public:
     /// @param begin  是否立即开始录制
     [[nodiscard]] vk::CommandBuffer CreateCommandBuffer(vk::CommandBufferLevel level, bool begin = false) const;
 
-    /// @brief 创建内建的 command pool（供 CreateCommandBuffer / FlushCommandBuffer 使用）。
-    void CreateInternalCommandPool();
-
-    /// @brief 创建内建的 fence pool。
-    void CreateInternalFencePool();
-
     /// @brief 提交 command buffer、等待完成、可选释放。
     /// @param command_buffer     要刷新的 command buffer
     /// @param queue              提交到的队列

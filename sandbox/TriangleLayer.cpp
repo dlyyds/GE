@@ -17,11 +17,11 @@ TriangleLayer::TriangleLayer() : Layer("TriangleLayer") {
 TriangleLayer::~TriangleLayer() = default;
 
 void TriangleLayer::OnAttach() {
-    auto &ctx       = Application::GetVulkanContext();
-    auto &device    = ctx.GetDevice();          // VulkanDevice &
-    auto  allocator = ctx.GetVmaAllocator();
+    auto &ctx = Application::GetVulkanContext();
+    auto &device = ctx.GetDevice(); // VulkanDevice &
+    auto allocator = ctx.GetVmaAllocator();
     auto &swapchain = Application::GetSwapchain();
-    auto  colorFmt  = swapchain.GetFormat();
+    auto colorFmt = swapchain.GetFormat();
 
     // ── 1. 创建 ShaderModule（包含 SPIR-V 加载 + vk::ShaderModule 创建）─
     m_VertShader = std::make_unique<ShaderModule>(
@@ -37,14 +37,14 @@ void TriangleLayer::OnAttach() {
     // ── 2. 创建 PipelineLayout（从着色器反射 descriptor set）─────────
     m_PipelineLayout = std::make_unique<VulkanPipelineLayout>(
         device,
-        std::vector<ShaderModule *>{m_VertShader.get(), m_FragShader.get()});
+        std::vector{m_VertShader.get(), m_FragShader.get()});
 
     // ── 3. 配置 PipelineState ────────────────────────────────────────
     m_PipelineState.Reset();
-    m_PipelineState.pipelineLayout          = m_PipelineLayout.get();
-    m_PipelineState.colorAttachmentFormats  = {{colorFmt}};
-    m_PipelineState.depthFormat             = {};
-    m_PipelineState.stencilFormat           = {};
+    m_PipelineState.pipelineLayout = m_PipelineLayout.get();
+    m_PipelineState.colorAttachmentFormats = {colorFmt};
+    m_PipelineState.depthFormat = {};
+    m_PipelineState.stencilFormat = {};
 
     // 顶点输入（匹配着色器的 vertex input 布局）
     // location 0: vec2 position (offset 0)
@@ -54,8 +54,8 @@ void TriangleLayer::OnAttach() {
         {0, 20, vk::VertexInputRate::eVertex},
     };
     m_PipelineState.vertexAttributeDescriptions = std::vector<vk::VertexInputAttributeDescription>{
-        {0, 0, vk::Format::eR32G32Sfloat,   0},                                      // position
-        {1, 0, vk::Format::eR32G32B32Sfloat, static_cast<uint32_t>(2 * sizeof(float))},  // color
+        {0, 0, vk::Format::eR32G32Sfloat, 0}, // position
+        {1, 0, vk::Format::eR32G32B32Sfloat, static_cast<uint32_t>(2 * sizeof(float))}, // color
     };
 
     // 混合附件（与 colorAttachmentFormats 数量匹配）
@@ -68,7 +68,7 @@ void TriangleLayer::OnAttach() {
     m_PipelineState.cullMode.SetDynamic(true);
     m_PipelineState.frontFace.SetDynamic(true);
     m_PipelineState.topology.SetDynamic(true);
-    m_PipelineState.depthTestEnable = VK_FALSE;    // 无 depth attachment
+    m_PipelineState.depthTestEnable = VK_FALSE; // 无 depth attachment
     m_PipelineState.depthWriteEnable = VK_FALSE;
 
     // ── 4. 创建图形管线 ──────────────────────────────────────────────
@@ -78,14 +78,14 @@ void TriangleLayer::OnAttach() {
     // ── 5. 创建顶点 buffer ───────────────────────────────────────────
     // 每个顶点：位置 vec2（8 字节）+ 颜色 vec3（12 字节）, stride = 20
     struct Vertex {
-        float x, y;     // position (location 0)
-        float r, g, b;  // color    (location 1)
+        float x, y; // position (location 0)
+        float r, g, b; // color    (location 1)
     };
 
     Vertex vertices[] = {
-        {-0.5f, -0.5f, 1.0f, 0.0f, 0.0f},   // 左下 — 红
-        { 0.5f, -0.5f, 0.0f, 1.0f, 0.0f},   // 右下 — 绿
-        { 0.0f,  0.5f, 0.0f, 0.0f, 1.0f},   // 顶部 — 蓝
+        {-0.5f, -0.5f, 1.0f, 0.0f, 0.0f}, // 左下 — 红
+        {0.5f, -0.5f, 0.0f, 1.0f, 0.0f}, // 右下 — 绿
+        {0.0f, 0.5f, 0.0f, 0.0f, 1.0f}, // 顶部 — 蓝
     };
 
     m_VertexBuffer = std::make_unique<VulkanBuffer>(
@@ -106,9 +106,9 @@ void TriangleLayer::OnDetach() {
 }
 
 void TriangleLayer::OnUpdate(Timestep &ts) {
-    auto &cmd       = Application::GetFrameCmd();
-    auto vkCmd      = cmd.GetHandle();
-    auto extent     = Application::GetSwapchain().GetExtent();
+    auto &cmd = Application::GetFrameCmd();
+    auto vkCmd = cmd.GetHandle();
+    auto extent = Application::GetSwapchain().GetExtent();
 
     // ── 开始动态渲染 ──────────────────────────────────────────────────
     vk::ClearValue clearValue;
@@ -127,14 +127,14 @@ void TriangleLayer::OnUpdate(Timestep &ts) {
 
     // ── 动态状态 ──────────────────────────────────────────────────────
     vk::Viewport vp;
-    vp.width  = static_cast<float>(extent.width);
+    vp.width = static_cast<float>(extent.width);
     vp.height = static_cast<float>(extent.height);
     vp.minDepth = 0.0f;
     vp.maxDepth = 1.0f;
     vkCmd.setViewport(0, vp);
 
     vk::Rect2D scissor;
-    scissor.extent.width  = extent.width;
+    scissor.extent.width = extent.width;
     scissor.extent.height = extent.height;
     vkCmd.setScissor(0, scissor);
 

@@ -20,6 +20,7 @@
 #include "Render/VulkanBase/VulkanCommandPool.h"
 #include "Render/VulkanBase/VulkanDebug.h"
 #include "Render/VulkanBase/VulkanFencePool.h"
+#include "Render/VulkanBase/VulkanResourceCache.h"
 #include "Core/Log.h"
 
 #include <cassert>
@@ -62,6 +63,9 @@ VulkanDevice::VulkanDevice(PhysicalDevice &gpu, vk::Device &vulkan_device, vk::S
 // ============================================================================
 
 VulkanDevice::~VulkanDevice() {
+    // 先销毁资源缓存（其内部资源可能引用 command pool / fence pool）
+    m_ResourceCache.reset();
+
     m_CommandPool.reset();
     m_FencePool.reset();
 
@@ -235,6 +239,9 @@ void VulkanDevice::Init(std::unordered_map<std::string, RequestMode> const &requ
         vk::QueueFlagBits::eGraphics | vk::QueueFlagBits::eCompute, 0).GetFamilyIndex();
     m_CommandPool = std::make_unique<VulkanCommandPool>(*this, family_index);
     m_FencePool   = std::make_unique<VulkanFencePool>(this->GetHandle());
+
+    // ---- 8. 创建全局资源缓存 ----
+    m_ResourceCache = std::make_unique<VulkanResourceCache>(*this);
 }
 
 // ============================================================================

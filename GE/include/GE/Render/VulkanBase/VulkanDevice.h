@@ -47,6 +47,7 @@ class DebugUtils;
 class VulkanBuffer;
 class VulkanCommandPool;
 class VulkanFencePool;
+class VulkanResourceCache;
 
 /**
  * @brief Vulkan 逻辑设备。
@@ -157,6 +158,9 @@ public:
     /// @brief 获取 VMA 分配器。
     [[nodiscard]] VmaAllocator GetVmaAllocator() const { return m_VmaAllocator; }
 
+    /// @brief 获取全局资源缓存。
+    VulkanResourceCache &GetResourceCache() { return *m_ResourceCache; }
+
     /// @brief 按队列族和索引获取队列。
     VulkanQueue const &GetQueue(uint32_t queue_family_index, uint32_t queue_index) const;
 
@@ -189,6 +193,7 @@ private:
     std::vector<const char *> m_EnabledExtensions;
     std::unique_ptr<VulkanFencePool> m_FencePool;
     PhysicalDevice &m_Gpu;
+    std::unique_ptr<VulkanResourceCache> m_ResourceCache;
     std::vector<std::vector<VulkanQueue> > m_Queues; ///< [family_index][queue_index]
     vk::SurfaceKHR m_Surface = nullptr;
     VmaAllocator m_VmaAllocator = nullptr;

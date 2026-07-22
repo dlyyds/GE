@@ -183,7 +183,7 @@ VulkanCommandPool &VulkanRenderFrame::GetCommandPool(const VulkanQueue &queue,
 // RequestDescriptorSet
 // ============================================================================
 
-vk::DescriptorSet VulkanRenderFrame::RequestDescriptorSet(
+VulkanDescriptorSet &VulkanRenderFrame::RequestDescriptorSet(
     const VulkanDescriptorSetLayout &descriptor_set_layout,
     const BindingMap<vk::DescriptorBufferInfo> &buffer_infos,
     const BindingMap<vk::DescriptorImageInfo> &image_infos,
@@ -223,13 +223,14 @@ vk::DescriptorSet VulkanRenderFrame::RequestDescriptorSet(
         // 更新指定的 bindings（空 = 全部更新）
         descriptor_set.Update({bindings_to_update.begin(), bindings_to_update.end()});
 
-        return descriptor_set.GetHandle();
+        return descriptor_set;
     } else {
         // CreateDirectly 策略：每次创建新 descriptor set，不缓存
-        VulkanDescriptorSet descriptor_set{
-            m_Device, descriptor_set_layout, descriptor_pool, buffer_infos, image_infos};
-        descriptor_set.ApplyWrites();
-        return descriptor_set.GetHandle();
+        // 存入成员向量确保引用有效
+        m_DirectDescriptorSets.emplace_back(
+            m_Device, descriptor_set_layout, descriptor_pool, buffer_infos, image_infos);
+        m_DirectDescriptorSets.back().ApplyWrites();
+        return m_DirectDescriptorSets.back();
     }
 }
 
@@ -293,6 +294,7 @@ void VulkanRenderFrame::ClearDescriptors() {
     for (auto &desc_sets_per_thread : m_DescriptorSets) {
         desc_sets_per_thread.clear();
     }
+    m_DirectDescriptorSets.clear();
     for (auto &desc_pools_per_thread : m_DescriptorPools) {
         for (auto &desc_pool : desc_pools_per_thread) {
             desc_pool.second.Reset();

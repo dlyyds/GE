@@ -162,13 +162,13 @@ public:
      * @param image_infos          Image binding 信息
      * @param update_after_bind    是否启用 update-after-bind（仅 StoreInCache 策略有效）
      * @param thread_index         线程索引
-     * @return vk::DescriptorSet 句柄。
+     * @return VulkanDescriptorSet 引用（StoreInCache 策略下为缓存对象的引用）。
      */
-    vk::DescriptorSet RequestDescriptorSet(const VulkanDescriptorSetLayout &descriptor_set_layout,
-                                           const BindingMap<vk::DescriptorBufferInfo> &buffer_infos,
-                                           const BindingMap<vk::DescriptorImageInfo> &image_infos,
-                                           bool update_after_bind = false,
-                                           size_t thread_index = 0);
+    VulkanDescriptorSet &RequestDescriptorSet(const VulkanDescriptorSetLayout &descriptor_set_layout,
+                                               const BindingMap<vk::DescriptorBufferInfo> &buffer_infos,
+                                               const BindingMap<vk::DescriptorImageInfo> &image_infos,
+                                               bool update_after_bind = false,
+                                               size_t thread_index = 0);
 
     // ========================================================================
     // 生命周期
@@ -255,6 +255,9 @@ private:
 
     // Descriptor sets per thread: hash(layout + buffer_infos + image_infos) -> VulkanDescriptorSet
     std::vector<std::unordered_map<size_t, VulkanDescriptorSet>> m_DescriptorSets;
+
+    // CreateDirectly 策略下创建的临时 descriptor sets（保证引用有效）
+    std::vector<VulkanDescriptorSet> m_DirectDescriptorSets;
 
     VulkanFencePool m_FencePool;
     VulkanSemaphorePool m_SemaphorePool;

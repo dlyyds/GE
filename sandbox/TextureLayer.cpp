@@ -153,6 +153,7 @@ void TextureLayer::OnAttach() {
                                   vk::ImageLayout::eShaderReadOnlyOptimal);
 
     // 提交并等待完成（shared_ptr 超出作用域后自动归还到 pool）
+    uploadCmd->End();
     device.FlushCommandBuffer(uploadCmd, gfxQueue);
 
     // staging buffer 在 upload 完成后自动析构
@@ -165,8 +166,8 @@ void TextureLayer::OnAttach() {
 
     // ── 8. 通过缓存获取 Sampler ───────────────────────────────────────────
     m_TextureSampler = &cache.RequestSampler(
-        vk::Filter::eLinear, // mag
-        vk::Filter::eLinear, // min
+        vk::Filter::eNearest, // mag
+        vk::Filter::eNearest, // min
         vk::SamplerMipmapMode::eLinear, // mipmap
         vk::SamplerAddressMode::eRepeat, // address U
         vk::SamplerAddressMode::eRepeat, // address V
@@ -303,7 +304,7 @@ void TextureLayer::OnUpdate(Timestep &ts) {
     imageInfos[1][0] = imageInfo;
 
     // 从当前帧的 RenderFrame 获取 descriptor set
-    vk::DescriptorSet descriptorSet = renderFrame.RequestDescriptorSet(
+    auto &descriptorSet = renderFrame.RequestDescriptorSet(
         *m_DescriptorSetLayout, bufferInfos, imageInfos);
 
     // ── 开始动态渲染 ──────────────────────────────────────────────────────
@@ -341,7 +342,7 @@ void TextureLayer::OnUpdate(Timestep &ts) {
     // ── 绑定 descriptor set ───────────────────────────────────────────────
     vkCmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
                              m_PipelineLayout->GetHandle(),
-                             0, descriptorSet, {});
+                             0, descriptorSet.GetHandle(), {});
 
     // ── 绑定顶点和索引 buffer ─────────────────────────────────────────────
     vk::Buffer vb = m_VertexBuffer->GetHandle();

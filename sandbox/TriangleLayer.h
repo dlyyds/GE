@@ -21,12 +21,12 @@ public:
     void OnImGuiRender() override;
 
 private:
-    std::unique_ptr<ShaderModule>           m_VertShader;
-    std::unique_ptr<ShaderModule>           m_FragShader;
-    std::unique_ptr<VulkanPipelineLayout>   m_PipelineLayout;
-    VulkanPipelineState                     m_PipelineState;
-    std::unique_ptr<VulkanGraphicsPipeline> m_Pipeline;
-    std::unique_ptr<VulkanBuffer>           m_VertexBuffer;
+    ShaderModule                   *m_VertShader = nullptr;
+    ShaderModule                   *m_FragShader = nullptr;
+    VulkanPipelineLayout           *m_PipelineLayout = nullptr;
+    VulkanPipelineState             m_PipelineState;
+    VulkanGraphicsPipeline         *m_Pipeline = nullptr;
+    std::unique_ptr<VulkanBuffer>   m_VertexBuffer;
 };
 
 } // namespace GE

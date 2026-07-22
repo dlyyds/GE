@@ -6,6 +6,7 @@
 #include "GE/Core/Application.h"
 
 #include "GE/Render/VulkanBase/VulkanRenderingInfo.h"
+#include "GE/Render/VulkanBase/VulkanResourceCache.h"
 
 #include "imgui.h"
 
@@ -23,25 +24,25 @@ void TriangleLayer::OnAttach() {
     auto &swapchain = Application::GetSwapchain();
     auto colorFmt = swapchain.GetFormat();
 
-    // ── 1. 创建 ShaderModule（包含 SPIR-V 加载 + vk::ShaderModule 创建）─
-    m_VertShader = std::make_unique<ShaderModule>(
-        device, vk::ShaderStageFlagBits::eVertex,
+    // ── 1. 通过全局资源缓存创建 ShaderModule（去重）──────────────
+    auto &cache = device.GetResourceCache();
+    m_VertShader = &cache.RequestShaderModule(
+        vk::ShaderStageFlagBits::eVertex,
         ShaderSource("assets/shaders/glsl/triangle_raw.vert.spv"),
         "main", ShaderVariant{});
 
-    m_FragShader = std::make_unique<ShaderModule>(
-        device, vk::ShaderStageFlagBits::eFragment,
+    m_FragShader = &cache.RequestShaderModule(
+        vk::ShaderStageFlagBits::eFragment,
         ShaderSource("assets/shaders/glsl/triangle_raw.frag.spv"),
         "main", ShaderVariant{});
 
-    // ── 2. 创建 PipelineLayout（从着色器反射 descriptor set）─────────
-    m_PipelineLayout = std::make_unique<VulkanPipelineLayout>(
-        device,
-        std::vector{m_VertShader.get(), m_FragShader.get()});
+    // ── 2. 通过全局资源缓存创建 PipelineLayout（去重）────────────
+    m_PipelineLayout = &cache.RequestPipelineLayout(
+        {m_VertShader, m_FragShader});
 
     // ── 3. 配置 PipelineState ────────────────────────────────────────
     m_PipelineState.Reset();
-    m_PipelineState.pipelineLayout = m_PipelineLayout.get();
+    m_PipelineState.pipelineLayout = m_PipelineLayout;
     m_PipelineState.colorAttachmentFormats = {colorFmt};
     m_PipelineState.depthFormat = {};
     m_PipelineState.stencilFormat = {};
@@ -71,9 +72,8 @@ void TriangleLayer::OnAttach() {
     m_PipelineState.depthTestEnable = VK_FALSE; // 无 depth attachment
     m_PipelineState.depthWriteEnable = VK_FALSE;
 
-    // ── 4. 创建图形管线 ──────────────────────────────────────────────
-    m_Pipeline = std::make_unique<VulkanGraphicsPipeline>(
-        device, m_PipelineState);
+    // ── 4. 通过全局资源缓存创建图形管线（去重）────────────────────
+    m_Pipeline = &cache.RequestGraphicsPipeline(m_PipelineState);
 
     // ── 5. 创建顶点 buffer ───────────────────────────────────────────
     // 每个顶点：位置 vec2（8 字节）+ 颜色 vec3（12 字节）, stride = 20
@@ -95,14 +95,15 @@ void TriangleLayer::OnAttach() {
 }
 
 void TriangleLayer::OnDetach() {
-    // 按创建逆序销毁
+    // 顶点 buffer 由我们持有，需手动销毁
     m_VertexBuffer.reset();
 
-    // unique_ptr 自动析构，顺序：Pipeline → PipelineLayout → ShaderModules
-    m_Pipeline.reset();
-    m_PipelineLayout.reset();
-    m_VertShader.reset();
-    m_FragShader.reset();
+    // ShaderModule / PipelineLayout / Pipeline 由 VulkanResourceCache
+    // 持有生命周期，无需手动释放
+    m_VertShader = nullptr;
+    m_FragShader = nullptr;
+    m_PipelineLayout = nullptr;
+    m_Pipeline = nullptr;
 }
 
 void TriangleLayer::OnUpdate(Timestep &ts) {

@@ -363,4 +363,14 @@ bool VulkanDevice::IsExtensionEnabled(const char *extension) const {
                                 }) != m_EnabledExtensions.end();
 }
 
+// ============================================================================
+// WaitIdle
+// ============================================================================
+
+void VulkanDevice::WaitIdle() const {
+    if (this->GetHandle()) {
+        this->GetHandle().waitIdle();
+    }
+}
+
 } // namespace GE

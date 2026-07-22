@@ -148,6 +148,10 @@ public:
     /// @brief 检查扩展是否已启用。
     bool IsExtensionEnabled(const char *extension) const;
 
+    /// @brief 重置内建 command pool，释放所有已分配的 command buffer。
+    /// 调用后之前从 RequestCommandBuffer 获取的 shared_ptr 全部失效。
+    void ResetCommandPool();
+
     /// @brief 等待设备空闲（调试/析构时使用，性能敏感路径避免调用）
     void WaitIdle() const;
 

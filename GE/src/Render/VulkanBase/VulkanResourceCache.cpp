@@ -75,29 +75,20 @@ VulkanDescriptorSetLayout &VulkanResourceCache::RequestDescriptorSetLayout(uint3
                            set_index, shader_modules, set_resources);
 }
 
-VulkanGraphicsPipeline &VulkanResourceCache::RequestGraphicsPipeline(VkPipelineCache pipeline_cache,
-                                                                       VulkanPipelineState &pipeline_state) {
-    // 优先使用成员变量中的 pipeline cache，若未设置则使用传入的
-    VkPipelineCache effective_cache = m_PipelineCache ? m_PipelineCache : pipeline_cache;
-
+VulkanGraphicsPipeline &VulkanResourceCache::RequestGraphicsPipeline(VulkanPipelineState &pipeline_state) {
     return RequestResource(m_GraphicsPipelineMutex, m_GraphicsPipelines,
                            [&](VulkanDevice &dev) -> VulkanGraphicsPipeline {
-                               return VulkanGraphicsPipeline(dev, effective_cache, pipeline_state);
+                               return VulkanGraphicsPipeline(dev, VK_NULL_HANDLE, pipeline_state);
                            },
-                           // VkPipelineCache 的 hash_param 特化会忽略它，
-                           // 但这里仍传入以保持与构造函数参数列表一致
-                           pipeline_cache, pipeline_state);
+                           pipeline_state);
 }
 
-VulkanComputePipeline &VulkanResourceCache::RequestComputePipeline(VkPipelineCache pipeline_cache,
-                                                                     VulkanPipelineState &pipeline_state) {
-    VkPipelineCache effective_cache = m_PipelineCache ? m_PipelineCache : pipeline_cache;
-
+VulkanComputePipeline &VulkanResourceCache::RequestComputePipeline(VulkanPipelineState &pipeline_state) {
     return RequestResource(m_ComputePipelineMutex, m_ComputePipelines,
                            [&](VulkanDevice &dev) -> VulkanComputePipeline {
-                               return VulkanComputePipeline(dev, effective_cache, pipeline_state);
+                               return VulkanComputePipeline(dev, VK_NULL_HANDLE, pipeline_state);
                            },
-                           pipeline_cache, pipeline_state);
+                           pipeline_state);
 }
 
 // ============================================================================

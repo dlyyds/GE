@@ -99,16 +99,14 @@ public:
                                                            const std::vector<ShaderResource> &set_resources);
 
     /**
-     * @brief 请求图形管线（按 pipeline_cache + pipeline_state 去重）。
+     * @brief 请求图形管线（按 pipeline_state 去重）。
      */
-    VulkanGraphicsPipeline &RequestGraphicsPipeline(VkPipelineCache pipeline_cache,
-                                                     VulkanPipelineState &pipeline_state);
+    VulkanGraphicsPipeline &RequestGraphicsPipeline(VulkanPipelineState &pipeline_state);
 
     /**
-     * @brief 请求计算管线（按 pipeline_cache + pipeline_state 去重）。
+     * @brief 请求计算管线（按 pipeline_state 去重）。
      */
-    VulkanComputePipeline &RequestComputePipeline(VkPipelineCache pipeline_cache,
-                                                   VulkanPipelineState &pipeline_state);
+    VulkanComputePipeline &RequestComputePipeline(VulkanPipelineState &pipeline_state);
 
     // ========================================================================
     // 生命周期管理
@@ -119,13 +117,6 @@ public:
 
     /// 清空管线缓存（保留 shader module / pipeline layout / descriptor set layout）。
     void ClearPipelines();
-
-    // ========================================================================
-    // Pipeline Cache
-    // ========================================================================
-
-    /// 设置外部 VkPipelineCache（用于加速管线创建）。
-    void SetPipelineCache(VkPipelineCache pipeline_cache) { m_PipelineCache = pipeline_cache; }
 
 private:
     /**
@@ -169,7 +160,6 @@ private:
 
 private:
     VulkanDevice &m_Device;
-    VkPipelineCache m_PipelineCache{VK_NULL_HANDLE};
 
     // 缓存容器
     std::unordered_map<size_t, ShaderModule>              m_ShaderModules;

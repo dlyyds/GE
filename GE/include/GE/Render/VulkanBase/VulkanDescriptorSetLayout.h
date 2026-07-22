@@ -33,8 +33,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace GE
-{
+namespace GE {
 
 class ShaderModule;
 class VulkanDevice;
@@ -45,9 +44,8 @@ struct ShaderResource;
  *        从 ShaderResource 创建 VkDescriptorSetLayout，
  *        并提供 binding 编号和名称的查找。
  */
-class VulkanDescriptorSetLayout
-{
-  public:
+class VulkanDescriptorSetLayout {
+public:
     /**
      * @brief 从一组着色器资源创建 DescriptorSetLayout。
      * @param device        Vulkan 设备
@@ -55,14 +53,14 @@ class VulkanDescriptorSetLayout
      * @param shader_modules 此 set layout 涉及的着色器模块
      * @param resource_set  同一 set 的着色器资源分组
      */
-    VulkanDescriptorSetLayout(VulkanDevice                   &device,
-                              uint32_t                        set_index,
+    VulkanDescriptorSetLayout(VulkanDevice &device,
+                              uint32_t set_index,
                               const std::vector<ShaderModule *> &shader_modules,
                               const std::vector<ShaderResource> &resource_set);
 
     VulkanDescriptorSetLayout(const VulkanDescriptorSetLayout &) = delete;
 
-    VulkanDescriptorSetLayout(VulkanDescriptorSetLayout &&other);
+    VulkanDescriptorSetLayout(VulkanDescriptorSetLayout &&other) noexcept;
 
     ~VulkanDescriptorSetLayout();
 
@@ -86,7 +84,7 @@ class VulkanDescriptorSetLayout
 
     const std::vector<ShaderModule *> &GetShaderModules() const;
 
-  private:
+private:
     VulkanDevice &m_Device;
 
     vk::DescriptorSetLayout m_Handle{VK_NULL_HANDLE};

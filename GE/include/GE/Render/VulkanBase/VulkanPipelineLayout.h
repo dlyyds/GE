@@ -90,8 +90,8 @@ class VulkanPipelineLayout
     /// 每个 set 拥有的资源
     std::unordered_map<uint32_t, std::vector<ShaderResource>> m_ShaderSets;
 
-    /// 不同 set 的 descriptor set layout（由本对象拥有）
-    std::vector<std::unique_ptr<VulkanDescriptorSetLayout>> m_DescriptorSetLayouts;
+    /// 不同 set 的 descriptor set layout（由 VulkanResourceCache 持有生命周期）
+    std::vector<VulkanDescriptorSetLayout *> m_DescriptorSetLayouts;
 };
 
 } // namespace GE

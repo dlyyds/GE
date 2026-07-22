@@ -27,6 +27,7 @@
 
 #include "Render/VulkanBase/VulkanDescriptorSetLayout.h"
 #include "Render/VulkanBase/VulkanDevice.h"
+#include "Render/VulkanBase/VulkanResourceCache.h"
 
 namespace GE
 {
@@ -80,12 +81,13 @@ VulkanPipelineLayout::VulkanPipelineLayout(VulkanDevice &device, const std::vect
         }
     }
 
-    // 为每个 set 创建 DescriptorSetLayout
+    // 为每个 set 通过全局缓存获取 DescriptorSetLayout（去重）
+    auto &cache = m_Device.GetResourceCache();
     for (auto &shader_set_it : m_ShaderSets)
     {
         m_DescriptorSetLayouts.push_back(
-            std::make_unique<VulkanDescriptorSetLayout>(
-                m_Device, shader_set_it.first, m_ShaderModules, shader_set_it.second));
+            &cache.RequestDescriptorSetLayout(
+                shader_set_it.first, m_ShaderModules, shader_set_it.second));
     }
 
     // 收集所有 descriptor set layout 句柄，按 set 顺序排列
@@ -134,6 +136,7 @@ VulkanPipelineLayout::VulkanPipelineLayout(VulkanPipelineLayout &&other) :
     m_DescriptorSetLayouts{std::move(other.m_DescriptorSetLayouts)}
 {
     other.m_Handle = VK_NULL_HANDLE;
+    other.m_DescriptorSetLayouts.clear();
 }
 
 VulkanPipelineLayout::~VulkanPipelineLayout()
@@ -142,7 +145,7 @@ VulkanPipelineLayout::~VulkanPipelineLayout()
     {
         m_Device.GetHandle().destroyPipelineLayout(m_Handle);
     }
-    // m_DescriptorSetLayouts 由 unique_ptr 自动清理
+    // m_DescriptorSetLayouts 由 VulkanResourceCache 持有生命周期，无需手动清理
 }
 
 vk::PipelineLayout VulkanPipelineLayout::GetHandle() const

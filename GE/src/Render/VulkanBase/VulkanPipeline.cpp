@@ -57,8 +57,8 @@ VulkanPipeline::~VulkanPipeline()
 // ============================================================================
 
 VulkanGraphicsPipeline::VulkanGraphicsPipeline(VulkanDevice       &device,
-                                               VkPipelineCache     pipeline_cache,
-                                               VulkanPipelineState &pipeline_state) :
+                                               VulkanPipelineState &pipeline_state,
+                                               VkPipelineCache     pipeline_cache) :
     VulkanPipeline(device)
 {
     // 复制外部状态

@@ -78,7 +78,7 @@ VulkanDescriptorSetLayout &VulkanResourceCache::RequestDescriptorSetLayout(uint3
 VulkanGraphicsPipeline &VulkanResourceCache::RequestGraphicsPipeline(VulkanPipelineState &pipeline_state) {
     return RequestResource(m_GraphicsPipelineMutex, m_GraphicsPipelines,
                            [&](VulkanDevice &dev) -> VulkanGraphicsPipeline {
-                               return VulkanGraphicsPipeline(dev, VK_NULL_HANDLE, pipeline_state);
+                               return VulkanGraphicsPipeline(dev, pipeline_state);
                            },
                            pipeline_state);
 }

@@ -73,7 +73,7 @@ void TriangleLayer::OnAttach() {
 
     // ── 4. 创建图形管线 ──────────────────────────────────────────────
     m_Pipeline = std::make_unique<VulkanGraphicsPipeline>(
-        device, VK_NULL_HANDLE, m_PipelineState);
+        device, m_PipelineState);
 
     // ── 5. 创建顶点 buffer ───────────────────────────────────────────
     // 每个顶点：位置 vec2（8 字节）+ 颜色 vec3（12 字节）, stride = 20

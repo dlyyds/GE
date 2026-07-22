@@ -103,8 +103,8 @@ void VulkanGraphicsPipeline::Bind(vk::CommandBuffer cmd) const
 // ============================================================================
 
 VulkanComputePipeline::VulkanComputePipeline(VulkanDevice       &device,
-                                             VkPipelineCache     /*pipeline_cache*/,
-                                             VulkanPipelineState & /*pipeline_state*/) :
+                                             VulkanPipelineState & /*pipeline_state*/,
+                                             VkPipelineCache     /*pipeline_cache*/) :
     VulkanPipeline(device)
 {
     throw std::runtime_error("Compute pipeline not yet implemented");

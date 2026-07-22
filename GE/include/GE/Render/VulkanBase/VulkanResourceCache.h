@@ -125,20 +125,11 @@ private:
      * 1. 加锁
      * 2. 对 args 计算复合 hash
      * 3. 在 resources 中查找，命中则直接返回
-     * 4. 未命中则调用 creator 创建资源，插入缓存后返回
-     *
-     * @tparam T       资源类型
-     * @tparam Creator 创建器类型（lambda T(VulkanDevice &)）
-     * @tparam A       参与 hash 的参数类型
-     * @param mutex    该类别的互斥锁
-     * @param resources 缓存 unordered_map
-     * @param creator  创建资源的可调用对象：T(VulkanDevice &)
-     * @param args     参与 hash 计算的参数
-     * @return T&      缓存中的资源引用
+     * 4. 未命中则调用 T(device, args...) 构造并插入缓存
      */
-    template <class T, class Creator, class... A>
+    template <class T, class... A>
     T &RequestResource(std::mutex &mutex, std::unordered_map<size_t, T> &resources,
-                        Creator &&creator, A &...args) {
+                        A &...args) {
         std::lock_guard<std::mutex> guard(mutex);
 
         size_t hash{0U};
@@ -149,7 +140,7 @@ private:
             return res_it->second;
         }
 
-        T resource = creator(m_Device);
+        T resource(m_Device, args...);
         auto res_ins_it = resources.emplace(hash, std::move(resource));
         if (!res_ins_it.second) {
             throw std::runtime_error{"插入缓存失败"};

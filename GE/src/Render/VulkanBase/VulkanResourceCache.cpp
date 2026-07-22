@@ -50,45 +50,30 @@ ShaderModule &VulkanResourceCache::RequestShaderModule(vk::ShaderStageFlagBits s
                                                         const ShaderSource &shader_source,
                                                         const std::string &entry_point,
                                                         const ShaderVariant &shader_variant) {
-    return RequestResource(m_ShaderModuleMutex, m_ShaderModules,
-                           [&](VulkanDevice &dev) -> ShaderModule {
-                               return ShaderModule(dev, stage, shader_source, entry_point, shader_variant);
-                           },
-                           stage, shader_source, entry_point, shader_variant);
+    return RequestResource<ShaderModule>(m_ShaderModuleMutex, m_ShaderModules,
+                                         stage, shader_source, entry_point, shader_variant);
 }
 
 VulkanPipelineLayout &VulkanResourceCache::RequestPipelineLayout(const std::vector<ShaderModule *> &shader_modules) {
-    return RequestResource(m_PipelineLayoutMutex, m_PipelineLayouts,
-                           [&](VulkanDevice &dev) -> VulkanPipelineLayout {
-                               return VulkanPipelineLayout(dev, shader_modules);
-                           },
-                           shader_modules);
+    return RequestResource<VulkanPipelineLayout>(m_PipelineLayoutMutex, m_PipelineLayouts,
+                                                  shader_modules);
 }
 
 VulkanDescriptorSetLayout &VulkanResourceCache::RequestDescriptorSetLayout(uint32_t set_index,
                                                                              const std::vector<ShaderModule *> &shader_modules,
                                                                              const std::vector<ShaderResource> &set_resources) {
-    return RequestResource(m_DescriptorSetLayoutMutex, m_DescriptorSetLayouts,
-                           [&](VulkanDevice &dev) -> VulkanDescriptorSetLayout {
-                               return VulkanDescriptorSetLayout(dev, set_index, shader_modules, set_resources);
-                           },
-                           set_index, shader_modules, set_resources);
+    return RequestResource<VulkanDescriptorSetLayout>(m_DescriptorSetLayoutMutex, m_DescriptorSetLayouts,
+                                                       set_index, shader_modules, set_resources);
 }
 
 VulkanGraphicsPipeline &VulkanResourceCache::RequestGraphicsPipeline(VulkanPipelineState &pipeline_state) {
-    return RequestResource(m_GraphicsPipelineMutex, m_GraphicsPipelines,
-                           [&](VulkanDevice &dev) -> VulkanGraphicsPipeline {
-                               return VulkanGraphicsPipeline(dev, pipeline_state);
-                           },
-                           pipeline_state);
+    return RequestResource<VulkanGraphicsPipeline>(m_GraphicsPipelineMutex, m_GraphicsPipelines,
+                                                    pipeline_state);
 }
 
 VulkanComputePipeline &VulkanResourceCache::RequestComputePipeline(VulkanPipelineState &pipeline_state) {
-    return RequestResource(m_ComputePipelineMutex, m_ComputePipelines,
-                           [&](VulkanDevice &dev) -> VulkanComputePipeline {
-                               return VulkanComputePipeline(dev, VK_NULL_HANDLE, pipeline_state);
-                           },
-                           pipeline_state);
+    return RequestResource<VulkanComputePipeline>(m_ComputePipelineMutex, m_ComputePipelines,
+                                                   pipeline_state);
 }
 
 // ============================================================================
@@ -96,7 +81,6 @@ VulkanComputePipeline &VulkanResourceCache::RequestComputePipeline(VulkanPipelin
 // ============================================================================
 
 void VulkanResourceCache::Clear() {
-    // 先清空依赖底层的资源（管线），再清空被依赖的资源
     {
         std::lock_guard<std::mutex> guard(m_GraphicsPipelineMutex);
         m_GraphicsPipelines.clear();

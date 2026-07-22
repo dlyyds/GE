@@ -117,8 +117,8 @@ class VulkanComputePipeline : public VulkanPipeline
 {
   public:
     VulkanComputePipeline(VulkanDevice       &device,
-                          VkPipelineCache     pipeline_cache,
-                          VulkanPipelineState &pipeline_state);
+                          VulkanPipelineState &pipeline_state,
+                          VkPipelineCache     pipeline_cache = VK_NULL_HANDLE);
 
     ~VulkanComputePipeline() override;
 

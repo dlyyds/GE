@@ -43,6 +43,7 @@
 #include "Render/VulkanBase/VulkanPipeline.h"
 #include "Render/VulkanBase/VulkanPipelineLayout.h"
 #include "Render/VulkanBase/VulkanPipelineState.h"
+#include "Render/VulkanBase/VulkanSampler.h"
 
 #include <vulkan/vulkan.hpp>
 
@@ -108,6 +109,25 @@ public:
      */
     VulkanComputePipeline &RequestComputePipeline(VulkanPipelineState &pipeline_state);
 
+    /**
+     * @brief 请求 Sampler（按创建参数去重）。
+     */
+    VulkanSampler &RequestSampler(vk::Filter              mag_filter            = vk::Filter::eLinear,
+                                  vk::Filter              min_filter            = vk::Filter::eLinear,
+                                  vk::SamplerMipmapMode   mipmap_mode           = vk::SamplerMipmapMode::eLinear,
+                                  vk::SamplerAddressMode  address_mode_u        = vk::SamplerAddressMode::eRepeat,
+                                  vk::SamplerAddressMode  address_mode_v        = vk::SamplerAddressMode::eRepeat,
+                                  vk::SamplerAddressMode  address_mode_w        = vk::SamplerAddressMode::eRepeat,
+                                  float                   mip_lod_bias          = 0.0f,
+                                  vk::Bool32             anisotropy_enable     = VK_FALSE,
+                                  float                   max_anisotropy        = 1.0f,
+                                  vk::Bool32             compare_enable        = VK_FALSE,
+                                  vk::CompareOp           compare_op            = vk::CompareOp::eAlways,
+                                  float                   min_lod               = 0.0f,
+                                  float                   max_lod               = VK_LOD_CLAMP_NONE,
+                                  vk::BorderColor         border_color          = vk::BorderColor::eFloatTransparentBlack,
+                                  vk::Bool32             unnormalized_coordinates = VK_FALSE);
+
     // ========================================================================
     // 生命周期管理
     // ========================================================================
@@ -158,6 +178,7 @@ private:
     std::unordered_map<size_t, VulkanDescriptorSetLayout> m_DescriptorSetLayouts;
     std::unordered_map<size_t, VulkanGraphicsPipeline>    m_GraphicsPipelines;
     std::unordered_map<size_t, VulkanComputePipeline>     m_ComputePipelines;
+    std::unordered_map<size_t, VulkanSampler>             m_Samplers;
 
     // 互斥锁
     std::mutex m_ShaderModuleMutex;
@@ -165,6 +186,7 @@ private:
     std::mutex m_DescriptorSetLayoutMutex;
     std::mutex m_GraphicsPipelineMutex;
     std::mutex m_ComputePipelineMutex;
+    std::mutex m_SamplerMutex;
 };
 
 } // namespace GE

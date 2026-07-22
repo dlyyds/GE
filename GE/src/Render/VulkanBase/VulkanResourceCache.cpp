@@ -76,6 +76,29 @@ VulkanComputePipeline &VulkanResourceCache::RequestComputePipeline(VulkanPipelin
                                                    pipeline_state);
 }
 
+VulkanSampler &VulkanResourceCache::RequestSampler(vk::Filter              mag_filter,
+                                                    vk::Filter              min_filter,
+                                                    vk::SamplerMipmapMode   mipmap_mode,
+                                                    vk::SamplerAddressMode  address_mode_u,
+                                                    vk::SamplerAddressMode  address_mode_v,
+                                                    vk::SamplerAddressMode  address_mode_w,
+                                                    float                   mip_lod_bias,
+                                                    vk::Bool32             anisotropy_enable,
+                                                    float                   max_anisotropy,
+                                                    vk::Bool32             compare_enable,
+                                                    vk::CompareOp           compare_op,
+                                                    float                   min_lod,
+                                                    float                   max_lod,
+                                                    vk::BorderColor         border_color,
+                                                    vk::Bool32             unnormalized_coordinates) {
+    return RequestResource<VulkanSampler>(m_SamplerMutex, m_Samplers,
+                                          mag_filter, min_filter, mipmap_mode,
+                                          address_mode_u, address_mode_v, address_mode_w,
+                                          mip_lod_bias, anisotropy_enable, max_anisotropy,
+                                          compare_enable, compare_op,
+                                          min_lod, max_lod, border_color, unnormalized_coordinates);
+}
+
 // ============================================================================
 // 生命周期管理
 // ============================================================================
@@ -96,6 +119,10 @@ void VulkanResourceCache::Clear() {
     {
         std::lock_guard<std::mutex> guard(m_PipelineLayoutMutex);
         m_PipelineLayouts.clear();
+    }
+    {
+        std::lock_guard<std::mutex> guard(m_SamplerMutex);
+        m_Samplers.clear();
     }
     {
         std::lock_guard<std::mutex> guard(m_ShaderModuleMutex);

@@ -39,6 +39,7 @@
 #include "Render/VulkanBase/VulkanPipeline.h"
 #include "Render/VulkanBase/VulkanPipelineLayout.h"
 #include "Render/VulkanBase/VulkanPipelineState.h"
+#include "Render/VulkanBase/VulkanSampler.h"
 #include "Render/VulkanBase/ShaderModule.h"
 
 #include <vulkan/vulkan.hpp>
@@ -251,6 +252,32 @@ struct hash<GE::VulkanImageView> {
         GE::detail::hash_combine(result, image_view.GetHandle());
         GE::detail::hash_combine(result, image_view.get_format());
         GE::detail::hash_combine(result, image_view.get_subresource_range());
+        return result;
+    }
+};
+
+// ---- GE::VulkanSampler ----
+
+template <>
+struct hash<GE::VulkanSampler> {
+    size_t operator()(GE::VulkanSampler const &sampler) const {
+        size_t result = 0;
+        auto const &ci = sampler.GetCreateInfo();
+        GE::detail::hash_combine(result, ci.magFilter);
+        GE::detail::hash_combine(result, ci.minFilter);
+        GE::detail::hash_combine(result, ci.mipmapMode);
+        GE::detail::hash_combine(result, ci.addressModeU);
+        GE::detail::hash_combine(result, ci.addressModeV);
+        GE::detail::hash_combine(result, ci.addressModeW);
+        GE::detail::hash_combine(result, ci.mipLodBias);
+        GE::detail::hash_combine(result, ci.anisotropyEnable);
+        GE::detail::hash_combine(result, ci.maxAnisotropy);
+        GE::detail::hash_combine(result, ci.compareEnable);
+        GE::detail::hash_combine(result, ci.compareOp);
+        GE::detail::hash_combine(result, ci.minLod);
+        GE::detail::hash_combine(result, ci.maxLod);
+        GE::detail::hash_combine(result, ci.borderColor);
+        GE::detail::hash_combine(result, ci.unnormalizedCoordinates);
         return result;
     }
 };

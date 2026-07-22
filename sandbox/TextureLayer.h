@@ -5,9 +5,7 @@
 #include "GE/Render/VulkanBase/VulkanPipeline.h"
 #include "GE/Render/VulkanBase/VulkanPipelineLayout.h"
 #include "GE/Render/VulkanBase/ShaderModule.h"
-#include "GE/Render/VulkanBase/VulkanImage.h"
-#include "GE/Render/VulkanBase/VulkanImageView.h"
-#include "GE/Render/VulkanBase/VulkanSampler.h"
+#include "GE/Render/VulkanBase/Texture.h"
 
 namespace GE {
 
@@ -40,10 +38,8 @@ private:
     std::unique_ptr<VulkanBuffer> m_IndexBuffer;
     std::unique_ptr<VulkanBuffer> m_UniformBuffer;
 
-    // 纹理资源（由本层持有）
-    std::unique_ptr<VulkanImage>     m_TextureImage;
-    std::unique_ptr<VulkanImageView> m_TextureView;
-    VulkanSampler                   *m_TextureSampler = nullptr; // 由缓存管理
+    // 纹理（封装 Image + ImageView + Sampler）
+    std::unique_ptr<Texture> m_Texture;
 
     // Descriptor set layout（由缓存管理）
     VulkanDescriptorSetLayout *m_DescriptorSetLayout = nullptr;

@@ -9,7 +9,6 @@
 #include "GE/Render/VulkanBase/VulkanResourceCache.h"
 #include "GE/Render/VulkanBase/VulkanRenderFrame.h"
 
-#include "stb_image.h"
 #include "imgui.h"
 
 #include <glm/gtc/matrix_transform.hpp>
@@ -25,13 +24,8 @@ TextureLayer::~TextureLayer() = default;
 void TextureLayer::OnAttach() {
     auto &ctx = Application::GetVulkanContext();
     auto &device = ctx.GetDevice();
-    auto allocator = ctx.GetVmaAllocator();
     auto &swapchain = Application::GetSwapchain();
     auto colorFmt = swapchain.GetFormat();
-
-    // 获取 graphics queue（用于上传 texture 后的 flush）
-    auto &graphicsQueue = device.GetQueueByFlags(vk::QueueFlagBits::eGraphics, 0);
-    vk::Queue gfxQueue = graphicsQueue.GetHandle();
 
     // ── 1. 通过全局资源缓存创建 ShaderModule ──────────────────────────────
     auto &cache = device.GetResourceCache();
@@ -87,93 +81,10 @@ void TextureLayer::OnAttach() {
     // ── 5. 通过全局资源缓存创建图形管线 ──────────────────────────────────
     m_Pipeline = &cache.RequestGraphicsPipeline(m_PipelineState);
 
-    // ── 6. 加载棋盘纹理 ───────────────────────────────────────────────────
-    const char *texturePath = "assets/textures/Checkerboard.png";
-    int texWidth = 0, texHeight = 0, texChannels = 0;
-    bool useFallback = false;
+    // ── 6. 加载棋盘纹理（一行搞定！）───────────────────────────────────────
+    m_Texture = Texture::LoadFromFile(device, cache, "assets/textures/Checkerboard.png");
 
-    // 2x2 棋盘格 fallback
-    static unsigned char fallbackPixels[] = {
-        255, 255, 255, 255, 0, 0, 0, 255,
-        0, 0, 0, 255, 255, 255, 255, 255,
-    };
-
-    // 使用 stb_image 加载 PNG（强制 RGBA 4 通道）
-    unsigned char *pixels = stbi_load(texturePath, &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
-    if (!pixels) {
-        GE_CORE_ERROR("无法加载纹理：{}", texturePath);
-        texWidth = 2;
-        texHeight = 2;
-        pixels = fallbackPixels;
-        useFallback = true;
-    }
-
-    vk::DeviceSize imageSize = static_cast<vk::DeviceSize>(texWidth * texHeight * 4);
-
-    // 创建 staging buffer 上传纹理数据（create_staging_buffer 内部已拷贝数据）
-    auto stagingBuffer = VulkanBuffer::create_staging_buffer(device, imageSize, pixels);
-
-    // 释放 stb_image 加载的内存（fallback 是静态数组，不需要释放）
-    if (!useFallback) {
-        stbi_image_free(pixels);
-    }
-
-    // 创建目标纹理图像（GPU 本地）
-    m_TextureImage = std::make_unique<VulkanImage>(
-        device,
-        vk::Extent3D{static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight), 1},
-        vk::Format::eR8G8B8A8Unorm,
-        vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled);
-
-    // 使用临时 command buffer 上传纹理
-    auto uploadCmd = device.RequestCommandBuffer(vk::CommandBufferLevel::ePrimary, true);
-
-    // 将图像布局从 undefined 转换为 transfer-dst
-    image_utils::TransitionLayout(uploadCmd->GetHandle(), m_TextureImage->GetHandle(),
-                                  vk::ImageLayout::eUndefined,
-                                  vk::ImageLayout::eTransferDstOptimal);
-
-    // 拷贝 staging buffer 到纹理图像
-    vk::BufferImageCopy copyRegion{};
-    copyRegion.bufferOffset = 0;
-    copyRegion.bufferRowLength = 0;
-    copyRegion.bufferImageHeight = 0;
-    copyRegion.imageSubresource.aspectMask = vk::ImageAspectFlagBits::eColor;
-    copyRegion.imageSubresource.mipLevel = 0;
-    copyRegion.imageSubresource.baseArrayLayer = 0;
-    copyRegion.imageSubresource.layerCount = 1;
-    copyRegion.imageOffset = vk::Offset3D{0, 0, 0};
-    copyRegion.imageExtent = vk::Extent3D{static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight), 1};
-    uploadCmd->GetHandle().copyBufferToImage(stagingBuffer.GetHandle(), m_TextureImage->GetHandle(),
-                                             vk::ImageLayout::eTransferDstOptimal, copyRegion);
-
-    // 将图像布局转换为 shader-read-only
-    image_utils::TransitionLayout(uploadCmd->GetHandle(), m_TextureImage->GetHandle(),
-                                  vk::ImageLayout::eTransferDstOptimal,
-                                  vk::ImageLayout::eShaderReadOnlyOptimal);
-
-    // 提交并等待完成（shared_ptr 超出作用域后自动归还到 pool）
-    uploadCmd->End();
-    device.FlushCommandBuffer(uploadCmd, gfxQueue);
-
-    // staging buffer 在 upload 完成后自动析构
-
-    // ── 7. 创建纹理 ImageView ─────────────────────────────────────────────
-    m_TextureView = std::make_unique<VulkanImageView>(
-        *m_TextureImage,
-        vk::ImageViewType::e2D,
-        vk::Format::eR8G8B8A8Unorm);
-
-    // ── 8. 通过缓存获取 Sampler ───────────────────────────────────────────
-    m_TextureSampler = &cache.RequestSampler(
-        vk::Filter::eNearest, // mag
-        vk::Filter::eNearest, // min
-        vk::SamplerMipmapMode::eLinear, // mipmap
-        vk::SamplerAddressMode::eRepeat, // address U
-        vk::SamplerAddressMode::eRepeat, // address V
-        vk::SamplerAddressMode::eRepeat); // address W
-
-    // ── 9. 创建顶点 buffer（全屏四边形：位置 + UV）────────────────────────
+    // ── 7. 创建顶点 buffer（全屏四边形：位置 + UV）────────────────────────
     struct Vertex {
         float x, y; // position (location 0)
         float u, v; // uv       (location 1)
@@ -192,7 +103,7 @@ void TextureLayer::OnAttach() {
         vk::BufferUsageFlagBits::eVertexBuffer);
     m_VertexBuffer->update(vertices, sizeof(vertices));
 
-    // ── 10. 创建索引 buffer（2 个三角形）──────────────────────────────────
+    // ── 8. 创建索引 buffer（2 个三角形）───────────────────────────────────
     uint32_t indices[] = {
         0, 1, 2,
         2, 3, 0,
@@ -203,7 +114,7 @@ void TextureLayer::OnAttach() {
         vk::BufferUsageFlagBits::eIndexBuffer);
     m_IndexBuffer->update(indices, sizeof(indices));
 
-    // ── 11. 创建 uniform buffer（MVP 矩阵）───────────────────────────────
+    // ── 9. 创建 uniform buffer（MVP 矩阵）────────────────────────────────
     m_UniformBuffer = std::make_unique<VulkanBuffer>(
         device, sizeof(glm::mat4) * 3 + sizeof(glm::vec4),
         vk::BufferUsageFlagBits::eUniformBuffer,
@@ -238,11 +149,9 @@ void TextureLayer::OnDetach() {
     m_UniformBuffer.reset();
     m_IndexBuffer.reset();
     m_VertexBuffer.reset();
-    m_TextureView.reset();
-    m_TextureImage.reset();
+    m_Texture.reset();
 
     // 由 VulkanResourceCache 管理的资源
-    m_TextureSampler = nullptr;
     m_DescriptorSetLayout = nullptr;
     m_Pipeline = nullptr;
     m_PipelineLayout = nullptr;
@@ -294,14 +203,11 @@ void TextureLayer::OnUpdate(Timestep &ts) {
     BindingMap<vk::DescriptorBufferInfo> bufferInfos;
     bufferInfos[0][0] = bufferInfo;
 
-    // binding 1: texture sampler
-    vk::DescriptorImageInfo imageInfo{};
-    imageInfo.sampler = m_TextureSampler->GetHandle();
-    imageInfo.imageView = m_TextureView->GetHandle();
-    imageInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
-
+    // binding 1: texture sampler（使用 Texture 封装获取描述符信息）
     BindingMap<vk::DescriptorImageInfo> imageInfos;
-    imageInfos[1][0] = imageInfo;
+    if (m_Texture) {
+        imageInfos[1][0] = m_Texture->GetDescriptorInfo();
+    }
 
     // 从当前帧的 RenderFrame 获取 descriptor set
     auto &descriptorSet = renderFrame.RequestDescriptorSet(
@@ -320,7 +226,7 @@ void TextureLayer::OnUpdate(Timestep &ts) {
     renderInfo.Begin(vkCmd);
 
     // ── 绑定管线 ──────────────────────────────────────────────────────────
-    m_Pipeline->Bind(vkCmd);
+    vkCmd.bindPipeline(vk::PipelineBindPoint::eGraphics, m_Pipeline->GetHandle());
 
     // ── 动态状态 ──────────────────────────────────────────────────────────
     vk::Viewport vp;
@@ -367,10 +273,10 @@ void TextureLayer::OnImGuiRender() {
     ImGui::Text("着色器：triangle.vert / triangle.frag");
     ImGui::Text("纹理：Checkerboard.png");
     ImGui::Text("管线：UBO + 纹理采样器");
-    if (m_TextureImage) {
+    if (m_Texture) {
         ImGui::Text("纹理尺寸：%d x %d",
-                    m_TextureImage->get_extent().width,
-                    m_TextureImage->get_extent().height);
+                    m_Texture->GetExtent().width,
+                    m_Texture->GetExtent().height);
     }
     ImGui::End();
 }

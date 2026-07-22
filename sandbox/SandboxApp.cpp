@@ -7,6 +7,7 @@
 
 
 #include "TriangleLayer.h"
+#include "TextureLayer.h"
 
 namespace GE {
 class Sandbox : public Application {
@@ -16,7 +17,8 @@ public:
         //PushLayer(CreateRef<SandboxLayer>());
         //PushLayer(CreateRef<TextureSampleLayer>());
         //PushLayer(CreateRef<VulkanLayer>());
-        PushLayer(CreateRef<TriangleLayer>());
+        //PushLayer(CreateRef<TriangleLayer>());
+        PushLayer(CreateRef<TextureLayer>());
     }
 
     ~Sandbox() override = default;

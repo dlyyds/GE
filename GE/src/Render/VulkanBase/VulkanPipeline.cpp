@@ -23,30 +23,23 @@
 #include "Render/VulkanBase/VulkanPipeline.h"
 #include "Render/VulkanBase/VulkanDevice.h"
 
-namespace GE
-{
+namespace GE {
 
 // ============================================================================
 // VulkanPipeline（基类）
 // ============================================================================
 
-VulkanPipeline::VulkanPipeline(VulkanDevice &device) :
-    m_Device(device)
-{
+VulkanPipeline::VulkanPipeline(VulkanDevice &device) : m_Device(device) {
 }
 
-VulkanPipeline::VulkanPipeline(VulkanPipeline &&other) noexcept :
-    m_Device(other.m_Device),
-    m_Handle(other.m_Handle),
-    m_State(std::move(other.m_State))
-{
+VulkanPipeline::VulkanPipeline(VulkanPipeline &&other) noexcept : m_Device(other.m_Device),
+                                                                  m_Handle(other.m_Handle),
+                                                                  m_State(std::move(other.m_State)) {
     other.m_Handle = VK_NULL_HANDLE;
 }
 
-VulkanPipeline::~VulkanPipeline()
-{
-    if (m_Handle)
-    {
+VulkanPipeline::~VulkanPipeline() {
+    if (m_Handle) {
         m_Device.GetHandle().destroyPipeline(m_Handle);
     }
 }
@@ -56,11 +49,9 @@ VulkanPipeline::~VulkanPipeline()
 // VulkanGraphicsPipeline
 // ============================================================================
 
-VulkanGraphicsPipeline::VulkanGraphicsPipeline(VulkanDevice       &device,
+VulkanGraphicsPipeline::VulkanGraphicsPipeline(VulkanDevice &device,
                                                VulkanPipelineState &pipeline_state,
-                                               VkPipelineCache     pipeline_cache) :
-    VulkanPipeline(device)
-{
+                                               VkPipelineCache pipeline_cache) : VulkanPipeline(device) {
     // 复制外部状态
     m_State = pipeline_state;
 
@@ -72,8 +63,7 @@ VulkanGraphicsPipeline::VulkanGraphicsPipeline(VulkanDevice       &device,
         vk::PipelineCache{pipeline_cache},
         bundle.pipelineInfo);
 
-    if (result.result != vk::Result::eSuccess)
-    {
+    if (result.result != vk::Result::eSuccess) {
         throw std::runtime_error("Failed to create graphics pipeline");
     }
 
@@ -83,14 +73,8 @@ VulkanGraphicsPipeline::VulkanGraphicsPipeline(VulkanDevice       &device,
     m_State.ClearAllDirty();
 }
 
-VulkanGraphicsPipeline::~VulkanGraphicsPipeline()
-{
+VulkanGraphicsPipeline::~VulkanGraphicsPipeline() {
     // 基类析构会销毁 m_Handle
-}
-
-void VulkanGraphicsPipeline::Bind(vk::CommandBuffer cmd) const
-{
-    cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, m_Handle);
 }
 
 
@@ -102,11 +86,9 @@ void VulkanGraphicsPipeline::Bind(vk::CommandBuffer cmd) const
 //       主要针对图形管线设计，计算管线功能待后续补充。
 // ============================================================================
 
-VulkanComputePipeline::VulkanComputePipeline(VulkanDevice       &device,
+VulkanComputePipeline::VulkanComputePipeline(VulkanDevice &device,
                                              VulkanPipelineState & /*pipeline_state*/,
-                                             VkPipelineCache     /*pipeline_cache*/) :
-    VulkanPipeline(device)
-{
+                                             VkPipelineCache /*pipeline_cache*/) : VulkanPipeline(device) {
     throw std::runtime_error("Compute pipeline not yet implemented");
 }
 

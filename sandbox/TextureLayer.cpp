@@ -81,7 +81,7 @@ void TextureLayer::OnAttach() {
     // ── 5. 通过全局资源缓存创建图形管线 ──────────────────────────────────
     m_Pipeline = &cache.RequestGraphicsPipeline(m_PipelineState);
 
-    // ── 6. 加载棋盘纹理（一行搞定！）───────────────────────────────────────
+    // ── 6. 加载棋盘纹理───────────────────────────────────────
     m_Texture = Texture::LoadFromFile(device, cache, "assets/textures/Checkerboard.png");
 
     // ── 7. 创建顶点 buffer（全屏四边形：位置 + UV）────────────────────────

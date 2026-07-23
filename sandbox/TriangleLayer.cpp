@@ -124,8 +124,8 @@ void TriangleLayer::OnUpdate(Timestep &ts) {
     renderInfo.Begin(vkCmd);
 
     // ── 绑定管线（必须先 bind，再设动态状态 —— bind 会重置动态状态） ──
-    m_Pipeline->Bind(vkCmd);
 
+    vkCmd.bindPipeline(vk::PipelineBindPoint::eGraphics, m_Pipeline->GetHandle());
     // ── 动态状态 ──────────────────────────────────────────────────────
     vk::Viewport vp;
     vp.width = static_cast<float>(extent.width);

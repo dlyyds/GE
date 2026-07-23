@@ -36,8 +36,7 @@
 
 #include "Render/VulkanBase/VulkanPipelineState.h"
 
-namespace GE
-{
+namespace GE {
 
 class VulkanDevice;
 
@@ -49,9 +48,8 @@ class VulkanDevice;
  * 持有 vk::Pipeline 句柄和 VulkanPipelineState 副本。
  * 析构时自动销毁句柄。
  */
-class VulkanPipeline
-{
-  public:
+class VulkanPipeline {
+public:
     VulkanPipeline(VulkanDevice &device);
 
     VulkanPipeline(const VulkanPipeline &) = delete;
@@ -73,9 +71,9 @@ class VulkanPipeline
     /// 获取只读状态引用
     const VulkanPipelineState &GetState() const { return m_State; }
 
-  protected:
-    VulkanDevice       &m_Device;
-    vk::Pipeline        m_Handle{VK_NULL_HANDLE};
+protected:
+    VulkanDevice &m_Device;
+    vk::Pipeline m_Handle{VK_NULL_HANDLE};
     VulkanPipelineState m_State;
 };
 
@@ -86,12 +84,11 @@ class VulkanPipeline
  * 从给定的 VulkanPipelineState 创建 VkPipeline，
  * 默认启用 Dynamic Rendering。
  */
-class VulkanGraphicsPipeline : public VulkanPipeline
-{
-  public:
-    VulkanGraphicsPipeline(VulkanDevice       &device,
+class VulkanGraphicsPipeline : public VulkanPipeline {
+public:
+    VulkanGraphicsPipeline(VulkanDevice &device,
                            VulkanPipelineState &pipeline_state,
-                           VkPipelineCache     pipeline_cache = VK_NULL_HANDLE);
+                           VkPipelineCache pipeline_cache = VK_NULL_HANDLE);
 
     ~VulkanGraphicsPipeline() override;
 
@@ -103,8 +100,7 @@ class VulkanGraphicsPipeline : public VulkanPipeline
 
     VulkanGraphicsPipeline &operator=(VulkanGraphicsPipeline &&) = delete;
 
-    /// 绑定到命令缓冲区
-    void Bind(vk::CommandBuffer cmd) const;
+
 };
 
 
@@ -113,12 +109,11 @@ class VulkanGraphicsPipeline : public VulkanPipeline
  *
  * 从给定的 VulkanPipelineState 创建 VkPipeline。
  */
-class VulkanComputePipeline : public VulkanPipeline
-{
-  public:
-    VulkanComputePipeline(VulkanDevice       &device,
+class VulkanComputePipeline : public VulkanPipeline {
+public:
+    VulkanComputePipeline(VulkanDevice &device,
                           VulkanPipelineState &pipeline_state,
-                          VkPipelineCache     pipeline_cache = VK_NULL_HANDLE);
+                          VkPipelineCache pipeline_cache = VK_NULL_HANDLE);
 
     ~VulkanComputePipeline() override;
 

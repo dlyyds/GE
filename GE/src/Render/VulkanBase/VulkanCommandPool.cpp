@@ -21,6 +21,7 @@ VulkanCommandPool::VulkanCommandPool(VulkanCommandPool &&other) noexcept :
     m_Device(other.m_Device),
     m_Handle(std::exchange(other.m_Handle, nullptr)),
     m_QueueFamilyIndex(std::exchange(other.m_QueueFamilyIndex, 0)),
+    m_RenderFrame(std::exchange(other.m_RenderFrame, nullptr)),
     m_PrimaryCommandBuffers(std::move(other.m_PrimaryCommandBuffers)),
     m_ActivePrimaryCount(std::exchange(other.m_ActivePrimaryCount, 0)),
     m_SecondaryCommandBuffers(std::move(other.m_SecondaryCommandBuffers)),

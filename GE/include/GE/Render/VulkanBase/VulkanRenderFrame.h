@@ -226,6 +226,10 @@ public:
     RenderTarget &GetRenderTarget() { return *m_RenderTarget; }
     const RenderTarget &GetRenderTarget() const { return *m_RenderTarget; }
 
+    /// 获取此帧的 VulkanDevice 引用。
+    VulkanResourceCache &GetResourceCache() { return m_Device.GetResourceCache(); }
+    const VulkanResourceCache &GetResourceCache() const { return m_Device.GetResourceCache(); }
+
 private:
     // ========================================================================
     // 内部实现

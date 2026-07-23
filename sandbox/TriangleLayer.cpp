@@ -63,29 +63,25 @@ void TriangleLayer::OnAttach() {
     m_PipelineState.SetBlendAttachments({GE::BlendAttachment{}});
 
     // 标记为动态状态（运行时通过 vkCmdSet* 更新）
-    // 注意：viewport/scissor 矩形已在 GetEnabledDynamicStates() 中始终启用，
-    //       但 viewportCount/scissorCount 保持静态（值固定为 1），
-    //       运行时用 vkCmdSetViewport / vkCmdSetScissor 更新矩形即可。
     m_PipelineState.cullMode.SetDynamic(true);
     m_PipelineState.frontFace.SetDynamic(true);
     m_PipelineState.topology.SetDynamic(true);
-    m_PipelineState.depthTestEnable = VK_FALSE; // 无 depth attachment
+    m_PipelineState.depthTestEnable = VK_FALSE;
     m_PipelineState.depthWriteEnable = VK_FALSE;
 
     // ── 4. 通过全局资源缓存创建图形管线（去重）────────────────────
     m_Pipeline = &cache.RequestGraphicsPipeline(m_PipelineState);
 
     // ── 5. 创建顶点 buffer ───────────────────────────────────────────
-    // 每个顶点：位置 vec2（8 字节）+ 颜色 vec3（12 字节）, stride = 20
     struct Vertex {
-        float x, y; // position (location 0)
-        float r, g, b; // color    (location 1)
+        float x, y;
+        float r, g, b;
     };
 
     Vertex vertices[] = {
-        {-0.5f, -0.5f, 1.0f, 0.0f, 0.0f}, // 左下 — 红
-        {0.5f, -0.5f, 0.0f, 1.0f, 0.0f}, // 右下 — 绿
-        {0.0f, 0.5f, 0.0f, 0.0f, 1.0f}, // 顶部 — 蓝
+        {-0.5f, -0.5f, 1.0f, 0.0f, 0.0f},
+        {0.5f, -0.5f, 0.0f, 1.0f, 0.0f},
+        {0.0f, 0.5f, 0.0f, 0.0f, 1.0f},
     };
 
     m_VertexBuffer = std::make_unique<VulkanBuffer>(
@@ -95,11 +91,7 @@ void TriangleLayer::OnAttach() {
 }
 
 void TriangleLayer::OnDetach() {
-    // 顶点 buffer 由我们持有，需手动销毁
     m_VertexBuffer.reset();
-
-    // ShaderModule / PipelineLayout / Pipeline 由 VulkanResourceCache
-    // 持有生命周期，无需手动释放
     m_VertShader = nullptr;
     m_FragShader = nullptr;
     m_PipelineLayout = nullptr;
@@ -123,9 +115,9 @@ void TriangleLayer::OnUpdate(Timestep &ts) {
                                   clearValue);
     renderInfo.Begin(vkCmd);
 
-    // ── 绑定管线（必须先 bind，再设动态状态 —— bind 会重置动态状态） ──
-
+    // ── 绑定管线 ──────────────────────────────────────────────────────
     vkCmd.bindPipeline(vk::PipelineBindPoint::eGraphics, m_Pipeline->GetHandle());
+
     // ── 动态状态 ──────────────────────────────────────────────────────
     vk::Viewport vp;
     vp.width = static_cast<float>(extent.width);
@@ -155,7 +147,6 @@ void TriangleLayer::OnUpdate(Timestep &ts) {
 }
 
 void TriangleLayer::OnEvent(Event &event) {
-    // 本层不需要处理事件
 }
 
 void TriangleLayer::OnImGuiRender() {

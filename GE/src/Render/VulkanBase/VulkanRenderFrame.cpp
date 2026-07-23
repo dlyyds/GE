@@ -156,8 +156,9 @@ std::vector<VulkanCommandPool> &VulkanRenderFrame::GetCommandPools(const VulkanQ
     vk::CommandPoolCreateFlags create_flags = ToCreateFlags(reset_mode);
 
     for (size_t i = 0; i < m_ThreadCount; ++i) {
-        command_pool_it->second.emplace_back(
+        auto &pool = command_pool_it->second.emplace_back(
             m_Device, queue.GetFamilyIndex(), create_flags);
+        pool.SetRenderFrame(this);
     }
 
     return command_pool_it->second;

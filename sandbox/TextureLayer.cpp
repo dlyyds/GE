@@ -44,7 +44,6 @@ void TextureLayer::OnAttach() {
         {m_VertShader, m_FragShader});
 
     // ── 3. 通过全局资源缓存创建 DescriptorSetLayout ───────────────────────
-    // 从着色器反射信息中提取 set=0 的资源
     auto &shaderSets = m_PipelineLayout->GetShaderSets();
     auto setIt = shaderSets.find(0);
     const std::vector<ShaderResource> &set0Resources =
@@ -86,16 +85,15 @@ void TextureLayer::OnAttach() {
 
     // ── 7. 创建顶点 buffer（全屏四边形：位置 + UV）────────────────────────
     struct Vertex {
-        float x, y; // position (location 0)
-        float u, v; // uv       (location 1)
+        float x, y;
+        float u, v;
     };
 
-    // 覆盖 NDC 的四边形，UV 从 0 到 1
     Vertex vertices[] = {
-        {-1.0f, -1.0f, 0.0f, 0.0f}, // 左下
-        {1.0f, -1.0f, 1.0f, 0.0f}, // 右下
-        {1.0f, 1.0f, 1.0f, 1.0f}, // 右上
-        {-1.0f, 1.0f, 0.0f, 1.0f}, // 左上
+        {-1.0f, -1.0f, 0.0f, 0.0f},
+        {1.0f, -1.0f, 1.0f, 0.0f},
+        {1.0f, 1.0f, 1.0f, 1.0f},
+        {-1.0f, 1.0f, 0.0f, 1.0f},
     };
 
     m_VertexBuffer = std::make_unique<VulkanBuffer>(
@@ -121,7 +119,6 @@ void TextureLayer::OnAttach() {
         VMA_MEMORY_USAGE_AUTO,
         VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
 
-    // 初始化 MVP 矩阵
     struct UniformBlock {
         glm::mat4 model;
         glm::mat4 view;
@@ -138,20 +135,18 @@ void TextureLayer::OnAttach() {
                                       static_cast<float>(swapchain.GetExtent().width) /
                                       static_cast<float>(swapchain.GetExtent().height),
                                       0.1f, 100.0f);
-    ubo.projection[1][1] *= -1.0f; // Vulkan NDC: Y 轴向下
-    ubo.color = glm::vec4(1.0f); // 不参与混合，纹理颜色全显示
+    ubo.projection[1][1] *= -1.0f;
+    ubo.color = glm::vec4(1.0f);
 
     m_UniformBuffer->update(&ubo, sizeof(ubo));
 }
 
 void TextureLayer::OnDetach() {
-    // 手动持有的资源
     m_UniformBuffer.reset();
     m_IndexBuffer.reset();
     m_VertexBuffer.reset();
     m_Texture.reset();
 
-    // 由 VulkanResourceCache 管理的资源
     m_DescriptorSetLayout = nullptr;
     m_Pipeline = nullptr;
     m_PipelineLayout = nullptr;
@@ -167,7 +162,7 @@ void TextureLayer::OnUpdate(Timestep &ts) {
     // 获取当前帧的 RenderFrame，用于分配 descriptor set
     auto &renderFrame = Application::GetRenderContext().GetActiveFrame();
 
-    // ── 更新 uniform buffer（可选：每帧旋转）─────────────────────────────
+    // ── 更新 uniform buffer ──────────────────────────────────────────────
     struct UniformBlock {
         glm::mat4 model;
         glm::mat4 view;
@@ -175,7 +170,6 @@ void TextureLayer::OnUpdate(Timestep &ts) {
         glm::vec4 color;
     };
 
-    // 简单旋转动画
     static float rotation = 0.0f;
     rotation += ts.GetSeconds() * 0.5f;
 
@@ -188,30 +182,21 @@ void TextureLayer::OnUpdate(Timestep &ts) {
                                       static_cast<float>(extent.width) /
                                       static_cast<float>(extent.height),
                                       0.1f, 100.0f);
-    ubo.projection[1][1] *= -1.0f; // Vulkan NDC
+    ubo.projection[1][1] *= -1.0f;
     ubo.color = glm::vec4(1.0f);
 
     m_UniformBuffer->update(&ubo, sizeof(ubo));
 
-    // ── 构建 descriptor set 信息 ──────────────────────────────────────────
-    // binding 0: uniform buffer
-    vk::DescriptorBufferInfo bufferInfo{};
-    bufferInfo.buffer = m_UniformBuffer->GetHandle();
-    bufferInfo.offset = 0;
-    bufferInfo.range = sizeof(UniformBlock);
+    // ── 使用新 CommandBuffer API 绑定资源 ────────────────────────────────
+    // 绑定 uniform buffer 到 set 0, binding 0
+    cmd.BindBuffer(*m_UniformBuffer, 0, sizeof(UniformBlock), 0, 0);
 
-    BindingMap<vk::DescriptorBufferInfo> bufferInfos;
-    bufferInfos[0][0] = bufferInfo;
-
-    // binding 1: texture sampler（使用 Texture 封装获取描述符信息）
-    BindingMap<vk::DescriptorImageInfo> imageInfos;
+    // 绑定纹理到 set 0, binding 1
     if (m_Texture) {
-        imageInfos[1][0] = m_Texture->GetDescriptorInfo();
+        auto &image_view = m_Texture->GetImageView();
+        auto &sampler = m_Texture->GetSampler();
+        cmd.BindImage(image_view, sampler, 0, 1);
     }
-
-    // 从当前帧的 RenderFrame 获取 descriptor set
-    auto &descriptorSet = renderFrame.RequestDescriptorSet(
-        *m_DescriptorSetLayout, bufferInfos, imageInfos);
 
     // ── 开始动态渲染 ──────────────────────────────────────────────────────
     vk::ClearValue clearValue;
@@ -245,7 +230,28 @@ void TextureLayer::OnUpdate(Timestep &ts) {
     vkCmd.setFrontFace(vk::FrontFace::eCounterClockwise);
     vkCmd.setPrimitiveTopology(vk::PrimitiveTopology::eTriangleList);
 
-    // ── 绑定 descriptor set ───────────────────────────────────────────────
+    // ── 使用新 CommandBuffer API 绑定 descriptor set ──────────────────────
+    // 设置 pipeline layout 使 flush 机制能找到正确的 layout
+    cmd.BindPipelineLayout(*m_PipelineLayout);
+
+    // 通过 RenderFrame 手动请求 descriptor set（因为我们要在 begin_render_pass 之后 bind）
+    vk::DescriptorBufferInfo bufferInfo{};
+    bufferInfo.buffer = m_UniformBuffer->GetHandle();
+    bufferInfo.offset = 0;
+    bufferInfo.range = sizeof(UniformBlock);
+
+    BindingMap<vk::DescriptorBufferInfo> bufferInfos;
+    bufferInfos[0][0] = bufferInfo;
+
+    BindingMap<vk::DescriptorImageInfo> imageInfos;
+    if (m_Texture) {
+        imageInfos[1][0] = m_Texture->GetDescriptorInfo();
+    }
+
+    auto &descriptorSet = renderFrame.RequestDescriptorSet(
+        *m_DescriptorSetLayout, bufferInfos, imageInfos);
+
+    // 手动绑定 descriptor set
     vkCmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
                              m_PipelineLayout->GetHandle(),
                              0, descriptorSet.GetHandle(), {});
@@ -255,7 +261,7 @@ void TextureLayer::OnUpdate(Timestep &ts) {
     vkCmd.bindVertexBuffers(0, vb, {0});
     vkCmd.bindIndexBuffer(m_IndexBuffer->GetHandle(), 0, vk::IndexType::eUint32);
 
-    // ── 绘制 6 个顶点（2 个三角形）────────────────────────────────────────
+    // ── 使用新 CommandBuffer API 绘制 ─────────────────────────────────────
     vkCmd.drawIndexed(6, 1, 0, 0, 0);
 
     // ── 结束渲染 ──────────────────────────────────────────────────────────
@@ -263,7 +269,6 @@ void TextureLayer::OnUpdate(Timestep &ts) {
 }
 
 void TextureLayer::OnEvent(Event &event) {
-    // 本层不需要处理事件
 }
 
 void TextureLayer::OnImGuiRender() {

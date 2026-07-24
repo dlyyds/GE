@@ -40,11 +40,6 @@ private:
 
     // 纹理（封装 Image + ImageView + Sampler）
     std::unique_ptr<Texture> m_Texture;
-
-    // Descriptor set layout（由缓存管理）
-    VulkanDescriptorSetLayout *m_DescriptorSetLayout = nullptr;
-
-    // 描述符集（由 VulkanRenderFrame 每帧管理，在 OnUpdate 中获取）
 };
 
 } // namespace GE

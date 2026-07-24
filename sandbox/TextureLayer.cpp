@@ -7,7 +7,6 @@
 
 #include "GE/Render/VulkanBase/VulkanRenderingInfo.h"
 #include "GE/Render/VulkanBase/VulkanResourceCache.h"
-#include "GE/Render/VulkanBase/VulkanRenderFrame.h"
 
 #include "imgui.h"
 
@@ -43,16 +42,8 @@ void TextureLayer::OnAttach() {
     m_PipelineLayout = &cache.RequestPipelineLayout(
         {m_VertShader, m_FragShader});
 
-    // ── 3. 通过全局资源缓存创建 DescriptorSetLayout ───────────────────────
-    auto &shaderSets = m_PipelineLayout->GetShaderSets();
-    auto setIt = shaderSets.find(0);
-    const std::vector<ShaderResource> &set0Resources =
-        (setIt != shaderSets.end()) ? setIt->second : std::vector<ShaderResource>{};
-    m_DescriptorSetLayout = &cache.RequestDescriptorSetLayout(
-        0, {m_VertShader, m_FragShader}, set0Resources);
-
-    // ── 4. 配置 PipelineState ─────────────────────────────────────────────
-    m_PipelineState.Reset();
+    // ── 3. 配置 PipelineState ─────────────────────────────────────────────
+    m_PipelineState = VulkanPipelineState{};
     m_PipelineState.pipelineLayout = m_PipelineLayout;
     m_PipelineState.colorAttachmentFormats = {colorFmt};
     m_PipelineState.depthFormat = {};
@@ -68,7 +59,7 @@ void TextureLayer::OnAttach() {
     };
 
     // 混合附件
-    m_PipelineState.SetBlendAttachments({GE::BlendAttachment{}});
+    m_PipelineState.SetBlendAttachments({vk::PipelineColorBlendAttachmentState{}});
 
     // 动态状态
     m_PipelineState.cullMode.SetDynamic(true);
@@ -147,7 +138,6 @@ void TextureLayer::OnDetach() {
     m_VertexBuffer.reset();
     m_Texture.reset();
 
-    m_DescriptorSetLayout = nullptr;
     m_Pipeline = nullptr;
     m_PipelineLayout = nullptr;
     m_FragShader = nullptr;
@@ -158,9 +148,6 @@ void TextureLayer::OnUpdate(Timestep &ts) {
     auto &cmd = Application::GetFrameCmd();
     auto vkCmd = cmd.GetHandle();
     auto extent = Application::GetSwapchain().GetExtent();
-
-    // 获取当前帧的 RenderFrame，用于分配 descriptor set
-    auto &renderFrame = Application::GetRenderContext().GetActiveFrame();
 
     // ── 更新 uniform buffer ──────────────────────────────────────────────
     struct UniformBlock {
@@ -187,17 +174,6 @@ void TextureLayer::OnUpdate(Timestep &ts) {
 
     m_UniformBuffer->update(&ubo, sizeof(ubo));
 
-    // ── 使用新 CommandBuffer API 绑定资源 ────────────────────────────────
-    // 绑定 uniform buffer 到 set 0, binding 0
-    cmd.BindBuffer(*m_UniformBuffer, 0, sizeof(UniformBlock), 0, 0);
-
-    // 绑定纹理到 set 0, binding 1
-    if (m_Texture) {
-        auto &image_view = m_Texture->GetImageView();
-        auto &sampler = m_Texture->GetSampler();
-        cmd.BindImage(image_view, sampler, 0, 1);
-    }
-
     // ── 开始动态渲染 ──────────────────────────────────────────────────────
     vk::ClearValue clearValue;
     clearValue.color = std::array<float, 4>{0.1f, 0.1f, 0.1f, 1.0f};
@@ -210,8 +186,8 @@ void TextureLayer::OnUpdate(Timestep &ts) {
                                   clearValue);
     renderInfo.Begin(vkCmd);
 
-    // ── 绑定管线 ──────────────────────────────────────────────────────────
-    vkCmd.bindPipeline(vk::PipelineBindPoint::eGraphics, m_Pipeline->GetHandle());
+    // ── 设置 pipeline layout（Draw 时自动从 ResourceCache 获取管线并绑定） ──
+    cmd.BindPipelineLayout(*m_PipelineLayout);
 
     // ── 动态状态 ──────────────────────────────────────────────────────────
     vk::Viewport vp;
@@ -219,50 +195,29 @@ void TextureLayer::OnUpdate(Timestep &ts) {
     vp.height = static_cast<float>(extent.height);
     vp.minDepth = 0.0f;
     vp.maxDepth = 1.0f;
-    vkCmd.setViewport(0, vp);
+    cmd.SetViewport(0, {vp});
 
     vk::Rect2D scissor;
     scissor.extent.width = extent.width;
     scissor.extent.height = extent.height;
-    vkCmd.setScissor(0, scissor);
+    cmd.SetScissor(0, {scissor});
 
-    vkCmd.setCullMode(vk::CullModeFlagBits::eNone);
-    vkCmd.setFrontFace(vk::FrontFace::eCounterClockwise);
-    vkCmd.setPrimitiveTopology(vk::PrimitiveTopology::eTriangleList);
+    // 动态管线状态写入 pipeline state（flush 时会创建对应管线）
+    cmd.GetPipelineState().cullMode  = vk::CullModeFlagBits::eNone;
+    cmd.GetPipelineState().frontFace = vk::FrontFace::eCounterClockwise;
+    cmd.GetPipelineState().topology  = vk::PrimitiveTopology::eTriangleList;
 
-    // ── 使用新 CommandBuffer API 绑定 descriptor set ──────────────────────
-    // 设置 pipeline layout 使 flush 机制能找到正确的 layout
-    cmd.BindPipelineLayout(*m_PipelineLayout);
+    // ── 绑定资源（惰性，DrawIndexed 时自动 flush 分配 descriptor set） ────
+    cmd.BindBuffer(*m_UniformBuffer, 0, sizeof(UniformBlock), 0, 0);
 
-    // 通过 RenderFrame 手动请求 descriptor set（因为我们要在 begin_render_pass 之后 bind）
-    vk::DescriptorBufferInfo bufferInfo{};
-    bufferInfo.buffer = m_UniformBuffer->GetHandle();
-    bufferInfo.offset = 0;
-    bufferInfo.range = sizeof(UniformBlock);
-
-    BindingMap<vk::DescriptorBufferInfo> bufferInfos;
-    bufferInfos[0][0] = bufferInfo;
-
-    BindingMap<vk::DescriptorImageInfo> imageInfos;
     if (m_Texture) {
-        imageInfos[1][0] = m_Texture->GetDescriptorInfo();
+        cmd.BindImage(m_Texture->GetImageView(), m_Texture->GetSampler(), 0, 1);
     }
 
-    auto &descriptorSet = renderFrame.RequestDescriptorSet(
-        *m_DescriptorSetLayout, bufferInfos, imageInfos);
-
-    // 手动绑定 descriptor set
-    vkCmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
-                             m_PipelineLayout->GetHandle(),
-                             0, descriptorSet.GetHandle(), {});
-
-    // ── 绑定顶点和索引 buffer ─────────────────────────────────────────────
-    vk::Buffer vb = m_VertexBuffer->GetHandle();
-    vkCmd.bindVertexBuffers(0, vb, {0});
-    vkCmd.bindIndexBuffer(m_IndexBuffer->GetHandle(), 0, vk::IndexType::eUint32);
-
-    // ── 使用新 CommandBuffer API 绘制 ─────────────────────────────────────
-    vkCmd.drawIndexed(6, 1, 0, 0, 0);
+    // ── 绑定顶点/索引 buffer 并绘制（DrawIndexed 内部自动 Flush） ─────────
+    cmd.BindVertexBuffers(0, {std::ref(*m_VertexBuffer)}, {0});
+    cmd.BindIndexBuffer(*m_IndexBuffer, 0, vk::IndexType::eUint32);
+    cmd.DrawIndexed(6, 1, 0, 0, 0);
 
     // ── 结束渲染 ──────────────────────────────────────────────────────────
     VulkanRenderingInfo::End(vkCmd);

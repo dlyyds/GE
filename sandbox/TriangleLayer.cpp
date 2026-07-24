@@ -41,7 +41,7 @@ void TriangleLayer::OnAttach() {
         {m_VertShader, m_FragShader});
 
     // ── 3. 配置 PipelineState ────────────────────────────────────────
-    m_PipelineState.Reset();
+    m_PipelineState = VulkanPipelineState{};
     m_PipelineState.pipelineLayout = m_PipelineLayout;
     m_PipelineState.colorAttachmentFormats = {colorFmt};
     m_PipelineState.depthFormat = {};
@@ -59,8 +59,13 @@ void TriangleLayer::OnAttach() {
         {1, 0, vk::Format::eR32G32B32Sfloat, static_cast<uint32_t>(2 * sizeof(float))}, // color
     };
 
-    // 混合附件（与 colorAttachmentFormats 数量匹配）
-    m_PipelineState.SetBlendAttachments({GE::BlendAttachment{}});
+    // 混合附件（必须显式设置 colorWriteMask，否则默认 0 导致不写入颜色）
+    vk::PipelineColorBlendAttachmentState blendState{};
+    blendState.colorWriteMask = vk::ColorComponentFlagBits::eR
+                              | vk::ColorComponentFlagBits::eG
+                              | vk::ColorComponentFlagBits::eB
+                              | vk::ColorComponentFlagBits::eA;
+    m_PipelineState.SetBlendAttachments({blendState});
 
     // 标记为动态状态（运行时通过 vkCmdSet* 更新）
     m_PipelineState.cullMode.SetDynamic(true);

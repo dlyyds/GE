@@ -110,13 +110,13 @@ void TextureLayer::OnUpdate(Timestep &ts) {
 
     UniformBlock ubo{};
     ubo.model = glm::rotate(glm::mat4(1.0f), rotation, glm::vec3(0.0f, 0.0f, 1.0f));
-    ubo.view = glm::lookAt(glm::vec3(0.0f, 0.0f, 2.0f),
+    ubo.view = glm::lookAt(glm::vec3(0.0f, 0.0f, 4.0f),
                            glm::vec3(0.0f, 0.0f, 0.0f),
                            glm::vec3(0.0f, 1.0f, 0.0f));
-    ubo.projection = glm::perspective(glm::radians(45.0f),
-                                      static_cast<float>(extent.width) /
-                                      static_cast<float>(extent.height),
-                                      0.1f, 100.0f);
+    ubo.projection = glm::perspectiveZO(glm::radians(45.0f),
+                                        static_cast<float>(extent.width) /
+                                        static_cast<float>(extent.height),
+                                        0.1f, 100.0f);
     ubo.projection[1][1] *= -1.0f;
     ubo.color = glm::vec4(1.0f);
 
@@ -154,8 +154,13 @@ void TextureLayer::OnUpdate(Timestep &ts) {
         {1, 0, vk::Format::eR32G32Sfloat, static_cast<uint32_t>(2 * sizeof(float))}, // uv
     };
 
-    // 混合附件
-    ps.SetBlendAttachments({vk::PipelineColorBlendAttachmentState{}});
+    // 混合附件（必须显式设置 colorWriteMask，否则默认 0 导致不写入颜色）
+    vk::PipelineColorBlendAttachmentState blendState{};
+    blendState.colorWriteMask = vk::ColorComponentFlagBits::eR
+                              | vk::ColorComponentFlagBits::eG
+                              | vk::ColorComponentFlagBits::eB
+                              | vk::ColorComponentFlagBits::eA;
+    ps.SetBlendAttachments({blendState});
 
     // 启用动态状态
     ps.cullMode.SetDynamic(true);
@@ -178,9 +183,9 @@ void TextureLayer::OnUpdate(Timestep &ts) {
     cmd.SetScissor(0, {scissor});
 
     // 动态管线状态写入 pipeline state（flush 时会创建对应管线）
-    cmd.GetPipelineState().cullMode  = vk::CullModeFlagBits::eNone;
+    cmd.GetPipelineState().cullMode = vk::CullModeFlagBits::eNone;
     cmd.GetPipelineState().frontFace = vk::FrontFace::eCounterClockwise;
-    cmd.GetPipelineState().topology  = vk::PrimitiveTopology::eTriangleList;
+    cmd.GetPipelineState().topology = vk::PrimitiveTopology::eTriangleList;
 
     // ── 绑定资源（惰性，DrawIndexed 时自动 flush 分配 descriptor set） ────
     cmd.BindBuffer(*m_UniformBuffer, 0, sizeof(UniformBlock), 0, 0);

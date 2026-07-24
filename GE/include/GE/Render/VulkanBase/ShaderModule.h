@@ -102,8 +102,46 @@ struct ShaderResource
 
     uint32_t qualifiers;
 
+    /// 顶点输入/输出属性推导出的 Vulkan 格式（仅对 Input/Output 类型有效）
+    vk::Format format{vk::Format::eUndefined};
+
     std::string name;
 };
+
+/// 返回给定 Vulkan 顶点格式的字节大小（用于顶点属性 offset/stride 计算）。
+/// 仅支持常用的 32/64-bit 标量/向量格式，其他返回 0。
+inline uint32_t GetVertexFormatSize(vk::Format format)
+{
+    switch (format)
+    {
+        case vk::Format::eR32Sfloat:
+        case vk::Format::eR32Sint:
+        case vk::Format::eR32Uint:
+            return 4;
+        case vk::Format::eR32G32Sfloat:
+        case vk::Format::eR32G32Sint:
+        case vk::Format::eR32G32Uint:
+            return 8;
+        case vk::Format::eR32G32B32Sfloat:
+        case vk::Format::eR32G32B32Sint:
+        case vk::Format::eR32G32B32Uint:
+            return 12;
+        case vk::Format::eR32G32B32A32Sfloat:
+        case vk::Format::eR32G32B32A32Sint:
+        case vk::Format::eR32G32B32A32Uint:
+            return 16;
+        case vk::Format::eR64Sfloat:
+            return 8;
+        case vk::Format::eR64G64Sfloat:
+            return 16;
+        case vk::Format::eR64G64B64Sfloat:
+            return 24;
+        case vk::Format::eR64G64B64A64Sfloat:
+            return 32;
+        default:
+            return 0;
+    }
+}
 
 /**
  * @brief 为 GLSL 着色器添加类 C 预处理器宏支持，

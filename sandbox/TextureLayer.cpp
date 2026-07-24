@@ -149,14 +149,8 @@ void TextureLayer::OnUpdate(Timestep &ts) {
     ps.depthFormat = {};
     ps.stencilFormat = {};
 
-    // 顶点输入：位置 vec2 (offset 0) + UV vec2 (offset 8), stride = 16
-    ps.vertexBindingDescriptions = std::vector<vk::VertexInputBindingDescription>{
-        {0, 16, vk::VertexInputRate::eVertex},
-    };
-    ps.vertexAttributeDescriptions = std::vector<vk::VertexInputAttributeDescription>{
-        {0, 0, vk::Format::eR32G32Sfloat, 0}, // position
-        {1, 0, vk::Format::eR32G32Sfloat, static_cast<uint32_t>(2 * sizeof(float))}, // uv
-    };
+    // 顶点输入：从顶点着色器反射自动生成（位置 vec2 + UV vec2，紧密打包，stride = 16）
+    ps.SetVertexInputFromShader(*m_VertShader);
 
     // 混合附件（必须显式设置 colorWriteMask，否则默认 0 导致不写入颜色）
     vk::PipelineColorBlendAttachmentState blendState{};

@@ -42,6 +42,82 @@ inline uint32_t to_u32(size_t value)
 }
 
 // ============================================================
+// 辅助：根据 SPIR-V 标量类型和分量数推导 vk::Format
+// ============================================================
+
+inline vk::Format deduce_vertex_format(const spirv_cross::SPIRType &spirv_type)
+{
+    // 矩阵类型暂不自动推导（mat4 占多个 location，需要特殊处理）
+    if (spirv_type.columns > 1)
+    {
+        GE_CORE_WARN("Matrix vertex attribute (columns={}) not supported for auto-format deduction, "
+                     "skipping format deduction.",
+                     spirv_type.columns);
+        return vk::Format::eUndefined;
+    }
+
+    uint32_t vec_size = spirv_type.vecsize;
+
+    switch (spirv_type.basetype)
+    {
+        case spirv_cross::SPIRType::Float:
+            switch (vec_size)
+            {
+                case 1: return vk::Format::eR32Sfloat;
+                case 2: return vk::Format::eR32G32Sfloat;
+                case 3: return vk::Format::eR32G32B32Sfloat;
+                case 4: return vk::Format::eR32G32B32A32Sfloat;
+            }
+            break;
+        case spirv_cross::SPIRType::Int:
+            switch (vec_size)
+            {
+                case 1: return vk::Format::eR32Sint;
+                case 2: return vk::Format::eR32G32Sint;
+                case 3: return vk::Format::eR32G32B32Sint;
+                case 4: return vk::Format::eR32G32B32A32Sint;
+            }
+            break;
+        case spirv_cross::SPIRType::UInt:
+            switch (vec_size)
+            {
+                case 1: return vk::Format::eR32Uint;
+                case 2: return vk::Format::eR32G32Uint;
+                case 3: return vk::Format::eR32G32B32Uint;
+                case 4: return vk::Format::eR32G32B32A32Uint;
+            }
+            break;
+        case spirv_cross::SPIRType::Double:
+            switch (vec_size)
+            {
+                case 1: return vk::Format::eR64Sfloat;
+                case 2: return vk::Format::eR64G64Sfloat;
+                case 3: return vk::Format::eR64G64B64Sfloat;
+                case 4: return vk::Format::eR64G64B64A64Sfloat;
+            }
+            break;
+        case spirv_cross::SPIRType::Boolean:
+            // bool 在 SPIR-V 中按 32-bit int 存储，但 Vulkan 里没有 bool 顶点格式，
+            // 通常用 UINT8 / UINT32 代替；这里按 32-bit uint 处理。
+            switch (vec_size)
+            {
+                case 1: return vk::Format::eR32Uint;
+                case 2: return vk::Format::eR32G32Uint;
+                case 3: return vk::Format::eR32G32B32Uint;
+                case 4: return vk::Format::eR32G32B32A32Uint;
+            }
+            break;
+        default:
+            GE_CORE_WARN("Unsupported vertex attribute basetype ({}) for auto-format deduction.",
+                         static_cast<int>(spirv_type.basetype));
+            return vk::Format::eUndefined;
+    }
+
+    GE_CORE_WARN("Unsupported vertex attribute vec_size ({}) for auto-format deduction.", vec_size);
+    return vk::Format::eUndefined;
+}
+
+// ============================================================
 // 模板特化：按 ShaderResourceType 读取不同种类的着色器资源
 // ============================================================
 
@@ -212,6 +288,10 @@ inline void read_shader_resource<ShaderResourceType::Input>(const spirv_cross::C
         read_resource_array_size(compiler, resource, shader_resource, variant);
         read_resource_decoration<spv::DecorationLocation>(compiler, resource, shader_resource, variant);
 
+        // 推导 Vulkan 格式（基于标量类型 + 分量数）
+        const auto &spirv_type = compiler.get_type_from_variable(resource.id);
+        shader_resource.format = deduce_vertex_format(spirv_type);
+
         resources.push_back(shader_resource);
     }
 }
@@ -258,6 +338,10 @@ inline void read_shader_resource<ShaderResourceType::Output>(const spirv_cross::
         read_resource_array_size(compiler, resource, shader_resource, variant);
         read_resource_vec_size(compiler, resource, shader_resource, variant);
         read_resource_decoration<spv::DecorationLocation>(compiler, resource, shader_resource, variant);
+
+        // 推导 Vulkan 格式（基于标量类型 + 分量数）
+        const auto &spirv_type = compiler.get_type_from_variable(resource.id);
+        shader_resource.format = deduce_vertex_format(spirv_type);
 
         resources.push_back(shader_resource);
     }

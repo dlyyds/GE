@@ -50,6 +50,54 @@ void VulkanPipelineState::SetBlendAttachment(uint32_t index, const vk::PipelineC
 
 
 // ============================================================================
+// 顶点输入便利方法
+// ============================================================================
+
+uint32_t VulkanPipelineState::SetVertexInputFromShader(const ShaderModule &vertShader,
+                                                       uint32_t binding,
+                                                       vk::VertexInputRate rate) {
+    // 1. 收集所有 Input 资源
+    std::vector<const ShaderResource *> inputs;
+    for (const auto &res : vertShader.get_resources()) {
+        if (res.type == ShaderResourceType::Input) {
+            inputs.push_back(&res);
+        }
+    }
+
+    // 2. 按 location 升序排列
+    std::sort(inputs.begin(), inputs.end(),
+              [](const ShaderResource *a, const ShaderResource *b) {
+                  return a->location < b->location;
+              });
+
+    // 3. 生成 attribute 描述，紧密打包 offset
+    std::vector<vk::VertexInputAttributeDescription> attrs;
+    uint32_t offset = 0;
+    for (const auto *res : inputs) {
+        if (res->format == vk::Format::eUndefined) {
+            // 无法推导格式的属性跳过（矩阵等）
+            continue;
+        }
+        attrs.push_back({
+            res->location,
+            binding,
+            res->format,
+            offset
+        });
+
+        offset += GetVertexFormatSize(res->format) * res->array_size;
+    }
+
+    // 4. 设置到 pipeline state
+    vertexBindingDescriptions = std::vector<vk::VertexInputBindingDescription>{
+        {binding, offset, rate}
+    };
+    vertexAttributeDescriptions = std::move(attrs);
+
+    return offset; // stride
+}
+
+// ============================================================================
 // 脏标记查询
 // ============================================================================
 

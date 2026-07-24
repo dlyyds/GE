@@ -47,17 +47,8 @@ void TriangleLayer::OnAttach() {
     m_PipelineState.depthFormat = {};
     m_PipelineState.stencilFormat = {};
 
-    // 顶点输入（匹配着色器的 vertex input 布局）
-    // location 0: vec2 position (offset 0)
-    // location 1: vec3 color   (offset 8)
-    // stride: 20
-    m_PipelineState.vertexBindingDescriptions = std::vector<vk::VertexInputBindingDescription>{
-        {0, 20, vk::VertexInputRate::eVertex},
-    };
-    m_PipelineState.vertexAttributeDescriptions = std::vector<vk::VertexInputAttributeDescription>{
-        {0, 0, vk::Format::eR32G32Sfloat, 0}, // position
-        {1, 0, vk::Format::eR32G32B32Sfloat, static_cast<uint32_t>(2 * sizeof(float))}, // color
-    };
+    // 顶点输入：从顶点着色器反射自动生成（vec2 position + vec3 color，紧密打包，stride = 20）
+    m_PipelineState.SetVertexInputFromShader(*m_VertShader);
 
     // 混合附件（必须显式设置 colorWriteMask，否则默认 0 导致不写入颜色）
     vk::PipelineColorBlendAttachmentState blendState{};

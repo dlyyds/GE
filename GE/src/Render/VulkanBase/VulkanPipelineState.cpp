@@ -78,11 +78,11 @@ uint32_t VulkanPipelineState::SetVertexInputFromShader(const ShaderModule &vertS
             // 无法推导格式的属性跳过（矩阵等）
             continue;
         }
-        attrs.push_back({
-            res->location,
-            binding,
-            res->format,
-            offset
+        attrs.push_back(vk::VertexInputAttributeDescription{
+            .location = res->location,
+            .binding  = binding,
+            .format   = res->format,
+            .offset   = offset,
         });
 
         offset += GetVertexFormatSize(res->format) * res->array_size;
@@ -90,7 +90,11 @@ uint32_t VulkanPipelineState::SetVertexInputFromShader(const ShaderModule &vertS
 
     // 4. 设置到 pipeline state
     vertexBindingDescriptions = std::vector<vk::VertexInputBindingDescription>{
-        {binding, offset, rate}
+        vk::VertexInputBindingDescription{
+            .binding   = binding,
+            .stride    = offset,
+            .inputRate = rate,
+        }
     };
     vertexAttributeDescriptions = std::move(attrs);
 

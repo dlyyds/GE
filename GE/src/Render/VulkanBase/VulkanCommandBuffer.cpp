@@ -93,7 +93,7 @@ void VulkanCommandBuffer::Begin(vk::CommandBufferUsageFlags flags,
     ZoneScoped;
 
     // 重置状态
-    m_PipelineState.Reset();
+    m_PipelineState = VulkanPipelineState{};
     m_ResourceSets.clear();
     m_ResourceBindingDirty = false;
     m_BoundDescriptorSetLayouts.clear();
@@ -119,7 +119,7 @@ void VulkanCommandBuffer::End() {
 
 void VulkanCommandBuffer::Reset() {
     ZoneScoped;
-    m_PipelineState.Reset();
+    m_PipelineState = VulkanPipelineState{};
     m_ResourceSets.clear();
     m_ResourceBindingDirty = false;
     m_BoundDescriptorSetLayouts.clear();

@@ -215,25 +215,7 @@ struct StencilOpState {
 };
 
 
-/**
- * @brief 颜色混合附件状态（始终静态）。
- *
- * 在 Vulkan 1.3 Core 中，颜色混合附件参数不支持动态化，
- * 所以这里使用原始 Vulkan 值，不包含动态标记。
- * 变更时需通过 VulkanPipelineState 的方法触发脏标记。
- */
-struct BlendAttachment {
-    vk::Bool32 blendEnable{VK_FALSE};
-    vk::BlendFactor srcColorBlendFactor{vk::BlendFactor::eOne};
-    vk::BlendFactor dstColorBlendFactor{vk::BlendFactor::eZero};
-    vk::BlendOp colorBlendOp{vk::BlendOp::eAdd};
-    vk::BlendFactor srcAlphaBlendFactor{vk::BlendFactor::eOne};
-    vk::BlendFactor dstAlphaBlendFactor{vk::BlendFactor::eZero};
-    vk::BlendOp alphaBlendOp{vk::BlendOp::eAdd};
-    vk::ColorComponentFlags colorWriteMask{
-        vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG
-        | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA};
-};
+// 混合附件直接使用 vk::PipelineColorBlendAttachmentState，无需额外封装。
 
 
 // ============================================================================
@@ -371,15 +353,12 @@ public:
     StencilOpState stencilFront{};
     StencilOpState stencilBack{};
 
-    // ----- 颜色混合（始终静态） -----
+
     StaticParam<vk::Bool32> logicOpEnable{VK_FALSE};
     StaticParam<vk::LogicOp> logicOp{vk::LogicOp::eClear};
-    // 混合附件列表，通过 SetBlendAttachments / GetBlendAttachment 访问
-    // （不带模板包装，因为 vector 内的字段无动态标记）
 
 private:
-    /// 混合附件列表（原始数据）
-    std::vector<BlendAttachment> m_BlendAttachments{};
+    std::vector<vk::PipelineColorBlendAttachmentState> m_BlendAttachments{};
 
     /// blendAttachments 的脏标记（vector 大小或内容变更）
     bool m_BlendAttachmentsDirty{false};
@@ -390,16 +369,16 @@ public:
     // ====================================================================
 
     /// 设置完整的混合附件列表（标记脏）
-    void SetBlendAttachments(const std::vector<BlendAttachment> &attachments);
+    void SetBlendAttachments(const std::vector<vk::PipelineColorBlendAttachmentState> &attachments);
 
     /// 设置指定索引的混合附件（标记脏）
-    void SetBlendAttachment(uint32_t index, const BlendAttachment &attachment);
+    void SetBlendAttachment(uint32_t index, const vk::PipelineColorBlendAttachmentState &attachment);
 
     /// 获取混合附件列表（只读）
-    const std::vector<BlendAttachment> &GetBlendAttachments() const { return m_BlendAttachments; }
+    const std::vector<vk::PipelineColorBlendAttachmentState> &GetBlendAttachments() const { return m_BlendAttachments; }
 
     /// 获取可修改的混合附件列表引用（调用者需手动标记脏）
-    std::vector<BlendAttachment> &GetMutableBlendAttachments() {
+    std::vector<vk::PipelineColorBlendAttachmentState> &GetMutableBlendAttachments() {
         m_BlendAttachmentsDirty = true;
         return m_BlendAttachments;
     }
@@ -407,9 +386,6 @@ public:
     // ====================================================================
     // 公共方法
     // ====================================================================
-
-    /// 重置所有状态为默认值，清除脏标记
-    void Reset();
 
     // ---- 脏标记查询 ----
 

@@ -128,23 +128,8 @@ struct hash<GE::LoadStoreInfo> {
     }
 };
 
-// ---- GE::BlendAttachment ----
-
-template <>
-struct hash<GE::BlendAttachment> {
-    size_t operator()(GE::BlendAttachment const &ba) const {
-        size_t result = 0;
-        GE::detail::hash_combine(result, ba.blendEnable);
-        GE::detail::hash_combine(result, ba.srcColorBlendFactor);
-        GE::detail::hash_combine(result, ba.dstColorBlendFactor);
-        GE::detail::hash_combine(result, ba.colorBlendOp);
-        GE::detail::hash_combine(result, ba.srcAlphaBlendFactor);
-        GE::detail::hash_combine(result, ba.dstAlphaBlendFactor);
-        GE::detail::hash_combine(result, ba.alphaBlendOp);
-        GE::detail::hash_combine(result, ba.colorWriteMask);
-        return result;
-    }
-};
+// ---- vk::PipelineColorBlendAttachmentState ----
+// vulkan_hash.hpp 已提供 std::hash 特化，无需重复定义
 
 // ---- GE::ShaderModule ----
 

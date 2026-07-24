@@ -114,7 +114,7 @@ VulkanDescriptorSetLayout::VulkanDescriptorSetLayout(
             .binding = resource.binding,
             .descriptorType = descriptor_type,
             .descriptorCount = resource.array_size,
-            .stageFlags = static_cast<vk::ShaderStageFlags>(resource.stages),
+            .stageFlags = resource.stages,
         };
 
         m_Bindings.push_back(layout_binding);

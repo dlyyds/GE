@@ -41,7 +41,11 @@ void TextureLayer::OnAttach() {
         {m_VertShader, m_FragShader});
 
     // ── 3. 加载棋盘纹理 ────────────────────────────────────────────────────
-    m_Texture = Texture::LoadFromFile(device, cache, "assets/textures/Checkerboard.png");
+    m_Texture = Texture::LoadFromFile(device, cache,
+                                      "assets/textures/Checkerboard.png",
+                                      vk::Format::eR8G8B8A8Srgb,
+                                      vk::Filter::eNearest,
+                                      vk::Filter::eNearest);
 
     // ── 4. 创建顶点 buffer（全屏四边形：位置 + UV） ───────────────────────
     struct Vertex {
@@ -157,9 +161,9 @@ void TextureLayer::OnUpdate(Timestep &ts) {
     // 混合附件（必须显式设置 colorWriteMask，否则默认 0 导致不写入颜色）
     vk::PipelineColorBlendAttachmentState blendState{};
     blendState.colorWriteMask = vk::ColorComponentFlagBits::eR
-                              | vk::ColorComponentFlagBits::eG
-                              | vk::ColorComponentFlagBits::eB
-                              | vk::ColorComponentFlagBits::eA;
+                                | vk::ColorComponentFlagBits::eG
+                                | vk::ColorComponentFlagBits::eB
+                                | vk::ColorComponentFlagBits::eA;
     ps.SetBlendAttachments({blendState});
 
     // 启用动态状态

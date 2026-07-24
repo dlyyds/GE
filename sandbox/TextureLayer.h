@@ -2,7 +2,6 @@
 
 #include "GE/GE.h"
 #include "GE/Render/VulkanBase/VulkanBuffer.h"
-#include "GE/Render/VulkanBase/VulkanPipeline.h"
 #include "GE/Render/VulkanBase/VulkanPipelineLayout.h"
 #include "GE/Render/VulkanBase/ShaderModule.h"
 #include "GE/Render/VulkanBase/Texture.h"
@@ -26,12 +25,8 @@ private:
     ShaderModule             *m_VertShader = nullptr;
     ShaderModule             *m_FragShader = nullptr;
 
-    // 管线布局和管线（由 VulkanResourceCache 管理生命周期）
+    // 管线布局（由 VulkanResourceCache 管理生命周期）
     VulkanPipelineLayout     *m_PipelineLayout = nullptr;
-    VulkanGraphicsPipeline   *m_Pipeline = nullptr;
-
-    // 管线状态
-    VulkanPipelineState       m_PipelineState;
 
     // 顶点 / 索引 / uniform buffer（由本层持有）
     std::unique_ptr<VulkanBuffer> m_VertexBuffer;

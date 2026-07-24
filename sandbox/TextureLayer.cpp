@@ -23,8 +23,6 @@ TextureLayer::~TextureLayer() = default;
 void TextureLayer::OnAttach() {
     auto &ctx = Application::GetVulkanContext();
     auto &device = ctx.GetDevice();
-    auto &swapchain = Application::GetSwapchain();
-    auto colorFmt = swapchain.GetFormat();
 
     // ── 1. 通过全局资源缓存创建 ShaderModule ──────────────────────────────
     auto &cache = device.GetResourceCache();
@@ -42,39 +40,10 @@ void TextureLayer::OnAttach() {
     m_PipelineLayout = &cache.RequestPipelineLayout(
         {m_VertShader, m_FragShader});
 
-    // ── 3. 配置 PipelineState ─────────────────────────────────────────────
-    m_PipelineState = VulkanPipelineState{};
-    m_PipelineState.pipelineLayout = m_PipelineLayout;
-    m_PipelineState.colorAttachmentFormats = {colorFmt};
-    m_PipelineState.depthFormat = {};
-    m_PipelineState.stencilFormat = {};
-
-    // 顶点输入：位置 vec2 (offset 0) + UV vec2 (offset 8), stride = 16
-    m_PipelineState.vertexBindingDescriptions = std::vector<vk::VertexInputBindingDescription>{
-        {0, 16, vk::VertexInputRate::eVertex},
-    };
-    m_PipelineState.vertexAttributeDescriptions = std::vector<vk::VertexInputAttributeDescription>{
-        {0, 0, vk::Format::eR32G32Sfloat, 0}, // position
-        {1, 0, vk::Format::eR32G32Sfloat, static_cast<uint32_t>(2 * sizeof(float))}, // uv
-    };
-
-    // 混合附件
-    m_PipelineState.SetBlendAttachments({vk::PipelineColorBlendAttachmentState{}});
-
-    // 动态状态
-    m_PipelineState.cullMode.SetDynamic(true);
-    m_PipelineState.frontFace.SetDynamic(true);
-    m_PipelineState.topology.SetDynamic(true);
-    m_PipelineState.depthTestEnable = VK_FALSE;
-    m_PipelineState.depthWriteEnable = VK_FALSE;
-
-    // ── 5. 通过全局资源缓存创建图形管线 ──────────────────────────────────
-    m_Pipeline = &cache.RequestGraphicsPipeline(m_PipelineState);
-
-    // ── 6. 加载棋盘纹理───────────────────────────────────────
+    // ── 3. 加载棋盘纹理 ────────────────────────────────────────────────────
     m_Texture = Texture::LoadFromFile(device, cache, "assets/textures/Checkerboard.png");
 
-    // ── 7. 创建顶点 buffer（全屏四边形：位置 + UV）────────────────────────
+    // ── 4. 创建顶点 buffer（全屏四边形：位置 + UV） ───────────────────────
     struct Vertex {
         float x, y;
         float u, v;
@@ -92,7 +61,7 @@ void TextureLayer::OnAttach() {
         vk::BufferUsageFlagBits::eVertexBuffer);
     m_VertexBuffer->update(vertices, sizeof(vertices));
 
-    // ── 8. 创建索引 buffer（2 个三角形）───────────────────────────────────
+    // ── 5. 创建索引 buffer（2 个三角形） ──────────────────────────────────
     uint32_t indices[] = {
         0, 1, 2,
         2, 3, 0,
@@ -103,33 +72,13 @@ void TextureLayer::OnAttach() {
         vk::BufferUsageFlagBits::eIndexBuffer);
     m_IndexBuffer->update(indices, sizeof(indices));
 
-    // ── 9. 创建 uniform buffer（MVP 矩阵）────────────────────────────────
+    // ── 6. 创建 uniform buffer（MVP 矩阵） ───────────────────────────────
     m_UniformBuffer = std::make_unique<VulkanBuffer>(
         device, sizeof(glm::mat4) * 3 + sizeof(glm::vec4),
         vk::BufferUsageFlagBits::eUniformBuffer,
         VMA_MEMORY_USAGE_AUTO,
         VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
 
-    struct UniformBlock {
-        glm::mat4 model;
-        glm::mat4 view;
-        glm::mat4 projection;
-        glm::vec4 color;
-    };
-
-    UniformBlock ubo{};
-    ubo.model = glm::mat4(1.0f);
-    ubo.view = glm::lookAt(glm::vec3(0.0f, 0.0f, 2.0f),
-                           glm::vec3(0.0f, 0.0f, 0.0f),
-                           glm::vec3(0.0f, 1.0f, 0.0f));
-    ubo.projection = glm::perspective(glm::radians(45.0f),
-                                      static_cast<float>(swapchain.GetExtent().width) /
-                                      static_cast<float>(swapchain.GetExtent().height),
-                                      0.1f, 100.0f);
-    ubo.projection[1][1] *= -1.0f;
-    ubo.color = glm::vec4(1.0f);
-
-    m_UniformBuffer->update(&ubo, sizeof(ubo));
 }
 
 void TextureLayer::OnDetach() {
@@ -138,7 +87,6 @@ void TextureLayer::OnDetach() {
     m_VertexBuffer.reset();
     m_Texture.reset();
 
-    m_Pipeline = nullptr;
     m_PipelineLayout = nullptr;
     m_FragShader = nullptr;
     m_VertShader = nullptr;
@@ -188,6 +136,33 @@ void TextureLayer::OnUpdate(Timestep &ts) {
 
     // ── 设置 pipeline layout（Draw 时自动从 ResourceCache 获取管线并绑定） ──
     cmd.BindPipelineLayout(*m_PipelineLayout);
+
+    auto &ps = cmd.GetPipelineState();
+    auto colorFmt = Application::GetSwapchain().GetFormat();
+
+    // 附件格式
+    ps.colorAttachmentFormats = {colorFmt};
+    ps.depthFormat = {};
+    ps.stencilFormat = {};
+
+    // 顶点输入：位置 vec2 (offset 0) + UV vec2 (offset 8), stride = 16
+    ps.vertexBindingDescriptions = std::vector<vk::VertexInputBindingDescription>{
+        {0, 16, vk::VertexInputRate::eVertex},
+    };
+    ps.vertexAttributeDescriptions = std::vector<vk::VertexInputAttributeDescription>{
+        {0, 0, vk::Format::eR32G32Sfloat, 0}, // position
+        {1, 0, vk::Format::eR32G32Sfloat, static_cast<uint32_t>(2 * sizeof(float))}, // uv
+    };
+
+    // 混合附件
+    ps.SetBlendAttachments({vk::PipelineColorBlendAttachmentState{}});
+
+    // 启用动态状态
+    ps.cullMode.SetDynamic(true);
+    ps.frontFace.SetDynamic(true);
+    ps.topology.SetDynamic(true);
+    ps.depthTestEnable = VK_FALSE;
+    ps.depthWriteEnable = VK_FALSE;
 
     // ── 动态状态 ──────────────────────────────────────────────────────────
     vk::Viewport vp;

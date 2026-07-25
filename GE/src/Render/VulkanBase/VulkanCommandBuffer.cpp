@@ -520,7 +520,8 @@ void VulkanCommandBuffer::FlushDescriptorState(vk::PipelineBindPoint pipeline_bi
             descriptor_set_layout, buffer_infos, image_infos);
 
         // 收集 dynamic offsets（按 binding 升序，与 dynamic_bindings 对应）
-        std::vector<vk::DeviceSize> dynamic_offsets;
+        // 注意：vkCmdBindDescriptorSets 的 pDynamicOffsets 参数类型是 uint32_t 数组
+        std::vector<uint32_t> dynamic_offsets;
         dynamic_offsets.reserve(dynamic_bindings.size());
         for (uint32_t b : dynamic_bindings) {
             auto binding_it = resource_set.find(b);
@@ -528,7 +529,7 @@ void VulkanCommandBuffer::FlushDescriptorState(vk::PipelineBindPoint pipeline_bi
                 // 取 array element 0 的 offset（动态描述符通常不用 array element）
                 auto elem_it = binding_it->second.find(0);
                 if (elem_it != binding_it->second.end()) {
-                    dynamic_offsets.push_back(elem_it->second.offset);
+                    dynamic_offsets.push_back(static_cast<uint32_t>(elem_it->second.offset));
                 }
             }
         }

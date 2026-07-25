@@ -36,6 +36,9 @@ void TextureLayer::OnAttach() {
         ShaderSource("assets/shaders/glsl/triangle.frag.spv"),
         "main", ShaderVariant{});
 
+    // ── 1.5 将 UBO 标记为动态描述符（使用 dynamic uniform buffer） ───────
+    m_VertShader->set_resource_mode("UniformBlock", ShaderResourceMode::Dynamic);
+
     // ── 2. 通过全局资源缓存创建 PipelineLayout ────────────────────────────
     m_PipelineLayout = &cache.RequestPipelineLayout(
         {m_VertShader, m_FragShader});

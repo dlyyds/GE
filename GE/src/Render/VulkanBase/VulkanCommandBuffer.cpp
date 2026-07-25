@@ -27,6 +27,7 @@
 #include "Render/VulkanBase/VulkanResourceCache.h"
 #include "Render/VulkanBase/VulkanSampler.h"
 
+#include <algorithm>
 #include <tracy/Tracy.hpp>
 
 #include <cassert>
@@ -465,9 +466,27 @@ void VulkanCommandBuffer::FlushDescriptorState(vk::PipelineBindPoint pipeline_bi
         // 更新绑定记录
         m_BoundDescriptorSetLayouts[set_index] = descriptor_set_layout.GetHandle();
 
+        // 收集动态 binding（按 binding 号升序），用于 dynamic offsets
+        std::vector<uint32_t> dynamic_bindings;
+        {
+            auto const &bindings = descriptor_set_layout.GetBindings();
+            for (auto const &b : bindings) {
+                if (b.descriptorType == vk::DescriptorType::eUniformBufferDynamic ||
+                    b.descriptorType == vk::DescriptorType::eStorageBufferDynamic) {
+                    dynamic_bindings.push_back(b.binding);
+                }
+            }
+        }
+
         // 构建 BindingMap
         BindingMap<vk::DescriptorBufferInfo> buffer_infos;
         BindingMap<vk::DescriptorImageInfo> image_infos;
+
+        // 判断是否为动态 binding（小工具 lambda）
+        auto is_dynamic = [&dynamic_bindings](uint32_t binding) {
+            return std::find(dynamic_bindings.begin(), dynamic_bindings.end(),
+                             binding) != dynamic_bindings.end();
+        };
 
         for (auto &binding_it : resource_set) {
             uint32_t binding_index = binding_it.first;
@@ -477,10 +496,10 @@ void VulkanCommandBuffer::FlushDescriptorState(vk::PipelineBindPoint pipeline_bi
                 auto const &resource_info = element_it.second;
 
                 if (resource_info.buffer != nullptr) {
-                    // 缓冲区绑定
+                    // 缓冲区绑定：动态描述符的 offset 置 0（实际 offset 通过 dynamicOffsets 传入）
                     vk::DescriptorBufferInfo buf_info{
                         .buffer = resource_info.buffer->GetHandle(),
-                        .offset = resource_info.offset,
+                        .offset = is_dynamic(binding_index) ? 0 : resource_info.offset,
                         .range = resource_info.range,
                     };
                     buffer_infos[binding_index][array_element] = buf_info;
@@ -500,13 +519,27 @@ void VulkanCommandBuffer::FlushDescriptorState(vk::PipelineBindPoint pipeline_bi
         auto &descriptor_set = render_frame->RequestDescriptorSet(
             descriptor_set_layout, buffer_infos, image_infos);
 
-        // 绑定 descriptor set
+        // 收集 dynamic offsets（按 binding 升序，与 dynamic_bindings 对应）
+        std::vector<vk::DeviceSize> dynamic_offsets;
+        dynamic_offsets.reserve(dynamic_bindings.size());
+        for (uint32_t b : dynamic_bindings) {
+            auto binding_it = resource_set.find(b);
+            if (binding_it != resource_set.end()) {
+                // 取 array element 0 的 offset（动态描述符通常不用 array element）
+                auto elem_it = binding_it->second.find(0);
+                if (elem_it != binding_it->second.end()) {
+                    dynamic_offsets.push_back(elem_it->second.offset);
+                }
+            }
+        }
+
+        // 绑定 descriptor set（动态 offsets 随 set 一起传入）
         GetHandle().bindDescriptorSets(
             pipeline_bind_point,
             layout->GetHandle(),
             set_index,
             descriptor_set.GetHandle(),
-            {});
+            dynamic_offsets);
     }
 }
 

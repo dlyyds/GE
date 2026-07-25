@@ -1,7 +1,7 @@
 #pragma once
 
 #include "GE/GE.h"
-#include "GE/Render/VulkanBase/VulkanBuffer.h"
+#include "GE/Render/VulkanBase/BufferPool.h"
 #include "GE/Render/VulkanBase/VulkanPipelineLayout.h"
 #include "GE/Render/VulkanBase/ShaderModule.h"
 #include "GE/Render/VulkanBase/Texture.h"
@@ -28,10 +28,9 @@ private:
     // 管线布局（由 VulkanResourceCache 管理生命周期）
     VulkanPipelineLayout     *m_PipelineLayout = nullptr;
 
-    // 顶点 / 索引 / uniform buffer（由本层持有）
+    // 顶点 / 索引 buffer（由本层持有）
     std::unique_ptr<VulkanBuffer> m_VertexBuffer;
     std::unique_ptr<VulkanBuffer> m_IndexBuffer;
-    std::unique_ptr<VulkanBuffer> m_UniformBuffer;
 
     // 纹理（封装 Image + ImageView + Sampler）
     std::unique_ptr<Texture> m_Texture;

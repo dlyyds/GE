@@ -76,17 +76,9 @@ void TextureLayer::OnAttach() {
         vk::BufferUsageFlagBits::eIndexBuffer);
     m_IndexBuffer->update(indices, sizeof(indices));
 
-    // ── 6. 创建 uniform buffer（MVP 矩阵） ───────────────────────────────
-    m_UniformBuffer = std::make_unique<VulkanBuffer>(
-        device, sizeof(glm::mat4) * 3 + sizeof(glm::vec4),
-        vk::BufferUsageFlagBits::eUniformBuffer,
-        VMA_MEMORY_USAGE_AUTO,
-        VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
-
 }
 
 void TextureLayer::OnDetach() {
-    m_UniformBuffer.reset();
     m_IndexBuffer.reset();
     m_VertexBuffer.reset();
     m_Texture.reset();
@@ -101,13 +93,14 @@ void TextureLayer::OnUpdate(Timestep &ts) {
     auto vkCmd = cmd.GetHandle();
     auto extent = Application::GetSwapchain().GetExtent();
 
-    // ── 更新 uniform buffer ──────────────────────────────────────────────
+    // ── 从当前帧的 buffer pool 分配 uniform buffer ───────────────────────
     struct UniformBlock {
         glm::mat4 model;
         glm::mat4 view;
         glm::mat4 projection;
         glm::vec4 color;
     };
+    static_assert(sizeof(UniformBlock) % 16 == 0, "UBO 大小必须 16 字节对齐");
 
     static float rotation = 0.0f;
     rotation += ts.GetSeconds() * 0.5f;
@@ -124,7 +117,10 @@ void TextureLayer::OnUpdate(Timestep &ts) {
     ubo.projection[1][1] *= -1.0f;
     ubo.color = glm::vec4(1.0f);
 
-    m_UniformBuffer->update(&ubo, sizeof(ubo));
+    auto &frame = Application::GetRenderContext().GetActiveFrame();
+    BufferAllocation uboAlloc = frame.AllocateBuffer(
+        vk::BufferUsageFlagBits::eUniformBuffer, sizeof(UniformBlock));
+    uboAlloc.update(ubo);
 
     // ── 开始动态渲染 ──────────────────────────────────────────────────────
     vk::ClearValue clearValue;
@@ -149,7 +145,7 @@ void TextureLayer::OnUpdate(Timestep &ts) {
     ps.depthFormat = {};
     ps.stencilFormat = {};
 
-    // 顶点输入：从顶点着色器反射自动生成（位置 vec2 + UV vec2，紧密打包，stride = 16）
+    // 顶点输入：从顶点着色器反射自动生成
     ps.SetVertexInputFromShader(*m_VertShader);
 
     // 混合附件（必须显式设置 colorWriteMask，否则默认 0 导致不写入颜色）
@@ -186,7 +182,7 @@ void TextureLayer::OnUpdate(Timestep &ts) {
     cmd.GetPipelineState().topology = vk::PrimitiveTopology::eTriangleList;
 
     // ── 绑定资源（惰性，DrawIndexed 时自动 flush 分配 descriptor set） ────
-    cmd.BindBuffer(*m_UniformBuffer, 0, sizeof(UniformBlock), 0, 0);
+    cmd.BindBuffer(uboAlloc.get_buffer(), uboAlloc.get_offset(), uboAlloc.get_size(), 0, 0);
 
     if (m_Texture) {
         cmd.BindImage(m_Texture->GetImageView(), m_Texture->GetSampler(), 0, 1);

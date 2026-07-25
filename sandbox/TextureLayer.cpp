@@ -1,5 +1,5 @@
 //
-// 显示棋盘纹理的 TextureLayer —— 演示纹理加载、采样器、描述符集
+// 显示 5 个棋盘纹理四边形的 TextureLayer —— 演示动态 UBO、纹理、描述符集
 //
 
 #include "TextureLayer.h"
@@ -14,6 +14,10 @@
 #include <glm/gtc/type_ptr.hpp>
 
 namespace GE {
+
+namespace {
+constexpr size_t kInstanceCount = 5;
+}
 
 TextureLayer::TextureLayer() : Layer("TextureLayer") {
 }
@@ -96,7 +100,7 @@ void TextureLayer::OnUpdate(Timestep &ts) {
     auto vkCmd = cmd.GetHandle();
     auto extent = Application::GetSwapchain().GetExtent();
 
-    // ── 从当前帧的 buffer pool 分配 uniform buffer ───────────────────────
+    // ── 从当前帧的 buffer pool 分配 uniform buffer（5 个实例） ───────────
     struct UniformBlock {
         glm::mat4 model;
         glm::mat4 view;
@@ -108,22 +112,49 @@ void TextureLayer::OnUpdate(Timestep &ts) {
     static float rotation = 0.0f;
     rotation += ts.GetSeconds() * 0.5f;
 
-    UniformBlock ubo{};
-    ubo.model = glm::rotate(glm::mat4(1.0f), rotation, glm::vec3(0.0f, 0.0f, 1.0f));
-    ubo.view = glm::lookAt(glm::vec3(0.0f, 0.0f, 4.0f),
-                           glm::vec3(0.0f, 0.0f, 0.0f),
-                           glm::vec3(0.0f, 1.0f, 0.0f));
-    ubo.projection = glm::perspectiveZO(glm::radians(45.0f),
-                                        static_cast<float>(extent.width) /
-                                        static_cast<float>(extent.height),
-                                        0.1f, 100.0f);
-    ubo.projection[1][1] *= -1.0f;
-    ubo.color = glm::vec4(1.0f);
+    // 5 个实例的颜色和位置
+    glm::vec3 instanceColors[kInstanceCount] = {
+        {1.0f, 1.0f, 1.0f},   // 白
+        {1.0f, 0.4f, 0.4f},   // 红
+        {0.4f, 1.0f, 0.4f},   // 绿
+        {0.4f, 0.6f, 1.0f},   // 蓝
+        {1.0f, 0.9f, 0.3f},   // 黄
+    };
+    float instanceAngles[kInstanceCount] = {
+        0.0f,
+        glm::radians(72.0f),
+        glm::radians(144.0f),
+        glm::radians(216.0f),
+        glm::radians(288.0f),
+    };
+
+    UniformBlock baseUbo{};
+    baseUbo.view = glm::lookAt(glm::vec3(0.0f, 0.0f, 5.0f),
+                               glm::vec3(0.0f, 0.0f, 0.0f),
+                               glm::vec3(0.0f, 1.0f, 0.0f));
+    baseUbo.projection = glm::perspectiveZO(glm::radians(45.0f),
+                                            static_cast<float>(extent.width) /
+                                            static_cast<float>(extent.height),
+                                            0.1f, 100.0f);
+    baseUbo.projection[1][1] *= -1.0f;
 
     auto &frame = Application::GetRenderContext().GetActiveFrame();
-    BufferAllocation uboAlloc = frame.AllocateBuffer(
-        vk::BufferUsageFlagBits::eUniformBuffer, sizeof(UniformBlock));
-    uboAlloc.update(ubo);
+
+    // 为每个实例分配一个 UBO（动态 uniform buffer 用 offset 区分）
+    BufferAllocation uboAllocs[kInstanceCount];
+    for (size_t i = 0; i < kInstanceCount; ++i) {
+        UniformBlock ubo = baseUbo;
+        float angle = rotation + instanceAngles[i];
+        glm::vec3 pos(std::cos(angle) * 1.5f, std::sin(angle) * 1.5f, 0.0f);
+        ubo.model = glm::translate(glm::mat4(1.0f), pos)
+                  * glm::rotate(glm::mat4(1.0f), rotation * 2.0f, glm::vec3(0.0f, 0.0f, 1.0f))
+                  * glm::scale(glm::mat4(1.0f), glm::vec3(0.6f));
+        ubo.color = glm::vec4(instanceColors[i], 1.0f);
+
+        uboAllocs[i] = frame.AllocateBuffer(
+            vk::BufferUsageFlagBits::eUniformBuffer, sizeof(UniformBlock));
+        uboAllocs[i].update(ubo);
+    }
 
     // ── 开始动态渲染 ──────────────────────────────────────────────────────
     vk::ClearValue clearValue;
@@ -184,17 +215,23 @@ void TextureLayer::OnUpdate(Timestep &ts) {
     cmd.GetPipelineState().frontFace = vk::FrontFace::eCounterClockwise;
     cmd.GetPipelineState().topology = vk::PrimitiveTopology::eTriangleList;
 
-    // ── 绑定资源（惰性，DrawIndexed 时自动 flush 分配 descriptor set） ────
-    cmd.BindBuffer(uboAlloc.get_buffer(), uboAlloc.get_offset(), uboAlloc.get_size(), 0, 0);
+    // ── 绑定顶点/索引 buffer ───────────────────────────────────────────────
+    cmd.BindVertexBuffers(0, {std::ref(*m_VertexBuffer)}, {0});
+    cmd.BindIndexBuffer(*m_IndexBuffer, 0, vk::IndexType::eUint32);
 
+    // ── 绑定纹理（所有实例共享同一个 descriptor set 的 image 部分） ───────
     if (m_Texture) {
         cmd.BindImage(m_Texture->GetImageView(), m_Texture->GetSampler(), 0, 1);
     }
 
-    // ── 绑定顶点/索引 buffer 并绘制（DrawIndexed 内部自动 Flush） ─────────
-    cmd.BindVertexBuffers(0, {std::ref(*m_VertexBuffer)}, {0});
-    cmd.BindIndexBuffer(*m_IndexBuffer, 0, vk::IndexType::eUint32);
-    cmd.DrawIndexed(6, 1, 0, 0, 0);
+    // ── 循环绘制 5 个实例（每次更新 dynamic uniform buffer 的 offset） ────
+    for (size_t i = 0; i < kInstanceCount; ++i) {
+        // 动态 UBO：只改 offset，descriptor set 本身不变（缓存命中）
+        cmd.BindBuffer(uboAllocs[i].get_buffer(), uboAllocs[i].get_offset(),
+                       uboAllocs[i].get_size(), 0, 0);
+
+        cmd.DrawIndexed(6, 1, 0, 0, 0);
+    }
 
     // ── 结束渲染 ──────────────────────────────────────────────────────────
     VulkanRenderingInfo::End(vkCmd);
@@ -205,11 +242,12 @@ void TextureLayer::OnEvent(Event &event) {
 
 void TextureLayer::OnImGuiRender() {
     ImGui::Begin("TextureLayer");
-    ImGui::Text("显示棋盘纹理的四边形");
+    ImGui::Text("显示 5 个带棋盘纹理的旋转四边形");
     ImGui::Separator();
     ImGui::Text("着色器：triangle.vert / triangle.frag");
     ImGui::Text("纹理：Checkerboard.png");
-    ImGui::Text("管线：UBO + 纹理采样器");
+    ImGui::Text("管线：动态 UBO + 纹理采样器");
+    ImGui::Text("实例数：%zu", kInstanceCount);
     if (m_Texture) {
         ImGui::Text("纹理尺寸：%d x %d",
                     m_Texture->GetExtent().width,

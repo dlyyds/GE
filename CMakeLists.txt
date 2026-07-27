@@ -107,6 +107,34 @@ endif ()
 target_precompile_headers(${GE_NAME} PRIVATE GE/include/GE/pch.h)
 
 
+# 引擎内置着色器编译（GLSL → SPIR-V）
+# ==============================================
+find_program(GLSLC glslc HINTS "$ENV{VULKAN_SDK}/Bin")
+if(GLSLC)
+    file(GLOB GE_SHADER_SOURCES
+            ${CMAKE_SOURCE_DIR}/GE/assets/shaders/glsl/*.vert
+            ${CMAKE_SOURCE_DIR}/GE/assets/shaders/glsl/*.frag)
+
+    foreach(shader ${GE_SHADER_SOURCES})
+        set(spv_output "${shader}.spv")
+        add_custom_command(
+                OUTPUT ${spv_output}
+                COMMAND ${GLSLC} "${shader}" -o ${spv_output}
+                DEPENDS "${shader}"
+                COMMENT "Compiling engine shader ${shader} → SPIR-V"
+        )
+        list(APPEND GE_SPV_OUTPUTS ${spv_output})
+    endforeach()
+
+    if(GE_SPV_OUTPUTS)
+        add_custom_target(GEShaderCompile ALL DEPENDS ${GE_SPV_OUTPUTS})
+        add_dependencies(${GE_NAME} GEShaderCompile)
+    endif()
+else()
+    message(WARNING "glslc not found — engine shaders won't be auto-compiled")
+endif()
+
+
 #Sandbox EXE
 # ==============================================
 

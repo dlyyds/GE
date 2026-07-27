@@ -8,6 +8,7 @@
 namespace GE {
 
 class Window;
+class Renderer2D;
 
 /**
  * @brief 渲染器：统一管理 Vulkan 资源和帧渲染流程。
@@ -88,6 +89,9 @@ public:
     /// 当前帧的 swapchain image view。
     static VulkanImageView &GetFrameImageView();
 
+    /// 访问 2D 精灵渲染器。
+    static Renderer2D &Get2DRenderer();
+
 private:
     /// Vulkan 全局上下文（Instance / PhysicalDevice / Surface / Device / VMA）。
     std::unique_ptr<VulkanContext> m_VulkanContext;
@@ -97,6 +101,9 @@ private:
 
     /// 当前帧的 command buffer（每帧由 BeginFrame 设置，EndFrame 后重置）。
     std::shared_ptr<VulkanCommandBuffer> m_ActiveFrameCmd;
+
+    /// 2D 精灵渲染器。
+    std::unique_ptr<Renderer2D> m_2DRenderer;
 
     /// 窗口引用。
     Window &m_Window;

@@ -1,4 +1,5 @@
 #include "Render/Renderer.h"
+#include "Render/Renderer2D.h"
 
 #include "Core/GEWindow.h"
 #include "Core/Log.h"
@@ -32,6 +33,9 @@ Renderer::Renderer(Window &window)
 
     // 3. 准备 RenderContext（内部创建 RenderFrames）
     m_RenderContext->Prepare();
+
+    // 4. 初始化 2D 精灵渲染器
+    m_2DRenderer = std::make_unique<Renderer2D>();
 }
 
 Renderer::~Renderer() {
@@ -41,6 +45,7 @@ Renderer::~Renderer() {
     WaitIdle();
 
     // 2. 按构造逆序销毁
+    m_2DRenderer.reset();
     m_ActiveFrameCmd.reset();
     m_RenderContext.reset();
     m_VulkanContext.reset();
@@ -147,6 +152,11 @@ uint32_t Renderer::GetFrameImageIndex() {
 
 VulkanImageView &Renderer::GetFrameImageView() {
     return GetRenderContext().GetActiveFrame().GetRenderTarget().GetSwapchainView();
+}
+
+Renderer2D &Renderer::Get2DRenderer() {
+    GE_CORE_ASSERT(Get().m_2DRenderer, "Renderer2D not initialized!");
+    return *Get().m_2DRenderer;
 }
 
 } // namespace GE

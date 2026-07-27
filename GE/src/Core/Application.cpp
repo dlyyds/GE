@@ -30,9 +30,9 @@ Application::Application(const std::string &name, ApplicationCommandLineArgs arg
     m_Window->SetEventCallback(GE_BIND_EVENT_FN(Application::OnEvent));
 
     // 初始化渲染器（内部完成 VulkanContext → RenderContext → Prepare 完整初始化链）
-    m_Renderer = CreateScope<Renderer>(*m_Window);
+    m_Renderer = std::make_unique<Renderer>(*m_Window);
 
-    m_ImGuiLayer = CreateRef<ImGuiLayer>();
+    m_ImGuiLayer = std::make_shared<ImGuiLayer>();
     PushOverlay(m_ImGuiLayer);
 
 }
@@ -41,11 +41,14 @@ Application::~Application() {
 
     GE_CORE_INFO("Application Shoutdown");
 
-    // 1. Detach 所有层（层中的 Material/Mesh/Texture 持有 GPU 资源）
+    // 1. 等待 GPU 完成所有未完成的工作（必须在释放 Layer 的 GPU 资源之前）
+    m_Renderer->WaitIdle();
+
+    // 2. Detach 所有层（层中的 Material/Mesh/Texture 持有 GPU 资源）
     m_LayerStack.Clear();
     m_ImGuiLayer.reset();
 
-    // 2. 销毁渲染器（内部 waitIdle + 释放所有 Vulkan 资源）
+    // 3. 销毁渲染器（内部再次 waitIdle + 释放所有 Vulkan 资源）
     m_Renderer.reset();
 
     s_Instance = nullptr;
@@ -151,13 +154,13 @@ bool Application::OnWindowClose(WindowCloseEvent &e) {
     return true;
 }
 
-void Application::PushLayer(const Ref<Layer> &layer) {
+void Application::PushLayer(const std::shared_ptr<Layer> &layer) {
 
     m_LayerStack.PushLayer(layer);
     layer->OnAttach();
 }
 
-void Application::PushOverlay(const Ref<Layer> &layer) {
+void Application::PushOverlay(const std::shared_ptr<Layer> &layer) {
 
     m_LayerStack.PushOverlay(layer);
     layer->OnAttach();

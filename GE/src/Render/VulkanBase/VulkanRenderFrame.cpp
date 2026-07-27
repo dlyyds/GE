@@ -37,15 +37,11 @@ namespace {
 
 vk::CommandPoolCreateFlags ToCreateFlags(CommandBufferResetMode reset_mode) {
     switch (reset_mode) {
-        case CommandBufferResetMode::ResetPool:
-            return vk::CommandPoolCreateFlagBits::eTransient;
-        case CommandBufferResetMode::ResetIndividually:
-            return vk::CommandPoolCreateFlagBits::eTransient |
-                   vk::CommandPoolCreateFlagBits::eResetCommandBuffer;
-        case CommandBufferResetMode::AlwaysAllocate:
-            return vk::CommandPoolCreateFlags{};
-        default:
-            return vk::CommandPoolCreateFlagBits::eTransient;
+    case CommandBufferResetMode::ResetPool: return vk::CommandPoolCreateFlagBits::eTransient;
+    case CommandBufferResetMode::ResetIndividually: return vk::CommandPoolCreateFlagBits::eTransient |
+                                                           vk::CommandPoolCreateFlagBits::eResetCommandBuffer;
+    case CommandBufferResetMode::AlwaysAllocate: return vk::CommandPoolCreateFlags{};
+    default: return vk::CommandPoolCreateFlagBits::eTransient;
     }
 }
 
@@ -57,20 +53,19 @@ vk::CommandPoolCreateFlags ToCreateFlags(CommandBufferResetMode reset_mode) {
 
 VulkanRenderFrame::VulkanRenderFrame(VulkanDevice &device,
                                      std::unique_ptr<RenderTarget> &&render_target,
-                                     size_t thread_count) :
-    m_Device(device),
-    m_FencePool(device.GetHandle()),
-    m_SemaphorePool(device),
-    m_ThreadCount(thread_count),
-    m_DescriptorPools(thread_count),
-    m_DescriptorSets(thread_count) {
+                                     size_t thread_count) : m_Device(device),
+                                                            m_FencePool(device.GetHandle()),
+                                                            m_SemaphorePool(device),
+                                                            m_ThreadCount(thread_count),
+                                                            m_DescriptorPools(thread_count),
+                                                            m_DescriptorSets(thread_count) {
     // Buffer pool 默认块大小（256KB）
     static constexpr vk::DeviceSize BUFFER_POOL_BLOCK_SIZE = 256 * 1024; // 256 KB
 
     // 支持的 usage 及其块大小乘数
     static const std::unordered_map<vk::BufferUsageFlags, uint32_t> supported_usage_map = {
         {vk::BufferUsageFlagBits::eUniformBuffer, 1},
-        {vk::BufferUsageFlagBits::eStorageBuffer, 2},   // SSBO 通常更大，x2
+        {vk::BufferUsageFlagBits::eStorageBuffer, 2}, // SSBO 通常更大，x2
         {vk::BufferUsageFlagBits::eVertexBuffer, 1},
         {vk::BufferUsageFlagBits::eIndexBuffer, 1},
     };
@@ -81,7 +76,7 @@ VulkanRenderFrame::VulkanRenderFrame(VulkanDevice &device,
     // 为每个 usage 创建 buffer pools（每个线程一个）
     for (auto &usage_it : supported_usage_map) {
         auto [buffer_pools_it, inserted] = m_BufferPools.emplace(
-            usage_it.first, std::vector<std::pair<BufferPool, BufferBlock *>>{});
+            usage_it.first, std::vector<std::pair<BufferPool, BufferBlock *> >{});
         if (!inserted) {
             throw std::runtime_error("VulkanRenderFrame: 创建 buffer pool 失败");
         }
@@ -109,7 +104,7 @@ BufferAllocation VulkanRenderFrame::AllocateBuffer(vk::BufferUsageFlags usage, v
     }
 
     assert(thread_index < buffer_pool_it->second.size());
-    auto &buffer_pool  = buffer_pool_it->second[thread_index].first;
+    auto &buffer_pool = buffer_pool_it->second[thread_index].first;
     auto &buffer_block = buffer_pool_it->second[thread_index].second;
 
     bool want_minimal_block = (m_BufferAllocationStrategy == BufferAllocationStrategy::OneAllocationPerBuffer);
@@ -169,8 +164,8 @@ std::vector<VulkanCommandPool> &VulkanRenderFrame::GetCommandPools(const VulkanQ
 // ============================================================================
 
 VulkanCommandPool &VulkanRenderFrame::GetCommandPool(const VulkanQueue &queue,
-                                                      CommandBufferResetMode reset_mode,
-                                                      size_t thread_index) {
+                                                     CommandBufferResetMode reset_mode,
+                                                     size_t thread_index) {
     assert(thread_index < m_ThreadCount && "线程索引越界");
 
     auto &command_pools = GetCommandPools(queue, reset_mode);
@@ -224,10 +219,10 @@ VulkanDescriptorSet &VulkanRenderFrame::RequestDescriptorSet(
             descriptor_set_layout, descriptor_pool, buffer_infos, image_infos);
         bool cache_hit = (ds_map.size() == before_count);
 
-        GE_CORE_TRACE("RequestDescriptorSet: set={}, cache_{}, total_sets={}",
-                      descriptor_set_layout.GetIndex(),
-                      cache_hit ? "hit" : "miss",
-                      ds_map.size());
+        // GE_CORE_TRACE("RequestDescriptorSet: set={}, cache_{}, total_sets={}",
+        //               descriptor_set_layout.GetIndex(),
+        //               cache_hit ? "hit" : "miss",
+        //               ds_map.size());
 
         // 更新指定的 bindings（空 = 全部更新）
         descriptor_set.Update({bindings_to_update.begin(), bindings_to_update.end()});

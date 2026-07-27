@@ -32,12 +32,12 @@ void TextureLayer::OnAttach() {
     auto &cache = device.GetResourceCache();
     m_VertShader = &cache.RequestShaderModule(
         vk::ShaderStageFlagBits::eVertex,
-        ShaderSource("assets/shaders/glsl/triangle.vert.spv"),
+        ShaderSource("assets/shaders/glsl/sprite.vert.spv"),
         "main", ShaderVariant{});
 
     m_FragShader = &cache.RequestShaderModule(
         vk::ShaderStageFlagBits::eFragment,
-        ShaderSource("assets/shaders/glsl/triangle.frag.spv"),
+        ShaderSource("assets/shaders/glsl/sprite.frag.spv"),
         "main", ShaderVariant{});
 
     // ── 1.5 将 UBO 标记为动态描述符（使用 dynamic uniform buffer） ───────
@@ -54,17 +54,18 @@ void TextureLayer::OnAttach() {
                                       vk::Filter::eNearest,
                                       vk::Filter::eNearest);
 
-    // ── 4. 创建顶点 buffer（全屏四边形：位置 + UV） ───────────────────────
+    // ── 4. 创建顶点 buffer（全屏四边形：位置 + UV + 顶点色） ──────────────
     struct Vertex {
         float x, y;
         float u, v;
+        float r, g, b, a;
     };
 
     Vertex vertices[] = {
-        {-1.0f, -1.0f, 0.0f, 0.0f},
-        {1.0f, -1.0f, 1.0f, 0.0f},
-        {1.0f, 1.0f, 1.0f, 1.0f},
-        {-1.0f, 1.0f, 0.0f, 1.0f},
+        {-1.0f, -1.0f, 0.0f, 0.0f,  1.0f, 1.0f, 1.0f, 1.0f},
+        { 1.0f, -1.0f, 1.0f, 0.0f,  1.0f, 1.0f, 1.0f, 1.0f},
+        { 1.0f,  1.0f, 1.0f, 1.0f,  1.0f, 1.0f, 1.0f, 1.0f},
+        {-1.0f,  1.0f, 0.0f, 1.0f,  1.0f, 1.0f, 1.0f, 1.0f},
     };
 
     m_VertexBuffer = std::make_unique<VulkanBuffer>(
@@ -244,7 +245,7 @@ void TextureLayer::OnImGuiRender() {
     ImGui::Begin("TextureLayer");
     ImGui::Text("显示 5 个带棋盘纹理的旋转四边形");
     ImGui::Separator();
-    ImGui::Text("着色器：triangle.vert / triangle.frag");
+    ImGui::Text("着色器：sprite.vert / sprite.frag");
     ImGui::Text("纹理：Checkerboard.png");
     ImGui::Text("管线：动态 UBO + 纹理采样器");
     ImGui::Text("实例数：%zu", kInstanceCount);

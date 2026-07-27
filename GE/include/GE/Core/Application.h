@@ -13,8 +13,7 @@
 #include "Debug/Assert.h"
 #include "ImGui/ImGuiLayer.h"
 
-#include "Render/VulkanBase/VulkanContext.h"
-#include "Render/VulkanBase/VulkanRenderContext.h"
+#include "Render/Renderer.h"
 
 int main(int argc, char **argv);
 
@@ -56,17 +55,17 @@ public:
 
     [[nodiscard]] float GetFPS() const { return m_FPS; }
 
-    /// 访问 Vulkan 全局上下文（提供给 Layer 等创建 Vulkan 资源用）。
-    static VulkanContext &GetVulkanContext() { return *Get().m_VulkanContext; }
+    /// 访问 Vulkan 全局上下文（转发给 Renderer，提供给 Layer 等创建 Vulkan 资源用）。
+    static VulkanContext &GetVulkanContext() { return Renderer::GetVulkanContext(); }
 
-    static const VulkanSwapchain &GetSwapchain() { return Get().m_RenderContext->GetSwapchain(); }
-    static VulkanRenderContext &GetRenderContext() { return *Get().m_RenderContext; }
+    static const VulkanSwapchain &GetSwapchain() { return Renderer::GetSwapchain(); }
+    static VulkanRenderContext &GetRenderContext() { return Renderer::GetRenderContext(); }
 
 
-    /// 帧渲染辅助：当前帧的 command buffer 和 image view（返回封装对象）。
-    static VulkanCommandBuffer &GetFrameCmd() { return *Get().m_ActiveFrameCmd; }
-    static uint32_t GetFrameImageIndex() { return GetRenderContext().GetActiveFrameIndex(); }
-    static VulkanImageView &GetFrameImageView() { return GetRenderContext().GetActiveFrame().GetRenderTarget().GetSwapchainView(); }
+    /// 帧渲染辅助：当前帧的 command buffer 和 image view（转发给 Renderer）。
+    static VulkanCommandBuffer &GetFrameCmd() { return Renderer::GetFrameCmd(); }
+    static uint32_t GetFrameImageIndex() { return Renderer::GetFrameImageIndex(); }
+    static VulkanImageView &GetFrameImageView() { return Renderer::GetFrameImageView(); }
 
 private:
     void Run();
@@ -92,12 +91,8 @@ private:
     float m_FrameTimeAccumulator = 0.0f;
     int m_FrameCount = 0;
 
-    // -- Vulkan 资源 --
-    std::unique_ptr<VulkanContext> m_VulkanContext;
-    std::unique_ptr<VulkanRenderContext> m_RenderContext;
-
-    // 当前帧的 command buffer（封装对象，生命周期由 Application 管理）。
-    std::shared_ptr<VulkanCommandBuffer> m_ActiveFrameCmd;
+    // -- 渲染器：统一管理所有 Vulkan 资源 --
+    Scope<Renderer> m_Renderer;
 
 private:
     static Application *s_Instance;

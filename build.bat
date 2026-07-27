@@ -118,7 +118,6 @@ echo   构建类型: %BUILD_TYPE%
 echo   输出目录: bin\
 echo ==============================
 endlocal
-pause
 exit /b 0
 
 :: ==========================================
@@ -140,5 +139,4 @@ echo   build.bat                  - Debug 构建
 echo   build.bat release          - Release 构建
 echo   build.bat release rebuild  - 清理后 Release 构建
 echo   build.bat debug clean      - 清理后 Debug 构建
-pause
 exit /b 0

@@ -34,15 +34,15 @@ enum class VsyncMode {
 
 // 窗口完整属性
 struct WindowProperties {
-    std::string title     = "Game Engine";
-    WindowMode  mode      = WindowMode::Default;
-    bool        resizable = true;
-    VsyncMode   vsync     = VsyncMode::Default;
-    Extent      extent    = {1280, 720};
+    std::string title = "Game Engine";
+    WindowMode mode = WindowMode::Default;
+    bool resizable = true;
+    VsyncMode vsync = VsyncMode::Default;
+    Extent extent = {1280, 720};
 
-    explicit WindowProperties(std::string  t = "Game Engine",
-                              uint32_t     w = 1280,
-                              uint32_t     h = 720)
+    explicit WindowProperties(std::string t = "Game Engine",
+                              uint32_t w = 1280,
+                              uint32_t h = 720)
         : title(std::move(t)), extent{w, h} {
     }
 };
@@ -50,11 +50,11 @@ struct WindowProperties {
 // 可选属性（用于部分更新）
 struct OptionalWindowProperties {
     std::optional<std::string> title;
-    std::optional<WindowMode>  mode;
-    std::optional<bool>        resizable;
-    std::optional<VsyncMode>   vsync;
-    std::optional<uint32_t>    width;
-    std::optional<uint32_t>    height;
+    std::optional<WindowMode> mode;
+    std::optional<bool> resizable;
+    std::optional<VsyncMode> vsync;
+    std::optional<uint32_t> width;
+    std::optional<uint32_t> height;
 };
 
 // 基于桌面系统的窗口接口
@@ -77,16 +77,20 @@ public:
     virtual void Close() = 0;
 
     [[nodiscard]] virtual uint32_t GetWidth() const = 0;
+
     [[nodiscard]] virtual uint32_t GetHeight() const = 0;
+
     [[nodiscard]] Extent GetExtent() const { return {GetWidth(), GetHeight()}; }
 
     // 窗口属性
     virtual void SetEventCallback(const EventCallbackFn &callback) = 0;
 
     virtual void SetVSync(VsyncMode mode) = 0;
+
     [[nodiscard]] virtual VsyncMode GetVSync() const = 0;
 
     virtual void SetResizable(bool resizable) = 0;
+
     [[nodiscard]] virtual bool IsResizable() const = 0;
 
     [[nodiscard]] virtual WindowMode GetWindowMode() const = 0;
@@ -95,10 +99,12 @@ public:
     virtual Extent Resize(const Extent &new_extent) = 0;
 
     [[nodiscard]] virtual void *GetNativeWindow() const = 0;
+
     [[nodiscard]] virtual void *GetGlfwWindow() const = 0;
 
     /// 创建 Vulkan 表面
     virtual VkSurfaceKHR CreateVulkanSurface(VkInstance instance) = 0;
+
     virtual VkSurfaceKHR CreateVulkanSurface(VkInstance instance, VkPhysicalDevice physical_device) = 0;
 
     /// 获取窗口所需的 Vulkan 表面扩展名列表
@@ -116,7 +122,7 @@ public:
 
     [[nodiscard]] const WindowProperties &GetProperties() const { return properties; }
 
-    static Scope<Window> Create(const WindowProperties &props = WindowProperties{});
+    static std::unique_ptr<Window> Create(const WindowProperties &props = WindowProperties{});
 
 protected:
     WindowProperties properties;

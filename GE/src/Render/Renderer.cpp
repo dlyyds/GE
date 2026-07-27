@@ -17,11 +17,11 @@ Renderer::Renderer(Window &window)
     s_Instance = this;
 
     // 1. 初始化 Vulkan 上下文（构造中完成 Instance → Surface → Device → VMA）
-    m_VulkanContext = CreateScope<VulkanContext>(m_Window);
+    m_VulkanContext = std::make_unique<VulkanContext>(m_Window);
 
     // 2. 创建 RenderContext（内部创建 Swapchain 和 RenderFrame 管理）
     auto &dev = m_VulkanContext->GetDevice();
-    m_RenderContext = CreateScope<VulkanRenderContext>(
+    m_RenderContext = std::make_unique<VulkanRenderContext>(
         dev, m_VulkanContext->GetSurface(), m_Window,
         vk::PresentModeKHR::eMailbox,
         std::vector<vk::PresentModeKHR>{vk::PresentModeKHR::eMailbox, vk::PresentModeKHR::eFifo},

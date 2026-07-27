@@ -7,11 +7,11 @@
 
 namespace GE {
 
-Scope<Window> Window::Create(const WindowProperties &props) {
+std::unique_ptr<Window> Window::Create(const WindowProperties &props) {
     GE_PROFILE_FUNCTION();
 
 #ifdef GE_PLATFORM_WINDOWS
-    return CreateScope<GlfwWindow>(props);
+    return std::make_unique<GlfwWindow>(props);
 #else
     GE_CORE_ASSERT(false, "Unknown platform!");
     return nullptr;

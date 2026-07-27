@@ -31,8 +31,11 @@ public:
     ~Renderer();
 
     Renderer(const Renderer &) = delete;
+
     Renderer &operator=(const Renderer &) = delete;
+
     Renderer(Renderer &&) = delete;
+
     Renderer &operator=(Renderer &&) = delete;
 
     // ========================================================================
@@ -87,13 +90,13 @@ public:
 
 private:
     /// Vulkan 全局上下文（Instance / PhysicalDevice / Surface / Device / VMA）。
-    Scope<VulkanContext> m_VulkanContext;
+    std::unique_ptr<VulkanContext> m_VulkanContext;
 
     /// 帧管理器（swapchain / RenderFrame 池 / 提交呈现）。
-    Scope<VulkanRenderContext> m_RenderContext;
+    std::unique_ptr<VulkanRenderContext> m_RenderContext;
 
     /// 当前帧的 command buffer（每帧由 BeginFrame 设置，EndFrame 后重置）。
-    Ref<VulkanCommandBuffer> m_ActiveFrameCmd;
+    std::shared_ptr<VulkanCommandBuffer> m_ActiveFrameCmd;
 
     /// 窗口引用。
     Window &m_Window;

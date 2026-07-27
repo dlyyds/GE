@@ -14,11 +14,11 @@ class Sandbox : public Application {
 public:
     explicit Sandbox(ApplicationCommandLineArgs args) : Application("Sandbox", args) {
         GE_PROFILE_FUNCTION();
-        //PushLayer(CreateRef<SandboxLayer>());
-        //PushLayer(CreateRef<TextureSampleLayer>());
-        //PushLayer(CreateRef<VulkanLayer>());
-        //PushLayer(CreateRef<TriangleLayer>());
-        PushLayer(CreateRef<TextureLayer>());
+        //PushLayer(std::make_shared<SandboxLayer>());
+        //PushLayer(std::make_shared<TextureSampleLayer>());
+        //PushLayer(std::make_shared<VulkanLayer>());
+        //PushLayer(std::make_shared<TriangleLayer>());
+        PushLayer(std::make_shared<TextureLayer>());
     }
 
     ~Sandbox() override = default;

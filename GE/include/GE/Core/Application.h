@@ -39,9 +39,9 @@ public:
 
     void OnEvent(Event &e);
 
-    void PushLayer(const Ref<Layer> &layer);
+    void PushLayer(const std::shared_ptr<Layer> &layer);
 
-    void PushOverlay(const Ref<Layer> &layer);
+    void PushOverlay(const std::shared_ptr<Layer> &layer);
 
     [[nodiscard]] Window &GetWindow() const { return *m_Window; }
 
@@ -79,10 +79,10 @@ private:
 private:
     ApplicationCommandLineArgs m_CommandLineArgs;
 
-    Ref<ImGuiLayer> m_ImGuiLayer;
+    std::shared_ptr<ImGuiLayer> m_ImGuiLayer;
 
     bool m_Running = true;
-    Scope<Window> m_Window;
+    std::unique_ptr<Window> m_Window;
     LayerStack m_LayerStack;
     float m_LastFrameTime = 0.0f;
     bool m_Minimized = false;
@@ -92,7 +92,7 @@ private:
     int m_FrameCount = 0;
 
     // -- 渲染器：统一管理所有 Vulkan 资源 --
-    Scope<Renderer> m_Renderer;
+    std::unique_ptr<Renderer> m_Renderer;
 
 private:
     static Application *s_Instance;

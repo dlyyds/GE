@@ -14,8 +14,9 @@ void Log::Init() {
     logSinks.emplace_back(std::make_shared<spdlog::sinks::stdout_color_sink_mt>());
     logSinks.emplace_back(std::make_shared<spdlog::sinks::basic_file_sink_mt>("GE.log", true));
 
-    logSinks[0]->set_pattern("%^[%T] %n: %v%$");
-    logSinks[1]->set_pattern("[%T] [%l] %n: %v");
+    // %^ %$ 颜色范围，%T 时间，%n 日志器名，%s:%# 文件:行号，%v 消息内容
+    logSinks[0]->set_pattern("%^[%T] %n [%s:%#] %v%$");
+    logSinks[1]->set_pattern("[%T] [%l] %n [%s:%#] %v");
 
     s_CoreLogger = std::make_shared<spdlog::logger>("GE", begin(logSinks), end(logSinks));
     spdlog::register_logger(s_CoreLogger);

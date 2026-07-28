@@ -1,14 +1,11 @@
 #pragma once
 
 #include "GE/GE.h"
-#include "GE/Render/VulkanBase/BufferPool.h"
-#include "GE/Render/VulkanBase/VulkanPipelineLayout.h"
-#include "GE/Render/VulkanBase/ShaderModule.h"
 #include "GE/Render/VulkanBase/Texture.h"
 
 namespace GE {
 
-/// 使用新 API 的 Vulkan 纹理绘制层 —— 显示棋盘纹理。
+/// 使用 Renderer2D 的精灵绘制层 —— 显示 5 个旋转的棋盘纹理精灵。
 class TextureLayer : public Layer {
 public:
     TextureLayer();
@@ -21,19 +18,7 @@ public:
     void OnImGuiRender() override;
 
 private:
-    // 着色器（由 VulkanResourceCache 管理生命周期）
-    ShaderModule             *m_VertShader = nullptr;
-    ShaderModule             *m_FragShader = nullptr;
-
-    // 管线布局（由 VulkanResourceCache 管理生命周期）
-    VulkanPipelineLayout     *m_PipelineLayout = nullptr;
-
-    // 顶点 / 索引 buffer（由本层持有）
-    std::unique_ptr<VulkanBuffer> m_VertexBuffer;
-    std::unique_ptr<VulkanBuffer> m_IndexBuffer;
-
-    // 纹理（封装 Image + ImageView + Sampler）
-    std::unique_ptr<Texture> m_Texture;
+    std::unique_ptr<Texture> m_Texture;   ///< 棋盘纹理
 };
 
 } // namespace GE

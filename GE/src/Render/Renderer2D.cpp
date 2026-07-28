@@ -29,18 +29,18 @@ Renderer2D::Renderer2D() {
     ZoneScopedN("Renderer2D::Init");
 
     auto &device = Renderer::GetVulkanContext().GetDevice();
-    auto &cache  = device.GetResourceCache();
+    auto &cache = device.GetResourceCache();
 
     // ── 1. 通过全局资源缓存请求精灵着色器 ──────────────────────────────
     // 引擎内置 sprite 着色器，编译产物在 GE/assets/shaders/glsl/ 下
     m_VertShader = &cache.RequestShaderModule(
         vk::ShaderStageFlagBits::eVertex,
-        ShaderSource("GE/assets/shaders/glsl/sprite.vert.spv"),
+        ShaderSource("assets/shaders/glsl/sprite.vert.spv"),
         "main", ShaderVariant{});
 
     m_FragShader = &cache.RequestShaderModule(
         vk::ShaderStageFlagBits::eFragment,
-        ShaderSource("GE/assets/shaders/glsl/sprite.frag.spv"),
+        ShaderSource("assets/shaders/glsl/sprite.frag.spv"),
         "main", ShaderVariant{});
 
     // ── 2. 请求 PipelineLayout ─────────────────────────────────────────
@@ -54,8 +54,8 @@ Renderer2D::~Renderer2D() {
     GE_CORE_INFO("Renderer2D Shutdown");
 
     // 着色器和 pipeline layout 由全局资源缓存管理，不需要手动释放
-    m_VertShader     = nullptr;
-    m_FragShader     = nullptr;
+    m_VertShader = nullptr;
+    m_FragShader = nullptr;
     m_PipelineLayout = nullptr;
 }
 
@@ -63,10 +63,12 @@ Renderer2D::~Renderer2D() {
 // 场景接口
 // ============================================================================
 
-void Renderer2D::BeginScene(const glm::mat4 &viewProjection) {
+void Renderer2D::BeginScene(const glm::mat4 &viewProjection,
+                            const glm::vec4 &clearColor) {
     GE_CORE_ASSERT(!m_InScene, "Renderer2D::BeginScene called without EndScene!");
-    m_InScene = true;
+    m_InScene        = true;
     m_ViewProjection = viewProjection;
+    m_ClearColor     = clearColor;
 
     // 清空上一帧的批处理数据
     for (auto &[tex, verts] : m_Batches) {
@@ -83,8 +85,8 @@ void Renderer2D::DrawSprite(const glm::vec2 &position,
 
     // 构建模型变换矩阵：先缩放，再旋转，再平移
     glm::mat4 transform = glm::translate(glm::mat4(1.0f), glm::vec3(position, 0.0f))
-                        * glm::rotate(glm::mat4(1.0f), rotation, glm::vec3(0.0f, 0.0f, 1.0f))
-                        * glm::scale(glm::mat4(1.0f), glm::vec3(size * 0.5f, 1.0f));
+                          * glm::rotate(glm::mat4(1.0f), rotation, glm::vec3(0.0f, 0.0f, 1.0f))
+                          * glm::scale(glm::mat4(1.0f), glm::vec3(size * 0.5f, 1.0f));
 
     AppendQuad(texture, transform, color);
 }
@@ -116,11 +118,11 @@ void Renderer2D::EndScene() {
         return;
     }
 
-    auto &cmd    = Renderer::GetFrameCmd();
-    auto vkCmd   = cmd.GetHandle();
+    auto &cmd = Renderer::GetFrameCmd();
+    auto vkCmd = cmd.GetHandle();
     auto &swapchain = Renderer::GetSwapchain();
-    auto extent  = swapchain.GetExtent();
-    auto &frame  = Renderer::GetRenderContext().GetActiveFrame();
+    auto extent = swapchain.GetExtent();
+    auto &frame = Renderer::GetRenderContext().GetActiveFrame();
 
     // ── 1. 从帧资源池分配顶点 buffer ──────────────────────────────────
     BufferAllocation vertexAlloc = frame.AllocateBuffer(
@@ -142,7 +144,8 @@ void Renderer2D::EndScene() {
     uint32_t vertexOffset = 0;
 
     for (auto &[tex, verts] : m_Batches) {
-        if (verts.empty()) continue;
+        if (verts.empty())
+            continue;
 
         allVertices.insert(allVertices.end(), verts.begin(), verts.end());
         batchInfos.push_back({tex, vertexOffset, static_cast<uint32_t>(verts.size())});
@@ -159,24 +162,27 @@ void Renderer2D::EndScene() {
     //   projection = viewProjection（作为投影矩阵传入）
     //   color = 白色
     UniformBlock ubo{};
-    ubo.model      = glm::mat4(1.0f);
-    ubo.view       = glm::mat4(1.0f);
+    ubo.model = glm::mat4(1.0f);
+    ubo.view = glm::mat4(1.0f);
     ubo.projection = m_ViewProjection;
-    ubo.color      = glm::vec4(1.0f);
+    ubo.color = glm::vec4(1.0f);
 
     BufferAllocation uboAlloc = frame.AllocateBuffer(
         vk::BufferUsageFlagBits::eUniformBuffer, sizeof(UniformBlock));
     uboAlloc.update(ubo);
 
     // ── 4. 开始动态渲染 ───────────────────────────────────────────────
-    // 使用 LOAD_OP_LOAD（不清空，叠加在已有内容上）
+    // 根据 m_ClearColor 决定是否清屏：r < 0 表示不清屏（eLoad），否则清屏（eClear）
+    bool shouldClear = m_ClearColor.r >= 0.0f;
     vk::ClearValue clearValue{};
-    clearValue.color = std::array<float, 4>{0.0f, 0.0f, 0.0f, 0.0f};
+    clearValue.color = std::array<float, 4>{
+        m_ClearColor.r, m_ClearColor.g, m_ClearColor.b, m_ClearColor.a};
 
     VulkanRenderingInfo renderInfo;
     renderInfo.SetRenderArea(0, 0, extent.width, extent.height);
     renderInfo.AddColorAttachment(Renderer::GetFrameImageView().GetHandle(),
-                                  vk::AttachmentLoadOp::eLoad,
+                                  shouldClear ? vk::AttachmentLoadOp::eClear
+                                              : vk::AttachmentLoadOp::eLoad,
                                   vk::AttachmentStoreOp::eStore,
                                   clearValue);
     renderInfo.Begin(vkCmd);
@@ -189,7 +195,7 @@ void Renderer2D::EndScene() {
 
     // 附件格式
     ps.colorAttachmentFormats = {colorFmt};
-    ps.depthFormat   = {};
+    ps.depthFormat = {};
     ps.stencilFormat = {};
 
     // 顶点输入：从顶点着色器反射自动生成
@@ -198,42 +204,42 @@ void Renderer2D::EndScene() {
     // 混合附件：启用 alpha 混合（预乘 alpha 模式）
     vk::PipelineColorBlendAttachmentState blendState{};
     blendState.colorWriteMask = vk::ColorComponentFlagBits::eR
-                              | vk::ColorComponentFlagBits::eG
-                              | vk::ColorComponentFlagBits::eB
-                              | vk::ColorComponentFlagBits::eA;
-    blendState.blendEnable         = VK_TRUE;
-    blendState.srcColorBlendFactor = vk::BlendFactor::eOne;           // 预乘 alpha: src = 1
+                                | vk::ColorComponentFlagBits::eG
+                                | vk::ColorComponentFlagBits::eB
+                                | vk::ColorComponentFlagBits::eA;
+    blendState.blendEnable = VK_TRUE;
+    blendState.srcColorBlendFactor = vk::BlendFactor::eOne; // 预乘 alpha: src = 1
     blendState.dstColorBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha;
-    blendState.colorBlendOp        = vk::BlendOp::eAdd;
+    blendState.colorBlendOp = vk::BlendOp::eAdd;
     blendState.srcAlphaBlendFactor = vk::BlendFactor::eOne;
     blendState.dstAlphaBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha;
-    blendState.alphaBlendOp        = vk::BlendOp::eAdd;
+    blendState.alphaBlendOp = vk::BlendOp::eAdd;
     ps.SetBlendAttachments({blendState});
 
     // 2D 渲染：无背面剔除、无深度测试、三角形列表
     ps.cullMode.SetDynamic(true);
     ps.frontFace.SetDynamic(true);
     ps.topology.SetDynamic(true);
-    ps.depthTestEnable  = VK_FALSE;
+    ps.depthTestEnable = VK_FALSE;
     ps.depthWriteEnable = VK_FALSE;
 
     // 动态状态
     vk::Viewport vp;
-    vp.width    = static_cast<float>(extent.width);
-    vp.height   = static_cast<float>(extent.height);
+    vp.width = static_cast<float>(extent.width);
+    vp.height = static_cast<float>(extent.height);
     vp.minDepth = 0.0f;
     vp.maxDepth = 1.0f;
     cmd.SetViewport(0, {vp});
 
     vk::Rect2D scissor;
-    scissor.extent.width  = extent.width;
+    scissor.extent.width = extent.width;
     scissor.extent.height = extent.height;
     cmd.SetScissor(0, {scissor});
 
     // 写入动态管线状态
-    cmd.GetPipelineState().cullMode  = vk::CullModeFlagBits::eNone;
+    cmd.GetPipelineState().cullMode = vk::CullModeFlagBits::eNone;
     cmd.GetPipelineState().frontFace = vk::FrontFace::eCounterClockwise;
-    cmd.GetPipelineState().topology  = vk::PrimitiveTopology::eTriangleList;
+    cmd.GetPipelineState().topology = vk::PrimitiveTopology::eTriangleList;
 
     // ── 6. 绑定顶点 buffer ────────────────────────────────────────────
     cmd.BindVertexBuffers(0,
@@ -280,10 +286,10 @@ void Renderer2D::AppendQuad(Texture *texture,
     };
 
     static constexpr BaseVertex kQuadVerts[4] = {
-        {{-1.0f, -1.0f}, {0.0f, 0.0f}},  // 左下
-        {{ 1.0f, -1.0f}, {1.0f, 0.0f}},  // 右下
-        {{ 1.0f,  1.0f}, {1.0f, 1.0f}},  // 右上
-        {{-1.0f,  1.0f}, {0.0f, 1.0f}},  // 左上
+        {{-1.0f, -1.0f}, {0.0f, 0.0f}}, // 左下
+        {{1.0f, -1.0f}, {1.0f, 0.0f}}, // 右下
+        {{1.0f, 1.0f}, {1.0f, 1.0f}}, // 右上
+        {{-1.0f, 1.0f}, {0.0f, 1.0f}}, // 左上
     };
 
     auto &verts = m_Batches[texture];
@@ -293,8 +299,8 @@ void Renderer2D::AppendQuad(Texture *texture,
         glm::vec4 worldPos = transform * glm::vec4(v.pos, 0.0f, 1.0f);
         verts.push_back({
             .position = glm::vec2(worldPos.x, worldPos.y),
-            .uv       = v.uv,
-            .color    = color,
+            .uv = v.uv,
+            .color = color,
         });
     }
 }

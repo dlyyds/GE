@@ -76,7 +76,7 @@ void TextureLayer::OnUpdate(Timestep &ts) {
 
     // ── 使用 Renderer2D 批量绘制精灵 ──────────────────────────────────
     auto &r2d = Renderer::Get2DRenderer();
-    r2d.BeginScene(viewProjection);
+    r2d.BeginScene(viewProjection, glm::vec4(0.1f, 0.1f, 0.1f, 1.0f));
 
     for (size_t i = 0; i < kInstanceCount; ++i) {
         float angle = rotation + instanceAngles[i];

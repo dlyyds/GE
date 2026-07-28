@@ -50,9 +50,13 @@ public:
 
     /**
      * @brief 开始 2D 场景，清空批处理队列并设置视图投影矩阵。
+     *
      * @param viewProjection  视图 × 投影 矩阵
+     * @param clearColor      清屏颜色（alpha 有效）。传入非负值则在 EndScene 时清屏；
+     *                        传负值（默认）则不清屏，叠加在已有渲染结果上。
      */
-    void BeginScene(const glm::mat4 &viewProjection);
+    void BeginScene(const glm::mat4 &viewProjection,
+                    const glm::vec4 &clearColor = glm::vec4(-1.0f));
 
     /**
      * @brief 提交一个 2D 精灵（位置 + 尺寸 + 旋转 + 纹理 + 颜色）。
@@ -131,6 +135,9 @@ private:
 
     /// 当前帧的视图投影矩阵
     glm::mat4             m_ViewProjection{1.0f};
+
+    /// 清屏颜色（r < 0 表示不清屏）
+    glm::vec4             m_ClearColor{-1.0f};
 
     /// 批处理队列：纹理指针 → 该纹理的所有精灵顶点
     std::unordered_map<Texture *, std::vector<SpriteVertex>> m_Batches;

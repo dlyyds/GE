@@ -33,7 +33,7 @@ namespace GE
 {
 
 VulkanPipelineLayout::VulkanPipelineLayout(VulkanDevice &device, const std::vector<ShaderModule *> &shader_modules) :
-    m_Device{device},
+    Parent(vk::PipelineLayout{}, &device),
     m_ShaderModules{shader_modules}
 {
     // 收集并合并所有着色器模块中的资源，按名称索引
@@ -82,7 +82,7 @@ VulkanPipelineLayout::VulkanPipelineLayout(VulkanDevice &device, const std::vect
     }
 
     // 为每个 set 通过全局缓存获取 DescriptorSetLayout（去重）
-    auto &cache = m_Device.GetResourceCache();
+    auto &cache = GetDevice().GetResourceCache();
     for (auto &shader_set_it : m_ShaderSets)
     {
         m_DescriptorSetLayouts.push_back(
@@ -123,34 +123,27 @@ VulkanPipelineLayout::VulkanPipelineLayout(VulkanDevice &device, const std::vect
     };
 
     // 创建 Vulkan pipeline layout
-    auto result = m_Device.GetHandle().createPipelineLayout(create_info);
-    m_Handle = result;
+    auto result = GetDevice().GetHandle().createPipelineLayout(create_info);
+    SetHandle(result);
 }
 
 VulkanPipelineLayout::VulkanPipelineLayout(VulkanPipelineLayout &&other) :
-    m_Device{other.m_Device},
-    m_Handle{other.m_Handle},
+    Parent(std::move(other)),
     m_ShaderModules{std::move(other.m_ShaderModules)},
     m_ShaderResources{std::move(other.m_ShaderResources)},
     m_ShaderSets{std::move(other.m_ShaderSets)},
     m_DescriptorSetLayouts{std::move(other.m_DescriptorSetLayouts)}
 {
-    other.m_Handle = VK_NULL_HANDLE;
     other.m_DescriptorSetLayouts.clear();
 }
 
 VulkanPipelineLayout::~VulkanPipelineLayout()
 {
-    if (m_Handle)
+    if (HasHandle())
     {
-        m_Device.GetHandle().destroyPipelineLayout(m_Handle);
+        GetDevice().GetHandle().destroyPipelineLayout(GetHandle());
     }
     // m_DescriptorSetLayouts 由 VulkanResourceCache 持有生命周期，无需手动清理
-}
-
-vk::PipelineLayout VulkanPipelineLayout::GetHandle() const
-{
-    return m_Handle;
 }
 
 const std::vector<ShaderModule *> &VulkanPipelineLayout::GetShaderModules() const

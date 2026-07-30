@@ -33,6 +33,7 @@
 #include <vector>
 
 #include "Render/VulkanBase/ShaderModule.h"
+#include "Render/VulkanBase/VulkanResourceBase.h"
 
 namespace GE
 {
@@ -43,13 +44,20 @@ class VulkanDescriptorSetLayout;
 /**
  * @brief 对着色器资源进行反射并创建 VkPipelineLayout。
  *
+ * 继承 VulkanResourceBase<vk::PipelineLayout>，自动获得：
+ * - 句柄管理（GetHandle / SetHandle）
+ * - 设备引用（GetDevice）
+ * - 调试命名（SetDebugName / GetDebugName）
+ *
  * 从一组 ShaderModule 中收集所有着色器资源，
  * 按 set 分组并为每组创建 VulkanDescriptorSetLayout，
  * 最终汇总创建 VkPipelineLayout 句柄。
  */
-class VulkanPipelineLayout
+class VulkanPipelineLayout : public VulkanResourceBase<vk::PipelineLayout>
 {
   public:
+    using Parent = VulkanResourceBase<vk::PipelineLayout>;
+
     VulkanPipelineLayout(VulkanDevice &device, const std::vector<ShaderModule *> &shader_modules);
 
     VulkanPipelineLayout(const VulkanPipelineLayout &) = delete;
@@ -61,8 +69,6 @@ class VulkanPipelineLayout
     VulkanPipelineLayout &operator=(const VulkanPipelineLayout &) = delete;
 
     VulkanPipelineLayout &operator=(VulkanPipelineLayout &&) = delete;
-
-    vk::PipelineLayout GetHandle() const;
 
     const std::vector<ShaderModule *> &GetShaderModules() const;
 
@@ -77,10 +83,6 @@ class VulkanPipelineLayout
     vk::ShaderStageFlags GetPushConstantRangeStage(uint32_t size, uint32_t offset = 0) const;
 
   private:
-    VulkanDevice &m_Device;
-
-    vk::PipelineLayout m_Handle{VK_NULL_HANDLE};
-
     /// 此 pipeline layout 使用的着色器模块
     std::vector<ShaderModule *> m_ShaderModules;
 

@@ -32,7 +32,6 @@ Renderer2D::Renderer2D() {
     auto &cache = device.GetResourceCache();
 
     // ── 1. 通过全局资源缓存请求精灵着色器 ──────────────────────────────
-    // 引擎内置 sprite 着色器，编译产物在 GE/assets/shaders/glsl/ 下
     m_VertShader = &cache.RequestShaderModule(
         vk::ShaderStageFlagBits::eVertex,
         ShaderSource("assets/shaders/glsl/sprite.vert.spv"),
@@ -46,6 +45,7 @@ Renderer2D::Renderer2D() {
     // ── 2. 请求 PipelineLayout ─────────────────────────────────────────
     m_PipelineLayout = &cache.RequestPipelineLayout(
         {m_VertShader, m_FragShader});
+    m_PipelineLayout->SetDebugName("Sprite2D_PipelineLayout");
 
     GE_CORE_INFO("Renderer2D initialized");
 }
@@ -66,9 +66,9 @@ Renderer2D::~Renderer2D() {
 void Renderer2D::BeginScene(const glm::mat4 &viewProjection,
                             const glm::vec4 &clearColor) {
     GE_CORE_ASSERT(!m_InScene, "Renderer2D::BeginScene called without EndScene!");
-    m_InScene        = true;
+    m_InScene = true;
     m_ViewProjection = viewProjection;
-    m_ClearColor     = clearColor;
+    m_ClearColor = clearColor;
 
     // 清空上一帧的批处理数据
     for (auto &[tex, verts] : m_Batches) {
@@ -181,8 +181,9 @@ void Renderer2D::EndScene() {
     VulkanRenderingInfo renderInfo;
     renderInfo.SetRenderArea(0, 0, extent.width, extent.height);
     renderInfo.AddColorAttachment(Renderer::GetFrameImageView().GetHandle(),
-                                  shouldClear ? vk::AttachmentLoadOp::eClear
-                                              : vk::AttachmentLoadOp::eLoad,
+                                  shouldClear
+                                      ? vk::AttachmentLoadOp::eClear
+                                      : vk::AttachmentLoadOp::eLoad,
                                   vk::AttachmentStoreOp::eStore,
                                   clearValue);
     renderInfo.Begin(vkCmd);
@@ -207,13 +208,13 @@ void Renderer2D::EndScene() {
                                 | vk::ColorComponentFlagBits::eG
                                 | vk::ColorComponentFlagBits::eB
                                 | vk::ColorComponentFlagBits::eA;
-    blendState.blendEnable = VK_TRUE;
-    blendState.srcColorBlendFactor = vk::BlendFactor::eOne; // 预乘 alpha: src = 1
-    blendState.dstColorBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha;
-    blendState.colorBlendOp = vk::BlendOp::eAdd;
-    blendState.srcAlphaBlendFactor = vk::BlendFactor::eOne;
-    blendState.dstAlphaBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha;
-    blendState.alphaBlendOp = vk::BlendOp::eAdd;
+    //blendState.blendEnable = VK_FALSE;
+    // blendState.srcColorBlendFactor = vk::BlendFactor::eOne; // 预乘 alpha: src = 1
+    // blendState.dstColorBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha;
+    // blendState.colorBlendOp = vk::BlendOp::eAdd;
+    // blendState.srcAlphaBlendFactor = vk::BlendFactor::eOne;
+    // blendState.dstAlphaBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha;
+    // blendState.alphaBlendOp = vk::BlendOp::eAdd;
     ps.SetBlendAttachments({blendState});
 
     // 2D 渲染：无背面剔除、无深度测试、三角形列表
@@ -275,34 +276,40 @@ void Renderer2D::EndScene() {
 void Renderer2D::AppendQuad(Texture *texture,
                             const glm::mat4 &transform,
                             const glm::vec4 &color) {
-    // 单位四边形的 4 个顶点（中心在原点，宽高为 2，对应 [-1, 1]）
+    // 四边形的 4 个角（中心在原点，宽高为 2，对应 [-1, 1]）
     // 经过 transform 后变成实际大小和位置
-    //
-    // 顶点顺序：左下 → 右下 → 右上 → 左上（CCW）
-    // UV 顺序：  (0,0) → (1,0) → (1,1) → (0,1)
-    struct BaseVertex {
+    struct Corner {
         glm::vec2 pos;
         glm::vec2 uv;
     };
 
-    static constexpr BaseVertex kQuadVerts[4] = {
-        {{-1.0f, -1.0f}, {0.0f, 0.0f}}, // 左下
-        {{1.0f, -1.0f}, {1.0f, 0.0f}}, // 右下
-        {{1.0f, 1.0f}, {1.0f, 1.0f}}, // 右上
-        {{-1.0f, 1.0f}, {0.0f, 1.0f}}, // 左上
+    static constexpr Corner corners[4] = {
+        {{-1.0f, -1.0f}, {0.0f, 0.0f}}, // 0: 左下
+        {{1.0f, -1.0f}, {1.0f, 0.0f}}, // 1: 右下
+        {{1.0f, 1.0f}, {1.0f, 1.0f}}, // 2: 右上
+        {{-1.0f, 1.0f}, {0.0f, 1.0f}}, // 3: 左上
     };
 
-    auto &verts = m_Batches[texture];
-    verts.reserve(verts.size() + 4);
-
-    for (const auto &v : kQuadVerts) {
-        glm::vec4 worldPos = transform * glm::vec4(v.pos, 0.0f, 1.0f);
-        verts.push_back({
-            .position = glm::vec2(worldPos.x, worldPos.y),
-            .uv = v.uv,
-            .color = color,
-        });
+    // 先把 4 个角都算出世界坐标
+    glm::vec2 positions[4];
+    for (int i = 0; i < 4; ++i) {
+        glm::vec4 p = transform * glm::vec4(corners[i].pos, 0.0f, 1.0f);
+        positions[i] = glm::vec2(p.x, p.y);
     }
+
+    // 6 个顶点（2 个三角形，CCW）：0-1-2, 0-2-3
+    auto &verts = m_Batches[texture];
+    verts.reserve(verts.size() + 6);
+
+    // 三角形 1：左下 → 右下 → 右上
+    verts.push_back({positions[0], corners[0].uv, color});
+    verts.push_back({positions[1], corners[1].uv, color});
+    verts.push_back({positions[2], corners[2].uv, color});
+
+    // 三角形 2：左下 → 右上 → 左上
+    verts.push_back({positions[0], corners[0].uv, color});
+    verts.push_back({positions[2], corners[2].uv, color});
+    verts.push_back({positions[3], corners[3].uv, color});
 }
 
 } // namespace GE

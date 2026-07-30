@@ -164,6 +164,21 @@ public:
      */
     void SetSampler(VulkanSampler &sampler) { m_Sampler = &sampler; }
 
+    /**
+     * @brief 设置调试名称（同时作用于 Image、ImageView、Sampler）。
+     *
+     * Image     → name
+     * ImageView → name + "_View"
+     * Sampler   → name + "_Sampler"
+     *
+     * 便于在 RenderDoc / Nsight 等调试工具中识别纹理资源。
+     *
+     * @note Sampler 可能由 VulkanResourceCache 共享，此时会影响所有引用该
+     *       Sampler 的纹理。若不希望此行为，可单独对 Image / ImageView 调用
+     *       GetImage().SetDebugName() / GetImageView().SetDebugName()。
+     */
+    void SetDebugName(const std::string &name);
+
 private:
     // ========================================================================
     // 内部辅助

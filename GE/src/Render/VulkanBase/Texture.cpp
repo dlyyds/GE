@@ -176,6 +176,23 @@ void Texture::UploadPixels(VulkanDevice &device, const void *pixels,
 }
 
 // ============================================================================
+// 设置调试名称
+// ============================================================================
+
+void Texture::SetDebugName(const std::string &name)
+{
+    if (m_Image) {
+        m_Image->SetDebugName(name);
+    }
+    if (m_ImageView) {
+        m_ImageView->SetDebugName(name + "_View");
+    }
+    if (m_Sampler) {
+        m_Sampler->SetDebugName(name + "_Sampler");
+    }
+}
+
+// ============================================================================
 // 内部：创建 ImageView 和请求 Sampler
 // ============================================================================
 

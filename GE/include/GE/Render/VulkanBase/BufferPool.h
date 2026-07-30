@@ -39,6 +39,7 @@
 #include <cstdint>
 #include <memory>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 #include <vulkan/vulkan.hpp>
@@ -85,6 +86,17 @@ public:
         assert(m_Buffer && "Invalid buffer pointer");
         if (static_cast<vk::DeviceSize>(offset) + sizeof(T) <= m_Size) {
             m_Buffer->update(&value, sizeof(T), static_cast<size_t>(m_Offset) + offset);
+        } else {
+            GE_CORE_ERROR("BufferAllocation::update: 数据超出分配范围，忽略更新");
+        }
+    }
+
+    template <typename T>
+    void update(const std::vector<T> &data, uint32_t offset = 0) {
+        vk::DeviceSize dataSize = static_cast<vk::DeviceSize>(data.size()) * sizeof(T);
+        if (static_cast<vk::DeviceSize>(offset) + dataSize <= m_Size) {
+            m_Buffer->update(data.data(), static_cast<size_t>(dataSize),
+                             static_cast<size_t>(m_Offset) + offset);
         } else {
             GE_CORE_ERROR("BufferAllocation::update: 数据超出分配范围，忽略更新");
         }
@@ -139,6 +151,13 @@ public:
     /** @brief 重置 offset，复用底层 buffer（不会清空数据） */
     void reset();
 
+    /**
+     * @brief 设置调试名称（作用于底层 VulkanBuffer）。
+     *
+     * 便于在 RenderDoc / Nsight 等调试工具中识别此 buffer block。
+     */
+    void SetDebugName(const std::string &name) { m_Buffer.SetDebugName(name); }
+
 private:
     /** @brief 计算当前对齐后的 offset */
     vk::DeviceSize aligned_offset() const;
@@ -181,12 +200,23 @@ public:
     /** @brief 重置所有 block 的 offset（复用底层 buffer，不清除数据） */
     void reset();
 
+    /**
+     * @brief 设置调试名称前缀。
+     *
+     * 为所有已存在的 BufferBlock 设置调试名（格式：`name_BlockN`），
+     * 同时存储前缀，后续新建的 block 也会自动加上该前缀。
+     *
+     * 便于在 RenderDoc / Nsight 等调试工具中识别此缓冲池的 buffer。
+     */
+    void SetDebugName(const std::string &name);
+
 private:
     VulkanDevice &m_Device;
     std::vector<std::unique_ptr<BufferBlock> > m_BufferBlocks; ///< 所有已分配的 block（使用 unique_ptr 保证 vector 扩容时地址不变）
     vk::DeviceSize m_BlockSize = 0; ///< 默认最小 block 大小
     vk::BufferUsageFlags m_Usage;
     VmaMemoryUsage m_MemoryUsage{};
+    std::string m_DebugName; ///< 调试名称前缀，新建 block 时自动应用
 };
 
 // ============================================================================
@@ -292,6 +322,13 @@ inline BufferPool::BufferPool(VulkanDevice &device,
                                                              m_MemoryUsage(memory_usage) {
 }
 
+inline void BufferPool::SetDebugName(const std::string &name) {
+    m_DebugName = name;
+    for (size_t i = 0; i < m_BufferBlocks.size(); ++i) {
+        m_BufferBlocks[i]->SetDebugName(name + "_Block" + std::to_string(i));
+    }
+}
+
 inline BufferBlock &BufferPool::request_buffer_block(vk::DeviceSize minimum_size, bool minimal) {
     // 查找能容纳 minimum_size 的 block
     auto it = std::find_if(m_BufferBlocks.begin(), m_BufferBlocks.end(),
@@ -311,6 +348,11 @@ inline BufferBlock &BufferPool::request_buffer_block(vk::DeviceSize minimum_size
         // 创建新 block
         it = m_BufferBlocks.emplace(m_BufferBlocks.end(),
                                     std::make_unique<BufferBlock>(m_Device, new_block_size, m_Usage, m_MemoryUsage));
+
+        // 若设置了调试名前缀，为新 block 自动命名
+        if (!m_DebugName.empty()) {
+            (*it)->SetDebugName(m_DebugName + "_Block" + std::to_string(m_BufferBlocks.size() - 1));
+        }
     }
 
     return *it->get();

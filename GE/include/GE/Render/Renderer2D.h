@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Core/Base.h"
-#include "Render/VulkanBase/Texture.h"
+#include "Render/Texture.h"
 
 #include <glm/glm.hpp>
 

@@ -4,7 +4,7 @@
  */
 
 #include "Render/VulkanBase/VulkanRenderingInfo.h"
-#include "Render/VulkanBase/RenderTarget.h"
+#include "Render/RenderTarget.h"
 
 namespace GE {
 

@@ -24,7 +24,7 @@
 
 #include "Render/VulkanBase/VulkanPipelineState.h"
 #include "Render/VulkanBase/VulkanPipelineLayout.h"
-#include "Render/VulkanBase/ShaderModule.h"
+#include "Render/ShaderModule.h"
 
 #include <algorithm>
 #include <cstring>

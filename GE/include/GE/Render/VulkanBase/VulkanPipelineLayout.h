@@ -32,7 +32,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "Render/VulkanBase/ShaderModule.h"
+#include "Render/ShaderModule.h"
 #include "Render/VulkanBase/VulkanResourceBase.h"
 
 namespace GE

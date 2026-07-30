@@ -35,7 +35,7 @@
 #pragma warning(pop)
 
 #include "Render/VulkanBase/VulkanCommon.h"
-#include "Render/VulkanBase/ShaderModule.h"
+#include "Render/ShaderModule.h"
 
 namespace GE
 {

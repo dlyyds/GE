@@ -40,7 +40,7 @@
 #include "Render/VulkanBase/VulkanPipelineLayout.h"
 #include "Render/VulkanBase/VulkanPipelineState.h"
 #include "Render/VulkanBase/VulkanSampler.h"
-#include "Render/VulkanBase/ShaderModule.h"
+#include "Render/ShaderModule.h"
 
 #include <vulkan/vulkan.hpp>
 #include <vulkan/vulkan_hash.hpp>

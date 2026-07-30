@@ -1,7 +1,7 @@
 #pragma once
 
 #include "GE/GE.h"
-#include "GE/Render/VulkanBase/Texture.h"
+#include "GE/Render/Texture.h"
 #include "GE/Scene/Scene.h"
 #include "GE/Scene/Entity.h"
 

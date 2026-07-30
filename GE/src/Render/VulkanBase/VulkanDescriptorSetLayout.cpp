@@ -22,7 +22,7 @@
 
 #include "Render/VulkanBase/VulkanDescriptorSetLayout.h"
 
-#include "Render/VulkanBase/ShaderModule.h"
+#include "Render/ShaderModule.h"
 #include "Render/VulkanBase/VulkanDevice.h"
 #include "Core/Log.h"
 

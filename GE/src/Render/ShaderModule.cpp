@@ -20,9 +20,9 @@
  * @brief ShaderModule 实现，从 Vulkan-Samples 适配。
  */
 
-#include "Render/VulkanBase/ShaderModule.h"
+#include "Render/ShaderModule.h"
 
-#include "Render/VulkanBase/SPIRVReflection.h"
+#include "Render/SPIRVReflection.h"
 #include "Render/VulkanBase/VulkanDevice.h"
 #include "FileSystem/FileSystem.h"
 #include "Core/Log.h"

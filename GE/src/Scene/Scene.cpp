@@ -91,6 +91,10 @@ template <>
 void Scene::OnComponentAdded<ScriptComponent>(Entity entity, ScriptComponent &component) {
 }
 
+template <>
+void Scene::OnComponentAdded<MeshComponent>(Entity entity, MeshComponent &component) {
+}
+
 
 } //
 // Created by Lenovo on 2026/5/9.

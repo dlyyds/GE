@@ -4,7 +4,7 @@
 #include "GE/Render/VulkanBase/VulkanBuffer.h"
 #include "GE/Render/VulkanBase/VulkanPipeline.h"
 #include "GE/Render/VulkanBase/VulkanPipelineLayout.h"
-#include "GE/Render/VulkanBase/ShaderModule.h"
+#include "GE/Render/ShaderModule.h"
 
 namespace GE {
 

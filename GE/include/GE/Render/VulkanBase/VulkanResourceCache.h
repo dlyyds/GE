@@ -37,8 +37,8 @@
 
 #pragma once
 
-#include "Render/VulkanBase/ResourceCaching.h"
-#include "Render/VulkanBase/ShaderModule.h"
+#include "Render/ResourceCaching.h"
+#include "Render/ShaderModule.h"
 #include "Render/VulkanBase/VulkanDescriptorSetLayout.h"
 #include "Render/VulkanBase/VulkanPipeline.h"
 #include "Render/VulkanBase/VulkanPipelineLayout.h"

@@ -2,7 +2,7 @@
 // Texture 实现 —— 纹理加载、上传、采样配置
 //
 
-#include "Render/VulkanBase/Texture.h"
+#include "Render/Texture.h"
 #include "Render/VulkanBase/VulkanBuffer.h"
 #include "Render/VulkanBase/VulkanCommandBuffer.h"
 #include "Render/VulkanBase/VulkanImage.h"

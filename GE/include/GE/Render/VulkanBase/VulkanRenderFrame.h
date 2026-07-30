@@ -48,9 +48,9 @@
 
 #pragma once
 
-#include "Render/VulkanBase/BufferPool.h"
-#include "Render/VulkanBase/RenderTarget.h"
-#include "Render/VulkanBase/ResourceCaching.h"
+#include "Render/BufferPool.h"
+#include "Render/RenderTarget.h"
+#include "Render/ResourceCaching.h"
 #include "Render/VulkanBase/VulkanCommandPool.h"
 #include "Render/VulkanBase/VulkanDescriptorPool.h"
 #include "Render/VulkanBase/VulkanDescriptorSet.h"

@@ -13,6 +13,7 @@
 namespace GE {
 
 class Texture;  // 前向声明，避免引入整个 Texture 头文件
+class Mesh;     // 前向声明，避免引入整个 Mesh 头文件
 class Entity;   // 前向声明，供 ScriptComponent 回调签名使用
 class Timestep; // 前向声明，供 ScriptComponent 回调签名使用
 
@@ -113,6 +114,48 @@ struct ScriptComponent {
 
     explicit ScriptComponent(Callback callback)
         : OnUpdate(std::move(callback)) {
+    }
+};
+
+
+/**
+ * @brief 静态网格渲染组件 —— 描述一个 3D 网格的渲染属性。
+ *
+ * 与 TransformComponent 配合使用：Transform 决定位置/旋转/缩放，
+ * MeshComponent 决定绘制什么网格、什么颜色。
+ *
+ * Mesh 使用裸指针引用，不拥有资源。网格资源由外部资源管理器管理。
+ * Color 为 RGBA 分量，白色 (1,1,1,1) 表示原样显示纹理/材质。
+ *
+ * @note 3D 渲染管线尚未实现，此组件目前仅作为数据结构占位。
+ */
+struct MeshComponent {
+    glm::vec4 Color{1.0f, 1.0f, 1.0f, 1.0f}; ///< 叠加颜色（默认白色，即不染色）
+    Mesh     *MeshPtr = nullptr;              ///< 网格资源指针（可选，为 null 时不绘制）
+
+    MeshComponent() = default;
+
+    MeshComponent(const MeshComponent &) = default;
+
+    /**
+     * @brief 仅指定颜色的构造函数（纯色网格，无网格资源）。
+     */
+    explicit MeshComponent(const glm::vec4 &color)
+        : Color(color) {
+    }
+
+    /**
+     * @brief 指定网格的构造函数（颜色默认白色）。
+     */
+    explicit MeshComponent(Mesh *mesh)
+        : MeshPtr(mesh) {
+    }
+
+    /**
+     * @brief 同时指定网格和颜色的构造函数。
+     */
+    MeshComponent(Mesh *mesh, const glm::vec4 &color)
+        : Color(color), MeshPtr(mesh) {
     }
 };
 

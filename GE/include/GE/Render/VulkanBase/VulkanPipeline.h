@@ -33,6 +33,7 @@
 #include <vulkan/vulkan.hpp>
 
 #include <cstdint>
+#include <string>
 
 #include "Render/VulkanBase/VulkanPipelineState.h"
 
@@ -70,6 +71,13 @@ public:
 
     /// 获取只读状态引用
     const VulkanPipelineState &GetState() const { return m_State; }
+
+    /**
+     * @brief 设置调试名称。
+     *
+     * 为底层 VkPipeline 设置调试名，便于在 RenderDoc / Nsight 中识别。
+     */
+    void SetDebugName(const std::string &name);
 
 protected:
     VulkanDevice &m_Device;

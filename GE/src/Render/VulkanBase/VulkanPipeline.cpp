@@ -23,6 +23,9 @@
 #include "Render/VulkanBase/VulkanPipeline.h"
 #include "Render/VulkanBase/VulkanDevice.h"
 
+#include <cstdint>
+#include <type_traits>
+
 namespace GE {
 
 // ============================================================================
@@ -41,6 +44,23 @@ VulkanPipeline::VulkanPipeline(VulkanPipeline &&other) noexcept : m_Device(other
 VulkanPipeline::~VulkanPipeline() {
     if (m_Handle) {
         m_Device.GetHandle().destroyPipeline(m_Handle);
+    }
+}
+
+void VulkanPipeline::SetDebugName(const std::string &name) {
+    if (m_Handle && !name.empty()) {
+        // vk::Pipeline 是非调度句柄，大小可能为 uint32_t 或 uint64_t（取决于平台）。
+        // 与 VulkanResourceBase::GetHandleU64 保持一致，通过编译时大小检测转换。
+        using UintHandle = typename std::conditional<sizeof(vk::Pipeline) == sizeof(uint32_t),
+                                                     uint32_t, uint64_t>::type;
+        uint64_t handle_u64 = static_cast<uint64_t>(
+            *reinterpret_cast<const UintHandle *>(&m_Handle));
+
+        m_Device.GetDebugUtils().SetDebugName(
+            m_Device.GetHandle(),
+            vk::ObjectType::ePipeline,
+            handle_u64,
+            name.c_str());
     }
 }
 

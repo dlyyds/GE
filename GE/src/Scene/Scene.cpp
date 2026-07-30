@@ -32,7 +32,17 @@ void Scene::DestroyEntity(Entity entity) {
 void Scene::OnUpdate(Timestep ts,
                      const glm::mat4 &viewProjection,
                      const glm::vec4 &clearColor) {
-    // TODO: 脚本 / 物理 / 动画等更新逻辑将在这里执行
+    // ── 脚本更新 ────────────────────────────────────────────────────────
+    {
+        auto view = m_Registry.view<ScriptComponent>();
+        for (auto entityHandle : view) {
+            auto &sc = view.get<ScriptComponent>(entityHandle);
+            if (sc.OnUpdate) {
+                Entity entity{entityHandle, this};
+                sc.OnUpdate(ts, entity);
+            }
+        }
+    }
 
     // ── 2D 精灵渲染 ────────────────────────────────────────────────────
     auto &r2d = Renderer::Get2DRenderer();
@@ -75,6 +85,10 @@ void Scene::OnComponentAdded<TagComponent>(Entity entity, TagComponent &componen
 
 template <>
 void Scene::OnComponentAdded<SpriteRendererComponent>(Entity entity, SpriteRendererComponent &component) {
+}
+
+template <>
+void Scene::OnComponentAdded<ScriptComponent>(Entity entity, ScriptComponent &component) {
 }
 
 

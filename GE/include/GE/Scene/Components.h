@@ -3,6 +3,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <utility>
+#include <functional>
 
 
 #define GLM_ENABLE_EXPERIMENTAL
@@ -11,7 +12,9 @@
 
 namespace GE {
 
-class Texture; // 前向声明，避免引入整个 Texture 头文件
+class Texture;  // 前向声明，避免引入整个 Texture 头文件
+class Entity;   // 前向声明，供 ScriptComponent 回调签名使用
+class Timestep; // 前向声明，供 ScriptComponent 回调签名使用
 
 
 struct TagComponent {
@@ -85,6 +88,31 @@ struct SpriteRendererComponent {
      */
     SpriteRendererComponent(Texture *texture, const glm::vec4 &color)
         : Color(color), SpriteTexture(texture) {
+    }
+};
+
+
+/**
+ * @brief 脚本组件 —— 挂载到实体上的每帧回调。
+ *
+ * 轻量级脚本系统：通过 std::function 绑定一个每帧执行的回调，
+ * 在 Scene::OnUpdate 中被调用，用于实现实体的行为逻辑。
+ *
+ * 回调签名：void(Timestep ts, Entity entity)
+ * - ts: 时间步长
+ * - entity: 该组件所属的实体，可在回调中读写其组件
+ */
+struct ScriptComponent {
+    using Callback = std::function<void(Timestep, Entity)>;
+
+    Callback OnUpdate; ///< 每帧更新回调
+
+    ScriptComponent() = default;
+
+    ScriptComponent(const ScriptComponent &) = default;
+
+    explicit ScriptComponent(Callback callback)
+        : OnUpdate(std::move(callback)) {
     }
 };
 

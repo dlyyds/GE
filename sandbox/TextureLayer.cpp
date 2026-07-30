@@ -37,6 +37,9 @@ void TextureLayer::OnAttach() {
 
     // 添加精灵渲染组件（关联棋盘纹理，默认白色）
     m_SpriteEntity.AddComponent<SpriteRendererComponent>(m_Texture.get());
+
+    // 添加脚本组件（自动旋转逻辑）
+    RefreshScript();
 }
 
 void TextureLayer::OnDetach() {
@@ -60,13 +63,7 @@ void TextureLayer::OnUpdate(Timestep &ts) {
     // Vulkan Y 轴翻转
     viewProjection[1][1] *= -1.0f;
 
-    // 自动旋转：修改 TransformComponent 的 Z 轴旋转
-    if (m_AutoRotate) {
-        auto &tc = m_SpriteEntity.GetComponent<TransformComponent>();
-        tc.Rotation.z += ts.GetSeconds() * m_AutoRotateSpeed;
-    }
-
-    // 场景更新 + 渲染（内部遍历精灵组件并提交给 Renderer2D）
+    // 场景更新 + 渲染（脚本更新 + 精灵渲染均在 Scene::OnUpdate 内完成）
     m_Scene->OnUpdate(ts, viewProjection);
 }
 
@@ -116,19 +113,26 @@ void TextureLayer::OnImGuiRender() {
 
     ImGui::Separator();
 
-    // 行为参数
-    ImGui::Text("行为");
-    ImGui::Checkbox("自动旋转（Z 轴）", &m_AutoRotate);
+    // Script 组件参数
+    ImGui::Text("Script 组件（自动旋转）");
+    bool scriptChanged = false;
+    scriptChanged |= ImGui::Checkbox("启用", &m_AutoRotate);
     if (m_AutoRotate) {
-        ImGui::DragFloat("旋转速度", &m_AutoRotateSpeed, 0.05f,
-                         -10.0f, 10.0f, "%.3f rad/s");
+        scriptChanged |= ImGui::DragFloat("旋转速度", &m_AutoRotateSpeed,
+                                          0.05f, -10.0f, 10.0f,
+                                          "%.3f rad/s");
+    }
+    if (scriptChanged) {
+        RefreshScript();
     }
 
     ImGui::Separator();
 
     // 统计信息
-    auto view = m_Scene->Reg().view<SpriteRendererComponent>();
-    ImGui::Text("场景精灵数：%zu", view.size());
+    auto spriteView = m_Scene->Reg().view<SpriteRendererComponent>();
+    auto scriptView = m_Scene->Reg().view<ScriptComponent>();
+    ImGui::Text("场景精灵数：%zu", spriteView.size());
+    ImGui::Text("场景脚本数：%zu", scriptView.size());
     ImGui::Text("Draw call 数：1（同纹理合并）");
 
     // 重置按钮
@@ -139,9 +143,37 @@ void TextureLayer::OnImGuiRender() {
         sc.Color = {1.0f, 1.0f, 1.0f, 1.0f};
         m_AutoRotate = true;
         m_AutoRotateSpeed = 0.5f;
+        RefreshScript();
     }
 
     ImGui::End();
+}
+
+void TextureLayer::RefreshScript() {
+    if (!m_SpriteEntity) {
+        return;
+    }
+
+    if (!m_AutoRotate) {
+        // 关闭自动旋转：移除脚本组件
+        if (m_SpriteEntity.HasComponent<ScriptComponent>()) {
+            m_SpriteEntity.RemoveComponent<ScriptComponent>();
+        }
+        return;
+    }
+
+    // 开启自动旋转：添加 / 更新脚本组件
+    float speed = m_AutoRotateSpeed;
+    auto callback = [speed](Timestep ts, Entity entity) {
+        auto &tc = entity.GetComponent<TransformComponent>();
+        tc.Rotation.z += ts.GetSeconds() * speed;
+    };
+
+    if (m_SpriteEntity.HasComponent<ScriptComponent>()) {
+        m_SpriteEntity.GetComponent<ScriptComponent>().OnUpdate = std::move(callback);
+    } else {
+        m_SpriteEntity.AddComponent<ScriptComponent>(std::move(callback));
+    }
 }
 
 } // namespace GE

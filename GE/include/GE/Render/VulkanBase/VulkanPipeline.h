@@ -33,24 +33,28 @@
 #include <vulkan/vulkan.hpp>
 
 #include <cstdint>
-#include <string>
 
 #include "Render/VulkanBase/VulkanPipelineState.h"
+#include "Render/VulkanBase/VulkanResourceBase.h"
 
 namespace GE {
-
-class VulkanDevice;
 
 class VulkanDevice;
 
 /**
  * @brief Vulkan 管线基类。
  *
- * 持有 vk::Pipeline 句柄和 VulkanPipelineState 副本。
- * 析构时自动销毁句柄。
+ * 继承 VulkanResourceBase<vk::Pipeline>，自动获得：
+ * - 句柄管理（GetHandle / SetHandle）
+ * - 设备引用（GetDevice）
+ * - 调试命名（SetDebugName / GetDebugName）
+ *
+ * 额外持有 VulkanPipelineState 副本，析构时自动销毁句柄。
  */
-class VulkanPipeline {
+class VulkanPipeline : public VulkanResourceBase<vk::Pipeline> {
 public:
+    using Parent = VulkanResourceBase<vk::Pipeline>;
+
     VulkanPipeline(VulkanDevice &device);
 
     VulkanPipeline(const VulkanPipeline &) = delete;
@@ -63,25 +67,13 @@ public:
 
     VulkanPipeline &operator=(VulkanPipeline &&) = delete;
 
-    /// 获取底层 VkPipeline 句柄
-    vk::Pipeline GetHandle() const { return m_Handle; }
-
     /// 获取可修改的状态引用（用于运行时动态更新）
     VulkanPipelineState &GetState() { return m_State; }
 
     /// 获取只读状态引用
     const VulkanPipelineState &GetState() const { return m_State; }
 
-    /**
-     * @brief 设置调试名称。
-     *
-     * 为底层 VkPipeline 设置调试名，便于在 RenderDoc / Nsight 中识别。
-     */
-    void SetDebugName(const std::string &name);
-
 protected:
-    VulkanDevice &m_Device;
-    vk::Pipeline m_Handle{VK_NULL_HANDLE};
     VulkanPipelineState m_State;
 };
 

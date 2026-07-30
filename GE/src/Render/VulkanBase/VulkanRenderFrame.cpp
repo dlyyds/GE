@@ -82,8 +82,12 @@ VulkanRenderFrame::VulkanRenderFrame(VulkanDevice &device,
         }
 
         for (size_t i = 0; i < thread_count; ++i) {
+            std::string debug_name = "RenderFrame_" +
+                                     std::string(vk::to_string(usage_it.first)) +
+                                     "_Thread" + std::to_string(i);
             buffer_pools_it->second.push_back(std::make_pair(
-                BufferPool{m_Device, BUFFER_POOL_BLOCK_SIZE * usage_it.second, usage_it.first},
+                BufferPool{m_Device, BUFFER_POOL_BLOCK_SIZE * usage_it.second, usage_it.first,
+                           VMA_MEMORY_USAGE_CPU_TO_GPU, debug_name},
                 nullptr));
         }
     }

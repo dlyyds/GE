@@ -62,12 +62,12 @@ ShaderModule::ShaderModule(VulkanDevice            &device,
                            const ShaderSource      &shader_source,
                            const std::string       &entry_point,
                            const ShaderVariant     &shader_variant) :
-    device{device}, stage{stage}, entry_point{entry_point}
+    Parent(vk::ShaderModule{}, &device), stage{stage}, entry_point{entry_point}
 {
-    debug_name = fmt::format("{} [variant {:X}] [entrypoint {}]",
-                             shader_source.get_filename(),
-                             shader_variant.get_id(),
-                             entry_point);
+    std::string debug_name = fmt::format("{} [variant {:X}] [entrypoint {}]",
+                                         shader_source.get_filename(),
+                                         shader_variant.get_id(),
+                                         entry_point);
 
     // 从 .spv 文件加载 SPIR-V 二进制
     spirv = FileSystem::ReadBinaryU32(shader_source.get_filename());
@@ -89,29 +89,30 @@ ShaderModule::ShaderModule(VulkanDevice            &device,
         .codeSize = spirv.size() * sizeof(uint32_t),
         .pCode    = spirv.data(),
     };
-    m_Handle = device.GetHandle().createShaderModule(moduleCI);
+    SetHandle(GetDevice().GetHandle().createShaderModule(moduleCI));
+
+    // 设置调试名（创建句柄后立即设置，确保调试工具可见）
+    SetDebugName(debug_name);
 }
 
 ShaderModule::~ShaderModule()
 {
-    if (m_Handle)
+    if (HasHandle())
     {
-        device.GetHandle().destroyShaderModule(m_Handle);
+        GetDevice().GetHandle().destroyShaderModule(GetHandle());
     }
 }
 
 ShaderModule::ShaderModule(ShaderModule &&other) :
-    device{other.device},
+    Parent(std::move(other)),
     id{other.id},
     stage{other.stage},
-    entry_point{other.entry_point},
-    debug_name{other.debug_name},
+    entry_point{std::move(other.entry_point)},
     spirv{std::move(other.spirv)},
-    resources{std::move(other.resources)},
-    m_Handle{other.m_Handle}
+    resources{std::move(other.resources)}
 {
-    other.stage  = {};
-    other.m_Handle = nullptr;
+    other.id    = 0;
+    other.stage = {};
 }
 
 size_t ShaderModule::get_id() const
@@ -137,6 +138,16 @@ const std::vector<ShaderResource> &ShaderModule::get_resources() const
 const std::vector<uint32_t> &ShaderModule::get_binary() const
 {
     return spirv;
+}
+
+const std::string &ShaderModule::get_debug_name() const
+{
+    return GetDebugName();
+}
+
+void ShaderModule::set_debug_name(const std::string &name)
+{
+    SetDebugName(name);
 }
 
 void ShaderModule::set_resource_mode(const std::string &resource_name, const ShaderResourceMode &resource_mode)

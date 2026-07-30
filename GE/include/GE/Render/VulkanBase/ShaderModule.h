@@ -31,6 +31,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include "Render/VulkanBase/VulkanResourceBase.h"
+
 namespace GE {
 
 class VulkanDevice;
@@ -208,9 +210,11 @@ class ShaderSource
  *
  * 当前限制：仅考虑 set 0；统一缓冲区目前是硬编码的。
  */
-class ShaderModule
+class ShaderModule : public VulkanResourceBase<vk::ShaderModule>
 {
   public:
+    using Parent = VulkanResourceBase<vk::ShaderModule>;
+
     ShaderModule(VulkanDevice              &device,
                  vk::ShaderStageFlagBits    stage,
                  const ShaderSource        &shader_source,
@@ -237,18 +241,11 @@ class ShaderModule
 
     const std::vector<uint32_t> &get_binary() const;
 
-    /// 获取 Vulkan ShaderModule 句柄。
-    vk::ShaderModule GetHandle() const { return m_Handle; }
+    /// 旧接口：获取调试名（委托给基类 GetDebugName）。
+    const std::string &get_debug_name() const;
 
-    inline const std::string &get_debug_name() const
-    {
-        return debug_name;
-    }
-
-    inline void set_debug_name(const std::string &name)
-    {
-        debug_name = name;
-    }
+    /// 旧接口：设置调试名（委托给基类 SetDebugName，会同步到 Vulkan 句柄）。
+    void set_debug_name(const std::string &name);
 
     /**
      * @brief 标记某个资源使用不同的绑定方式。
@@ -258,10 +255,8 @@ class ShaderModule
     void set_resource_mode(const std::string &resource_name, const ShaderResourceMode &resource_mode);
 
   private:
-    VulkanDevice &device;
-
     /// 着色器唯一 ID
-    size_t id;
+    size_t id = 0;
 
     /// 着色器阶段（顶点、片元等）
     vk::ShaderStageFlagBits stage{};
@@ -269,17 +264,11 @@ class ShaderModule
     /// 入口函数名
     std::string entry_point;
 
-    /// 人类可读的着色器名
-    std::string debug_name;
-
     /// 编译后的 SPIR-V 二进制
     std::vector<uint32_t> spirv;
 
     /// 反射出的资源列表
     std::vector<ShaderResource> resources;
-
-    /// Vulkan ShaderModule 句柄
-    vk::ShaderModule m_Handle{};
 };
 
 } // namespace GE

@@ -140,16 +140,6 @@ const std::vector<uint32_t> &ShaderModule::get_binary() const
     return spirv;
 }
 
-const std::string &ShaderModule::get_debug_name() const
-{
-    return GetDebugName();
-}
-
-void ShaderModule::set_debug_name(const std::string &name)
-{
-    SetDebugName(name);
-}
-
 void ShaderModule::set_resource_mode(const std::string &resource_name, const ShaderResourceMode &resource_mode)
 {
     auto it = std::ranges::find_if(resources, [&resource_name](const ShaderResource &resource) { return resource.name == resource_name; });

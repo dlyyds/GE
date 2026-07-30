@@ -241,12 +241,6 @@ class ShaderModule : public VulkanResourceBase<vk::ShaderModule>
 
     const std::vector<uint32_t> &get_binary() const;
 
-    /// 旧接口：获取调试名（委托给基类 GetDebugName）。
-    const std::string &get_debug_name() const;
-
-    /// 旧接口：设置调试名（委托给基类 SetDebugName，会同步到 Vulkan 句柄）。
-    void set_debug_name(const std::string &name);
-
     /**
      * @brief 标记某个资源使用不同的绑定方式。
      * @param resource_name 着色器资源名

@@ -84,6 +84,8 @@ public:
      * @brief 设置调试名称。
      *
      * 若 device 和 debug_utils 均有效，则立即调用 DebugUtils::SetDebugName。
+     *
+     * @note 实现位于 VulkanResourceBase.cpp，对各 Handle 类型显式实例化。
      */
     void SetDebugName(const std::string &name);
 
@@ -96,8 +98,9 @@ private:
 };
 
 // ==================================================================
-// 模板实现（全部内联在头文件中，因 VulkanDevice 仅前向声明，
-// SetDebugName / GetDevice 的实现由包含 VulkanDevice.h 的 TU 实例化）
+// 模板实现
+// 注：SetDebugName 的实现位于 VulkanResourceBase.cpp（需 VulkanDevice 完整定义），
+//     其余简单内联函数保留在头文件中。
 // ==================================================================
 
 template <typename Handle>
@@ -166,19 +169,6 @@ inline bool VulkanResourceBase<Handle>::HasDevice() const {
 template <typename Handle>
 inline bool VulkanResourceBase<Handle>::HasHandle() const {
     return handle != Handle{};
-}
-
-template <typename Handle>
-inline void VulkanResourceBase<Handle>::SetDebugName(const std::string &name) {
-    debug_name = name;
-
-    if (device && !debug_name.empty()) {
-        device->GetDebugUtils().SetDebugName(
-            device->GetHandle(),
-            GetObjectType(),
-            GetHandleU64(),
-            debug_name.c_str());
-    }
 }
 
 template <typename Handle>

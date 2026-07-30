@@ -188,7 +188,8 @@ public:
     BufferPool(VulkanDevice &device,
                vk::DeviceSize block_size,
                vk::BufferUsageFlags usage,
-               VmaMemoryUsage memory_usage = VMA_MEMORY_USAGE_CPU_TO_GPU);
+               VmaMemoryUsage memory_usage = VMA_MEMORY_USAGE_CPU_TO_GPU,
+               const std::string &debug_name = {});
 
     /**
      * @brief 请求一个能容纳 minimum_size 的 BufferBlock。
@@ -316,10 +317,12 @@ inline vk::DeviceSize BufferBlock::determine_alignment(vk::BufferUsageFlags usag
 inline BufferPool::BufferPool(VulkanDevice &device,
                               vk::DeviceSize block_size,
                               vk::BufferUsageFlags usage,
-                              VmaMemoryUsage memory_usage) : m_Device(device),
-                                                             m_BlockSize(block_size),
-                                                             m_Usage(usage),
-                                                             m_MemoryUsage(memory_usage) {
+                              VmaMemoryUsage memory_usage,
+                              const std::string &debug_name) : m_Device(device),
+                                                               m_BlockSize(block_size),
+                                                               m_Usage(usage),
+                                                               m_MemoryUsage(memory_usage),
+                                                               m_DebugName(debug_name) {
 }
 
 inline void BufferPool::SetDebugName(const std::string &name) {

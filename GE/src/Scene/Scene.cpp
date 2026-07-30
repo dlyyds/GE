@@ -2,6 +2,8 @@
 #include "Scene/Scene.h"
 #include "Scene/Components.h"
 #include "Scene/Entity.h"
+#include "Render/Renderer.h"
+#include "Render/Renderer2D.h"
 
 
 #include <glm/glm.hpp>
@@ -27,8 +29,28 @@ void Scene::DestroyEntity(Entity entity) {
 }
 
 
-void Scene::OnUpdate(Timestep ts) {
+void Scene::OnUpdate(Timestep ts,
+                     const glm::mat4 &viewProjection,
+                     const glm::vec4 &clearColor) {
+    // TODO: 脚本 / 物理 / 动画等更新逻辑将在这里执行
 
+    // ── 2D 精灵渲染 ────────────────────────────────────────────────────
+    auto &r2d = Renderer::Get2DRenderer();
+    r2d.BeginScene(viewProjection, clearColor);
+
+    auto view = m_Registry.view<TransformComponent, SpriteRendererComponent>();
+    for (auto entity : view) {
+        auto &tc = view.get<TransformComponent>(entity);
+        auto &sc = view.get<SpriteRendererComponent>(entity);
+
+        r2d.DrawSprite(
+            tc.GetTransform(),
+            sc.SpriteTexture,
+            sc.Color
+        );
+    }
+
+    r2d.EndScene();
 }
 
 
@@ -58,4 +80,3 @@ void Scene::OnComponentAdded<SpriteRendererComponent>(Entity entity, SpriteRende
 
 } //
 // Created by Lenovo on 2026/5/9.
-//

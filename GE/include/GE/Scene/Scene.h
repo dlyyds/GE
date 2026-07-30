@@ -4,6 +4,7 @@
 
 
 #include "Core/Timestep.h"
+#include <glm/glm.hpp>
 
 namespace GE {
 
@@ -22,7 +23,15 @@ public:
     // TEMP
     entt::registry &Reg() { return m_Registry; }
 
-    void OnUpdate(Timestep ts);
+    /**
+     * @brief 更新并渲染场景。
+     * @param ts             时间步长
+     * @param viewProjection 视口投影矩阵（用于 2D 精灵渲染）
+     * @param clearColor     场景背景色（仅当需要清屏时使用，此处传给 Renderer2D::BeginScene）
+     */
+    void OnUpdate(Timestep ts,
+                  const glm::mat4 &viewProjection,
+                  const glm::vec4 &clearColor = {0.1f, 0.1f, 0.1f, 1.0f});
 
     void OnViewportResize(uint32_t width, uint32_t height);
 

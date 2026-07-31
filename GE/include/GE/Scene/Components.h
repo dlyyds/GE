@@ -10,6 +10,8 @@
 #include <string>
 #include <glm/gtx/quaternion.hpp>
 
+#include "Render/Camera.h"
+
 namespace GE {
 
 class Texture;  // 前向声明，避免引入整个 Texture 头文件
@@ -157,6 +159,49 @@ struct MeshComponent {
      */
     MeshComponent(Mesh *mesh, const glm::vec4 &color)
         : Color(color), MeshPtr(mesh) {
+    }
+};
+
+
+/**
+ * @brief 相机组件 —— 挂载到实体上的相机，用于 3D 场景渲染。
+ *
+ * 包含一个完整的 Camera 实例，支持 Orbit（轨道）和 FPS（第一人称）两种模式。
+ * Primary 标志用于标记场景中的主相机，渲染器会使用主相机的视图投影矩阵进行渲染。
+ * FixedAspectRatio 控制是否随窗口大小自动调整宽高比。
+ *
+ * 与 TransformComponent 的关系：
+ * - 若实体挂载了 TransformComponent，可在逻辑层将 Transform 的 Translation/Rotation 同步到 Camera
+ * - 也可直接使用 Camera 内置的交互（OnEvent、MoveForward 等）独立控制
+ */
+struct CameraComponent {
+    Camera CameraInstance;           ///< 相机实例（包含投影、视图、交互等完整功能）
+    bool   Primary = true;           ///< 是否为主相机（场景中第一个主相机会被渲染器使用）
+    bool   FixedAspectRatio = false; ///< 是否固定宽高比（false 时随窗口大小自动调整）
+
+    CameraComponent() = default;
+
+    CameraComponent(const CameraComponent &) = default;
+
+    /**
+     * @brief 指定是否为主相机的构造函数。
+     */
+    explicit CameraComponent(bool primary)
+        : Primary(primary) {
+    }
+
+    /**
+     * @brief 直接使用 Camera 实例构造。
+     */
+    explicit CameraComponent(const Camera &camera, bool primary = true)
+        : CameraInstance(camera), Primary(primary) {
+    }
+
+    /**
+     * @brief 获取视图投影矩阵（便捷方法）。
+     */
+    [[nodiscard]] glm::mat4 GetViewProj() const {
+        return CameraInstance.GetViewProj();
     }
 };
 

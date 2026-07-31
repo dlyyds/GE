@@ -155,6 +155,10 @@ template <>
 void Scene::OnComponentAdded<MeshComponent>(Entity entity, MeshComponent &component) {
 }
 
+template <>
+void Scene::OnComponentAdded<CameraComponent>(Entity entity, CameraComponent &component) {
+}
+
 
 } //
 // Created by Lenovo on 2026/5/9.

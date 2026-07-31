@@ -111,7 +111,19 @@ public:
     void BeginFrame();
 
     /**
-     * @brief 呈现当前帧图像到 swapchain 并结束帧。
+     * @brief 提交单个 command buffer 并结束帧（提交 + present + 清理）。
+     * @param command_buffer 包含录制命令的 command buffer
+     */
+    void EndFrame(vk::CommandBuffer command_buffer);
+
+    /**
+     * @brief 提交多个 command buffer 并结束帧（提交 + present + 清理）。
+     * @param command_buffers 包含录制命令的 command buffer 列表
+     */
+    void EndFrame(const std::vector<vk::CommandBuffer> &command_buffers);
+
+    /**
+     * @brief 呈现当前帧图像到 swapchain 并结束帧（内部使用，通常由 EndFrame 调用）。
      * @param semaphore 提交完成后 signal 的 semaphore，present 将等待它
      */
     void Present(vk::Semaphore semaphore);
@@ -239,18 +251,6 @@ public:
     // ========================================================================
     // 提交
     // ========================================================================
-
-    /**
-     * @brief 提交单个 command buffer 并 present（默认队列 + 自动同步）。
-     * @param command_buffer 包含录制命令的 command buffer
-     */
-    void SubmitAndPresent(vk::CommandBuffer command_buffer);
-
-    /**
-     * @brief 提交多个 command buffer 并 present（默认队列 + 自动同步）。
-     * @param command_buffers 包含录制命令的 command buffer 列表
-     */
-    void SubmitAndPresent(const std::vector<vk::CommandBuffer> &command_buffers);
 
     /**
      * @brief 提交 command buffer 到指定队列，带等待 semaphore，不 present。

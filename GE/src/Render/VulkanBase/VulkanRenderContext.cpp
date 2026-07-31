@@ -406,15 +406,15 @@ vk::Semaphore VulkanRenderContext::RequestSemaphoreWithOwnership() {
 }
 
 // ============================================================================
-// 提交
+// EndFrame — 提交 + present + 结束帧
 // ============================================================================
 
-void VulkanRenderContext::SubmitAndPresent(vk::CommandBuffer command_buffer) {
+void VulkanRenderContext::EndFrame(vk::CommandBuffer command_buffer) {
     std::vector<vk::CommandBuffer> command_buffers(1, command_buffer);
-    SubmitAndPresent(command_buffers);
+    EndFrame(command_buffers);
 }
 
-void VulkanRenderContext::SubmitAndPresent(const std::vector<vk::CommandBuffer> &command_buffers) {
+void VulkanRenderContext::EndFrame(const std::vector<vk::CommandBuffer> &command_buffers) {
     assert(m_FrameActive && "RenderContext 未激活，无法提交 command buffer。请先调用 Begin()");
 
     vk::Semaphore render_semaphore = nullptr;

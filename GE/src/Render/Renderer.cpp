@@ -99,10 +99,10 @@ void Renderer::EndFrame() {
     // 2. End command buffer
     m_ActiveFrameCmd->End();
 
-    // 3. Submit + present
+    // 3. 提交 + 结束帧（present + 清理）
     {
-        ZoneScopedN("SubmitAndPresent");
-        m_RenderContext->SubmitAndPresent(m_ActiveFrameCmd->GetHandle());
+        ZoneScopedN("EndFrame");
+        m_RenderContext->EndFrame(m_ActiveFrameCmd->GetHandle());
     }
 
     // 4. 重置当前帧 command buffer（仅置空观察指针）

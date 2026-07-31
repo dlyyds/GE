@@ -94,7 +94,7 @@ void Scene::OnUpdate3D(Timestep ts,
             r3d.DrawMesh(
                 tc.GetTransform(),
                 mc.MeshPtr,
-                nullptr,  // TODO: MeshComponent 暂未包含纹理字段
+                mc.BaseTexture,
                 mc.Color
             );
         }

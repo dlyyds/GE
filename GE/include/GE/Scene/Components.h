@@ -126,8 +126,9 @@ struct ScriptComponent {
  * 与 TransformComponent 配合使用：Transform 决定位置/旋转/缩放，
  * MeshComponent 决定绘制什么网格、什么颜色。
  *
- * Mesh 使用裸指针引用，不拥有资源。网格资源由外部资源管理器管理。
+ * Mesh 和 Texture 使用裸指针引用，不拥有资源。资源由外部资源管理器（如 VulkanResourceCache）管理。
  * Color 为 RGBA 分量，白色 (1,1,1,1) 表示原样显示纹理/材质。
+ * Texture 为 nullptr 时使用纯白色替代（相当于无纹理的纯色网格）。
  *
  * 由 Renderer3D 在 Scene::OnUpdate3D() 中遍历并绘制，
  * 支持深度测试、背面剔除和 Blinn-Phong 光照。
@@ -135,6 +136,7 @@ struct ScriptComponent {
 struct MeshComponent {
     glm::vec4 Color{1.0f, 1.0f, 1.0f, 1.0f}; ///< 叠加颜色（默认白色，即不染色）
     Mesh     *MeshPtr = nullptr;              ///< 网格资源指针（可选，为 null 时不绘制）
+    Texture  *BaseTexture = nullptr;          ///< 主纹理指针（可选，为 null 时使用纯白色）
 
     MeshComponent() = default;
 
@@ -148,17 +150,31 @@ struct MeshComponent {
     }
 
     /**
-     * @brief 指定网格的构造函数（颜色默认白色）。
+     * @brief 指定网格的构造函数（颜色默认白色，无纹理）。
      */
     explicit MeshComponent(Mesh *mesh)
         : MeshPtr(mesh) {
     }
 
     /**
-     * @brief 同时指定网格和颜色的构造函数。
+     * @brief 同时指定网格和纹理的构造函数（颜色默认白色）。
+     */
+    MeshComponent(Mesh *mesh, Texture *texture)
+        : MeshPtr(mesh), BaseTexture(texture) {
+    }
+
+    /**
+     * @brief 同时指定网格和颜色的构造函数（无纹理）。
      */
     MeshComponent(Mesh *mesh, const glm::vec4 &color)
         : Color(color), MeshPtr(mesh) {
+    }
+
+    /**
+     * @brief 同时指定网格、纹理和颜色的构造函数。
+     */
+    MeshComponent(Mesh *mesh, Texture *texture, const glm::vec4 &color)
+        : Color(color), MeshPtr(mesh), BaseTexture(texture) {
     }
 };
 

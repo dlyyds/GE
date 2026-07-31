@@ -44,7 +44,7 @@ void ModelTestLayer::OnAttach() {
     m_ModelEntity = m_Scene->CreateEntity("Cube");
 
     // 添加 3D 网格渲染组件（关联立方体网格 + 棋盘纹理）
-    m_ModelEntity.AddComponent<MeshComponent>(m_CubeMesh.get());
+    m_ModelEntity.AddComponent<MeshComponent>(m_CubeMesh.get(), m_Texture.get());
 
     // 创建相机实体并添加相机组件
     m_CameraEntity = m_Scene->CreateEntity("MainCamera");
@@ -136,7 +136,7 @@ void ModelTestLayer::OnImGuiRender() {
     ImGui::Text("网格顶点数：%u", m_CubeMesh ? m_CubeMesh->GetVertexCount() : 0);
     ImGui::Text("网格索引数：%u", m_CubeMesh ? m_CubeMesh->GetIndexCount() : 0);
     ImGui::Text("纹理：%s",
-                m_Texture ? "Checkerboard.png" : "(null)");
+                mc.BaseTexture ? "Checkerboard.png" : "(null)");
 
     ImGui::Separator();
 

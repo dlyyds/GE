@@ -127,6 +127,9 @@ void RenderTarget::CreateDepthBuffer() {
 
     GE_CORE_ASSERT(depthFormat != vk::Format::eUndefined, "无法找到合适的深度格式");
 
+    // 回写实际使用的深度格式到 Desc，确保外部查询时拿到有效值
+    m_Desc.depthFormat = depthFormat;
+
     vk::ImageUsageFlags usage = vk::ImageUsageFlagBits::eDepthStencilAttachment;
     // 如果需要采样深度（如阴影贴图），添加 eSampled
     // usage |= vk::ImageUsageFlagBits::eSampled;

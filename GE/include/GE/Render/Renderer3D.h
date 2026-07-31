@@ -170,6 +170,9 @@ private:
     /// Pipeline layout（由全局资源缓存管理，不拥有）
     VulkanPipelineLayout *m_PipelineLayout = nullptr;
 
+    /// 默认 1x1 白色纹理（无纹理时的 fallback）
+    std::unique_ptr<Texture> m_DefaultWhiteTexture;
+
     /// 当前帧视图矩阵
     glm::mat4 m_View{1.0f};
 

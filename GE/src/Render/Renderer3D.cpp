@@ -6,6 +6,7 @@
 #include "Render/Renderer3D.h"
 
 #include "Core/Log.h"
+#include "Render/Texture.h"
 #include "Render/Renderer.h"
 #include "Render/VulkanBase/VulkanCommandBuffer.h"
 #include "Render/VulkanBase/VulkanPipelineLayout.h"
@@ -45,11 +46,26 @@ Renderer3D::Renderer3D() {
         {m_VertShader, m_FragShader});
     m_PipelineLayout->SetDebugName("Mesh3D_PipelineLayout");
 
+    // ── 3. 创建默认 1x1 白色纹理（无纹理时的 fallback） ────────────────
+    uint32_t whitePixel = 0xFFFFFFFF; // RGBA8: (255, 255, 255, 255)
+    m_DefaultWhiteTexture = Texture::LoadFromMemory(
+        device, cache, &whitePixel, 1, 1,
+        vk::Format::eR8G8B8A8Unorm,
+        vk::Filter::eLinear, vk::Filter::eLinear);
+    if (m_DefaultWhiteTexture) {
+        m_DefaultWhiteTexture->SetDebugName("DefaultWhiteTexture");
+    } else {
+        GE_CORE_ERROR("Renderer3D: 创建默认白色纹理失败！");
+    }
+
     GE_CORE_INFO("Renderer3D initialized");
 }
 
 Renderer3D::~Renderer3D() {
     GE_CORE_INFO("Renderer3D Shutdown");
+
+    // 释放默认白色纹理
+    m_DefaultWhiteTexture.reset();
 
     // 着色器和 pipeline layout 由全局资源缓存管理，不需要手动释放
     m_VertShader = nullptr;
@@ -255,13 +271,13 @@ void Renderer3D::EndScene() {
                        sizeof(ObjectUBO), 2, 0);
 
         // 绑定纹理（set 1, binding 0）
-        if (instance.texture) {
-            cmd.BindImage(instance.texture->GetImageView(),
-                          instance.texture->GetSampler(),
+        // 无纹理时使用默认 1x1 白色纹理，避免未定义行为
+        Texture *tex = instance.texture ? instance.texture
+                                        : m_DefaultWhiteTexture.get();
+        if (tex) {
+            cmd.BindImage(tex->GetImageView(),
+                          tex->GetSampler(),
                           1, 0);
-        } else {
-            // 无纹理时，纹理单元可能未定义行为
-            // TODO: 提供一个默认的 1x1 白色纹理
         }
 
         // 绑定顶点缓冲 + 索引缓冲

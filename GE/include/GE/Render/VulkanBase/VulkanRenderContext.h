@@ -20,7 +20,7 @@
  * @brief 帧管理器，适配自 Vulkan-Samples 的 RenderContext。
  *
  * VulkanRenderContext 作为帧管理器，生命周期与 Application 相同。
- * 它是 RenderFrame 对象的容器，在帧之间切换（begin_frame、end_frame）
+ * 它是 RenderFrame 对象的容器，在帧之间切换（BeginFrame、Present）
  * 并将 Vulkan 资源的请求转发给当前活跃帧。
  *
  * 对于使用 swapchain 的正常渲染，传入 swapchain 创建参数，
@@ -52,7 +52,7 @@ namespace GE {
  * @brief 帧管理器。
  *
  * RenderContext 作为帧管理器，生命周期与 Application 相同。
- * 它是 RenderFrame 对象的容器，在帧之间切换（begin_frame、end_frame）
+ * 它是 RenderFrame 对象的容器，在帧之间切换（BeginFrame、Present）
  * 并将 Vulkan 资源的请求转发给当前活跃帧。
  *
  * 保证始终存在一个活跃帧。
@@ -111,10 +111,10 @@ public:
     void BeginFrame();
 
     /**
-     * @brief 结束当前帧并呈现（present）。
-     * @param semaphore 提交完成后 signal 的 semaphore
+     * @brief 呈现当前帧图像到 swapchain 并结束帧。
+     * @param semaphore 提交完成后 signal 的 semaphore，present 将等待它
      */
-    void EndFrame(vk::Semaphore semaphore);
+    void Present(vk::Semaphore semaphore);
 
     // ========================================================================
     // 帧管理
@@ -143,7 +143,7 @@ public:
     /**
      * @brief 获取上一帧。
      * @return 上一帧的引用。
-     *         帧在 end_frame 调用后变为上一帧。
+     *         帧在 Present 调用后变为上一帧。
      */
     VulkanRenderFrame &GetLastRenderedFrame();
 

@@ -97,7 +97,7 @@ void VulkanRenderContext::BeginFrame() {
         HandleSurfaceChanges();
     }
 
-    assert(!m_FrameActive && "帧仍处于活跃状态，请先调用 EndFrame");
+    assert(!m_FrameActive && "帧仍处于活跃状态，请先调用 Present");
 
     auto &prev_frame = *m_Frames[m_ActiveFrameIndex];
 
@@ -136,7 +136,7 @@ void VulkanRenderContext::BeginFrame() {
     WaitFrame();
 }
 
-void VulkanRenderContext::EndFrame(vk::Semaphore semaphore) {
+void VulkanRenderContext::Present(vk::Semaphore semaphore) {
     ZoneScoped;
     assert(m_FrameActive && "帧未激活，请先调用 BeginFrame");
 
@@ -199,7 +199,7 @@ uint32_t VulkanRenderContext::GetActiveFrameIndex() const {
 }
 
 VulkanRenderFrame &VulkanRenderContext::GetLastRenderedFrame() {
-    assert(!m_FrameActive && "帧仍处于活跃状态，请先调用 EndFrame");
+    assert(!m_FrameActive && "帧仍处于活跃状态，请先调用 Present");
     return *m_Frames[m_ActiveFrameIndex];
 }
 
@@ -425,7 +425,7 @@ void VulkanRenderContext::SubmitAndPresent(const std::vector<vk::CommandBuffer> 
                                   vk::PipelineStageFlagBits::eColorAttachmentOutput);
     }
 
-    EndFrame(render_semaphore);
+    Present(render_semaphore);
 }
 
 vk::Semaphore VulkanRenderContext::Submit(const VulkanQueue &queue,

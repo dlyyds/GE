@@ -15,6 +15,32 @@ Camera::Camera() {
 }
 
 void Camera::SetMode(Mode mode) {
+    if (m_Mode == mode) {
+        return;
+    }
+
+    // 切换模式时同步视角，保持画面一致
+    if (mode == Mode::FPS) {
+        // Orbit → FPS：用轨道参数计算 FPS 的位置和朝向
+        m_Position = GetPosition();  // 当前轨道相机位置
+        // forward 方向已经由 GetForward() 正确计算（朝向 -Z 为 0 度）
+        glm::vec3 forward = GetForward();
+        m_Pitch = glm::degrees(std::asin(forward.y));
+        // yaw = atan2(-x, -z)，因为 forward 的 x,z 分量是 -cos(pitch)*sin(yaw) 和 -cos(pitch)*cos(yaw)
+        m_Yaw = glm::degrees(std::atan2(-forward.x, -forward.z));
+    } else {
+        // FPS → Orbit：用 FPS 位置和朝向计算轨道参数
+        // 设 target 在相机前方一定距离处（默认 distance=3）
+        m_Distance = 3.0f;
+        glm::vec3 forward = GetForward();
+        m_Target = m_Position + forward * m_Distance;
+        // 从 target 看向相机位置，计算 theta 和 phi
+        glm::vec3 camToTarget = -forward * m_Distance;
+        // 相机相对于 target 的位置 = camToTarget
+        m_Phi = glm::degrees(std::asin(camToTarget.y / m_Distance));
+        m_Theta = glm::degrees(std::atan2(camToTarget.x, camToTarget.z));
+    }
+
     m_Mode = mode;
 }
 
@@ -181,10 +207,11 @@ glm::vec3 Camera::GetForward() const {
     if (m_Mode == Mode::FPS) {
         float yaw = glm::radians(m_Yaw);
         float pitch = glm::radians(m_Pitch);
+        // yaw=0 时朝向 -Z（与 Orbit 模式一致，符合 OpenGL 相机惯例）
         return glm::normalize(glm::vec3{
-            cos(pitch) * sin(yaw),
-            sin(pitch),
-            cos(pitch) * cos(yaw),
+            -cos(pitch) * sin(yaw),
+             sin(pitch),
+            -cos(pitch) * cos(yaw),
         });
     } else {
         // Orbit forward = from camera toward target

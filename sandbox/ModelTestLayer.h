@@ -28,11 +28,7 @@ private:
     std::unique_ptr<Texture> m_Texture;      ///< 棋盘纹理
     std::unique_ptr<Scene>   m_Scene;        ///< 场景
     Entity m_ModelEntity;                    ///< 模型实体
-
-    // 摄像机参数
-    glm::vec3 m_CameraPos{0.0f, 0.0f, 3.0f}; ///< 摄像机位置
-    glm::vec3 m_CameraTarget{0.0f, 0.0f, 0.0f}; ///< 摄像机目标点
-    float m_Fov = 60.0f;                      ///< 垂直视场角（度）
+    Entity m_CameraEntity;                   ///< 相机实体
 
     // 脚本参数（通过 ImGui 调节）
     bool  m_AutoRotate{true};                 ///< 是否自动旋转
@@ -40,6 +36,8 @@ private:
 
     /// 刷新模型上的 ScriptComponent
     void RefreshScript();
+    /// 刷新相机上的鼠标控制 ScriptComponent
+    void RefreshCameraScript();
 };
 
 } // namespace GE

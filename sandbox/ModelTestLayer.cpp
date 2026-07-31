@@ -4,6 +4,8 @@
 
 #include "ModelTestLayer.h"
 #include "GE/Core/Application.h"
+#include "GE/Core/GEInput.h"
+#include "GE/Core/KeyCodes.h"
 #include "GE/Render/Renderer.h"
 #include "GE/Render/Renderer3D.h"
 #include "GE/Scene/Components.h"
@@ -44,8 +46,18 @@ void ModelTestLayer::OnAttach() {
     // 添加 3D 网格渲染组件（关联立方体网格 + 棋盘纹理）
     m_ModelEntity.AddComponent<MeshComponent>(m_CubeMesh.get());
 
+    // 创建相机实体并添加相机组件
+    m_CameraEntity = m_Scene->CreateEntity("MainCamera");
+    auto &cameraComp = m_CameraEntity.AddComponent<CameraComponent>();
+    cameraComp.CameraInstance.SetPerspective(60.0f, 16.0f / 9.0f, 0.1f, 100.0f);
+    cameraComp.CameraInstance.SetMode(Camera::Mode::Orbit);
+    cameraComp.CameraInstance.SetOrbit(0.0f, 0.0f, 3.0f); // 距离目标 3 个单位
+    cameraComp.CameraInstance.SetTarget({0.0f, 0.0f, 0.0f});
+
     // 添加脚本组件（自动旋转逻辑）
     RefreshScript();
+    // 添加相机鼠标控制脚本
+    RefreshCameraScript();
 }
 
 void ModelTestLayer::OnDetach() {
@@ -60,31 +72,32 @@ void ModelTestLayer::OnUpdate(Timestep &ts) {
     float aspect = static_cast<float>(extent.width) /
                    static_cast<float>(extent.height);
 
-    // 构建透视投影矩阵
-    glm::mat4 projection = glm::perspective(
-        glm::radians(m_Fov),
-        aspect,
-        0.1f,   // 近裁剪面
-        100.0f  // 远裁剪面
-    );
-    // Vulkan Y 轴翻转
-    projection[1][1] *= -1.0f;
+    // 从相机组件获取视图与投影矩阵
+    auto &cameraComp = m_CameraEntity.GetComponent<CameraComponent>();
+    auto &camera = cameraComp.CameraInstance;
 
-    // 构建视图矩阵（LookAt）
-    glm::mat4 view = glm::lookAt(
-        m_CameraPos,
-        m_CameraTarget,
-        glm::vec3(0.0f, 1.0f, 0.0f)  // 上向量
-    );
+    // 同步宽高比（非固定宽高比时随窗口调整）
+    if (!cameraComp.FixedAspectRatio) {
+        camera.SetAspect(aspect);
+    }
+
+    glm::mat4 view = camera.GetView();
+    glm::mat4 projection = camera.GetProj();
+    glm::vec3 cameraPos = camera.GetPosition();
 
     // 清屏颜色（深蓝灰色背景）
     glm::vec4 clearColor{0.1f, 0.1f, 0.15f, 1.0f};
 
     // 场景更新 + 3D 渲染
-    m_Scene->OnUpdate3D(ts, view, projection, m_CameraPos, clearColor);
+    m_Scene->OnUpdate3D(ts, view, projection, cameraPos, clearColor);
 }
 
 void ModelTestLayer::OnEvent(Event &event) {
+    // 将事件转发给相机（处理鼠标移动、滚轮、按键等交互）
+    if (m_CameraEntity) {
+        auto &cameraComp = m_CameraEntity.GetComponent<CameraComponent>();
+        cameraComp.CameraInstance.OnEvent(event);
+    }
 }
 
 void ModelTestLayer::OnImGuiRender() {
@@ -127,13 +140,78 @@ void ModelTestLayer::OnImGuiRender() {
 
     ImGui::Separator();
 
-    // 摄像机参数
-    ImGui::Text("摄像机");
-    ImGui::DragFloat3("位置 (CameraPos)", &m_CameraPos.x, 0.1f,
-                      -20.0f, 20.0f);
-    ImGui::DragFloat3("目标 (CameraTarget)", &m_CameraTarget.x, 0.1f,
-                      -10.0f, 10.0f);
-    ImGui::SliderFloat("FOV (度)", &m_Fov, 10.0f, 120.0f);
+    // 摄像机参数（通过 CameraComponent 控制）
+    {
+        ImGui::Text("摄像机 (CameraComponent)");
+        auto &cameraComp = m_CameraEntity.GetComponent<CameraComponent>();
+        auto &camera = cameraComp.CameraInstance;
+
+        // 相机模式切换
+        int mode = static_cast<int>(camera.GetMode());
+        if (ImGui::Combo("模式", &mode, "Orbit\0FPS\0")) {
+            camera.SetMode(static_cast<Camera::Mode>(mode));
+        }
+
+        // FOV（通过临时变量修改，因为 GetFov 返回值拷贝）
+        float fov = camera.GetFov();
+        if (ImGui::SliderFloat("FOV (度)", &fov, 10.0f, 120.0f)) {
+            camera.SetPerspective(fov, camera.GetAspect(), 0.1f, 100.0f);
+        }
+
+        ImGui::Checkbox("主相机", &cameraComp.Primary);
+        ImGui::Checkbox("固定宽高比", &cameraComp.FixedAspectRatio);
+
+        if (camera.GetMode() == Camera::Mode::Orbit) {
+            // 轨道相机参数
+            glm::vec3 target = camera.GetTarget();
+            float theta = camera.GetTheta();
+            float phi = camera.GetPhi();
+            float distance = camera.GetDistance();
+
+            if (ImGui::DragFloat3("目标点 (Target)", &target.x, 0.1f,
+                                  -10.0f, 10.0f)) {
+                camera.SetTarget(target);
+            }
+            if (ImGui::SliderFloat("方位角 (Theta, deg)", &theta,
+                                   -180.0f, 180.0f)) {
+                camera.SetOrbit(theta, phi, distance);
+            }
+            if (ImGui::SliderFloat("俯仰角 (Phi, deg)", &phi,
+                                   -89.0f, 89.0f)) {
+                camera.SetOrbit(theta, phi, distance);
+            }
+            if (ImGui::DragFloat("距离 (Distance)", &distance, 0.1f,
+                                 0.5f, 50.0f)) {
+                camera.SetOrbit(theta, phi, distance);
+            }
+        } else {
+            // FPS 相机参数
+            glm::vec3 pos = camera.GetPosition();
+            float yaw = camera.GetYaw();
+            float pitch = camera.GetPitch();
+
+            if (ImGui::DragFloat3("位置 (Position)", &pos.x, 0.1f,
+                                  -20.0f, 20.0f)) {
+                camera.SetPosition(pos);
+            }
+            if (ImGui::SliderFloat("偏航角 (Yaw, deg)", &yaw,
+                                   -180.0f, 180.0f)) {
+                camera.SetYawPitch(yaw, pitch);
+            }
+            if (ImGui::SliderFloat("俯仰角 (Pitch, deg)", &pitch,
+                                   -89.0f, 89.0f)) {
+                camera.SetYawPitch(yaw, pitch);
+            }
+        }
+
+        // 相机灵敏度
+        ImGui::DragFloat("鼠标灵敏度", &camera.MouseSensitivity,
+                         0.01f, 0.01f, 5.0f);
+        ImGui::DragFloat("滚轮灵敏度", &camera.ScrollSensitivity,
+                         0.05f, 0.1f, 10.0f);
+        ImGui::DragFloat("移动速度", &camera.MoveSpeed,
+                         0.1f, 0.1f, 20.0f);
+    }
 
     ImGui::Separator();
 
@@ -188,9 +266,17 @@ void ModelTestLayer::OnImGuiRender() {
         tc.Rotation = {0.0f, 0.0f, 0.0f};
         tc.Scale = {1.0f, 1.0f, 1.0f};
         mc.Color = {1.0f, 1.0f, 1.0f, 1.0f};
-        m_CameraPos = {0.0f, 0.0f, 3.0f};
-        m_CameraTarget = {0.0f, 0.0f, 0.0f};
-        m_Fov = 60.0f;
+
+        // 重置相机
+        auto &cameraComp = m_CameraEntity.GetComponent<CameraComponent>();
+        auto &camera = cameraComp.CameraInstance;
+        camera.SetMode(Camera::Mode::Orbit);
+        camera.SetPerspective(60.0f, camera.GetAspect(), 0.1f, 100.0f);
+        camera.SetTarget({0.0f, 0.0f, 0.0f});
+        camera.SetOrbit(0.0f, 0.0f, 3.0f);
+        cameraComp.Primary = true;
+        cameraComp.FixedAspectRatio = false;
+
         m_AutoRotate = true;
         m_AutoRotateSpeed = 0.5f;
         RefreshScript();
@@ -223,6 +309,50 @@ void ModelTestLayer::RefreshScript() {
         m_ModelEntity.GetComponent<ScriptComponent>().OnUpdate = std::move(callback);
     } else {
         m_ModelEntity.AddComponent<ScriptComponent>(std::move(callback));
+    }
+}
+
+void ModelTestLayer::RefreshCameraScript() {
+    if (!m_CameraEntity) {
+        return;
+    }
+
+    // 相机控制脚本：每帧处理键盘输入（FPS 模式下 WASD 移动）
+    auto callback = [](Timestep ts, Entity entity) {
+        auto &cameraComp = entity.GetComponent<CameraComponent>();
+        auto &camera = cameraComp.CameraInstance;
+
+        // 仅在 FPS 模式下处理键盘移动
+        if (camera.GetMode() != Camera::Mode::FPS) {
+            return;
+        }
+
+        float speed = camera.MoveSpeed * ts.GetSeconds();
+
+        if (Input::IsKeyPressed(Key::W)) {
+            camera.MoveForward(speed);
+        }
+        if (Input::IsKeyPressed(Key::S)) {
+            camera.MoveForward(-speed);
+        }
+        if (Input::IsKeyPressed(Key::A)) {
+            camera.MoveRight(-speed);
+        }
+        if (Input::IsKeyPressed(Key::D)) {
+            camera.MoveRight(speed);
+        }
+        if (Input::IsKeyPressed(Key::Q)) {
+            camera.MoveUp(-speed);
+        }
+        if (Input::IsKeyPressed(Key::E)) {
+            camera.MoveUp(speed);
+        }
+    };
+
+    if (m_CameraEntity.HasComponent<ScriptComponent>()) {
+        m_CameraEntity.GetComponent<ScriptComponent>().OnUpdate = std::move(callback);
+    } else {
+        m_CameraEntity.AddComponent<ScriptComponent>(std::move(callback));
     }
 }
 

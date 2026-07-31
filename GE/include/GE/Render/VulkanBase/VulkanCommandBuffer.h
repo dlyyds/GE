@@ -179,6 +179,7 @@ public:
 
     [[nodiscard]] vk::CommandBufferLevel GetLevel() const { return m_Level; }
     [[nodiscard]] VulkanCommandPool &GetPool() const { return m_Pool; }
+    [[nodiscard]] uint32_t GetQueueFamilyIndex() const;
     [[nodiscard]] VulkanPipelineState &GetPipelineState() { return m_PipelineState; }
     [[nodiscard]] VulkanPipelineState const &GetPipelineState() const { return m_PipelineState; }
 

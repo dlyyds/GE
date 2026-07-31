@@ -327,6 +327,17 @@ PhysicalDevice const &VulkanDevice::GetGpu() const {
 }
 
 // ============================================================================
+// GetQueue — 按队列族索引获取
+// ============================================================================
+
+VulkanQueue const &VulkanDevice::GetQueue(uint32_t family_index, uint32_t queue_index) const {
+    assert(family_index < m_Queues.size() && "family_index 超出范围");
+    assert(queue_index < m_Queues[family_index].size() && "queue_index 超出范围");
+    assert(!m_Queues[family_index].empty() && "该队列族无可用队列");
+    return m_Queues[family_index][queue_index];
+}
+
+// ============================================================================
 // GetQueueByFlags
 // ============================================================================
 

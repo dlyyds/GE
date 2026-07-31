@@ -139,6 +139,11 @@ public:
     /// @brief 获取全局资源缓存。
     VulkanResourceCache &GetResourceCache() { return *m_ResourceCache; }
 
+    /// @brief 按队列族索引获取队列。
+    /// @param family_index  队列族索引
+    /// @param queue_index   族内队列索引（默认 0）
+    VulkanQueue const &GetQueue(uint32_t family_index, uint32_t queue_index = 0) const;
+
     /// @brief 按队列能力标志获取队列。
     VulkanQueue const &GetQueueByFlags(vk::QueueFlags required_queue_flags, uint32_t queue_index) const;
 

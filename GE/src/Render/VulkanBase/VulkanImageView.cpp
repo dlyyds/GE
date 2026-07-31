@@ -22,6 +22,38 @@
 
 #include <stdexcept>
 
+namespace {
+
+// 判断格式是否包含深度分量
+bool IsDepthFormat(vk::Format format) {
+    switch (format) {
+        case vk::Format::eD16Unorm:
+        case vk::Format::eD32Sfloat:
+        case vk::Format::eD16UnormS8Uint:
+        case vk::Format::eD24UnormS8Uint:
+        case vk::Format::eD32SfloatS8Uint:
+        case vk::Format::eX8D24UnormPack32:
+            return true;
+        default:
+            return false;
+    }
+}
+
+// 判断格式是否包含模板分量
+bool IsStencilFormat(vk::Format format) {
+    switch (format) {
+        case vk::Format::eS8Uint:
+        case vk::Format::eD16UnormS8Uint:
+        case vk::Format::eD24UnormS8Uint:
+        case vk::Format::eD32SfloatS8Uint:
+            return true;
+        default:
+            return false;
+    }
+}
+
+} // namespace
+
 namespace GE {
 
 VulkanImageView::VulkanImageView(VulkanImage &img,
@@ -37,16 +69,14 @@ VulkanImageView::VulkanImageView(VulkanImage &img,
         this->format = format = image->get_format();
     }
 
-    // 自动推断 aspect mask：遍历所有组件（D=Depth, S=Stencil）
+    // 自动推断 aspect mask
+    // 注意：不能用 vk::componentName 循环探测，深度/模板格式在 component > 0 时会触发 assert 崩溃
     vk::ImageAspectFlags aspect = {};
-    for (uint32_t i = 0; i < 4; ++i) {
-        std::string name = vk::componentName(format, i);
-        if (name.empty())
-            break;
-        if (name == "D")
-            aspect |= vk::ImageAspectFlagBits::eDepth;
-        if (name == "S")
-            aspect |= vk::ImageAspectFlagBits::eStencil;
+    if (IsDepthFormat(format)) {
+        aspect |= vk::ImageAspectFlagBits::eDepth;
+    }
+    if (IsStencilFormat(format)) {
+        aspect |= vk::ImageAspectFlagBits::eStencil;
     }
     if (aspect == vk::ImageAspectFlags{}) {
         aspect = vk::ImageAspectFlagBits::eColor;

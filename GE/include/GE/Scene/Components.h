@@ -127,7 +127,8 @@ struct ScriptComponent {
  * Mesh 使用裸指针引用，不拥有资源。网格资源由外部资源管理器管理。
  * Color 为 RGBA 分量，白色 (1,1,1,1) 表示原样显示纹理/材质。
  *
- * @note 3D 渲染管线尚未实现，此组件目前仅作为数据结构占位。
+ * 由 Renderer3D 在 Scene::OnUpdate3D() 中遍历并绘制，
+ * 支持深度测试、背面剔除和 Blinn-Phong 光照。
  */
 struct MeshComponent {
     glm::vec4 Color{1.0f, 1.0f, 1.0f, 1.0f}; ///< 叠加颜色（默认白色，即不染色）

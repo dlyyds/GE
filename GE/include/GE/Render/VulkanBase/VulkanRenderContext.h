@@ -204,10 +204,10 @@ public:
 
     /**
      * @brief 准备 RenderFrame 用于渲染。
-     * @param thread_count               应用线程数，每个 RenderFrame 分配此数量的资源池
-     * @param create_render_target_func  创建 RenderTarget 的委托函数
+     * @param thread_count  应用线程数，每个 RenderFrame 分配此数量的资源池
+     * @param enable_depth  是否为每个 RenderTarget 创建深度缓冲
      */
-    void Prepare(size_t thread_count = 1);
+    void Prepare(size_t thread_count = 1, bool enable_depth = false);
 
     /**
      * @brief 重建 RenderFrame（swapchain 重建后调用）。
@@ -295,6 +295,7 @@ private:
     vk::Extent2D m_SurfaceExtent{};
     std::unique_ptr<VulkanSwapchain> m_Swapchain;
     size_t m_ThreadCount{1};
+    bool m_EnableDepth{false};  ///< RenderTarget 是否启用深度缓冲
     const Window &m_Window;
 };
 

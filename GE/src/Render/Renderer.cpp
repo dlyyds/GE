@@ -1,5 +1,6 @@
 #include "Render/Renderer.h"
 #include "Render/Renderer2D.h"
+#include "Render/Renderer3D.h"
 
 #include "Core/GEWindow.h"
 #include "Core/Log.h"
@@ -31,11 +32,14 @@ Renderer::Renderer(Window &window)
             {vk::Format::eB8G8R8A8Srgb, vk::ColorSpaceKHR::eSrgbNonlinear},
         });
 
-    // 3. 准备 RenderContext（内部创建 RenderFrames）
-    m_RenderContext->Prepare();
+    // 3. 准备 RenderContext（内部创建 RenderFrames，启用深度缓冲）
+    m_RenderContext->Prepare(1, true);
 
     // 4. 初始化 2D 精灵渲染器
     m_2DRenderer = std::make_unique<Renderer2D>();
+
+    // 5. 初始化 3D 网格渲染器
+    m_3DRenderer = std::make_unique<Renderer3D>();
 }
 
 Renderer::~Renderer() {
@@ -45,6 +49,7 @@ Renderer::~Renderer() {
     WaitIdle();
 
     // 2. 按构造逆序销毁
+    m_3DRenderer.reset();
     m_2DRenderer.reset();
     m_ActiveFrameCmd = nullptr; // 仅为观察指针，实际由 RenderContext 所有
     m_RenderContext.reset();
@@ -158,6 +163,11 @@ VulkanImageView &Renderer::GetFrameImageView() {
 Renderer2D &Renderer::Get2DRenderer() {
     GE_CORE_ASSERT(Get().m_2DRenderer, "Renderer2D not initialized!");
     return *Get().m_2DRenderer;
+}
+
+Renderer3D &Renderer::Get3DRenderer() {
+    GE_CORE_ASSERT(Get().m_3DRenderer, "Renderer3D not initialized!");
+    return *Get().m_3DRenderer;
 }
 
 } // namespace GE

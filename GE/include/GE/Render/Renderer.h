@@ -9,6 +9,7 @@ namespace GE {
 
 class Window;
 class Renderer2D;
+class Renderer3D;
 
 /**
  * @brief 渲染器：统一管理 Vulkan 资源和帧渲染流程。
@@ -92,6 +93,9 @@ public:
     /// 访问 2D 精灵渲染器。
     static Renderer2D &Get2DRenderer();
 
+    /// 访问 3D 网格渲染器。
+    static Renderer3D &Get3DRenderer();
+
 private:
     /// Vulkan 全局上下文（Instance / PhysicalDevice / Surface / Device / VMA）。
     std::unique_ptr<VulkanContext> m_VulkanContext;
@@ -104,6 +108,9 @@ private:
 
     /// 2D 精灵渲染器。
     std::unique_ptr<Renderer2D> m_2DRenderer;
+
+    /// 3D 网格渲染器。
+    std::unique_ptr<Renderer3D> m_3DRenderer;
 
     /// 窗口引用。
     Window &m_Window;

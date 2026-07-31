@@ -4,7 +4,8 @@
 #include "Scene/Entity.h"
 #include "Render/Renderer.h"
 #include "Render/Renderer2D.h"
-
+#include "Render/Renderer3D.h"
+#include "Render/Mesh.h"
 
 #include <glm/glm.hpp>
 
@@ -52,6 +53,65 @@ void Scene::OnUpdate(Timestep ts,
     for (auto entity : view) {
         auto &tc = view.get<TransformComponent>(entity);
         auto &sc = view.get<SpriteRendererComponent>(entity);
+
+        r2d.DrawSprite(
+            tc.GetTransform(),
+            sc.SpriteTexture,
+            sc.Color
+        );
+    }
+
+    r2d.EndScene();
+}
+
+void Scene::OnUpdate3D(Timestep ts,
+                       const glm::mat4 &view,
+                       const glm::mat4 &projection,
+                       const glm::vec3 &viewPos,
+                       const glm::vec4 &clearColor) {
+    // ── 脚本更新 ────────────────────────────────────────────────────────
+    {
+        auto scriptView = m_Registry.view<ScriptComponent>();
+        for (auto entityHandle : scriptView) {
+            auto &sc = scriptView.get<ScriptComponent>(entityHandle);
+            if (sc.OnUpdate) {
+                Entity entity{entityHandle, this};
+                sc.OnUpdate(ts, entity);
+            }
+        }
+    }
+
+    // ── 3D 网格渲染 ────────────────────────────────────────────────────
+    auto &r3d = Renderer::Get3DRenderer();
+    r3d.BeginScene(view, projection, viewPos, clearColor);
+
+    auto meshView = m_Registry.view<TransformComponent, MeshComponent>();
+    for (auto entity : meshView) {
+        auto &tc = meshView.get<TransformComponent>(entity);
+        auto &mc = meshView.get<MeshComponent>(entity);
+
+        if (mc.MeshPtr) {
+            r3d.DrawMesh(
+                tc.GetTransform(),
+                mc.MeshPtr,
+                nullptr,  // TODO: MeshComponent 暂未包含纹理字段
+                mc.Color
+            );
+        }
+    }
+
+    r3d.EndScene();
+
+    // ── 2D 精灵渲染（叠加在 3D 之上，不清屏） ──────────────────────────
+    glm::mat4 viewProjection = projection * view;
+
+    auto &r2d = Renderer::Get2DRenderer();
+    r2d.BeginScene(viewProjection, glm::vec4(-1.0f));
+
+    auto spriteView = m_Registry.view<TransformComponent, SpriteRendererComponent>();
+    for (auto entity : spriteView) {
+        auto &tc = spriteView.get<TransformComponent>(entity);
+        auto &sc = spriteView.get<SpriteRendererComponent>(entity);
 
         r2d.DrawSprite(
             tc.GetTransform(),

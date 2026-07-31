@@ -267,7 +267,7 @@ bool VulkanRenderContext::HandleSurfaceChanges(bool force_update) {
 // 准备与重建
 // ============================================================================
 
-void VulkanRenderContext::Prepare(size_t thread_count) {
+void VulkanRenderContext::Prepare(size_t thread_count, bool enable_depth) {
     ZoneScoped;
     m_Device.GetHandle().waitIdle();
 
@@ -282,7 +282,7 @@ void VulkanRenderContext::Prepare(size_t thread_count) {
         desc.colorFormat = m_Swapchain->GetFormat();
         desc.sampleCount = vk::SampleCountFlagBits::e1;
         desc.enableMSAA = false;
-        desc.enableDepth = false;
+        desc.enableDepth = enable_depth;
 
         for (auto &image_handle : m_Swapchain->GetImages()) {
             // 创建 swapchain image 的 view 并移交所有权给 RenderTarget
@@ -298,6 +298,7 @@ void VulkanRenderContext::Prepare(size_t thread_count) {
     // TODO: 离屏渲染模式（无 swapchain）
 
     m_ThreadCount = thread_count;
+    m_EnableDepth = enable_depth;
     m_Prepared = true;
 }
 
@@ -313,7 +314,7 @@ void VulkanRenderContext::Recreate() {
     desc.colorFormat = m_Swapchain->GetFormat();
     desc.sampleCount = vk::SampleCountFlagBits::e1;
     desc.enableMSAA = false;
-    desc.enableDepth = false;
+    desc.enableDepth = m_EnableDepth;
 
     for (auto &image_handle : m_Swapchain->GetImages()) {
         auto image_view = std::make_unique<VulkanImageView>(image_handle, vk::ImageViewType::e2D, m_Swapchain->GetFormat());

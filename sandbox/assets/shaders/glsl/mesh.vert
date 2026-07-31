@@ -4,9 +4,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+// 顶点属性 location 必须与 C++ 端 Vertex 结构体的内存顺序一致：
+// Position → Normal → TexCoord
 layout (location = 0) in vec3 inPos;
-layout (location = 1) in vec2 inUV;
-layout (location = 2) in vec3 inNormal;
+layout (location = 1) in vec3 inNormal;
+layout (location = 2) in vec2 inUV;
 
 layout (set = 0, binding = 0, std140) uniform FrameUBO
 {

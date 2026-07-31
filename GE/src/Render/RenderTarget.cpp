@@ -5,8 +5,10 @@
 
 #include "Render/RenderTarget.h"
 #include "Debug/Assert.h"
+#include "Render/VulkanBase/VulkanCommandBuffer.h"
 #include "Render/VulkanBase/VulkanDevice.h"
 #include "Render/VulkanBase/VulkanCommon.h"
+#include "Render/VulkanBase/VulkanImage.h"
 
 namespace GE {
 
@@ -149,6 +151,17 @@ void RenderTarget::CreateDepthBuffer() {
         vk::ImageViewType::e2D,
         depthFormat,
         0, 0, 1, 1);  // baseMip, baseArray, mipLevels, arrayLayers
+
+    // 布局转换：UNDEFINED → DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+    // 深度图像创建后初始布局为 UNDEFINED，首次用作 depth attachment 前必须转换
+    auto &uploadCmd = m_Device.RequestCommandBuffer(vk::CommandBufferLevel::ePrimary, true);
+    image_utils::TransitionLayout(uploadCmd.GetHandle(), m_DepthImage->GetHandle(),
+                                  vk::ImageLayout::eUndefined,
+                                  vk::ImageLayout::eDepthStencilAttachmentOptimal);
+    uploadCmd.End();
+
+    auto &graphicsQueue = m_Device.GetQueueByFlags(vk::QueueFlagBits::eGraphics, 0);
+    m_Device.FlushCommandBuffer(uploadCmd, graphicsQueue.GetHandle());
 }
 
 vk::Format RenderTarget::PickDepthFormat() const {

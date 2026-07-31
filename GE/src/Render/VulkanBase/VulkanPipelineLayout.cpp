@@ -64,10 +64,17 @@ VulkanPipelineLayout::VulkanPipelineLayout(VulkanDevice &device, const std::vect
         }
     }
 
-    // 将按名称索引的资源按 set 分组
+    // 将按名称索引的描述符资源按 set 分组
     for (auto &it : m_ShaderResources)
     {
         auto &shader_resource = it.second;
+
+        // 只对描述符类型的资源进行 set 分组，
+        // Input/Output/PushConstant/SpecializationConstant 不参与 descriptor set layout 构建
+        if (!IsDescriptorResourceType(shader_resource.type))
+        {
+            continue;
+        }
 
         auto it2 = m_ShaderSets.find(shader_resource.set);
 
@@ -90,17 +97,24 @@ VulkanPipelineLayout::VulkanPipelineLayout(VulkanDevice &device, const std::vect
                 shader_set_it.first, m_ShaderModules, shader_set_it.second));
     }
 
-    // 收集所有 descriptor set layout 句柄，按 set 顺序排列
-    std::vector<vk::DescriptorSetLayout> descriptor_set_layout_handles;
+    // 收集所有 descriptor set layout 句柄，严格按 set 编号从小到大排列
+    // 注意：m_ShaderSets 是 unordered_map，遍历顺序不确定，因此必须按 set index 排序
+    // 对于缺失的 set 编号，用 VK_NULL_HANDLE 占位以保证数组索引 == set 编号
+    uint32_t max_set = 0;
+    for (auto &layout : m_DescriptorSetLayouts)
+    {
+        if (layout && layout->GetIndex() > max_set)
+        {
+            max_set = layout->GetIndex();
+        }
+    }
+
+    std::vector<vk::DescriptorSetLayout> descriptor_set_layout_handles(max_set + 1, VK_NULL_HANDLE);
     for (auto &layout : m_DescriptorSetLayouts)
     {
         if (layout)
         {
-            descriptor_set_layout_handles.push_back(layout->GetHandle());
-        }
-        else
-        {
-            descriptor_set_layout_handles.push_back(VK_NULL_HANDLE);
+            descriptor_set_layout_handles[layout->GetIndex()] = layout->GetHandle();
         }
     }
 

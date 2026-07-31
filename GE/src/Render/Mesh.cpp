@@ -40,10 +40,10 @@ static std::unique_ptr<VulkanBuffer> UploadBuffer(
     copyRegion.size = size;
     cmd.GetHandle().copyBuffer(staging.GetHandle(), dst->GetHandle(), copyRegion);
 
-    // 提交并等待完成
+    // 提交并等待完成（按 command buffer 所属队列族提交）
     cmd.End();
-    auto &gfxQueue = device.GetQueueByFlags(vk::QueueFlagBits::eGraphics, 0);
-    device.FlushCommandBuffer(cmd, gfxQueue.GetHandle());
+    auto &queue = device.GetQueue(cmd.GetQueueFamilyIndex());
+    device.FlushCommandBuffer(cmd, queue.GetHandle());
 
     // staging buffer 在此处自动析构
     return dst;

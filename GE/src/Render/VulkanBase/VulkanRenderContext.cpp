@@ -74,7 +74,7 @@ void VulkanRenderContext::InitializeSwapchain(vk::SurfaceKHR surface,
 // 帧循环
 // ============================================================================
 
-std::shared_ptr<VulkanCommandBuffer> VulkanRenderContext::Begin(CommandBufferResetMode reset_mode) {
+VulkanCommandBuffer &VulkanRenderContext::Begin(CommandBufferResetMode reset_mode) {
     assert(m_Prepared && "VulkanRenderContext 未准备渲染，请先调用 Prepare()");
 
     if (!m_FrameActive) {
@@ -86,7 +86,7 @@ std::shared_ptr<VulkanCommandBuffer> VulkanRenderContext::Begin(CommandBufferRes
     }
 
     const auto &queue = m_Device.GetQueueByFlags(vk::QueueFlagBits::eGraphics, 0);
-    auto cmd = GetActiveFrame().GetCommandPool(queue, reset_mode).RequestCommandBuffer();
+    auto &cmd = GetActiveFrame().GetCommandPool(queue, reset_mode).RequestCommandBuffer();
     return cmd;
 }
 

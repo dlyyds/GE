@@ -262,13 +262,13 @@ void VulkanDevice::AddQueue(size_t global_index, uint32_t family_index,
 // RequestCommandBuffer
 // ============================================================================
 
-std::shared_ptr<VulkanCommandBuffer> VulkanDevice::RequestCommandBuffer(
+VulkanCommandBuffer &VulkanDevice::RequestCommandBuffer(
     vk::CommandBufferLevel level, bool begin) {
     assert(m_CommandPool && "No command pool exists in the device");
 
-    auto cmd = m_CommandPool->RequestCommandBuffer(level);
+    auto &cmd = m_CommandPool->RequestCommandBuffer(level);
     if (begin) {
-        cmd->Begin(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
+        cmd.Begin(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
     }
     return cmd;
 }
@@ -277,14 +277,14 @@ std::shared_ptr<VulkanCommandBuffer> VulkanDevice::RequestCommandBuffer(
 // FlushCommandBuffer
 // ============================================================================
 
-void VulkanDevice::FlushCommandBuffer(std::shared_ptr<VulkanCommandBuffer> const &command_buffer,
+void VulkanDevice::FlushCommandBuffer(const VulkanCommandBuffer &command_buffer,
                                       vk::Queue queue,
                                       vk::Semaphore signal_semaphore) const {
-    if (!command_buffer || !command_buffer->HasHandle()) {
+    if (!command_buffer.HasHandle()) {
         return;
     }
 
-    vk::CommandBuffer native = command_buffer->GetHandle();
+    vk::CommandBuffer native = command_buffer.GetHandle();
 
     vk::SubmitInfo submit_info{
         .commandBufferCount = 1,
@@ -308,7 +308,6 @@ void VulkanDevice::FlushCommandBuffer(std::shared_ptr<VulkanCommandBuffer> const
     }
 
     GetHandle().destroyFence(fence);
-    // shared_ptr 超出作用域后自动归还 command buffer 到 pool
 }
 
 // ============================================================================

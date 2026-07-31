@@ -99,10 +99,11 @@ public:
     /**
      * @brief 准备下一帧用于渲染。
      * @param reset_mode 如何重置 command buffer
-     * @return 有效的 command buffer 句柄，用于录制提交命令。
+     * @return 有效的 command buffer 引用，用于录制提交命令。
      *         同时确保当前帧已激活（若尚未激活）。
+     *         生命周期跟随当前帧的 command pool。
      */
-    std::shared_ptr<VulkanCommandBuffer> Begin(CommandBufferResetMode reset_mode = CommandBufferResetMode::ResetPool);
+    VulkanCommandBuffer &Begin(CommandBufferResetMode reset_mode = CommandBufferResetMode::ResetPool);
 
     /**
      * @brief 开始新帧（acquire next image，处理 surface 变化）。

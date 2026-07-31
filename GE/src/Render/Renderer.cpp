@@ -46,7 +46,7 @@ Renderer::~Renderer() {
 
     // 2. 按构造逆序销毁
     m_2DRenderer.reset();
-    m_ActiveFrameCmd.reset();
+    m_ActiveFrameCmd = nullptr; // 仅为观察指针，实际由 RenderContext 所有
     m_RenderContext.reset();
     m_VulkanContext.reset();
 
@@ -63,7 +63,7 @@ VulkanCommandBuffer &Renderer::BeginFrame() {
     ZoneScopedN("Renderer::BeginFrame");
 
     // 1. Acquire next image + 获取 command buffer
-    m_ActiveFrameCmd = m_RenderContext->Begin();
+    m_ActiveFrameCmd = &m_RenderContext->Begin();
 
     // 2. Begin command buffer
     m_ActiveFrameCmd->Begin(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
@@ -105,8 +105,8 @@ void Renderer::EndFrame() {
         m_RenderContext->SubmitAndPresent(m_ActiveFrameCmd->GetHandle());
     }
 
-    // 4. 重置当前帧 command buffer
-    m_ActiveFrameCmd.reset();
+    // 4. 重置当前帧 command buffer（仅置空观察指针）
+    m_ActiveFrameCmd = nullptr;
 }
 
 bool Renderer::RecreateSwapchain(uint32_t width, uint32_t height) {
@@ -143,6 +143,7 @@ const VulkanSwapchain &Renderer::GetSwapchain() {
 }
 
 VulkanCommandBuffer &Renderer::GetFrameCmd() {
+    GE_CORE_ASSERT(Get().m_ActiveFrameCmd, "No active frame command buffer!");
     return *Get().m_ActiveFrameCmd;
 }
 

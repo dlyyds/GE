@@ -30,7 +30,7 @@ VulkanCommandPool::VulkanCommandPool(VulkanCommandPool &&other) noexcept :
 
 VulkanCommandPool::~VulkanCommandPool() {
     if (m_Handle) {
-        // 先释放所有 command buffer（shared_ptr 析构会调用 freeCommandBuffers）
+        // 先释放所有 command buffer（unique_ptr 析构会调用 freeCommandBuffers）
         m_PrimaryCommandBuffers.clear();
         m_SecondaryCommandBuffers.clear();
 
@@ -39,20 +39,21 @@ VulkanCommandPool::~VulkanCommandPool() {
     }
 }
 
-std::shared_ptr<VulkanCommandBuffer> VulkanCommandPool::RequestCommandBuffer(vk::CommandBufferLevel level) {
+VulkanCommandBuffer &VulkanCommandPool::RequestCommandBuffer(vk::CommandBufferLevel level) {
     auto &pool = (level == vk::CommandBufferLevel::ePrimary) ? m_PrimaryCommandBuffers : m_SecondaryCommandBuffers;
     auto &activeCount = (level == vk::CommandBufferLevel::ePrimary) ? m_ActivePrimaryCount : m_ActiveSecondaryCount;
 
     // 如果有回收的 command buffer，直接复用
     if (activeCount < pool.size()) {
-        return pool[activeCount++];
+        return *pool[activeCount++];
     }
 
     // 否则分配新的
-    auto cmd = std::make_shared<VulkanCommandBuffer>(*this, level);
-    pool.push_back(cmd);
+    auto cmd = std::make_unique<VulkanCommandBuffer>(*this, level);
+    auto &ref = *cmd;
+    pool.push_back(std::move(cmd));
     activeCount++;
-    return cmd;
+    return ref;
 }
 
 void VulkanCommandPool::ResetPool() {

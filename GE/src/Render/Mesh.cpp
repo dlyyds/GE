@@ -34,14 +34,14 @@ static std::unique_ptr<VulkanBuffer> UploadBuffer(
         .build_unique(device);
 
     // 获取临时 command buffer
-    auto cmd = device.RequestCommandBuffer(vk::CommandBufferLevel::ePrimary, true);
+    auto &cmd = device.RequestCommandBuffer(vk::CommandBufferLevel::ePrimary, true);
 
     vk::BufferCopy copyRegion{};
     copyRegion.size = size;
-    cmd->GetHandle().copyBuffer(staging.GetHandle(), dst->GetHandle(), copyRegion);
+    cmd.GetHandle().copyBuffer(staging.GetHandle(), dst->GetHandle(), copyRegion);
 
     // 提交并等待完成
-    cmd->End();
+    cmd.End();
     auto &gfxQueue = device.GetQueueByFlags(vk::QueueFlagBits::eGraphics, 0);
     device.FlushCommandBuffer(cmd, gfxQueue.GetHandle());
 

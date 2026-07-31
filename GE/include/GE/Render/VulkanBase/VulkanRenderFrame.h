@@ -39,7 +39,7 @@
  *
  *   // 获取 command buffer
  *   auto &cmd_pool = frame.GetCommandPool(queue, CommandBufferResetMode::ResetPool, 0);
- *   auto cmd = cmd_pool.RequestCommandBuffer();
+ *   auto &cmd = cmd_pool.RequestCommandBuffer();
  *
  *   // 请求 descriptor set
  *   auto desc_set = frame.RequestDescriptorSet(layout, buffer_infos, image_infos, false, 0);

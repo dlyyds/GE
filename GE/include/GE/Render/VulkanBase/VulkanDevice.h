@@ -108,17 +108,18 @@ public:
     // Buffer / Image 工具
     // =================================================================
 
-    /// @brief 从内建 command pool 请求一个 command buffer（封装后，自动管理生命周期）。
+    /// @brief 从内建 command pool 请求一个 command buffer（pool 为唯一所有者）。
     /// @param level  Command buffer 级别
     /// @param begin  是否立即开始录制
-    [[nodiscard]] std::shared_ptr<VulkanCommandBuffer> RequestCommandBuffer(
+    /// @return command buffer 引用，生命周期跟随内建 command pool。
+    [[nodiscard]] VulkanCommandBuffer &RequestCommandBuffer(
         vk::CommandBufferLevel level = vk::CommandBufferLevel::ePrimary, bool begin = false);
 
     /// @brief 提交 command buffer、等待完成。
     /// @param command_buffer     要刷新的 command buffer
     /// @param queue              提交到的队列
     /// @param signal_semaphore   可选，提交时 signal 的信号量
-    void FlushCommandBuffer(std::shared_ptr<VulkanCommandBuffer> const &command_buffer,
+    void FlushCommandBuffer(const VulkanCommandBuffer &command_buffer,
                             vk::Queue queue,
                             vk::Semaphore signal_semaphore = nullptr) const;
 
@@ -149,7 +150,7 @@ public:
     bool IsExtensionEnabled(const char *extension) const;
 
     /// @brief 重置内建 command pool，释放所有已分配的 command buffer。
-    /// 调用后之前从 RequestCommandBuffer 获取的 shared_ptr 全部失效。
+    /// 调用后之前从 RequestCommandBuffer 获取的引用全部失效。
     void ResetCommandPool();
 
     /// @brief 等待设备空闲（调试/析构时使用，性能敏感路径避免调用）

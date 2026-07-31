@@ -99,8 +99,8 @@ private:
     /// 帧管理器（swapchain / RenderFrame 池 / 提交呈现）。
     std::unique_ptr<VulkanRenderContext> m_RenderContext;
 
-    /// 当前帧的 command buffer（每帧由 BeginFrame 设置，EndFrame 后重置）。
-    std::shared_ptr<VulkanCommandBuffer> m_ActiveFrameCmd;
+    /// 当前帧的 command buffer（每帧由 BeginFrame 设置，EndFrame 后置空；由 RenderContext 所有）。
+    VulkanCommandBuffer *m_ActiveFrameCmd = nullptr;
 
     /// 2D 精灵渲染器。
     std::unique_ptr<Renderer2D> m_2DRenderer;

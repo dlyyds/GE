@@ -141,10 +141,10 @@ void Texture::UploadPixels(VulkanDevice &device, const void *pixels,
     vk::Queue gfxQueue = graphicsQueue.GetHandle();
 
     // 获取临时 command buffer
-    auto uploadCmd = device.RequestCommandBuffer(vk::CommandBufferLevel::ePrimary, true);
+    auto &uploadCmd = device.RequestCommandBuffer(vk::CommandBufferLevel::ePrimary, true);
 
     // 布局转换：UNDEFINED -> TRANSFER_DST
-    image_utils::TransitionLayout(uploadCmd->GetHandle(), m_Image->GetHandle(),
+    image_utils::TransitionLayout(uploadCmd.GetHandle(), m_Image->GetHandle(),
                                   vk::ImageLayout::eUndefined,
                                   vk::ImageLayout::eTransferDstOptimal);
 
@@ -160,16 +160,16 @@ void Texture::UploadPixels(VulkanDevice &device, const void *pixels,
     copyRegion.imageOffset               = vk::Offset3D{0, 0, 0};
     copyRegion.imageExtent               = vk::Extent3D{width, height, 1};
 
-    uploadCmd->GetHandle().copyBufferToImage(stagingBuffer.GetHandle(), m_Image->GetHandle(),
-                                             vk::ImageLayout::eTransferDstOptimal, copyRegion);
+    uploadCmd.GetHandle().copyBufferToImage(stagingBuffer.GetHandle(), m_Image->GetHandle(),
+                                            vk::ImageLayout::eTransferDstOptimal, copyRegion);
 
     // 布局转换：TRANSFER_DST -> SHADER_READ_ONLY
-    image_utils::TransitionLayout(uploadCmd->GetHandle(), m_Image->GetHandle(),
+    image_utils::TransitionLayout(uploadCmd.GetHandle(), m_Image->GetHandle(),
                                   vk::ImageLayout::eTransferDstOptimal,
                                   vk::ImageLayout::eShaderReadOnlyOptimal);
 
     // 提交并等待完成
-    uploadCmd->End();
+    uploadCmd.End();
     device.FlushCommandBuffer(uploadCmd, gfxQueue);
 
     // staging buffer 在此处自动析构

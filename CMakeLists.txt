@@ -143,6 +143,7 @@ set(Sandbox_SRC
         ${CMAKE_SOURCE_DIR}/sandbox/SandboxApp.cpp
         ${CMAKE_SOURCE_DIR}/sandbox/TriangleLayer.cpp
         ${CMAKE_SOURCE_DIR}/sandbox/TextureLayer.cpp
+        ${CMAKE_SOURCE_DIR}/sandbox/ModelTestLayer.cpp
 )
 
 add_executable(${Sandbox_NAME} ${Sandbox_SRC})

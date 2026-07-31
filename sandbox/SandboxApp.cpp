@@ -8,6 +8,7 @@
 
 #include "TriangleLayer.h"
 #include "TextureLayer.h"
+#include "ModelTestLayer.h"
 
 namespace GE {
 class Sandbox : public Application {
@@ -18,7 +19,8 @@ public:
         //PushLayer(std::make_shared<TextureSampleLayer>());
         //PushLayer(std::make_shared<VulkanLayer>());
         //PushLayer(std::make_shared<TriangleLayer>());
-        PushLayer(std::make_shared<TextureLayer>());
+        //PushLayer(std::make_shared<TextureLayer>());
+        PushLayer(std::make_shared<ModelTestLayer>());
     }
 
     ~Sandbox() override = default;

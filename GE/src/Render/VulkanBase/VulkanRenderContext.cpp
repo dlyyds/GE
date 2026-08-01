@@ -101,6 +101,10 @@ void VulkanRenderContext::BeginFrame() {
 
     auto &prev_frame = *m_Frames[m_ActiveFrameIndex];
 
+    // 先等待上一帧 GPU 完全完成，确保从 prev_frame 池里拿的 semaphore 没有未完成的 GPU 操作
+    // （只需等 fence，不重置资源；等 acquire 到正确的 frame index 后再重置对应的帧）
+    prev_frame.GetFencePool().Wait();
+
     // 获取 acquire semaphore（所有权转移，供不同帧上下文使用）
     m_AcquiredSemaphore = prev_frame.GetSemaphorePool().RequestSemaphoreWithOwnership("AcquireSemaphore");
 

@@ -61,12 +61,12 @@ vk::Semaphore VulkanSemaphorePool::RequestSemaphore(const char *debug_name) {
 VulkanSemaphore VulkanSemaphorePool::RequestSemaphoreWithOwnership(const char *debug_name) {
     // 优先复用已归还所有权的 semaphore，避免每帧新建导致泄漏
     if (!m_ReleasedSemaphores.empty()) {
-        auto sem = std::move(m_ReleasedSemaphores.back());
+        VulkanSemaphore sem = std::move(m_ReleasedSemaphores.back());
         m_ReleasedSemaphores.pop_back();
-        return sem;
+        return std::move(sem);
     }
 
-    // 没有可复用的，新建一个
+    // 没有可复用的，新建一个（纯右值，直接构造在返回值上，无拷贝）
     if (debug_name) {
         return VulkanSemaphore(m_Device, vk::SemaphoreType::eBinary, 0, debug_name);
     }

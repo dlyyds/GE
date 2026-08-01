@@ -188,9 +188,9 @@ void VulkanRenderContext::Present(vk::Semaphore semaphore) {
 
 VulkanSemaphore VulkanRenderContext::ConsumeAcquiredSemaphore() {
     assert(m_FrameActive && "帧未激活，请先调用 BeginFrame");
-    auto sem = std::move(*m_AcquiredSemaphore);
+    VulkanSemaphore sem = std::move(*m_AcquiredSemaphore);
     m_AcquiredSemaphore.reset();
-    return sem;
+    return std::move(sem);
 }
 
 VulkanRenderFrame &VulkanRenderContext::GetActiveFrame() {

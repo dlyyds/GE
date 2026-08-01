@@ -110,6 +110,26 @@ struct ShaderResource
     std::string name;
 };
 
+/// 判断给定的 ShaderResourceType 是否为描述符类型，
+/// 即是否参与 descriptor set layout 的构建。
+/// Input / Output / PushConstant / SpecializationConstant / All 不属于描述符资源。
+inline bool IsDescriptorResourceType(ShaderResourceType type)
+{
+    switch (type)
+    {
+        case ShaderResourceType::InputAttachment:
+        case ShaderResourceType::Image:
+        case ShaderResourceType::ImageSampler:
+        case ShaderResourceType::ImageStorage:
+        case ShaderResourceType::Sampler:
+        case ShaderResourceType::BufferUniform:
+        case ShaderResourceType::BufferStorage:
+            return true;
+        default:
+            return false;
+    }
+}
+
 /// 返回给定 Vulkan 顶点格式的字节大小（用于顶点属性 offset/stride 计算）。
 /// 仅支持常用的 32/64-bit 标量/向量格式，其他返回 0。
 inline uint32_t GetVertexFormatSize(vk::Format format)

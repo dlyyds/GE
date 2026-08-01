@@ -37,5 +37,6 @@ template class VulkanResourceBase<vk::ImageView>;
 template class VulkanResourceBase<vk::PipelineLayout>;
 template class VulkanResourceBase<vk::Pipeline>;
 template class VulkanResourceBase<vk::Sampler>;
+template class VulkanResourceBase<vk::Semaphore>;
 
 } // namespace GE

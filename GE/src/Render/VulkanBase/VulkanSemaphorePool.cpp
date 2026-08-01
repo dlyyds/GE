@@ -71,6 +71,15 @@ vk::Semaphore VulkanSemaphorePool::RequestSemaphore(const char *debug_name) {
 
 vk::Semaphore VulkanSemaphorePool::RequestSemaphoreWithOwnership(const char *debug_name) {
     auto vkDevice = m_Device.GetHandle();
+
+    // 优先复用已归还所有权的 semaphore，避免每帧新建导致泄漏
+    if (!m_ReleasedSemaphores.empty()) {
+        auto sem = m_ReleasedSemaphores.back();
+        m_ReleasedSemaphores.pop_back();
+        return sem;
+    }
+
+    // 没有可复用的，新建一个
     auto sem = vkDevice.createSemaphore(vk::SemaphoreCreateInfo{});
 
     // 设置 Debug Name

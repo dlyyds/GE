@@ -124,6 +124,9 @@ void VulkanRenderContext::BeginFrame() {
         }
 
         if (result != vk::Result::eSuccess) {
+            // 归还已申请的 acquire semaphore，防止泄漏
+            prev_frame.GetSemaphorePool().ReleaseOwnedSemaphore(m_AcquiredSemaphore);
+            m_AcquiredSemaphore = nullptr;
             prev_frame.Reset();
             return;
         }

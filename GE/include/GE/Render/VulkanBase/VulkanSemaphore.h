@@ -69,7 +69,7 @@ public:
 
     VulkanSemaphore &operator=(const VulkanSemaphore &) = delete;
 
-    VulkanSemaphore &operator=(VulkanSemaphore &&) = delete;
+    VulkanSemaphore &operator=(VulkanSemaphore &&other) noexcept;
 
     /**
      * @brief 获取信号量类型。

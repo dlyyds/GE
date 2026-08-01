@@ -62,6 +62,23 @@ VulkanSemaphore::VulkanSemaphore(VulkanSemaphore &&other) noexcept
     other.SetHandle(nullptr);
 }
 
+VulkanSemaphore &VulkanSemaphore::operator=(VulkanSemaphore &&other) noexcept {
+    if (this != &other) {
+        // 先销毁自己持有的 semaphore
+        if (GetHandle()) {
+            GetDevice().GetHandle().destroySemaphore(GetHandle());
+        }
+        // 移动基类资源（句柄、device、debug_name）
+        VulkanResourceBase<vk::Semaphore>::operator=(std::move(other));
+        // 移动派生类成员
+        m_Type         = other.m_Type;
+        m_InitialValue = other.m_InitialValue;
+        // 源对象置空
+        other.SetHandle(nullptr);
+    }
+    return *this;
+}
+
 VulkanSemaphore::~VulkanSemaphore() {
     if (GetHandle()) {
         GetDevice().GetHandle().destroySemaphore(GetHandle());

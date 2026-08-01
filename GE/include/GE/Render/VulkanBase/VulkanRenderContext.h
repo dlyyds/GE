@@ -135,7 +135,7 @@ public:
     // ========================================================================
 
     /**
-     * @brief 获取并消费 WSI acquire semaphore（所有权转移）。仅在特殊情况下使用。
+     * @brief 获取并消费当前帧的 WSI acquire semaphore（所有权转移）。仅在特殊情况下使用。
      * @return WSI acquire semaphore（调用方拥有所有权）。
      */
     VulkanSemaphore ConsumeAcquiredSemaphore();
@@ -282,14 +282,20 @@ private:
                              const std::vector<vk::PresentModeKHR> &present_mode_priority_list,
                              const std::vector<vk::SurfaceFormatKHR> &surface_format_priority_list);
 
+    /**
+     * @brief 重置一个 RenderFrame：归还其 acquire semaphore 到全局池，再重置帧资源。
+     * @param frame 要重置的帧
+     */
+    void ResetFrame(VulkanRenderFrame &frame);
+
     // ========================================================================
     // 成员变量
     // ========================================================================
 
-    std::optional<VulkanSemaphore> m_AcquiredSemaphore; ///< WSI acquire semaphore（带所有权）
     uint32_t m_ActiveFrameIndex{0};
     VulkanDevice &m_Device;
     bool m_FrameActive{false};
+    VulkanSemaphorePool m_AcquireSemaphorePool;  ///< 全局 acquire semaphore 池（所有 frame 共用）
     std::vector<std::unique_ptr<VulkanRenderFrame> > m_Frames;
     vk::SurfaceTransformFlagBitsKHR m_PreTransform{vk::SurfaceTransformFlagBitsKHR::eIdentity};
     bool m_Prepared{false};

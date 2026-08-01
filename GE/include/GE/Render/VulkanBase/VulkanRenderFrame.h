@@ -230,6 +230,26 @@ public:
     VulkanResourceCache &GetResourceCache() { return m_Device.GetResourceCache(); }
     const VulkanResourceCache &GetResourceCache() const { return m_Device.GetResourceCache(); }
 
+    /**
+     * @brief 获取本帧持有的 acquire semaphore。
+     * @return 若持有则返回 semaphore 引用，否则行为未定义。
+     */
+    VulkanSemaphore &GetAcquireSemaphore() { return *m_AcquiredSemaphore; }
+    const VulkanSemaphore &GetAcquireSemaphore() const { return *m_AcquiredSemaphore; }
+
+    /** @brief 是否持有 acquire semaphore。 */
+    bool HasAcquireSemaphore() const { return m_AcquiredSemaphore.has_value(); }
+
+    /** @brief 设置本帧的 acquire semaphore（移入所有权）。 */
+    void SetAcquireSemaphore(VulkanSemaphore sem) { m_AcquiredSemaphore = std::move(sem); }
+
+    /** @brief 取出本帧的 acquire semaphore（移出所有权，本帧变空）。 */
+    VulkanSemaphore TakeAcquireSemaphore() {
+        VulkanSemaphore sem = std::move(*m_AcquiredSemaphore);
+        m_AcquiredSemaphore.reset();
+        return sem;
+    }
+
 private:
     // ========================================================================
     // 内部实现
@@ -265,6 +285,7 @@ private:
 
     VulkanFencePool m_FencePool;
     VulkanSemaphorePool m_SemaphorePool;
+    std::optional<VulkanSemaphore> m_AcquiredSemaphore;  ///< 本帧持有的 WSI acquire semaphore（带所有权）
     std::unique_ptr<RenderTarget> m_RenderTarget;
 
     size_t m_ThreadCount{1};

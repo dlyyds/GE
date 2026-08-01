@@ -39,11 +39,13 @@
 #include "Render/VulkanBase/VulkanDevice.h"
 #include "Render/VulkanBase/VulkanQueue.h"
 #include "Render/VulkanBase/VulkanRenderFrame.h"
+#include "Render/VulkanBase/VulkanSemaphore.h"
 #include "Render/VulkanBase/VulkanSwapchain.h"
 
 #include <vulkan/vulkan.hpp>
 
 #include <memory>
+#include <optional>
 #include <vector>
 
 namespace GE {
@@ -133,10 +135,10 @@ public:
     // ========================================================================
 
     /**
-     * @brief 获取 WSI acquire semaphore。仅在特殊情况下使用。
-     * @return WSI acquire semaphore。
+     * @brief 获取并消费 WSI acquire semaphore（所有权转移）。仅在特殊情况下使用。
+     * @return WSI acquire semaphore（调用方拥有所有权）。
      */
-    vk::Semaphore ConsumeAcquiredSemaphore();
+    VulkanSemaphore ConsumeAcquiredSemaphore();
 
     /**
      * @brief 获取当前活跃帧。
@@ -242,11 +244,11 @@ public:
     // Semaphore 辅助
     // ========================================================================
 
-    void ReleaseOwnedSemaphore(vk::Semaphore semaphore);
+    void ReleaseOwnedSemaphore(VulkanSemaphore semaphore);
 
     vk::Semaphore RequestSemaphore();
 
-    vk::Semaphore RequestSemaphoreWithOwnership();
+    VulkanSemaphore RequestSemaphoreWithOwnership();
 
     // ========================================================================
     // 提交
@@ -284,7 +286,7 @@ private:
     // 成员变量
     // ========================================================================
 
-    vk::Semaphore m_AcquiredSemaphore{nullptr};
+    std::optional<VulkanSemaphore> m_AcquiredSemaphore; ///< WSI acquire semaphore（带所有权）
     uint32_t m_ActiveFrameIndex{0};
     VulkanDevice &m_Device;
     bool m_FrameActive{false};

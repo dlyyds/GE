@@ -81,7 +81,7 @@ VulkanCommandBuffer &VulkanRenderContext::Begin(CommandBufferResetMode reset_mod
         BeginFrame();
     }
 
-    if (!m_AcquiredSemaphore) {
+    if (!m_AcquiredSemaphore.has_value()) {
         throw std::runtime_error("无法开始帧：没有有效的 acquire semaphore");
     }
 
@@ -107,7 +107,7 @@ void VulkanRenderContext::BeginFrame() {
     if (m_Swapchain) {
         vk::Result result;
         try {
-            std::tie(result, m_ActiveFrameIndex) = m_Swapchain->AcquireNextImage(m_AcquiredSemaphore);
+            std::tie(result, m_ActiveFrameIndex) = m_Swapchain->AcquireNextImage(m_AcquiredSemaphore->GetHandle());
         } catch (vk::OutOfDateKHRError & /*err*/) {
             result = vk::Result::eErrorOutOfDateKHR;
         }
@@ -117,16 +117,16 @@ void VulkanRenderContext::BeginFrame() {
 
             if (swapchain_updated) {
                 // 需要销毁并重新分配 acquired_semaphore，因为它可能已被 signal
-                m_Device.GetHandle().destroySemaphore(m_AcquiredSemaphore);
+                m_AcquiredSemaphore.reset();
                 m_AcquiredSemaphore = prev_frame.GetSemaphorePool().RequestSemaphoreWithOwnership("AcquireSemaphore");
-                std::tie(result, m_ActiveFrameIndex) = m_Swapchain->AcquireNextImage(m_AcquiredSemaphore);
+                std::tie(result, m_ActiveFrameIndex) = m_Swapchain->AcquireNextImage(m_AcquiredSemaphore->GetHandle());
             }
         }
 
         if (result != vk::Result::eSuccess) {
             // 归还已申请的 acquire semaphore，防止泄漏
-            prev_frame.GetSemaphorePool().ReleaseOwnedSemaphore(m_AcquiredSemaphore);
-            m_AcquiredSemaphore = nullptr;
+            prev_frame.GetSemaphorePool().ReleaseOwnedSemaphore(std::move(*m_AcquiredSemaphore));
+            m_AcquiredSemaphore.reset();
             prev_frame.Reset();
             return;
         }
@@ -175,9 +175,9 @@ void VulkanRenderContext::Present(vk::Semaphore semaphore) {
     }
 
     // 帧不再活跃
-    if (m_AcquiredSemaphore) {
-        ReleaseOwnedSemaphore(m_AcquiredSemaphore);
-        m_AcquiredSemaphore = nullptr;
+    if (m_AcquiredSemaphore.has_value()) {
+        ReleaseOwnedSemaphore(std::move(*m_AcquiredSemaphore));
+        m_AcquiredSemaphore.reset();
     }
     m_FrameActive = false;
 }
@@ -186,9 +186,11 @@ void VulkanRenderContext::Present(vk::Semaphore semaphore) {
 // 帧管理
 // ============================================================================
 
-vk::Semaphore VulkanRenderContext::ConsumeAcquiredSemaphore() {
+VulkanSemaphore VulkanRenderContext::ConsumeAcquiredSemaphore() {
     assert(m_FrameActive && "帧未激活，请先调用 BeginFrame");
-    return std::exchange(m_AcquiredSemaphore, nullptr);
+    auto sem = std::move(*m_AcquiredSemaphore);
+    m_AcquiredSemaphore.reset();
+    return sem;
 }
 
 VulkanRenderFrame &VulkanRenderContext::GetActiveFrame() {
@@ -397,15 +399,15 @@ void VulkanRenderContext::UpdateSwapchain(const vk::Extent2D &extent, vk::Surfac
 // Semaphore 辅助
 // ============================================================================
 
-void VulkanRenderContext::ReleaseOwnedSemaphore(vk::Semaphore semaphore) {
-    GetActiveFrame().GetSemaphorePool().ReleaseOwnedSemaphore(semaphore);
+void VulkanRenderContext::ReleaseOwnedSemaphore(VulkanSemaphore semaphore) {
+    GetActiveFrame().GetSemaphorePool().ReleaseOwnedSemaphore(std::move(semaphore));
 }
 
 vk::Semaphore VulkanRenderContext::RequestSemaphore() {
     return GetActiveFrame().GetSemaphorePool().RequestSemaphore();
 }
 
-vk::Semaphore VulkanRenderContext::RequestSemaphoreWithOwnership() {
+VulkanSemaphore VulkanRenderContext::RequestSemaphoreWithOwnership() {
     return GetActiveFrame().GetSemaphorePool().RequestSemaphoreWithOwnership();
 }
 
@@ -424,8 +426,8 @@ void VulkanRenderContext::EndFrame(const std::vector<vk::CommandBuffer> &command
     vk::Semaphore render_semaphore = nullptr;
 
     if (m_Swapchain) {
-        assert(m_AcquiredSemaphore && "没有 acquired_semaphore，可能已被 consume？");
-        render_semaphore = Submit(m_Queue, command_buffers, m_AcquiredSemaphore,
+        assert(m_AcquiredSemaphore.has_value() && "没有 acquired_semaphore，可能已被 consume？");
+        render_semaphore = Submit(m_Queue, command_buffers, m_AcquiredSemaphore->GetHandle(),
                                   vk::PipelineStageFlagBits::eColorAttachmentOutput);
     }
 
@@ -477,10 +479,9 @@ VulkanRenderContext::~VulkanRenderContext() {
     if (m_FrameActive) {
         m_FrameActive = false;
     }
-    if (m_AcquiredSemaphore) {
-        m_Device.GetHandle().destroySemaphore(m_AcquiredSemaphore);
-        m_AcquiredSemaphore = nullptr;
-    }
+    // m_AcquiredSemaphore 是 RAII 对象（std::optional<VulkanSemaphore>），
+    // 重置或销毁时会自动释放底层 Vulkan semaphore，无需手动 destroy
+    m_AcquiredSemaphore.reset();
 
     m_Frames.clear();
     m_Swapchain.reset();

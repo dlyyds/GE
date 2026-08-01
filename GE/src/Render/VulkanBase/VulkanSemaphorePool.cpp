@@ -17,7 +17,6 @@
 
 #include "Render/VulkanBase/VulkanSemaphorePool.h"
 #include "Render/VulkanBase/VulkanDevice.h"
-#include "Render/VulkanBase/VulkanDebug.h"
 
 #include <format>
 
@@ -28,11 +27,7 @@ VulkanSemaphorePool::VulkanSemaphorePool(VulkanDevice &device) : m_Device(device
 
 VulkanSemaphorePool::~VulkanSemaphorePool() {
     Reset();
-    auto vkDevice = m_Device.GetHandle();
-    for (auto sem : m_Semaphores) {
-        vkDevice.destroySemaphore(sem);
-    }
-
+    // VulkanSemaphore 的析构函数会自动销毁 semaphore，无需手动处理
     m_Semaphores.clear();
     m_ReleasedSemaphores.clear();
 }
@@ -40,63 +35,47 @@ VulkanSemaphorePool::~VulkanSemaphorePool() {
 vk::Semaphore VulkanSemaphorePool::RequestSemaphore(const char *debug_name) {
     // 检查是否有已释放的 semaphore（所有权已归还）
     if (!m_ReleasedSemaphores.empty()) {
-        auto sem = m_ReleasedSemaphores.back();
+        auto sem = std::move(m_ReleasedSemaphores.back());
         m_ReleasedSemaphores.pop_back();
-        return sem;
+        m_Semaphores.push_back(std::move(sem));
+        return m_Semaphores[m_ActiveSemaphoreCount++].GetHandle();
     }
 
     // 检查是否有未使用的已分配 semaphore
     if (m_ActiveSemaphoreCount < m_Semaphores.size()) {
-        return m_Semaphores[m_ActiveSemaphoreCount++];
+        return m_Semaphores[m_ActiveSemaphoreCount++].GetHandle();
     }
 
     // 创建新 semaphore
-    auto vkDevice = m_Device.GetHandle();
-    auto sem = vkDevice.createSemaphore(vk::SemaphoreCreateInfo{});
-
-    // 设置 Debug Name
     if (debug_name) {
-        m_Device.GetDebugUtils().SetDebugName(
-            vkDevice, vk::ObjectType::eSemaphore, (uint64_t)static_cast<VkSemaphore>(sem), debug_name);
+        m_Semaphores.emplace_back(m_Device, vk::SemaphoreType::eBinary, 0, debug_name);
     } else {
         auto name = std::format("SemaphorePool_{}", m_Semaphores.size());
-        m_Device.GetDebugUtils().SetDebugName(
-            vkDevice, vk::ObjectType::eSemaphore, (uint64_t)static_cast<VkSemaphore>(sem), name.c_str());
+        m_Semaphores.emplace_back(m_Device, vk::SemaphoreType::eBinary, 0, name.c_str());
     }
 
-    m_Semaphores.push_back(sem);
     m_ActiveSemaphoreCount++;
-    return sem;
+    return m_Semaphores.back().GetHandle();
 }
 
-vk::Semaphore VulkanSemaphorePool::RequestSemaphoreWithOwnership(const char *debug_name) {
-    auto vkDevice = m_Device.GetHandle();
-
+VulkanSemaphore VulkanSemaphorePool::RequestSemaphoreWithOwnership(const char *debug_name) {
     // 优先复用已归还所有权的 semaphore，避免每帧新建导致泄漏
     if (!m_ReleasedSemaphores.empty()) {
-        auto sem = m_ReleasedSemaphores.back();
+        auto sem = std::move(m_ReleasedSemaphores.back());
         m_ReleasedSemaphores.pop_back();
         return sem;
     }
 
     // 没有可复用的，新建一个
-    auto sem = vkDevice.createSemaphore(vk::SemaphoreCreateInfo{});
-
-    // 设置 Debug Name
     if (debug_name) {
-        m_Device.GetDebugUtils().SetDebugName(
-            vkDevice, vk::ObjectType::eSemaphore, (uint64_t)static_cast<VkSemaphore>(sem), debug_name);
-    } else {
-        auto name = std::format("SemaphoreOwned_{}", m_Semaphores.size());
-        m_Device.GetDebugUtils().SetDebugName(
-            vkDevice, vk::ObjectType::eSemaphore, (uint64_t)static_cast<VkSemaphore>(sem), name.c_str());
+        return VulkanSemaphore(m_Device, vk::SemaphoreType::eBinary, 0, debug_name);
     }
-
-    return sem;
+    auto name = std::format("SemaphoreOwned_{}", m_Semaphores.size());
+    return VulkanSemaphore(m_Device, vk::SemaphoreType::eBinary, 0, name.c_str());
 }
 
-void VulkanSemaphorePool::ReleaseOwnedSemaphore(vk::Semaphore semaphore) {
-    m_ReleasedSemaphores.push_back(semaphore);
+void VulkanSemaphorePool::ReleaseOwnedSemaphore(VulkanSemaphore semaphore) {
+    m_ReleasedSemaphores.push_back(std::move(semaphore));
 }
 
 void VulkanSemaphorePool::Reset() {
@@ -104,7 +83,7 @@ void VulkanSemaphorePool::Reset() {
 
     // 将已归还所有权的 semaphore 回收回可用池中
     for (auto &sem : m_ReleasedSemaphores) {
-        m_Semaphores.push_back(sem);
+        m_Semaphores.push_back(std::move(sem));
     }
     m_ReleasedSemaphores.clear();
 }

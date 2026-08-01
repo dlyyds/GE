@@ -17,22 +17,20 @@
 
 /**
  * @file VulkanSemaphorePool.h
- * @brief Vulkan Semaphore 对象池，适配自 Vulkan-Samples 的 HPPSemaphorePool。
+ * @brief Vulkan Semaphore 对象池，基于 VulkanSemaphore RAII 封装。
  *
- * 管理一组 vk::Semaphore 的生命周期，支持按需分配和批量重置。
+ * 管理一组 VulkanSemaphore 的生命周期，支持按需分配和批量重置。
  * 适用于需要每帧提交多个 command buffer 并分别同步的场景。
  */
 
 #pragma once
 
-#include <vulkan/vulkan.hpp>
+#include "Render/VulkanBase/VulkanSemaphore.h"
 
 #include <cstdint>
 #include <vector>
 
 namespace GE {
-
-class VulkanDevice;
 
 /**
  * @brief Vulkan Semaphore 对象池。
@@ -69,15 +67,15 @@ public:
      * @brief 请求一个 semaphore 并转移所有权给调用方。
      *        调用方负责在适当时机销毁返回的 semaphore。
      * @param debug_name 可选的调试名称，传入后在 RenderDoc 中可见。
-     * @return vk::Semaphore 句柄（调用方拥有所有权）。
+     * @return VulkanSemaphore 对象（调用方拥有所有权，RAII 自动销毁）。
      */
-    vk::Semaphore RequestSemaphoreWithOwnership(const char *debug_name = nullptr);
+    VulkanSemaphore RequestSemaphoreWithOwnership(const char *debug_name = nullptr);
 
     /**
      * @brief 归还拥有所有权的 semaphore 到池中。
      * @param semaphore 之前通过 RequestSemaphoreWithOwnership 获取的 semaphore。
      */
-    void ReleaseOwnedSemaphore(vk::Semaphore semaphore);
+    void ReleaseOwnedSemaphore(VulkanSemaphore semaphore);
 
     /**
      * @brief 重置所有 semaphore 为未使用状态。
@@ -91,9 +89,9 @@ public:
 private:
     VulkanDevice &m_Device;
 
-    std::vector<vk::Semaphore> m_Semaphores;       ///< 所有已创建的 semaphore
-    std::vector<vk::Semaphore> m_ReleasedSemaphores; ///< 已归还所有权的 semaphore
-    uint32_t m_ActiveSemaphoreCount{0};             ///< 已分配但未释放的 semaphore 计数
+    std::vector<VulkanSemaphore> m_Semaphores;       ///< 所有已创建的 semaphore（池内管理）
+    std::vector<VulkanSemaphore> m_ReleasedSemaphores; ///< 已归还所有权的 semaphore
+    uint32_t m_ActiveSemaphoreCount{0};               ///< 已分配但未释放的 semaphore 计数
 };
 
 } // namespace GE

@@ -150,21 +150,21 @@ void Renderer3D::EndScene() {
     frameUboAlloc.update(frameUBO);
 
     // ── 2. 为每个网格分配 Object UBO ──────────────────────────────────
-    //    一次性分配一块大 buffer，每个网格占 sizeof(ObjectUBO) 字节
-    size_t totalObjectUBOSize = m_Meshes.size() * sizeof(ObjectUBO);
-    BufferAllocation objectUboAlloc = frame.AllocateBuffer(
-        vk::BufferUsageFlagBits::eUniformBuffer, totalObjectUBOSize);
-
-    std::vector<ObjectUBO> objectUBOs;
-    objectUBOs.reserve(m_Meshes.size());
+    //    每个 UBO 单独从 BufferPool 分配，确保偏移满足
+    //    minUniformBufferOffsetAlignment 对齐要求
+    std::vector<BufferAllocation> objectUboAllocs;
+    objectUboAllocs.reserve(m_Meshes.size());
     for (const auto &instance : m_Meshes) {
         ObjectUBO ubo{};
         ubo.model = instance.transform;
         ubo.lodBias = 0.0f;
         ubo._pad = glm::vec3(0.0f);
-        objectUBOs.push_back(ubo);
+
+        BufferAllocation alloc = frame.AllocateBuffer(
+            vk::BufferUsageFlagBits::eUniformBuffer, sizeof(ObjectUBO));
+        alloc.update(ubo);
+        objectUboAllocs.push_back(std::move(alloc));
     }
-    objectUboAlloc.update(objectUBOs);
 
     // ── 3. 开始动态渲染 ───────────────────────────────────────────────
     //    使用 FromRenderTarget 自动构建颜色 + 深度附件
@@ -273,11 +273,12 @@ void Renderer3D::EndScene() {
     vk::DeviceSize vertexOffset = 0;
     for (size_t i = 0; i < m_Meshes.size(); ++i) {
         const auto &instance = m_Meshes[i];
-        vk::DeviceSize uboOffset = objectUboAlloc.get_offset() + i * sizeof(ObjectUBO);
+        auto &uboAlloc = objectUboAllocs[i];
 
         // 绑定 Object UBO（set 2, binding 0）
-        cmd.BindBuffer(objectUboAlloc.get_buffer(), uboOffset,
-                       sizeof(ObjectUBO), 2, 0);
+        // 每个 UBO 单独分配，offset 天然满足 minUniformBufferOffsetAlignment
+        cmd.BindBuffer(uboAlloc.get_buffer(), uboAlloc.get_offset(),
+                       uboAlloc.get_size(), 2, 0);
 
         // 绑定纹理（set 1, binding 0）
         // 无纹理时使用默认 1x1 白色纹理，避免未定义行为

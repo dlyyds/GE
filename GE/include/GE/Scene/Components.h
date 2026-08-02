@@ -108,7 +108,8 @@ struct SpriteRendererComponent {
 struct ScriptComponent {
     using Callback = std::function<void(Timestep, Entity)>;
 
-    Callback OnUpdate; ///< 每帧更新回调
+    Callback OnUpdate;  ///< 每帧更新回调
+    bool     Enabled = true; ///< 脚本是否启用（false 时跳过 OnUpdate 调用）
 
     ScriptComponent() = default;
 

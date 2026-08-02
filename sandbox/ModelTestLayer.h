@@ -6,6 +6,8 @@
 #include "GE/Scene/Scene.h"
 #include "GE/Scene/Entity.h"
 
+#include "Panels/SceneHierarchyPanel.h"
+
 namespace GE {
 
 /// 3D 模型渲染测试层。
@@ -29,6 +31,10 @@ private:
     std::unique_ptr<Scene>   m_Scene;        ///< 场景
     Entity m_ModelEntity;                    ///< 模型实体
     Entity m_CameraEntity;                   ///< 相机实体
+    Entity m_RedLightEntity;                 ///< 红色点光源实体
+    Entity m_BlueLightEntity;                ///< 蓝色点光源实体
+
+    SceneHierarchyPanel m_HierarchyPanel;    ///< 场景层级面板（ImGui）
 
     // 脚本参数（通过 ImGui 调节）
     bool  m_AutoRotate{true};                 ///< 是否自动旋转
@@ -38,6 +44,8 @@ private:
     void RefreshScript();
     /// 刷新相机上的鼠标控制 ScriptComponent
     void RefreshCameraScript();
+    /// 刷新点光源的旋转动画 ScriptComponent
+    void RefreshLightScripts();
 };
 
 } // namespace GE

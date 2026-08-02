@@ -38,7 +38,7 @@ void Scene::OnUpdate(Timestep ts,
         auto view = m_Registry.view<ScriptComponent>();
         for (auto entityHandle : view) {
             auto &sc = view.get<ScriptComponent>(entityHandle);
-            if (sc.OnUpdate) {
+            if (sc.Enabled && sc.OnUpdate) {
                 Entity entity{entityHandle, this};
                 sc.OnUpdate(ts, entity);
             }
@@ -74,7 +74,7 @@ void Scene::OnUpdate3D(Timestep ts,
         auto scriptView = m_Registry.view<ScriptComponent>();
         for (auto entityHandle : scriptView) {
             auto &sc = scriptView.get<ScriptComponent>(entityHandle);
-            if (sc.OnUpdate) {
+            if (sc.Enabled && sc.OnUpdate) {
                 Entity entity{entityHandle, this};
                 sc.OnUpdate(ts, entity);
             }
@@ -83,6 +83,32 @@ void Scene::OnUpdate3D(Timestep ts,
 
     // ── 3D 网格渲染 ────────────────────────────────────────────────────
     auto &r3d = Renderer::Get3DRenderer();
+
+    // ── 收集场景中的点光源 ─────────────────────────────────────────────
+    {
+        auto &lightParams = r3d.GetLightParams();
+        size_t lightIndex = 0;
+
+        auto pointLightView = m_Registry.view<TransformComponent, PointLightComponent>();
+        for (auto entity : pointLightView) {
+            if (lightIndex >= Renderer3D::MAX_POINT_LIGHTS) {
+                break;  // 超过上限，忽略多余的点光源
+            }
+
+            auto &tc = pointLightView.get<TransformComponent>(entity);
+            auto &plc = pointLightView.get<PointLightComponent>(entity);
+
+            auto &dst = lightParams.pointLights[lightIndex];
+            dst.position  = tc.Translation;
+            dst.color     = plc.Color;
+            dst.radiusInv = plc.RadiusInv;
+
+            lightIndex++;
+        }
+
+        lightParams.pointLightCount = lightIndex;
+    }
+
     r3d.BeginScene(view, projection, viewPos, clearColor);
 
     auto meshView = m_Registry.view<TransformComponent, MeshComponent>();
@@ -157,6 +183,10 @@ void Scene::OnComponentAdded<MeshComponent>(Entity entity, MeshComponent &compon
 
 template <>
 void Scene::OnComponentAdded<CameraComponent>(Entity entity, CameraComponent &component) {
+}
+
+template <>
+void Scene::OnComponentAdded<PointLightComponent>(Entity entity, PointLightComponent &component) {
 }
 
 

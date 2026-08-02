@@ -144,12 +144,13 @@ set(Sandbox_SRC
         ${CMAKE_SOURCE_DIR}/sandbox/TriangleLayer.cpp
         ${CMAKE_SOURCE_DIR}/sandbox/TextureLayer.cpp
         ${CMAKE_SOURCE_DIR}/sandbox/ModelTestLayer.cpp
+        ${CMAKE_SOURCE_DIR}/sandbox/Panels/SceneHierarchyPanel.cpp
 )
 
 add_executable(${Sandbox_NAME} ${Sandbox_SRC})
 target_include_directories(${Sandbox_NAME} PRIVATE
         ${CMAKE_SOURCE_DIR}/GE/include
-
+        ${CMAKE_SOURCE_DIR}/sandbox
 )
 target_compile_definitions(${Sandbox_NAME} PRIVATE
 

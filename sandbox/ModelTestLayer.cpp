@@ -13,6 +13,7 @@
 #include "imgui.h"
 
 #include <glm/gtc/matrix_transform.hpp>
+#include <cmath>
 
 namespace GE {
 
@@ -108,14 +109,51 @@ void ModelTestLayer::OnAttach() {
     cameraComp.CameraInstance.SetOrbit(0.0f, 0.0f, 3.0f); // 距离目标 3 个单位
     cameraComp.CameraInstance.SetTarget({0.0f, 0.0f, 0.0f});
 
+    // 创建红色点光源（右上方）
+    m_RedLightEntity = m_Scene->CreateEntity("RedPointLight");
+    m_RedLightEntity.GetComponent<TransformComponent>().Translation = {1.5f, 1.5f, 1.0f};
+    m_RedLightEntity.GetComponent<TransformComponent>().Scale = {0.15f, 0.15f, 0.15f};
+    m_RedLightEntity.AddComponent<PointLightComponent>(
+        glm::vec4(1.0f, 0.2f, 0.2f, 1.5f),  // 红色，强度 1.5
+        0.4f                                 // 半径倒数
+    );
+    // 给光源加一个可视化小球（用立方体缩小代替，颜色和光源一致）
+    m_RedLightEntity.AddComponent<MeshComponent>(
+        m_CubeMesh.get(),
+        glm::vec4(1.0f, 0.4f, 0.4f, 1.0f)
+    );
+
+    // 创建蓝色点光源（左下方）
+    m_BlueLightEntity = m_Scene->CreateEntity("BluePointLight");
+    m_BlueLightEntity.GetComponent<TransformComponent>().Translation = {-1.5f, -1.0f, 1.0f};
+    m_BlueLightEntity.GetComponent<TransformComponent>().Scale = {0.15f, 0.15f, 0.15f};
+    m_BlueLightEntity.AddComponent<PointLightComponent>(
+        glm::vec4(0.2f, 0.3f, 1.0f, 1.5f),  // 蓝色，强度 1.5
+        0.4f                                 // 半径倒数
+    );
+    // 给光源加一个可视化小球（用立方体缩小代替，颜色和光源一致）
+    m_BlueLightEntity.AddComponent<MeshComponent>(
+        m_CubeMesh.get(),
+        glm::vec4(0.4f, 0.5f, 1.0f, 1.0f)
+    );
+
     // 添加脚本组件（自动旋转逻辑）
     RefreshScript();
     // 添加相机鼠标控制脚本
     RefreshCameraScript();
+    // 添加点光源旋转动画脚本
+    RefreshLightScripts();
+
+    // 设置场景层级面板的上下文
+    m_HierarchyPanel.SetContext(m_Scene.get());
 }
 
 void ModelTestLayer::OnDetach() {
     m_ModelEntity = {};
+    m_CameraEntity = {};
+    m_RedLightEntity = {};
+    m_BlueLightEntity = {};
+    m_HierarchyPanel.SetContext(nullptr);
     m_Scene.reset();
     m_Texture.reset();
     m_CubeMesh.reset();
@@ -155,6 +193,9 @@ void ModelTestLayer::OnEvent(Event &event) {
 }
 
 void ModelTestLayer::OnImGuiRender() {
+    // 场景层级 + 属性面板
+    m_HierarchyPanel.OnImGuiRender();
+
     ImGui::Begin("ModelTestLayer");
     ImGui::Text("3D 模型渲染测试（Scene + MeshComponent + Renderer3D）");
     ImGui::Separator();
@@ -420,6 +461,44 @@ void ModelTestLayer::RefreshCameraScript() {
         m_CameraEntity.GetComponent<ScriptComponent>().OnUpdate = std::move(callback);
     } else {
         m_CameraEntity.AddComponent<ScriptComponent>(std::move(callback));
+    }
+}
+
+void ModelTestLayer::RefreshLightScripts() {
+    if (!m_RedLightEntity || !m_BlueLightEntity) {
+        return;
+    }
+
+    // 红色点光源：绕 Y 轴正方向旋转，半径 1.8，高度 1.5
+    auto redLightCallback = [angle = 0.0f](Timestep ts, Entity entity) mutable {
+        angle += ts.GetSeconds() * 1.2f;  // 旋转速度
+        auto &tc = entity.GetComponent<TransformComponent>();
+        tc.Translation.x = std::cos(angle) * 1.8f;
+        tc.Translation.z = std::sin(angle) * 1.8f;
+        tc.Translation.y = 1.5f;
+    };
+
+    // 蓝色点光源：绕 Y 轴反方向旋转，半径 1.5，高度 0.5
+    auto blueLightCallback = [angle = 0.0f](Timestep ts, Entity entity) mutable {
+        angle -= ts.GetSeconds() * 0.8f;  // 反向旋转，速度稍慢
+        auto &tc = entity.GetComponent<TransformComponent>();
+        tc.Translation.x = std::cos(angle) * 1.5f;
+        tc.Translation.z = std::sin(angle) * 1.5f;
+        tc.Translation.y = 0.5f;
+    };
+
+    // 红色光源脚本
+    if (m_RedLightEntity.HasComponent<ScriptComponent>()) {
+        m_RedLightEntity.GetComponent<ScriptComponent>().OnUpdate = std::move(redLightCallback);
+    } else {
+        m_RedLightEntity.AddComponent<ScriptComponent>(std::move(redLightCallback));
+    }
+
+    // 蓝色光源脚本
+    if (m_BlueLightEntity.HasComponent<ScriptComponent>()) {
+        m_BlueLightEntity.GetComponent<ScriptComponent>().OnUpdate = std::move(blueLightCallback);
+    } else {
+        m_BlueLightEntity.AddComponent<ScriptComponent>(std::move(blueLightCallback));
     }
 }
 

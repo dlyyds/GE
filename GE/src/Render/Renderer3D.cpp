@@ -159,6 +159,7 @@ void Renderer3D::EndScene() {
         ubo.model = instance.transform;
         ubo.lodBias = 0.0f;
         ubo._pad = glm::vec3(0.0f);
+        ubo.color = instance.color;
 
         BufferAllocation alloc = frame.AllocateBuffer(
             vk::BufferUsageFlagBits::eUniformBuffer, sizeof(ObjectUBO));

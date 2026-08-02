@@ -159,6 +159,7 @@ private:
         glm::mat4 model;             ///< 模型矩阵
         float     lodBias;           ///< 纹理 LOD 偏置
         glm::vec3 _pad;              ///< 填充到 16 字节对齐
+        glm::vec4 color;             ///< 叠加颜色（tint），与纹理颜色相乘
     };
     static_assert(sizeof(ObjectUBO) % 16 == 0, "ObjectUBO 必须 16 字节对齐");
 

@@ -9,6 +9,13 @@
 
 layout (set = 1, binding = 0) uniform sampler2D samplerColor;
 
+layout (set = 2, binding = 0, std140) uniform ObjectUBO
+{
+    mat4 model;
+    float lodBias;
+    vec4 color;
+} object;
+
 layout (set = 0, binding = 0, std140) uniform FrameUBO
 {
     mat4 projection;
@@ -83,8 +90,8 @@ vec3 calcPointLight(int index, vec3 N, vec3 V, vec3 worldPos, vec3 albedo, float
 
 void main()
 {
-    vec4 color = texture(samplerColor, inUV, inLodBias);
-    vec3 albedo = color.rgb;
+    vec4 texColor = texture(samplerColor, inUV, inLodBias);
+    vec3 albedo = texColor.rgb * object.color.rgb;
 
     vec3 N = normalize(inNormal);
     vec3 V = normalize(inViewVec);

@@ -26,6 +26,7 @@
 #include <glm/glm.hpp>
 
 #include <vector>
+#include <array>
 #include <memory>
 
 namespace GE {
@@ -44,18 +45,29 @@ class ShaderModule;
  */
 class Renderer3D {
 public:
+    /// 点光源最大数量，必须与 GLSL 中的 MAX_POINT_LIGHTS 保持一致
+    static constexpr size_t MAX_POINT_LIGHTS = 8;
+
+    /**
+     * @brief 单个点光源参数。
+     */
+    struct PointLight {
+        glm::vec3 position    = {0.0f, 2.0f, 0.0f};           ///< 点光源世界坐标位置
+        glm::vec4 color       = {1.0f, 1.0f, 1.0f, 1.0f};     ///< 点光源颜色(rgb) + 强度(a)
+        float     radiusInv   = 0.5f;                          ///< 点光源半径倒数（衰减系数）
+    };
+
     /**
      * @brief 光照参数配置。
      */
     struct LightParams {
         // 方向光
-        glm::vec3 dirLightDirection = {0.0f, -1.0f, 0.0f};   ///< 方向光方向（指向光源的反方向）
+        glm::vec3 dirLightDirection = {0.0f, -1.0f, 0.0f};     ///< 方向光方向（指向光源的反方向）
         glm::vec4 dirLightColor     = {1.0f, 1.0f, 1.0f, 1.0f}; ///< 方向光颜色(rgb) + 强度(a)
 
-        // 点光源
-        glm::vec3 pointLightPosition = {0.0f, 2.0f, 0.0f};    ///< 点光源位置
-        glm::vec4 pointLightColor    = {1.0f, 1.0f, 1.0f, 1.0f}; ///< 点光源颜色(rgb) + 强度(a)
-        float     pointLightRadiusInv = 0.5f;                   ///< 点光源半径倒数（衰减系数）
+        // 点光源数组（最多 MAX_POINT_LIGHTS 个）
+        std::array<PointLight, MAX_POINT_LIGHTS> pointLights{}; ///< 点光源数组
+        size_t pointLightCount = 1;                             ///< 实际使用的点光源数量（默认 1 个）
 
         // 环境光
         glm::vec4 ambient = {0.3f, 0.3f, 0.3f, 1.0f};          ///< 环境光颜色(rgb) + 强度(a)
@@ -130,14 +142,15 @@ private:
 
     /// 帧级 UBO（每帧一个，所有网格共享）
     struct FrameUBO {
-        glm::mat4 projection;        ///< 投影矩阵
-        glm::mat4 view;              ///< 视图矩阵
-        glm::vec4 viewPos;           ///< 相机位置（xyz, w 未用）
-        glm::vec4 dirLightDirection; ///< 方向光方向（xyz, w 未用）
-        glm::vec4 dirLightColor;     ///< 方向光颜色(rgb) + 强度(a)
-        glm::vec4 pointLightPosition;///< 点光源位置(xyz) + 半径倒数(w)
-        glm::vec4 pointLightColor;   ///< 点光源颜色(rgb) + 强度(a)
-        glm::vec4 ambient;           ///< 环境光颜色(rgb) + 强度(a)
+        glm::mat4 projection;                         ///< 投影矩阵
+        glm::mat4 view;                               ///< 视图矩阵
+        glm::vec4 viewPos;                            ///< 相机位置（xyz, w 未用）
+        glm::vec4 dirLightDirection;                  ///< 方向光方向（xyz, w 未用）
+        glm::vec4 dirLightColor;                      ///< 方向光颜色(rgb) + 强度(a)
+        glm::vec4 pointLightPositions[MAX_POINT_LIGHTS]; ///< 点光源位置(xyz) + 半径倒数(w)
+        glm::vec4 pointLightColors[MAX_POINT_LIGHTS];    ///< 点光源颜色(rgb) + 强度(a)
+        glm::vec4 pointLightCount;                    ///< x = 实际点光源数量，yzw 填充对齐
+        glm::vec4 ambient;                            ///< 环境光颜色(rgb) + 强度(a)
     };
     static_assert(sizeof(FrameUBO) % 16 == 0, "FrameUBO 必须 16 字节对齐");
 

@@ -222,4 +222,38 @@ struct CameraComponent {
 };
 
 
+/**
+ * @brief 点光源组件 —— 挂载到实体上的点光源。
+ *
+ * 与 TransformComponent 配合使用：Transform 的 Translation 即为点光源的世界坐标位置。
+ * Color 的 rgb 分量表示光源颜色，a 分量表示光源强度。
+ * RadiusInv 是光源影响半径的倒数，用于距离衰减计算：attenuation = 1 / (1 + d^2 * radiusInv^2)。
+ *
+ * 由 Scene 在渲染前收集所有点光源组件，传递给 Renderer3D 的 LightParams。
+ * 点光源数量受 Renderer3D::MAX_POINT_LIGHTS 限制，超出部分会被忽略。
+ */
+struct PointLightComponent {
+    glm::vec4 Color{1.0f, 1.0f, 1.0f, 1.0f}; ///< 光源颜色(rgb) + 强度(a)
+    float     RadiusInv = 0.5f;               ///< 光源影响半径倒数（衰减系数，越大衰减越快）
+
+    PointLightComponent() = default;
+
+    PointLightComponent(const PointLightComponent &) = default;
+
+    /**
+     * @brief 指定颜色和强度的构造函数。
+     */
+    explicit PointLightComponent(const glm::vec4 &color)
+        : Color(color) {
+    }
+
+    /**
+     * @brief 同时指定颜色、强度和半径倒数的构造函数。
+     */
+    PointLightComponent(const glm::vec4 &color, float radiusInv)
+        : Color(color), RadiusInv(radiusInv) {
+    }
+};
+
+
 }

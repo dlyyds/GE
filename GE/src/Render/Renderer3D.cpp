@@ -5,6 +5,8 @@
 
 #include "Render/Renderer3D.h"
 
+#include <algorithm>
+
 #include "Core/Log.h"
 #include "Render/Texture.h"
 #include "Render/Renderer.h"
@@ -131,9 +133,16 @@ void Renderer3D::EndScene() {
     frameUBO.viewPos = glm::vec4(m_ViewPos, 0.0f);
     frameUBO.dirLightDirection = glm::vec4(m_LightParams.dirLightDirection, 0.0f);
     frameUBO.dirLightColor = m_LightParams.dirLightColor;
-    frameUBO.pointLightPosition = glm::vec4(m_LightParams.pointLightPosition,
-                                            m_LightParams.pointLightRadiusInv);
-    frameUBO.pointLightColor = m_LightParams.pointLightColor;
+
+    // 填充点光源数组（不超过上限）
+    size_t lightCount = std::min(m_LightParams.pointLightCount, MAX_POINT_LIGHTS);
+    for (size_t i = 0; i < lightCount; i++) {
+        const auto &pl = m_LightParams.pointLights[i];
+        frameUBO.pointLightPositions[i] = glm::vec4(pl.position, pl.radiusInv);
+        frameUBO.pointLightColors[i]    = pl.color;
+    }
+    frameUBO.pointLightCount = glm::vec4(static_cast<float>(lightCount), 0.0f, 0.0f, 0.0f);
+
     frameUBO.ambient = m_LightParams.ambient;
 
     BufferAllocation frameUboAlloc = frame.AllocateBuffer(

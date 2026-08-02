@@ -83,7 +83,7 @@ void Application::Run() {
             ZoneScopedN("RenderFrame");
 
             // 1. Begin frame — acquire + begin cmd + layout → ColorAttachment
-            m_Renderer->BeginFrame();
+             m_Renderer->BeginFrame();
 
             // 2. OnUpdate
             {
@@ -101,7 +101,7 @@ void Application::Run() {
                 ImGuiLayer::End();
             }
 
-            // 4. End frame — layout → Present + end cmd + submit + present
+            //4. End frame — layout → Present + end cmd + submit + present
             m_Renderer->EndFrame();
         }
         m_Window->OnUpdate();

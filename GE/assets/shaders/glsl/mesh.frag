@@ -4,6 +4,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+// 点光源最大数量，必须与 C++ 端 Renderer3D::MAX_POINT_LIGHTS 保持一致
+#define MAX_POINT_LIGHTS 8
+
 layout (set = 1, binding = 0) uniform sampler2D samplerColor;
 
 layout (set = 0, binding = 0, std140) uniform FrameUBO
@@ -15,9 +18,12 @@ layout (set = 0, binding = 0, std140) uniform FrameUBO
     // 方向光
     vec4 dirLightDirection;
     vec4 dirLightColor;
-    // 点光源
-    vec4 pointLightPosition;
-    vec4 pointLightColor;
+
+    // 点光源数组（每个灯 2 个 vec4：position.w = 半径倒数，color.a = 强度）
+    vec4 pointLightPositions[MAX_POINT_LIGHTS];
+    vec4 pointLightColors[MAX_POINT_LIGHTS];
+    vec4 pointLightCount;   // x = 实际点光源数量，yzw 填充对齐
+
     // 环境光
     vec4 ambient;
 } frame;
@@ -48,12 +54,13 @@ vec3 calcDirectionalLight(vec3 N, vec3 V, vec3 albedo, float shininess)
     return diffuse * albedo + specular;
 }
 
-/// 计算点光源贡献（带距离衰减）
-vec3 calcPointLight(vec3 N, vec3 V, vec3 worldPos, vec3 albedo, float shininess)
+/// 计算单个点光源贡献（带距离衰减）
+/// @param index 点光源在数组中的索引
+vec3 calcPointLight(int index, vec3 N, vec3 V, vec3 worldPos, vec3 albedo, float shininess)
 {
-    vec3 lightPos = frame.pointLightPosition.xyz;
-    vec3 lightColor = frame.pointLightColor.rgb * frame.pointLightColor.w;
-    float radiusInv = frame.pointLightPosition.w;
+    vec3 lightPos  = frame.pointLightPositions[index].xyz;
+    vec3 lightColor = frame.pointLightColors[index].rgb * frame.pointLightColors[index].a;
+    float radiusInv = frame.pointLightPositions[index].w;
 
     vec3 L = lightPos - worldPos;
     float dist = length(L);
@@ -90,8 +97,10 @@ void main()
     // 方向光
     result += calcDirectionalLight(N, V, albedo, shininess);
 
-    // 点光源
-    result += calcPointLight(N, V, inWorldPos, albedo, shininess);
+    // 点光源：循环累加所有点光源的贡献
+    for (int i = 0; i < int(frame.pointLightCount.x); i++) {
+        result += calcPointLight(i, N, V, inWorldPos, albedo, shininess);
+    }
 
     outFragColor = vec4(result, 1.0);
 }

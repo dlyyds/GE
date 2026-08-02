@@ -36,6 +36,7 @@ add_subdirectory(GE/third_party/imgui)
 add_subdirectory(GE/third_party/ImGuizmo)
 
 # Tracy 性能分析
+set(TRACY_ENABLE OFF CACHE BOOL "Enable Tracy profiling" FORCE)
 add_subdirectory(GE/third_party/tracy)
 
 find_package(Vulkan REQUIRED)
@@ -76,7 +77,6 @@ target_include_directories(${GE_NAME} PUBLIC
 target_compile_definitions(${GE_NAME} PUBLIC
         GLFW_INCLUDE_NONE
         GE_DEBUG
-        TRACY_ENABLE         # 取消注释以启用 Tracy 性能分析
         VK_USE_PLATFORM_WIN32_KHR
         VK_DEBUG
         VK_NO_PROTOTYPES
@@ -111,12 +111,12 @@ target_precompile_headers(${GE_NAME} PRIVATE GE/include/GE/pch.h)
 # 引擎内置着色器编译（GLSL → SPIR-V）
 # ==============================================
 find_program(GLSLC glslc HINTS "$ENV{VULKAN_SDK}/Bin")
-if(GLSLC)
+if (GLSLC)
     file(GLOB GE_SHADER_SOURCES
             ${CMAKE_SOURCE_DIR}/GE/assets/shaders/glsl/*.vert
             ${CMAKE_SOURCE_DIR}/GE/assets/shaders/glsl/*.frag)
 
-    foreach(shader ${GE_SHADER_SOURCES})
+    foreach (shader ${GE_SHADER_SOURCES})
         set(spv_output "${shader}.spv")
         add_custom_command(
                 OUTPUT ${spv_output}
@@ -125,15 +125,15 @@ if(GLSLC)
                 COMMENT "Compiling engine shader ${shader} → SPIR-V"
         )
         list(APPEND GE_SPV_OUTPUTS ${spv_output})
-    endforeach()
+    endforeach ()
 
-    if(GE_SPV_OUTPUTS)
+    if (GE_SPV_OUTPUTS)
         add_custom_target(GEShaderCompile ALL DEPENDS ${GE_SPV_OUTPUTS})
         add_dependencies(${GE_NAME} GEShaderCompile)
-    endif()
-else()
+    endif ()
+else ()
     message(WARNING "glslc not found — engine shaders won't be auto-compiled")
-endif()
+endif ()
 
 
 #Sandbox EXE

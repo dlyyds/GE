@@ -10,6 +10,9 @@ layout (location = 0) in vec3 inPos;
 layout (location = 1) in vec3 inNormal;
 layout (location = 2) in vec2 inUV;
 
+// 点光源最大数量，必须与 C++ 端 Renderer3D::MAX_POINT_LIGHTS 保持一致
+#define MAX_POINT_LIGHTS 8
+
 layout (set = 0, binding = 0, std140) uniform FrameUBO
 {
     mat4 projection;
@@ -19,9 +22,12 @@ layout (set = 0, binding = 0, std140) uniform FrameUBO
     // 方向光
     vec4 dirLightDirection;
     vec4 dirLightColor;
-    // 点光源
-    vec4 pointLightPosition;
-    vec4 pointLightColor;
+
+    // 点光源数组（每个灯 2 个 vec4：position.w = 半径倒数，color.a = 强度）
+    vec4 pointLightPositions[MAX_POINT_LIGHTS];
+    vec4 pointLightColors[MAX_POINT_LIGHTS];
+    vec4 pointLightCount;   // x = 实际点光源数量，yzw 填充对齐
+
     // 环境光
     vec4 ambient;
 } frame;

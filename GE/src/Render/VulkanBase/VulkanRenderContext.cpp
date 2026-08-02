@@ -103,12 +103,6 @@ void VulkanRenderContext::BeginFrame() {
 
     auto &prev_frame = *m_Frames[m_ActiveFrameIndex];
 
-    // 1. 先 Reset 上一帧：
-    //    - 等待 fence（GPU 完成）
-    //    - 将 prev_frame 持有的 acquire semaphore 归还到全局 pool（此时 sem 一定空闲）
-    //    - 重置所有资源池
-    ResetFrame(prev_frame);
-
     // 2. 从全局 acquire semaphore 池申请一个 semaphore（上一帧刚归还的那个，空闲）
     VulkanSemaphore acquire_sem = m_AcquireSemaphorePool.RequestSemaphoreWithOwnership("AcquireSemaphore");
 

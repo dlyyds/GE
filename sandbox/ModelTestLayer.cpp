@@ -757,7 +757,7 @@ void ModelTestLayer::RebindLightEntities() {
     // 找第一个方向光实体
     {
         auto view = reg.view<DirectionalLightComponent>();
-        if (!view.empty()) {
+        if (view.begin() != view.end()) {
             m_DirLightEntity = Entity(*view.begin(), m_Scene.get());
         }
     }
@@ -765,7 +765,7 @@ void ModelTestLayer::RebindLightEntities() {
     // 找第一个环境光实体
     {
         auto view = reg.view<AmbientLightComponent>();
-        if (!view.empty()) {
+        if (view.begin() != view.end()) {
             m_AmbientLightEntity = Entity(*view.begin(), m_Scene.get());
         }
     }

@@ -92,7 +92,7 @@ void Scene::OnUpdate3D(Timestep ts,
         // ---- 方向光：取场景中第一个方向光组件 ----
         {
             auto dirLightView = m_Registry.view<TransformComponent, DirectionalLightComponent>();
-            if (!dirLightView.empty()) {
+            if (dirLightView.begin() != dirLightView.end()) {
                 auto entity = *dirLightView.begin();
                 auto &tc = dirLightView.get<TransformComponent>(entity);
                 auto &dlc = dirLightView.get<DirectionalLightComponent>(entity);
@@ -114,7 +114,7 @@ void Scene::OnUpdate3D(Timestep ts,
         // ---- 环境光：取场景中第一个环境光组件 ----
         {
             auto ambientView = m_Registry.view<AmbientLightComponent>();
-            if (!ambientView.empty()) {
+            if (ambientView.begin() != ambientView.end()) {
                 auto entity = *ambientView.begin();
                 auto &alc = ambientView.get<AmbientLightComponent>(entity);
                 lightParams.ambient = alc.Color;

@@ -68,18 +68,20 @@ public:
 
     /**
      * @brief 构造 RenderContext（带 swapchain 模式）。
+     *
+     * 呈现模式从 window.GetVSync() 推导：
+     *   - VsyncMode::ON  → eFifo（强制垂直同步）
+     *   - VsyncMode::OFF → eMailbox（无垂直同步，三重缓冲无撕裂）
+     *   - VsyncMode::Default → eMailbox 优先，fallback eFifo
+     *
      * @param device                      Vulkan 设备
      * @param surface                     呈现 surface
-     * @param window                      创建 surface 的窗口
-     * @param present_mode                请求的呈现模式
-     * @param present_mode_priority_list  呈现模式优先级列表
+     * @param window                      创建 surface 的窗口（垂直同步配置来源）
      * @param surface_format_priority_list surface 格式优先级列表
      */
     VulkanRenderContext(VulkanDevice &device,
                         vk::SurfaceKHR surface,
                         const Window &window,
-                        vk::PresentModeKHR present_mode = vk::PresentModeKHR::eFifo,
-                        const std::vector<vk::PresentModeKHR> &present_mode_priority_list = {vk::PresentModeKHR::eFifo, vk::PresentModeKHR::eMailbox},
                         const std::vector<vk::SurfaceFormatKHR> &surface_format_priority_list = {
                             {vk::Format::eR8G8B8A8Srgb, vk::ColorSpaceKHR::eSrgbNonlinear},
                             {vk::Format::eB8G8R8A8Srgb, vk::ColorSpaceKHR::eSrgbNonlinear}});

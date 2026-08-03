@@ -38,14 +38,39 @@ namespace GE {
 VulkanRenderContext::VulkanRenderContext(VulkanDevice &device,
                                          vk::SurfaceKHR surface,
                                          const Window &window,
-                                         vk::PresentModeKHR present_mode,
-                                         const std::vector<vk::PresentModeKHR> &present_mode_priority_list,
                                          const std::vector<vk::SurfaceFormatKHR> &surface_format_priority_list) : m_Device(device),
     m_AcquireSemaphorePool(device),
 
     m_Window(window),
     m_Queue(device.GetQueueByFlags(vk::QueueFlagBits::eGraphics, 0)),
     m_SurfaceExtent{window.GetExtent().width, window.GetExtent().height} {
+    // 从窗口的垂直同步配置推导出 Vulkan present mode 和优先级列表
+    vk::PresentModeKHR present_mode;
+    std::vector<vk::PresentModeKHR> present_mode_priority_list;
+
+    switch (window.GetVSync()) {
+    case VsyncMode::ON:
+        present_mode = vk::PresentModeKHR::eFifo;
+        present_mode_priority_list = {vk::PresentModeKHR::eFifo};
+        break;
+    case VsyncMode::OFF:
+        // 优先 mailbox（无撕裂低延迟），immediate 次之，fifo 兜底
+        present_mode = vk::PresentModeKHR::eMailbox;
+        present_mode_priority_list = {
+            vk::PresentModeKHR::eMailbox,
+            vk::PresentModeKHR::eImmediate,
+            vk::PresentModeKHR::eFifo};
+        break;
+    case VsyncMode::Default:
+    default:
+        // 默认：mailbox 优先，fallback fifo（兼顾低延迟和兼容性）
+        present_mode = vk::PresentModeKHR::eMailbox;
+        present_mode_priority_list = {
+            vk::PresentModeKHR::eMailbox,
+            vk::PresentModeKHR::eFifo};
+        break;
+    }
+
     InitializeSwapchain(surface, present_mode, present_mode_priority_list, surface_format_priority_list);
 }
 

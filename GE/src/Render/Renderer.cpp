@@ -25,8 +25,6 @@ Renderer::Renderer(Window &window)
     auto &dev = m_VulkanContext->GetDevice();
     m_RenderContext = std::make_unique<VulkanRenderContext>(
         dev, m_VulkanContext->GetSurface(), m_Window,
-        vk::PresentModeKHR::eMailbox,
-        std::vector<vk::PresentModeKHR>{vk::PresentModeKHR::eMailbox, vk::PresentModeKHR::eFifo},
         std::vector<vk::SurfaceFormatKHR>{
             {vk::Format::eR8G8B8A8Srgb, vk::ColorSpaceKHR::eSrgbNonlinear},
             {vk::Format::eB8G8R8A8Srgb, vk::ColorSpaceKHR::eSrgbNonlinear},

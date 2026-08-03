@@ -136,6 +136,14 @@ public:
     const std::vector<uint32_t> &GetIndices() const { return m_Indices; }
 
     /**
+     * @brief 获取网格源文件路径。
+     *
+     * 仅当网格通过 LoadFromFile() 加载时有有效路径；
+     * 通过 Create() 从 CPU 数据创建的网格路径为空字符串。
+     */
+    const std::string &GetFilePath() const { return m_FilePath; }
+
+    /**
      * @brief 设置调试名称（同时作用于顶点缓冲和索引缓冲）。
      *
      * 顶点缓冲 → name + "_VB"
@@ -161,6 +169,7 @@ private:
 
     std::vector<Vertex>   m_Vertices;     ///< CPU 端顶点数据
     std::vector<uint32_t> m_Indices;      ///< CPU 端索引数据
+    std::string           m_FilePath;     ///< 源文件路径（LoadFromFile 时有值）
 
     std::unique_ptr<VulkanBuffer> m_VertexBuffer; ///< GPU 顶点缓冲
     std::unique_ptr<VulkanBuffer> m_IndexBuffer;  ///< GPU 索引缓冲

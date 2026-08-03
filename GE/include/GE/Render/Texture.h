@@ -152,6 +152,14 @@ public:
     vk::Format GetFormat() const { return m_Format; }
 
     /**
+     * @brief 获取纹理源文件路径。
+     *
+     * 仅当纹理通过 LoadFromFile() 加载时有有效路径；
+     * 通过 LoadFromMemory() 或直接构造（空白纹理）创建的纹理路径为空字符串。
+     */
+    const std::string &GetFilePath() const { return m_FilePath; }
+
+    /**
      * @brief 获取描述符信息，用于绑定到 descriptor set。
      *
      * 返回的 DescriptorImageInfo 包含 sampler、imageView 和 imageLayout，
@@ -215,6 +223,7 @@ private:
     VulkanSampler                   *m_Sampler = nullptr; // 由 VulkanResourceCache 管理
     vk::Format                       m_Format  = vk::Format::eR8G8B8A8Unorm;
     vk::Extent3D                     m_Extent{};
+    std::string                      m_FilePath; ///< 源文件路径（LoadFromFile 时有值）
 };
 
 } // namespace GE

@@ -129,6 +129,9 @@ std::unique_ptr<Mesh> Mesh::LoadFromFile(VulkanDevice &device,
         return nullptr;
     }
 
+    // 记录源文件路径
+    mesh->m_FilePath = filepath;
+
     return mesh;
 }
 

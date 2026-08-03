@@ -220,11 +220,10 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
             spriteNode["Color"] = SerializeVec4(src.Color);
             spriteNode["IsUI"] = src.IsUI;
 
-            // 纹理路径（仅保存路径字符串，不保存指针）
-            // 注意：当前 Texture 不保存源文件路径，序列化时 SpriteTexture 指针无法还原为路径
-            // 因此暂不保存纹理路径（仅保存颜色和 IsUI）
-            // 未来如果 Texture 类添加 GetFilePath() 方法，可以在此处写入路径
-            (void)src.SpriteTexture; // 抑制未使用警告
+            // 纹理路径
+            if (src.SpriteTexture && !src.SpriteTexture->GetFilePath().empty()) {
+                spriteNode["Texture"] = src.SpriteTexture->GetFilePath();
+            }
         }
 
         // ---- MeshComponent ----
@@ -233,10 +232,15 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
             YAML::Node meshNode = entityNode["MeshRenderer"];
             meshNode["Color"] = SerializeVec4(mc.Color);
 
-            // 网格和纹理路径（同 SpriteRenderer，暂不保存路径——资源指针无法还原为路径）
-            // 仅保存颜色信息
-            (void)mc.MeshPtr;
-            (void)mc.BaseTexture;
+            // 网格路径
+            if (mc.MeshPtr && !mc.MeshPtr->GetFilePath().empty()) {
+                meshNode["Mesh"] = mc.MeshPtr->GetFilePath();
+            }
+
+            // 纹理路径
+            if (mc.BaseTexture && !mc.BaseTexture->GetFilePath().empty()) {
+                meshNode["Texture"] = mc.BaseTexture->GetFilePath();
+            }
         }
 
         // ---- CameraComponent ----

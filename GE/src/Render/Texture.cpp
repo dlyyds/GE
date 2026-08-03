@@ -41,6 +41,11 @@ std::unique_ptr<Texture> Texture::LoadFromFile(
                                   static_cast<uint32_t>(texHeight),
                                   format, mag_filter, min_filter);
 
+    // 记录源文件路径
+    if (texture) {
+        texture->m_FilePath = filepath;
+    }
+
     // 释放 stb_image 加载的内存
     stbi_image_free(pixels);
 

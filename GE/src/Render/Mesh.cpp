@@ -11,6 +11,7 @@
 
 #include <iostream>
 #include <unordered_map>
+#include <cmath>
 
 namespace GE {
 
@@ -155,6 +156,131 @@ std::unique_ptr<Mesh> Mesh::Create(VulkanDevice &device,
         return nullptr;
     }
 
+    return mesh;
+}
+
+// ============================================================================
+// 工厂方法：创建内置几何体
+// ============================================================================
+
+std::unique_ptr<Mesh> Mesh::CreateBuiltin(VulkanDevice &device, const std::string &type) {
+    std::vector<Vertex>   vertices;
+    std::vector<uint32_t> indices;
+
+    if (type == "cube") {
+        // 立方体：边长 2，中心在原点，6 个面各 4 顶点 = 24 顶点，36 索引
+        vertices.reserve(24);
+        indices.reserve(36);
+
+        auto add_quad = [&](const glm::vec3 &p0, const glm::vec3 &p1,
+                            const glm::vec3 &p2, const glm::vec3 &p3,
+                            const glm::vec3 &normal) {
+            uint32_t base = static_cast<uint32_t>(vertices.size());
+            glm::vec2 uvs[] = {{0.0f, 0.0f}, {1.0f, 0.0f}, {1.0f, 1.0f}, {0.0f, 1.0f}};
+            glm::vec3 pos[] = {p0, p1, p2, p3};
+            for (int i = 0; i < 4; ++i) {
+                vertices.push_back({pos[i], normal, uvs[i]});
+            }
+            indices.push_back(base + 0);
+            indices.push_back(base + 1);
+            indices.push_back(base + 2);
+            indices.push_back(base + 0);
+            indices.push_back(base + 2);
+            indices.push_back(base + 3);
+        };
+
+        // +Z 面（前）
+        add_quad({-1.0f, -1.0f, 1.0f}, {1.0f, -1.0f, 1.0f},
+                 {1.0f, 1.0f, 1.0f}, {-1.0f, 1.0f, 1.0f},
+                 {0.0f, 0.0f, 1.0f});
+        // -Z 面（后）
+        add_quad({1.0f, -1.0f, -1.0f}, {-1.0f, -1.0f, -1.0f},
+                 {-1.0f, 1.0f, -1.0f}, {1.0f, 1.0f, -1.0f},
+                 {0.0f, 0.0f, -1.0f});
+        // +X 面（右）
+        add_quad({1.0f, -1.0f, 1.0f}, {1.0f, -1.0f, -1.0f},
+                 {1.0f, 1.0f, -1.0f}, {1.0f, 1.0f, 1.0f},
+                 {1.0f, 0.0f, 0.0f});
+        // -X 面（左）
+        add_quad({-1.0f, -1.0f, -1.0f}, {-1.0f, -1.0f, 1.0f},
+                 {-1.0f, 1.0f, 1.0f}, {-1.0f, 1.0f, -1.0f},
+                 {-1.0f, 0.0f, 0.0f});
+        // +Y 面（上）
+        add_quad({-1.0f, 1.0f, 1.0f}, {1.0f, 1.0f, 1.0f},
+                 {1.0f, 1.0f, -1.0f}, {-1.0f, 1.0f, -1.0f},
+                 {0.0f, 1.0f, 0.0f});
+        // -Y 面（下）
+        add_quad({-1.0f, -1.0f, -1.0f}, {1.0f, -1.0f, -1.0f},
+                 {1.0f, -1.0f, 1.0f}, {-1.0f, -1.0f, 1.0f},
+                 {0.0f, -1.0f, 0.0f});
+    } else if (type == "plane") {
+        // 平面：XY 平面，边长 2，中心在原点，法线 +Z
+        vertices = {
+            {{-1.0f, -1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f}},
+            {{ 1.0f, -1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 0.0f}},
+            {{ 1.0f,  1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
+            {{-1.0f,  1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},
+        };
+        indices = {0, 1, 2, 0, 2, 3};
+    } else if (type == "quad") {
+        // 四边形（plane 的别名）
+        vertices = {
+            {{-1.0f, -1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f}},
+            {{ 1.0f, -1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 0.0f}},
+            {{ 1.0f,  1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
+            {{-1.0f,  1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},
+        };
+        indices = {0, 1, 2, 0, 2, 3};
+    } else if (type == "sphere") {
+        // 球体：半径 1，中心在原点，UV 球体
+        const int latBands = 20;
+        const int lonBands = 20;
+        const float radius = 1.0f;
+
+        for (int lat = 0; lat <= latBands; ++lat) {
+            float theta = static_cast<float>(lat) * glm::pi<float>() / static_cast<float>(latBands);
+            float sinTheta = std::sin(theta);
+            float cosTheta = std::cos(theta);
+
+            for (int lon = 0; lon <= lonBands; ++lon) {
+                float phi = static_cast<float>(lon) * 2.0f * glm::pi<float>() / static_cast<float>(lonBands);
+                float sinPhi = std::sin(phi);
+                float cosPhi = std::cos(phi);
+
+                glm::vec3 pos{
+                    radius * cosPhi * sinTheta,
+                    radius * cosTheta,
+                    radius * sinPhi * sinTheta
+                };
+                glm::vec3 normal = glm::normalize(pos);
+                glm::vec2 uv{
+                    static_cast<float>(lon) / static_cast<float>(lonBands),
+                    static_cast<float>(lat) / static_cast<float>(latBands)
+                };
+                vertices.push_back({pos, normal, uv});
+            }
+        }
+
+        for (int lat = 0; lat < latBands; ++lat) {
+            for (int lon = 0; lon < lonBands; ++lon) {
+                uint32_t first  = static_cast<uint32_t>(lat * (lonBands + 1) + lon);
+                uint32_t second = first + static_cast<uint32_t>(lonBands + 1);
+                indices.push_back(first);
+                indices.push_back(second);
+                indices.push_back(first + 1);
+                indices.push_back(second);
+                indices.push_back(second + 1);
+                indices.push_back(first + 1);
+            }
+        }
+    } else {
+        return nullptr; // 未知类型
+    }
+
+    auto mesh = Create(device, vertices, indices);
+    if (mesh) {
+        mesh->m_FilePath = "builtin:" + type;
+    }
     return mesh;
 }
 

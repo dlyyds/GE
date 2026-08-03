@@ -152,13 +152,22 @@ Mesh *SceneSerializer::GetOrLoadMesh(const std::string &filepath) {
     }
 
     if (!m_Device) {
-        GE_CORE_WARN("SceneSerializer: 无法加载网格 {0}（未提供 VulkanDevice）", filepath);
+        GE_CORE_WARN("SceneSerializer: 无法加载网格 {}（未提供 VulkanDevice）", filepath);
         return nullptr;
     }
 
-    auto mesh = Mesh::LoadFromFile(*m_Device, filepath);
+    std::unique_ptr<Mesh> mesh;
+
+    // 内置几何体（builtin:cube, builtin:sphere 等）
+    if (Mesh::IsBuiltinPath(filepath)) {
+        std::string type = Mesh::GetBuiltinType(filepath);
+        mesh = Mesh::CreateBuiltin(*m_Device, type);
+    } else {
+        mesh = Mesh::LoadFromFile(*m_Device, filepath);
+    }
+
     if (!mesh) {
-        GE_CORE_WARN("SceneSerializer: 网格加载失败: {0}", filepath);
+        GE_CORE_WARN("SceneSerializer: 网格加载失败: {}", filepath);
         return nullptr;
     }
 

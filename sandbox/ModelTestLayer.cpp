@@ -96,6 +96,7 @@ void ModelTestLayer::OnAttach() {
         m_CubeMesh = Mesh::Create(device, vertices, indices);
         GE_CORE_ASSERT(m_CubeMesh, "创建立方体网格失败");
         m_CubeMesh->SetDebugName("ModelTest_Cube");
+        m_CubeMesh->SetFilePath("builtin:cube"); // 标记为内置立方体，便于场景序列化时还原
     }
 
     // 创建场景与模型实体

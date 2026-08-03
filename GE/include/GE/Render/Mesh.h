@@ -108,6 +108,38 @@ public:
                                         const std::vector<Vertex> &vertices,
                                         const std::vector<uint32_t> &indices);
 
+    /**
+     * @brief 创建内置几何体网格。
+     *
+     * 支持的类型（type 参数）：
+     * - "cube"   : 立方体（边长为 2，中心在原点）
+     * - "plane"  : 平面（XY 平面，边长为 2，中心在原点，法线 +Z）
+     * - "sphere" : 球体（半径为 1，中心在原点）
+     * - "quad"   : 四边形（XY 平面，2×2，中心在原点）
+     *
+     * @param device  Vulkan 设备
+     * @param type    内置几何体类型名称
+     * @return std::unique_ptr<Mesh>  失败（未知类型）返回 nullptr
+     */
+    static std::unique_ptr<Mesh> CreateBuiltin(VulkanDevice &device, const std::string &type);
+
+    /**
+     * @brief 判断路径是否为内置几何体标识（"builtin:" 前缀）。
+     */
+    static bool IsBuiltinPath(const std::string &path) {
+        return path.rfind("builtin:", 0) == 0;
+    }
+
+    /**
+     * @brief 从内置路径中提取类型名（去掉 "builtin:" 前缀）。
+     */
+    static std::string GetBuiltinType(const std::string &path) {
+        if (IsBuiltinPath(path)) {
+            return path.substr(8); // "builtin:" 长度为 8
+        }
+        return {};
+    }
+
     // ========================================================================
     // 析构 / 移动
     // ========================================================================
@@ -138,10 +170,16 @@ public:
     /**
      * @brief 获取网格源文件路径。
      *
-     * 仅当网格通过 LoadFromFile() 加载时有有效路径；
-     * 通过 Create() 从 CPU 数据创建的网格路径为空字符串。
+     * - 从文件加载的网格：返回文件路径
+     * - 内置几何体：返回 "builtin:<type>"
+     * - 代码直接创建的网格：返回空字符串
      */
     const std::string &GetFilePath() const { return m_FilePath; }
+
+    /**
+     * @brief 手动设置网格文件路径（用于代码生成的网格标记为内置几何体等）。
+     */
+    void SetFilePath(const std::string &path) { m_FilePath = path; }
 
     /**
      * @brief 设置调试名称（同时作用于顶点缓冲和索引缓冲）。

@@ -7,6 +7,7 @@
 #include "Render/Renderer3D.h"
 #include "Render/Mesh.h"
 
+#include <algorithm>
 #include <glm/glm.hpp>
 
 namespace GE {
@@ -158,25 +159,37 @@ void Scene::OnUpdate3D(Timestep ts,
         r2d.EndScene();
     }
 
-    // ---- 第二批：UI 精灵（IsUI=true），屏幕空间叠加，无深度 ----
-    bool hasUISprites = false;
+    // ---- 第二批：UI 精灵（IsUI=true），像素坐标正交投影，无深度 ----
+    // 收集 UI 精灵，按 z 值从小到大排序（z 小的先画，z 大的后画、盖在上面）
+    struct UISprite {
+        TransformComponent *tc;
+        SpriteRendererComponent *sc;
+        float z;
+    };
+    std::vector<UISprite> uiSprites;
     for (auto entity : spriteView) {
-        if (spriteView.get<SpriteRendererComponent>(entity).IsUI) {
-            hasUISprites = true;
-            break;
-        }
+        auto &sc = spriteView.get<SpriteRendererComponent>(entity);
+        if (!sc.IsUI) continue;
+        auto &tc = spriteView.get<TransformComponent>(entity);
+        uiSprites.push_back({&tc, &sc, tc.Translation.z});
     }
-    if (hasUISprites) {
-        r2d.BeginScene(glm::mat4(1.0f), viewProjection, false, glm::vec4(-1.0f));
-        for (auto entity : spriteView) {
-            auto &tc = spriteView.get<TransformComponent>(entity);
-            auto &sc = spriteView.get<SpriteRendererComponent>(entity);
-            if (!sc.IsUI) continue;
+    if (!uiSprites.empty() && m_ViewportWidth > 0 && m_ViewportHeight > 0) {
+        // 按 z 从小到大排序（小的先画，大的后画 → 大的盖在上面）
+        std::sort(uiSprites.begin(), uiSprites.end(),
+                  [](const UISprite &a, const UISprite &b) { return a.z < b.z; });
 
+        // 正交投影：像素坐标，左上角 (0,0)，右下角 (w,h)
+        // Vulkan 屏幕原点在左上角，top=0, bottom=h 即 Y 轴向下
+        float w = static_cast<float>(m_ViewportWidth);
+        float h = static_cast<float>(m_ViewportHeight);
+        glm::mat4 uiProjection = glm::ortho(0.0f, w, h, 0.0f, -1.0f, 1.0f);
+
+        r2d.BeginScene(glm::mat4(1.0f), uiProjection, false, glm::vec4(-1.0f));
+        for (auto &sp : uiSprites) {
             r2d.DrawSprite(
-                tc.GetTransform(),
-                sc.SpriteTexture,
-                sc.Color
+                sp.tc->GetTransform(),
+                sp.sc->SpriteTexture,
+                sp.sc->Color
             );
         }
         r2d.EndScene();
@@ -185,7 +198,8 @@ void Scene::OnUpdate3D(Timestep ts,
 
 
 void Scene::OnViewportResize(const uint32_t width, const uint32_t height) {
-
+    m_ViewportWidth = width;
+    m_ViewportHeight = height;
 }
 
 

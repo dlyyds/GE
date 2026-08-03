@@ -441,6 +441,26 @@ void ModelTestLayer::OnImGuiRender() {
     ImGui::Text("场景脚本数：%zu", scriptView.size());
     ImGui::Text("FPS：%.1f", Application::Get().GetFPS());
 
+    ImGui::Separator();
+
+    // 垂直同步切换
+    {
+        auto &app = Application::Get();
+        VsyncMode currentMode = app.GetWindow().GetVSync();
+
+        const char *modeNames[] = {"Default", "ON (FIFO)", "OFF (Mailbox)"};
+        int currentIndex = 0;
+        if (currentMode == VsyncMode::ON) currentIndex = 1;
+        else if (currentMode == VsyncMode::OFF) currentIndex = 2;
+
+        if (ImGui::Combo("垂直同步", &currentIndex, modeNames, 3)) {
+            VsyncMode newMode = VsyncMode::Default;
+            if (currentIndex == 1) newMode = VsyncMode::ON;
+            else if (currentIndex == 2) newMode = VsyncMode::OFF;
+            app.SetPresentMode(newMode);
+        }
+    }
+
     // 重置按钮
     if (ImGui::Button("重置参数")) {
         tc.Translation = {0.0f, 0.0f, 0.0f};

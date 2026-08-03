@@ -124,6 +124,14 @@ bool Renderer::RecreateSwapchain(uint32_t width, uint32_t height) {
     return true;
 }
 
+void Renderer::SetPresentMode(vk::PresentModeKHR present_mode) {
+    if (!m_RenderContext) {
+        return;
+    }
+    m_RenderContext->UpdateSwapchain(present_mode);
+    GE_CORE_INFO("Present mode changed");
+}
+
 // ========================================================================
 // 静态访问方法
 // ========================================================================

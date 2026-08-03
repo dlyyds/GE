@@ -62,6 +62,12 @@ public:
      */
     bool RecreateSwapchain(uint32_t width, uint32_t height);
 
+    /**
+     * @brief 设置呈现模式（运行时切换垂直同步）。
+     * @param present_mode  目标呈现模式
+     */
+    void SetPresentMode(vk::PresentModeKHR present_mode);
+
     /// 等待 GPU 空闲。
     void WaitIdle();
 

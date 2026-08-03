@@ -419,6 +419,23 @@ void VulkanRenderContext::UpdateSwapchain(const vk::Extent2D &extent, vk::Surfac
 }
 
 // ============================================================================
+// 重建 swapchain：仅修改 present mode
+// ============================================================================
+
+void VulkanRenderContext::UpdateSwapchain(vk::PresentModeKHR present_mode) {
+    ZoneScoped;
+    if (!m_Swapchain) {
+        return;
+    }
+
+    m_Device.GetHandle().waitIdle();
+
+    m_Swapchain = std::make_unique<VulkanSwapchain>(*m_Swapchain, present_mode);
+
+    Recreate();
+}
+
+// ============================================================================
 // Semaphore 辅助
 // ============================================================================
 

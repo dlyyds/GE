@@ -242,6 +242,11 @@ public:
      */
     void UpdateSwapchain(const vk::Extent2D &extent, vk::SurfaceTransformFlagBitsKHR transform);
 
+    /**
+     * @brief 更新 swapchain 的呈现模式（垂直同步切换）。
+     */
+    void UpdateSwapchain(vk::PresentModeKHR present_mode);
+
     // ========================================================================
     // Semaphore 辅助
     // ========================================================================

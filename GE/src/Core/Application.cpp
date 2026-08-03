@@ -27,6 +27,7 @@ Application::Application(const std::string &name, ApplicationCommandLineArgs arg
     s_Instance = this;
 
     m_Window = Window::Create(WindowProperties(name, 1600, 900));
+    m_Window->SetVSync(VsyncMode::ON);
     m_Window->SetEventCallback(GE_BIND_EVENT_FN(Application::OnEvent));
 
     // 初始化渲染器（内部完成 VulkanContext → RenderContext → Prepare 完整初始化链）
@@ -125,6 +126,32 @@ void Application::OnEvent(Event &e) {
 }
 
 void Application::Close() { m_Running = false; }
+
+void Application::SetPresentMode(VsyncMode mode) {
+    if (!m_Renderer) {
+        return;
+    }
+
+    // 将 VsyncMode 映射到 Vulkan 呈现模式（与 VulkanRenderContext 构造中的逻辑一致）
+    vk::PresentModeKHR present_mode;
+    switch (mode) {
+    case VsyncMode::ON:
+        present_mode = vk::PresentModeKHR::eFifo;
+        break;
+    case VsyncMode::OFF:
+        present_mode = vk::PresentModeKHR::eMailbox;
+        break;
+    case VsyncMode::Default:
+    default:
+        present_mode = vk::PresentModeKHR::eMailbox;
+        break;
+    }
+
+    // 同步更新 Window 的 vsync 属性，保持状态一致
+    m_Window->SetVSync(mode);
+
+    m_Renderer->SetPresentMode(present_mode);
+}
 
 void Application::RecreateSwapchain() {
     auto windowWidth = m_Window->GetWidth();

@@ -40,6 +40,12 @@ private:
     bool  m_AutoRotate{true};                 ///< 是否自动旋转
     float m_AutoRotateSpeed{0.5f};            ///< 自动旋转速度（弧度/秒），作用于 Y 轴
 
+    // ImGuizmo 相关
+    int   m_GizmoType{-1};                    ///< 当前 gizmo 操作类型（-1=关闭，对应 ImGuizmo::OPERATION）
+    bool  m_UseSnap{false};                   ///< 是否启用吸附
+    float m_SnapValue{0.5f};                  ///< 吸附步长
+    bool  m_GizmoUsing{false};                ///< 上一帧是否正在使用 gizmo（用于阻挡相机事件）
+
     /// 刷新模型上的 ScriptComponent
     void RefreshScript();
     /// 刷新相机上的鼠标控制 ScriptComponent

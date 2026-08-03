@@ -11,8 +11,10 @@
 #include "GE/Scene/Components.h"
 
 #include "imgui.h"
+#include "ImGuizmo.h"
 
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/quaternion.hpp>
 #include <cmath>
 
 namespace GE {
@@ -185,6 +187,27 @@ void ModelTestLayer::OnUpdate(Timestep &ts) {
 }
 
 void ModelTestLayer::OnEvent(Event &event) {
+    // 快捷键切换 gizmo 模式（W/E/R/Q/T）
+    if (event.GetEventType() == EventType::KeyPressed) {
+        auto &keyEvent = static_cast<KeyPressedEvent &>(event);
+        switch (keyEvent.GetKeyCode()) {
+            case Key::Q: m_GizmoType = -1; return;
+            case Key::W: m_GizmoType = ImGuizmo::TRANSLATE; return;
+            case Key::E: m_GizmoType = ImGuizmo::ROTATE; return;
+            case Key::R: m_GizmoType = ImGuizmo::SCALE; return;
+            case Key::T: m_UseSnap = !m_UseSnap; return;
+            default: break;
+        }
+    }
+
+    // 如果上一帧正在使用 gizmo 或鼠标悬停在 gizmo 上，
+    // 则阻挡鼠标事件，避免相机同时旋转
+    if (m_GizmoUsing) {
+        if (event.IsInCategory(EventCategoryMouse)) {
+            return;
+        }
+    }
+
     // 将事件转发给相机（处理鼠标移动、滚轮、按键等交互）
     if (m_CameraEntity) {
         auto &cameraComp = m_CameraEntity.GetComponent<CameraComponent>();
@@ -193,12 +216,88 @@ void ModelTestLayer::OnEvent(Event &event) {
 }
 
 void ModelTestLayer::OnImGuiRender() {
+    // ---- ImGuizmo：视口内 3D 变换操作 ----
+    Entity selected = m_HierarchyPanel.GetSelectedEntity();
+    if (selected && m_GizmoType != -1 && m_CameraEntity) {
+        auto &cameraComp = m_CameraEntity.GetComponent<CameraComponent>();
+        auto &camera = cameraComp.CameraInstance;
+
+        glm::mat4 view = camera.GetView();
+        // ImGuizmo 内部使用 OpenGL 约定（Y 向上为正），需要去掉 Vulkan 的 Y 翻转
+        // （ImGui 绘制本身已正确适配 Vulkan 屏幕坐标，这里只是 3D 投影数学需要 OpenGL 风格）
+        glm::mat4 projection = camera.GetProj();
+        projection[1][1] *= -1.0f;
+
+        auto &tc = selected.GetComponent<TransformComponent>();
+        glm::mat4 transform = tc.GetTransform();
+
+        ImGuizmo::SetOrthographic(false);
+        ImGuizmo::SetDrawlist();
+
+        // gizmo 覆盖整个窗口（3D 场景渲染到整个 swapchain）
+        auto &io = ImGui::GetIO();
+        ImGuizmo::SetRect(0.0f, 0.0f, io.DisplaySize.x, io.DisplaySize.y);
+
+        // 吸附参数
+        float snap[3] = { m_SnapValue, m_SnapValue, m_SnapValue };
+        float *snapPtr = m_UseSnap ? snap : nullptr;
+
+        // 执行 gizmo 操作
+        bool manipulated = ImGuizmo::Manipulate(
+            glm::value_ptr(view),
+            glm::value_ptr(projection),
+            static_cast<ImGuizmo::OPERATION>(m_GizmoType),
+            ImGuizmo::LOCAL,
+            glm::value_ptr(transform),
+            nullptr,
+            snapPtr
+        );
+
+        // 如果用户拖拽了 gizmo，把结果写回 TransformComponent
+        if (manipulated) {
+            glm::vec3 translation, rotation, scale;
+            ImGuizmo::DecomposeMatrixToComponents(
+                glm::value_ptr(transform),
+                glm::value_ptr(translation),
+                glm::value_ptr(rotation),
+                glm::value_ptr(scale)
+            );
+            tc.Translation = translation;
+            // ImGuizmo 返回的旋转是欧拉角（度），内部存储弧度
+            tc.Rotation = glm::radians(rotation);
+            tc.Scale = scale;
+        }
+
+        // 记录 gizmo 使用状态，用于下一帧阻挡相机事件
+        m_GizmoUsing = ImGuizmo::IsUsing() || ImGuizmo::IsOver();
+    } else {
+        m_GizmoUsing = false;
+    }
+
     // 场景层级 + 属性面板
     m_HierarchyPanel.OnImGuiRender();
 
     ImGui::Begin("ModelTestLayer");
     ImGui::Text("3D 模型渲染测试（Scene + MeshComponent + Renderer3D）");
     ImGui::Separator();
+
+    // Gizmo 操作提示 + 模式切换
+    {
+        ImGui::Text("Gizmo 快捷键：W=平移  E=旋转  R=缩放  Q=关闭  T=吸附");
+        const char *modeStr = "关闭";
+        switch (m_GizmoType) {
+            case ImGuizmo::TRANSLATE: modeStr = "平移 (Translate)"; break;
+            case ImGuizmo::ROTATE:    modeStr = "旋转 (Rotate)"; break;
+            case ImGuizmo::SCALE:     modeStr = "缩放 (Scale)"; break;
+            default:                  modeStr = "关闭"; break;
+        }
+        ImGui::Text("当前模式：%s", modeStr);
+        ImGui::Checkbox("启用吸附 (Snap)", &m_UseSnap);
+        if (m_UseSnap) {
+            ImGui::DragFloat("吸附步长", &m_SnapValue, 0.05f, 0.01f, 10.0f);
+        }
+        ImGui::Separator();
+    }
 
     if (!m_ModelEntity) {
         ImGui::TextDisabled("实体未创建");

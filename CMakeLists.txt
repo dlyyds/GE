@@ -90,6 +90,7 @@ target_link_libraries(${GE_NAME} PUBLIC
         spdlog::spdlog
         glfw
         imgui
+        imguizmo
         yaml-cpp::yaml-cpp
         TracyClient
         ${Vulkan_LIBRARIES}

@@ -312,6 +312,10 @@ private:
     size_t m_ThreadCount{1};
     bool m_EnableDepth{false};  ///< RenderTarget 是否启用深度缓冲
     const Window &m_Window;
+
+    /// 待切换的呈现模式（空表示无待切换请求）
+    /// 从 UpdateSwapchain(PresentModeKHR) 设置，BeginFrame 开头安全重建
+    std::optional<vk::PresentModeKHR> m_PendingPresentMode;
 };
 
 } // namespace GE

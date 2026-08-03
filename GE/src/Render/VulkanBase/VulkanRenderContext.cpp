@@ -119,6 +119,19 @@ VulkanCommandBuffer &VulkanRenderContext::Begin(CommandBufferResetMode reset_mod
 
 void VulkanRenderContext::BeginFrame() {
     ZoneScoped;
+
+    // 处理待切换的呈现模式（在 acquire 之前重建 swapchain，避免当前帧 command buffer 引用旧 image）
+    if (m_Swapchain && m_PendingPresentMode.has_value()) {
+        auto new_mode = *m_PendingPresentMode;
+        m_PendingPresentMode.reset();
+
+        m_Device.GetHandle().waitIdle();
+        m_Swapchain = std::make_unique<VulkanSwapchain>(*m_Swapchain, new_mode);
+        Recreate();
+
+        GE_CORE_INFO("Present mode updated");
+    }
+
     // 仅在存在 swapchain 时处理 surface 变化
     if (m_Swapchain) {
         HandleSurfaceChanges();
@@ -419,7 +432,7 @@ void VulkanRenderContext::UpdateSwapchain(const vk::Extent2D &extent, vk::Surfac
 }
 
 // ============================================================================
-// 重建 swapchain：仅修改 present mode
+// 请求切换 present mode（延迟到下一帧开始时执行，保证当前帧 command buffer 安全）
 // ============================================================================
 
 void VulkanRenderContext::UpdateSwapchain(vk::PresentModeKHR present_mode) {
@@ -428,11 +441,7 @@ void VulkanRenderContext::UpdateSwapchain(vk::PresentModeKHR present_mode) {
         return;
     }
 
-    m_Device.GetHandle().waitIdle();
-
-    m_Swapchain = std::make_unique<VulkanSwapchain>(*m_Swapchain, present_mode);
-
-    Recreate();
+    m_PendingPresentMode = present_mode;
 }
 
 // ============================================================================

@@ -97,6 +97,11 @@ void ModelTestLayer::OnAttach() {
         GE_CORE_ASSERT(m_CubeMesh, "创建立方体网格失败");
         m_CubeMesh->SetDebugName("ModelTest_Cube");
         m_CubeMesh->SetFilePath("builtin:cube"); // 标记为内置立方体，便于场景序列化时还原
+
+        // 创建球体网格（光源可视化用）
+        m_SphereMesh = Mesh::CreateBuiltin(device, "sphere");
+        GE_CORE_ASSERT(m_SphereMesh, "创建球体网格失败");
+        m_SphereMesh->SetDebugName("ModelTest_Sphere");
     }
 
     // 创建场景与模型实体
@@ -122,9 +127,9 @@ void ModelTestLayer::OnAttach() {
         glm::vec4(1.0f, 0.2f, 0.2f, 1.5f), // 红色，强度 1.5
         0.4f // 半径倒数
         );
-    // 给光源加一个可视化小球（用立方体缩小代替，颜色和光源一致）
+    // 给光源加一个可视化小球（球体，颜色和光源一致）
     m_RedLightEntity.AddComponent<MeshComponent>(
-        m_CubeMesh.get(),
+        m_SphereMesh.get(),
         glm::vec4(1.0f, 0.4f, 0.4f, 1.0f)
         );
 
@@ -136,9 +141,9 @@ void ModelTestLayer::OnAttach() {
         glm::vec4(0.2f, 0.3f, 1.0f, 1.5f), // 蓝色，强度 1.5
         0.4f // 半径倒数
         );
-    // 给光源加一个可视化小球（用立方体缩小代替，颜色和光源一致）
+    // 给光源加一个可视化小球（球体，颜色和光源一致）
     m_BlueLightEntity.AddComponent<MeshComponent>(
-        m_CubeMesh.get(),
+        m_SphereMesh.get(),
         glm::vec4(0.4f, 0.5f, 1.0f, 1.0f)
         );
 
@@ -177,6 +182,7 @@ void ModelTestLayer::OnDetach() {
     m_Scene.reset();
     m_Texture.reset();
     m_CubeMesh.reset();
+    m_SphereMesh.reset();
 }
 
 void ModelTestLayer::OnUpdate(Timestep &ts) {

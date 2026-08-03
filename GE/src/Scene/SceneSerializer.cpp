@@ -190,7 +190,10 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
     auto &reg = m_Scene->Reg();
     auto view = reg.view<entt::entity>();
 
+    size_t entityCount = 0;
+
     for (auto entityHandle : view) {
+        entityCount++;
         Entity entity(entityHandle, m_Scene);
 
         YAML::Node entityNode;
@@ -304,8 +307,8 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
         fout << emitter.c_str();
         fout.close();
 
-        GE_CORE_INFO("SceneSerializer: 场景已保存到 {0}（{1} 个实体）",
-                     filepath, view.size_hint());
+        GE_CORE_INFO("SceneSerializer: 场景已保存到 {}（{} 个实体）",
+                     filepath, entityCount);
         return true;
     } catch (const std::exception &e) {
         GE_CORE_ERROR("SceneSerializer::Serialize: 写入文件异常: {0}", e.what());
@@ -468,7 +471,7 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
         entityCount++;
     }
 
-    GE_CORE_INFO("SceneSerializer: 场景已从 {0} 加载（{1} 个实体，{2} 个纹理，{3} 个网格）",
+    GE_CORE_INFO("SceneSerializer: 场景已从 {} 加载（{} 个实体，{} 个纹理，{} 个网格）",
                  filepath, entityCount,
                  m_LoadedTextures.size(), m_LoadedMeshes.size());
 

@@ -36,10 +36,6 @@ private:
 
     SceneHierarchyPanel m_HierarchyPanel;    ///< 场景层级面板（ImGui）
 
-    // 脚本参数（通过 ImGui 调节）
-    bool  m_AutoRotate{true};                 ///< 是否自动旋转
-    float m_AutoRotateSpeed{0.5f};            ///< 自动旋转速度（弧度/秒），作用于 Y 轴
-
     // ImGuizmo 相关
     int   m_GizmoType{-1};                    ///< 当前 gizmo 操作类型（-1=关闭，对应 ImGuizmo::OPERATION）
     bool  m_UseSnap{false};                   ///< 是否启用吸附
@@ -51,8 +47,6 @@ private:
     /// 绘制 ImGuizmo 控制面板（提示文字 + 模式/吸附参数）
     void RenderImGuizmoPanel();
 
-    /// 刷新模型上的 ScriptComponent
-    void RefreshScript();
     /// 刷新相机上的鼠标控制 ScriptComponent
     void RefreshCameraScript();
     /// 刷新点光源的旋转动画 ScriptComponent

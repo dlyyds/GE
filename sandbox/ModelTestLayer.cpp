@@ -140,8 +140,6 @@ void ModelTestLayer::OnAttach() {
         glm::vec4(0.4f, 0.5f, 1.0f, 1.0f)
         );
 
-    // 添加脚本组件（自动旋转逻辑）
-    RefreshScript();
     // 添加相机鼠标控制脚本
     RefreshCameraScript();
     // 添加点光源旋转动画脚本
@@ -345,21 +343,6 @@ void ModelTestLayer::OnImGuiRender() {
 
     ImGui::Separator();
 
-    // Script 组件参数
-    ImGui::Text("Script 组件（自动绕 Y 轴旋转）");
-    bool scriptChanged = false;
-    scriptChanged |= ImGui::Checkbox("启用", &m_AutoRotate);
-    if (m_AutoRotate) {
-        scriptChanged |= ImGui::DragFloat("旋转速度", &m_AutoRotateSpeed,
-                                          0.05f, -10.0f, 10.0f,
-                                          "%.3f rad/s");
-    }
-    if (scriptChanged) {
-        RefreshScript();
-    }
-
-    ImGui::Separator();
-
     // 光照参数
     {
         ImGui::Text("光照参数");
@@ -419,40 +402,9 @@ void ModelTestLayer::OnImGuiRender() {
         camera.SetOrbit(0.0f, 0.0f, 3.0f);
         cameraComp.Primary = true;
         cameraComp.FixedAspectRatio = false;
-
-        m_AutoRotate = true;
-        m_AutoRotateSpeed = 0.5f;
-        RefreshScript();
     }
 
     ImGui::End();
-}
-
-void ModelTestLayer::RefreshScript() {
-    if (!m_ModelEntity) {
-        return;
-    }
-
-    if (!m_AutoRotate) {
-        // 关闭自动旋转：移除脚本组件
-        if (m_ModelEntity.HasComponent<ScriptComponent>()) {
-            m_ModelEntity.RemoveComponent<ScriptComponent>();
-        }
-        return;
-    }
-
-    // 开启自动旋转：添加 / 更新脚本组件（绕 Y 轴旋转）
-    float speed = m_AutoRotateSpeed;
-    auto callback = [speed](Timestep ts, Entity entity) {
-        auto &tc = entity.GetComponent<TransformComponent>();
-        tc.Rotation.y += ts.GetSeconds() * speed;
-    };
-
-    if (m_ModelEntity.HasComponent<ScriptComponent>()) {
-        m_ModelEntity.GetComponent<ScriptComponent>().OnUpdate = std::move(callback);
-    } else {
-        m_ModelEntity.AddComponent<ScriptComponent>(std::move(callback));
-    }
 }
 
 void ModelTestLayer::RefreshCameraScript() {
@@ -560,7 +512,8 @@ void ModelTestLayer::RenderImGuizmo() {
     glm::mat4 transform = tc.GetTransform();
 
     ImGuizmo::SetOrthographic(false);
-    ImGuizmo::SetDrawlist();
+    // 画在前景 draw list（最顶层），不隶属于任何 ImGui 窗口，避免命中检测错位
+    ImGuizmo::SetDrawlist(ImGui::GetForegroundDrawList());
 
     // gizmo 覆盖整个窗口（3D 场景渲染到整个 swapchain）
     auto &io = ImGui::GetIO();

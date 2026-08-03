@@ -82,8 +82,26 @@ void Renderer2D::BeginScene(const glm::mat4 &viewProjection,
                             const glm::vec4 &clearColor) {
     GE_CORE_ASSERT(!m_InScene, "Renderer2D::BeginScene called without EndScene!");
     m_InScene = true;
-    m_ViewProjection = viewProjection;
+    m_View = glm::mat4(1.0f);
+    m_Projection = viewProjection;
     m_ClearColor = clearColor;
+    m_UseDepth = false;
+
+    // 清空上一帧的批处理数据
+    for (auto &[tex, verts] : m_Batches) {
+        verts.clear();
+    }
+}
+
+void Renderer2D::BeginScene(const glm::mat4 &view,
+                            const glm::mat4 &projection,
+                            const glm::vec4 &clearColor) {
+    GE_CORE_ASSERT(!m_InScene, "Renderer2D::BeginScene called without EndScene!");
+    m_InScene = true;
+    m_View = view;
+    m_Projection = projection;
+    m_ClearColor = clearColor;
+    m_UseDepth = true;
 
     // 清空上一帧的批处理数据
     for (auto &[tex, verts] : m_Batches) {
@@ -96,10 +114,18 @@ void Renderer2D::DrawSprite(const glm::vec2 &position,
                             float rotation,
                             Texture *texture,
                             const glm::vec4 &color) {
+    DrawSprite(glm::vec3(position, 0.0f), size, rotation, texture, color);
+}
+
+void Renderer2D::DrawSprite(const glm::vec3 &position,
+                            const glm::vec2 &size,
+                            float rotation,
+                            Texture *texture,
+                            const glm::vec4 &color) {
     GE_CORE_ASSERT(m_InScene, "DrawSprite called outside BeginScene/EndScene!");
 
     // 构建模型变换矩阵：先缩放，再旋转，再平移
-    glm::mat4 transform = glm::translate(glm::mat4(1.0f), glm::vec3(position, 0.0f))
+    glm::mat4 transform = glm::translate(glm::mat4(1.0f), position)
                           * glm::rotate(glm::mat4(1.0f), rotation, glm::vec3(0.0f, 0.0f, 1.0f))
                           * glm::scale(glm::mat4(1.0f), glm::vec3(size * 0.5f, 1.0f));
 
@@ -171,15 +197,10 @@ void Renderer2D::EndScene() {
     vertexAlloc.update(allVertices);
 
     // ── 3. 分配 UBO（UniformBlock） ───────────────────────────────────
-    // 因为我们在 CPU 端把 model 变换应用到了顶点，所以 UBO 中：
-    //   model = 单位矩阵
-    //   view  = 单位矩阵
-    //   projection = viewProjection（作为投影矩阵传入）
-    //   color = 白色
+    // 模型变换已在 CPU 端烘焙到顶点位置，UBO 只存 view + projection + color
     UniformBlock ubo{};
-    ubo.model = glm::mat4(1.0f);
-    ubo.view = glm::mat4(1.0f);
-    ubo.projection = m_ViewProjection;
+    ubo.view = m_View;
+    ubo.projection = m_Projection;
     ubo.color = glm::vec4(1.0f);
 
     BufferAllocation uboAlloc = frame.AllocateBuffer(
@@ -193,6 +214,8 @@ void Renderer2D::EndScene() {
     clearValue.color = std::array<float, 4>{
         m_ClearColor.r, m_ClearColor.g, m_ClearColor.b, m_ClearColor.a};
 
+    auto &renderTarget = frame.GetRenderTarget();
+
     VulkanRenderingInfo renderInfo;
     renderInfo.SetRenderArea(0, 0, extent.width, extent.height);
     renderInfo.AddColorAttachment(Renderer::GetFrameImageView().GetHandle(),
@@ -201,6 +224,17 @@ void Renderer2D::EndScene() {
                                       : vk::AttachmentLoadOp::eLoad,
                                   vk::AttachmentStoreOp::eStore,
                                   clearValue);
+
+    // 3D 模式下附加深度缓冲（load = 加载已有深度，保证 3D 场景里的遮挡正确）
+    if (m_UseDepth && renderTarget.HasDepth()) {
+        vk::ClearDepthStencilValue clearDS{1.0f, 0};
+        renderInfo.SetDepthAttachment(
+            renderTarget.GetDepthView().GetHandle(),
+            vk::AttachmentLoadOp::eLoad,
+            vk::AttachmentStoreOp::eStore,
+            clearDS);
+    }
+
     renderInfo.Begin(vkCmd);
 
     // ── 5. 绑定 pipeline layout ───────────────────────────────────────
@@ -211,7 +245,11 @@ void Renderer2D::EndScene() {
 
     // 附件格式
     ps.colorAttachmentFormats = {colorFmt};
-    ps.depthFormat = {};
+    if (m_UseDepth && renderTarget.HasDepth()) {
+        ps.depthFormat = renderTarget.GetDepthFormat();
+    } else {
+        ps.depthFormat = {};
+    }
     ps.stencilFormat = {};
 
     // 顶点输入：从顶点着色器反射自动生成
@@ -233,12 +271,14 @@ void Renderer2D::EndScene() {
     blendState.alphaBlendOp = vk::BlendOp::eAdd;
     ps.SetBlendAttachments({blendState});
 
-    // 2D 渲染：无背面剔除、无深度测试、三角形列表
+    // 无背面剔除、三角形列表
     ps.cullMode.SetDynamic(true);
     ps.frontFace.SetDynamic(true);
     ps.topology.SetDynamic(true);
-    ps.depthTestEnable = VK_FALSE;
-    ps.depthWriteEnable = VK_FALSE;
+
+    // 深度测试：3D 模式开启，2D 模式关闭
+    ps.depthTestEnable = m_UseDepth ? VK_TRUE : VK_FALSE;
+    ps.depthWriteEnable = m_UseDepth ? VK_TRUE : VK_FALSE;
 
     // 动态状态
     vk::Viewport vp;
@@ -292,25 +332,25 @@ void Renderer2D::EndScene() {
 void Renderer2D::AppendQuad(Texture *texture,
                             const glm::mat4 &transform,
                             const glm::vec4 &color) {
-    // 四边形的 4 个角（中心在原点，宽高为 2，对应 [-1, 1]）
-    // 经过 transform 后变成实际大小和位置
+    // 四边形的 4 个角（中心在原点，宽高为 2，位于 xy 平面，对应 [-1, 1]）
+    // 经过 transform 后变成实际大小、位置、方向
     struct Corner {
-        glm::vec2 pos;
+        glm::vec3 pos;
         glm::vec2 uv;
     };
 
     static constexpr Corner corners[4] = {
-        {{-1.0f, -1.0f}, {0.0f, 0.0f}}, // 0: 左下
-        {{1.0f, -1.0f}, {1.0f, 0.0f}}, // 1: 右下
-        {{1.0f, 1.0f}, {1.0f, 1.0f}}, // 2: 右上
-        {{-1.0f, 1.0f}, {0.0f, 1.0f}}, // 3: 左上
+        {{-1.0f, -1.0f, 0.0f}, {0.0f, 0.0f}}, // 0: 左下
+        {{ 1.0f, -1.0f, 0.0f}, {1.0f, 0.0f}}, // 1: 右下
+        {{ 1.0f,  1.0f, 0.0f}, {1.0f, 1.0f}}, // 2: 右上
+        {{-1.0f,  1.0f, 0.0f}, {0.0f, 1.0f}}, // 3: 左上
     };
 
-    // 先把 4 个角都算出世界坐标
-    glm::vec2 positions[4];
+    // 先把 4 个角都算出世界坐标（含 z）
+    glm::vec3 positions[4];
     for (int i = 0; i < 4; ++i) {
-        glm::vec4 p = transform * glm::vec4(corners[i].pos, 0.0f, 1.0f);
-        positions[i] = glm::vec2(p.x, p.y);
+        glm::vec4 p = transform * glm::vec4(corners[i].pos, 1.0f);
+        positions[i] = glm::vec3(p.x, p.y, p.z);
     }
 
     // 6 个顶点（2 个三角形，CCW）：0-1-2, 0-2-3

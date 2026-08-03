@@ -59,6 +59,17 @@ public:
                     const glm::vec4 &clearColor = glm::vec4(-1.0f));
 
     /**
+     * @brief 开始 3D 场景，单独传入视图和投影矩阵（支持深度测试）。
+     *
+     * @param view        视图矩阵
+     * @param projection  投影矩阵
+     * @param clearColor  清屏颜色（r < 0 表示不清屏）
+     */
+    void BeginScene(const glm::mat4 &view,
+                    const glm::mat4 &projection,
+                    const glm::vec4 &clearColor = glm::vec4(-1.0f));
+
+    /**
      * @brief 提交一个 2D 精灵（位置 + 尺寸 + 旋转 + 纹理 + 颜色）。
      *
      * @param position  精灵中心位置（世界坐标，xy 平面）
@@ -68,6 +79,24 @@ public:
      * @param color     叠加颜色（tint），默认白色
      */
     void DrawSprite(const glm::vec2 &position,
+                    const glm::vec2 &size,
+                    float rotation,
+                    Texture *texture,
+                    const glm::vec4 &color = {1.0f, 1.0f, 1.0f, 1.0f});
+
+    /**
+     * @brief 提交一个 3D 空间中的 2D 精灵（3D 位置 + 尺寸 + 旋转 + 纹理 + 颜色）。
+     *
+     * 精灵位于 xy 平面，朝向 +Z 方向。如需 billboard（始终面向相机），
+     * 请使用 DrawBillboard。
+     *
+     * @param position  精灵中心位置（世界坐标，xyz）
+     * @param size      精灵尺寸（宽高）
+     * @param rotation  绕 Z 轴旋转角度（弧度）
+     * @param texture   精灵纹理
+     * @param color     叠加颜色（tint）
+     */
+    void DrawSprite(const glm::vec3 &position,
                     const glm::vec2 &size,
                     float rotation,
                     Texture *texture,
@@ -98,16 +127,15 @@ public:
 private:
     /// 单个精灵的 4 个顶点
     struct SpriteVertex {
-        glm::vec2 position;   ///< 位置（世界坐标）
+        glm::vec3 position;   ///< 位置（世界坐标，xyz）
         glm::vec2 uv;         ///< 纹理坐标
         glm::vec4 color;      ///< 顶点颜色
     };
 
     /// 每帧 UBO 数据（std140 布局，16 字节对齐）
     struct UniformBlock {
-        glm::mat4 model;        ///< 模型矩阵（单位矩阵，变换已在 CPU 端应用到顶点）
-        glm::mat4 view;         ///< 视图矩阵（单位矩阵）
-        glm::mat4 projection;   ///< 投影矩阵（存储 viewProjection）
+        glm::mat4 view;         ///< 视图矩阵（2D 模式下为单位矩阵）
+        glm::mat4 projection;   ///< 投影矩阵
         glm::vec4 color;        ///< 叠加颜色（白色）
     };
     static_assert(sizeof(UniformBlock) % 16 == 0, "UBO 必须 16 字节对齐");
@@ -133,11 +161,17 @@ private:
     /// Pipeline layout（由全局资源缓存管理，不拥有）
     VulkanPipelineLayout *m_PipelineLayout = nullptr;
 
-    /// 当前帧的视图投影矩阵
-    glm::mat4             m_ViewProjection{1.0f};
+    /// 当前帧的视图矩阵（2D 模式下为单位矩阵）
+    glm::mat4             m_View{1.0f};
+
+    /// 当前帧的投影矩阵
+    glm::mat4             m_Projection{1.0f};
 
     /// 清屏颜色（r < 0 表示不清屏）
     glm::vec4             m_ClearColor{-1.0f};
+
+    /// 是否启用深度测试（3D 模式开启，2D 模式关闭）
+    bool                  m_UseDepth = false;
 
     /// 默认 1x1 白色纹理（无纹理时的 fallback，避免未定义采样行为）
     std::unique_ptr<Texture> m_DefaultWhiteTexture;

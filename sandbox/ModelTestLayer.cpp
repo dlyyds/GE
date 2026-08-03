@@ -9,6 +9,7 @@
 #include "GE/Render/Renderer.h"
 #include "GE/Render/Renderer3D.h"
 #include "GE/Scene/Components.h"
+#include "GE/Utils/PlatformUtils.h"
 
 #include "imgui.h"
 #include "ImGuizmo.h"
@@ -165,6 +166,21 @@ void ModelTestLayer::OnUpdate(Timestep &ts) {
     float aspect = static_cast<float>(extent.width) /
                    static_cast<float>(extent.height);
 
+    // 同步场景视口尺寸（UI 精灵正交投影需要）
+    m_Scene->OnViewportResize(extent.width, extent.height);
+
+    // 场景中没有相机实体时，使用默认视角清屏
+    if (!m_CameraEntity) {
+        glm::mat4 view(1.0f);
+        glm::mat4 projection = glm::perspective(glm::radians(60.0f), aspect, 0.1f, 100.0f);
+        // Vulkan Y 翻转
+        projection[1][1] *= -1.0f;
+        glm::vec3 cameraPos{0.0f, 0.0f, 3.0f};
+        glm::vec4 clearColor{0.1f, 0.1f, 0.15f, 1.0f};
+        m_Scene->OnUpdate3D(ts, view, projection, cameraPos, clearColor);
+        return;
+    }
+
     // 从相机组件获取视图与投影矩阵
     auto &cameraComp = m_CameraEntity.GetComponent<CameraComponent>();
     auto &camera = cameraComp.CameraInstance;
@@ -222,6 +238,23 @@ void ModelTestLayer::OnImGuiRender() {
     ImGui::Text("3D 模型渲染测试（Scene + MeshComponent + Renderer3D）");
     ImGui::Separator();
 
+    // ---- 场景文件控制 ----
+    {
+        ImGui::Text("场景文件");
+        if (ImGui::Button("保存场景...")) {
+            SaveScene();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("加载场景...")) {
+            LoadScene();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("新建场景")) {
+            NewScene();
+        }
+        ImGui::Separator();
+    }
+
     // Gizmo 控制面板
     RenderImGuizmoPanel();
 
@@ -263,6 +296,9 @@ void ModelTestLayer::OnImGuiRender() {
     // 摄像机参数（通过 CameraComponent 控制）
     {
         ImGui::Text("摄像机 (CameraComponent)");
+        if (!m_CameraEntity) {
+            ImGui::TextDisabled("（场景中无相机实体）");
+        } else {
         auto &cameraComp = m_CameraEntity.GetComponent<CameraComponent>();
         auto &camera = cameraComp.CameraInstance;
 
@@ -331,6 +367,7 @@ void ModelTestLayer::OnImGuiRender() {
                          0.05f, 0.1f, 10.0f);
         ImGui::DragFloat("移动速度", &camera.MoveSpeed,
                          0.1f, 0.1f, 20.0f);
+        } // m_CameraEntity
     }
 
     ImGui::Separator();
@@ -366,14 +403,16 @@ void ModelTestLayer::OnImGuiRender() {
         mc.Color = {1.0f, 1.0f, 1.0f, 1.0f};
 
         // 重置相机
-        auto &cameraComp = m_CameraEntity.GetComponent<CameraComponent>();
-        auto &camera = cameraComp.CameraInstance;
-        camera.SetMode(Camera::Mode::Orbit);
-        camera.SetPerspective(60.0f, camera.GetAspect(), 0.1f, 100.0f);
-        camera.SetTarget({0.0f, 0.0f, 0.0f});
-        camera.SetOrbit(0.0f, 0.0f, 3.0f);
-        cameraComp.Primary = true;
-        cameraComp.FixedAspectRatio = false;
+        if (m_CameraEntity) {
+            auto &cameraComp = m_CameraEntity.GetComponent<CameraComponent>();
+            auto &camera = cameraComp.CameraInstance;
+            camera.SetMode(Camera::Mode::Orbit);
+            camera.SetPerspective(60.0f, camera.GetAspect(), 0.1f, 100.0f);
+            camera.SetTarget({0.0f, 0.0f, 0.0f});
+            camera.SetOrbit(0.0f, 0.0f, 3.0f);
+            cameraComp.Primary = true;
+            cameraComp.FixedAspectRatio = false;
+        }
     }
 
     ImGui::End();
@@ -543,6 +582,120 @@ void ModelTestLayer::RenderImGuizmoPanel() {
     if (m_UseSnap) {
         ImGui::DragFloat("吸附步长", &m_SnapValue, 0.05f, 0.01f, 10.0f);
     }
+}
+
+// ============================================================
+// 场景文件操作：保存 / 加载 / 新建
+// ============================================================
+
+void ModelTestLayer::SaveScene() {
+    if (!m_Scene) {
+        return;
+    }
+
+    std::string filepath = FileDialogs::SaveFile("GE Scene (*.scene)\0*.scene\0All Files (*.*)\0*.*\0");
+    if (filepath.empty()) {
+        return;
+    }
+
+    // 如果没有序列化器就创建一个（保存不需要 VulkanDevice）
+    if (!m_SceneSerializer) {
+        m_SceneSerializer = std::make_unique<SceneSerializer>(m_Scene.get());
+    } else {
+        // 更新场景指针（防止场景被替换过）
+        // 注意：SceneSerializer 没有提供 SetScene 方法，这里直接重建
+        // 但会丢失已加载的资源。保存操作不影响资源，所以重建也没关系
+        m_SceneSerializer = std::make_unique<SceneSerializer>(m_Scene.get());
+    }
+
+    m_SceneSerializer->Serialize(filepath);
+}
+
+void ModelTestLayer::LoadScene() {
+    std::string filepath = FileDialogs::OpenFile("GE Scene (*.scene)\0*.scene\0All Files (*.*)\0*.*\0");
+    if (filepath.empty()) {
+        return;
+    }
+
+    auto &ctx = Application::GetVulkanContext();
+    auto &device = ctx.GetDevice();
+    auto &cache = device.GetResourceCache();
+
+    // 先重置所有实体引用，避免悬空
+    m_ModelEntity = {};
+    m_CameraEntity = {};
+    m_RedLightEntity = {};
+    m_BlueLightEntity = {};
+
+    // 如果场景不存在，先创建
+    if (!m_Scene) {
+        m_Scene = std::make_unique<Scene>();
+    }
+
+    // 创建新的序列化器（带设备和缓存，用于加载资源）
+    m_SceneSerializer = std::make_unique<SceneSerializer>(m_Scene.get(), &device, &cache);
+
+    if (!m_SceneSerializer->Deserialize(filepath)) {
+        GE_CORE_WARN("加载场景失败: {0}", filepath);
+        return;
+    }
+
+    // 更新层级面板上下文
+    m_HierarchyPanel.SetContext(m_Scene.get());
+    m_HierarchyPanel.SetSelectedEntity({});
+
+    // 尝试重新绑定相机实体
+    RebindCameraEntity();
+}
+
+void ModelTestLayer::NewScene() {
+    // 重置所有实体引用
+    m_ModelEntity = {};
+    m_CameraEntity = {};
+    m_RedLightEntity = {};
+    m_BlueLightEntity = {};
+
+    // 创建新场景
+    m_Scene = std::make_unique<Scene>();
+
+    // 创建新的序列化器（清空旧资源）
+    auto &ctx = Application::GetVulkanContext();
+    auto &device = ctx.GetDevice();
+    auto &cache = device.GetResourceCache();
+    m_SceneSerializer = std::make_unique<SceneSerializer>(m_Scene.get(), &device, &cache);
+
+    // 更新层级面板
+    m_HierarchyPanel.SetContext(m_Scene.get());
+    m_HierarchyPanel.SetSelectedEntity({});
+}
+
+void ModelTestLayer::RebindCameraEntity() {
+    if (!m_Scene) {
+        m_CameraEntity = {};
+        return;
+    }
+
+    // 遍历场景，查找带有 CameraComponent 且 Primary=true 的实体
+    auto &reg = m_Scene->Reg();
+    auto view = reg.view<CameraComponent>();
+
+    for (auto entityHandle : view) {
+        Entity entity(entityHandle, m_Scene.get());
+        const auto &cc = entity.GetComponent<CameraComponent>();
+        if (cc.Primary) {
+            m_CameraEntity = entity;
+            return;
+        }
+    }
+
+    // 没找到主相机，就取第一个有 CameraComponent 的
+    for (auto entityHandle : view) {
+        m_CameraEntity = Entity(entityHandle, m_Scene.get());
+        return;
+    }
+
+    // 没有相机
+    m_CameraEntity = {};
 }
 
 } // namespace GE

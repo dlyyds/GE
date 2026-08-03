@@ -5,6 +5,7 @@
 #include "GE/Render/Mesh.h"
 #include "GE/Scene/Scene.h"
 #include "GE/Scene/Entity.h"
+#include "GE/Scene/SceneSerializer.h"
 
 #include "Panels/SceneHierarchyPanel.h"
 
@@ -34,6 +35,7 @@ private:
     std::unique_ptr<Mesh> m_CubeMesh; ///< 立方体网格
     std::unique_ptr<Texture> m_Texture; ///< 棋盘纹理
     std::unique_ptr<Scene> m_Scene; ///< 场景
+    std::unique_ptr<SceneSerializer> m_SceneSerializer; ///< 场景序列化器（持有加载的资源）
     Entity m_ModelEntity; ///< 模型实体
     Entity m_CameraEntity; ///< 相机实体
     Entity m_RedLightEntity; ///< 红色点光源实体
@@ -57,6 +59,18 @@ private:
 
     /// 刷新点光源的旋转动画 ScriptComponent
     void RefreshLightScripts();
+
+    /// 保存场景到文件（弹出文件对话框）
+    void SaveScene();
+
+    /// 从文件加载场景（弹出文件对话框，会清空当前场景）
+    void LoadScene();
+
+    /// 新建空场景（清空当前场景内容）
+    void NewScene();
+
+    /// 场景中查找名为 MainCamera 的实体并绑定到 m_CameraEntity
+    void RebindCameraEntity();
 };
 
 } // namespace GE

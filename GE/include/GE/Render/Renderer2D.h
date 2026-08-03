@@ -139,6 +139,9 @@ private:
     /// 清屏颜色（r < 0 表示不清屏）
     glm::vec4             m_ClearColor{-1.0f};
 
+    /// 默认 1x1 白色纹理（无纹理时的 fallback，避免未定义采样行为）
+    std::unique_ptr<Texture> m_DefaultWhiteTexture;
+
     /// 批处理队列：纹理指针 → 该纹理的所有精灵顶点
     std::unordered_map<Texture *, std::vector<SpriteVertex>> m_Batches;
 

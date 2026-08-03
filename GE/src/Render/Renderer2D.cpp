@@ -47,11 +47,26 @@ Renderer2D::Renderer2D() {
         {m_VertShader, m_FragShader});
     m_PipelineLayout->SetDebugName("Sprite2D_PipelineLayout");
 
+    // ── 3. 创建默认 1x1 白色纹理（无纹理时的 fallback） ────────────────
+    uint32_t whitePixel = 0xFFFFFFFF; // RGBA8: (255, 255, 255, 255)
+    m_DefaultWhiteTexture = Texture::LoadFromMemory(
+        device, cache, &whitePixel, 1, 1,
+        vk::Format::eR8G8B8A8Unorm,
+        vk::Filter::eLinear, vk::Filter::eLinear);
+    if (m_DefaultWhiteTexture) {
+        m_DefaultWhiteTexture->SetDebugName("Renderer2D_DefaultWhite");
+    } else {
+        GE_CORE_ERROR("Renderer2D: 创建默认白色纹理失败！");
+    }
+
     GE_CORE_INFO("Renderer2D initialized");
 }
 
 Renderer2D::~Renderer2D() {
     GE_CORE_INFO("Renderer2D Shutdown");
+
+    // 释放默认白色纹理
+    m_DefaultWhiteTexture.reset();
 
     // 着色器和 pipeline layout 由全局资源缓存管理，不需要手动释放
     m_VertShader = nullptr;
@@ -253,15 +268,15 @@ void Renderer2D::EndScene() {
 
     // ── 8. 按纹理批次绘制 ─────────────────────────────────────────────
     // 每批次一个 draw call，同纹理的所有精灵合并绘制
+    // 无纹理时使用默认 1x1 白色纹理，避免未定义采样行为
+    Texture *fallback = m_DefaultWhiteTexture.get();
     for (const auto &batch : batchInfos) {
-        if (batch.texture) {
-            // 绑定纹理到 set 0, binding 1
-            cmd.BindImage(batch.texture->GetImageView(),
-                          batch.texture->GetSampler(),
+        Texture *tex = batch.texture ? batch.texture : fallback;
+        if (tex) {
+            cmd.BindImage(tex->GetImageView(),
+                          tex->GetSampler(),
                           0, 1);
         }
-        // 无纹理时使用片元着色器默认采样（白色）
-
         cmd.Draw(batch.vertexCount, 1, batch.vertexOffset, 0);
     }
 

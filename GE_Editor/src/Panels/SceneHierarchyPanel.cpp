@@ -227,6 +227,22 @@ void SceneHierarchyPanel::DrawComponents(Entity entity) {
             ImGui::CloseCurrentPopup();
         }
 
+        if (ImGui::MenuItem("Directional Light")) {
+            if (!m_SelectionContext.HasComponent<DirectionalLightComponent>())
+                m_SelectionContext.AddComponent<DirectionalLightComponent>();
+            else
+                GE_CORE_WARN("This entity already has the Directional Light Component!");
+            ImGui::CloseCurrentPopup();
+        }
+
+        if (ImGui::MenuItem("Ambient Light")) {
+            if (!m_SelectionContext.HasComponent<AmbientLightComponent>())
+                m_SelectionContext.AddComponent<AmbientLightComponent>();
+            else
+                GE_CORE_WARN("This entity already has the Ambient Light Component!");
+            ImGui::CloseCurrentPopup();
+        }
+
         ImGui::EndPopup();
     }
     ImGui::PopItemWidth();
@@ -311,6 +327,16 @@ void SceneHierarchyPanel::DrawComponents(Entity entity) {
 
         ImGui::DragFloat("Tiling Factor", &component.TilingFactor, 0.1f, 0.0f, 100.0f);
 
+    });
+
+    DrawComponent<DirectionalLightComponent>("Directional Light", entity, [](auto &component) {
+        ImGui::ColorEdit4("Color + Intensity", glm::value_ptr(component.Color));
+        ImGui::TextDisabled("照射方向由 Transform 的 Rotation 决定");
+    });
+
+    DrawComponent<AmbientLightComponent>("Ambient Light", entity, [](auto &component) {
+        ImGui::ColorEdit4("Color + Intensity", glm::value_ptr(component.Color));
+        ImGui::TextDisabled("全局环境光，不依赖 Transform");
     });
 
 }

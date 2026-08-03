@@ -142,6 +142,21 @@ void ModelTestLayer::OnAttach() {
         glm::vec4(0.4f, 0.5f, 1.0f, 1.0f)
         );
 
+    // 创建方向光
+    m_DirLightEntity = m_Scene->CreateEntity("DirectionalLight");
+    // 默认方向：从斜上方照向原点（先绕 X 转 -45° 让光朝下，再绕 Y 转 30° 给个水平角度）
+    m_DirLightEntity.GetComponent<TransformComponent>().Rotation =
+        glm::vec3(glm::radians(-45.0f), glm::radians(30.0f), 0.0f);
+    m_DirLightEntity.AddComponent<DirectionalLightComponent>(
+        glm::vec4(1.0f, 0.95f, 0.85f, 1.2f) // 暖白色，强度 1.2
+        );
+
+    // 创建环境光
+    m_AmbientLightEntity = m_Scene->CreateEntity("AmbientLight");
+    m_AmbientLightEntity.AddComponent<AmbientLightComponent>(
+        glm::vec4(0.3f, 0.3f, 0.35f, 1.0f) // 偏冷灰，强度 1.0
+        );
+
     // 添加相机鼠标控制脚本
     RefreshCameraScript();
     // 添加点光源旋转动画脚本
@@ -156,6 +171,8 @@ void ModelTestLayer::OnDetach() {
     m_CameraEntity = {};
     m_RedLightEntity = {};
     m_BlueLightEntity = {};
+    m_DirLightEntity = {};
+    m_AmbientLightEntity = {};
     m_HierarchyPanel.SetContext(nullptr);
     m_Scene.reset();
     m_Texture.reset();
@@ -373,19 +390,40 @@ void ModelTestLayer::OnImGuiRender() {
 
     ImGui::Separator();
 
-    // 光照参数
+    // 光照参数（由 ECS 组件管理）
     {
-        ImGui::Text("光照参数");
-        auto &r3d = Renderer::Get3DRenderer();
-        auto &light = r3d.GetLightParams();
+        ImGui::Text("光照参数（ECS 组件）");
 
-        // 方向光
-        ImGui::DragFloat3("方向光方向", &light.dirLightDirection.x, 0.05f,
-                          -1.0f, 1.0f);
-        ImGui::ColorEdit4("方向光颜色 + 强度", &light.dirLightColor.r);
+        // 方向光：通过 DirectionalLightComponent + Transform 控制
+        if (m_DirLightEntity) {
+            auto &dlc = m_DirLightEntity.GetComponent<DirectionalLightComponent>();
+            auto &tc = m_DirLightEntity.GetComponent<TransformComponent>();
 
-        // 环境光
-        ImGui::ColorEdit4("环境光 + 强度", &light.ambient.r);
+            ImGui::Text("方向光");
+            ImGui::ColorEdit4("颜色 + 强度", glm::value_ptr(dlc.Color));
+
+            // 用欧拉角（度）编辑方向，内部存弧度
+            glm::vec3 rotDeg = glm::degrees(tc.Rotation);
+            if (ImGui::DragFloat3("旋转 (deg)", glm::value_ptr(rotDeg), 1.0f,
+                                  -180.0f, 180.0f)) {
+                tc.Rotation = glm::radians(rotDeg);
+            }
+
+            // 显示当前光线方向（前向向量）
+            glm::vec3 forward = glm::quat(tc.Rotation) * glm::vec3(0.0f, 0.0f, -1.0f);
+            ImGui::Text("光线方向: (%.2f, %.2f, %.2f)",
+                        forward.x, forward.y, forward.z);
+        }
+
+        ImGui::Spacing();
+
+        // 环境光：通过 AmbientLightComponent 控制
+        if (m_AmbientLightEntity) {
+            auto &alc = m_AmbientLightEntity.GetComponent<AmbientLightComponent>();
+
+            ImGui::Text("环境光");
+            ImGui::ColorEdit4("颜色 + 强度", glm::value_ptr(alc.Color));
+        }
     }
 
     ImGui::Separator();
@@ -627,6 +665,8 @@ void ModelTestLayer::LoadScene() {
     m_CameraEntity = {};
     m_RedLightEntity = {};
     m_BlueLightEntity = {};
+    m_DirLightEntity = {};
+    m_AmbientLightEntity = {};
 
     // 如果场景不存在，先创建
     if (!m_Scene) {
@@ -647,6 +687,9 @@ void ModelTestLayer::LoadScene() {
 
     // 尝试重新绑定相机实体
     RebindCameraEntity();
+
+    // 尝试重新绑定方向光和环境光实体
+    RebindLightEntities();
 }
 
 void ModelTestLayer::NewScene() {
@@ -655,6 +698,8 @@ void ModelTestLayer::NewScene() {
     m_CameraEntity = {};
     m_RedLightEntity = {};
     m_BlueLightEntity = {};
+    m_DirLightEntity = {};
+    m_AmbientLightEntity = {};
 
     // 创建新场景
     m_Scene = std::make_unique<Scene>();
@@ -697,6 +742,33 @@ void ModelTestLayer::RebindCameraEntity() {
 
     // 没有相机
     m_CameraEntity = {};
+}
+
+void ModelTestLayer::RebindLightEntities() {
+    m_DirLightEntity = {};
+    m_AmbientLightEntity = {};
+
+    if (!m_Scene) {
+        return;
+    }
+
+    auto &reg = m_Scene->Reg();
+
+    // 找第一个方向光实体
+    {
+        auto view = reg.view<DirectionalLightComponent>();
+        if (!view.empty()) {
+            m_DirLightEntity = Entity(*view.begin(), m_Scene.get());
+        }
+    }
+
+    // 找第一个环境光实体
+    {
+        auto view = reg.view<AmbientLightComponent>();
+        if (!view.empty()) {
+            m_AmbientLightEntity = Entity(*view.begin(), m_Scene.get());
+        }
+    }
 }
 
 } // namespace GE

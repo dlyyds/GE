@@ -85,11 +85,47 @@ void Scene::OnUpdate3D(Timestep ts,
     // ── 3D 网格渲染 ────────────────────────────────────────────────────
     auto &r3d = Renderer::Get3DRenderer();
 
-    // ── 收集场景中的点光源 ─────────────────────────────────────────────
+    // ── 收集场景中的光源（方向光 / 环境光 / 点光源） ─────────────────
     {
         auto &lightParams = r3d.GetLightParams();
-        size_t lightIndex = 0;
 
+        // ---- 方向光：取场景中第一个方向光组件 ----
+        {
+            auto dirLightView = m_Registry.view<TransformComponent, DirectionalLightComponent>();
+            if (!dirLightView.empty()) {
+                auto entity = *dirLightView.begin();
+                auto &tc = dirLightView.get<TransformComponent>(entity);
+                auto &dlc = dirLightView.get<DirectionalLightComponent>(entity);
+
+                // 由 Transform 的旋转推导出方向光方向（前向向量，-Z 轴旋转后为光线射出方向）
+                // 着色器中 dirLightDirection 表示"指向光源的方向"（即从表面指向光源），
+                // 与光线射出方向相反，因此取反
+                glm::quat rot = glm::quat(tc.Rotation);
+                glm::vec3 lightDir = rot * glm::vec3(0.0f, 0.0f, -1.0f);
+                lightParams.dirLightDirection = glm::normalize(-lightDir);
+                lightParams.dirLightColor = dlc.Color;
+            } else {
+                // 场景中无方向光组件时，使用默认值（斜向下的白色方向光）
+                lightParams.dirLightDirection = {0.0f, -1.0f, 0.0f};
+                lightParams.dirLightColor = {1.0f, 1.0f, 1.0f, 1.0f};
+            }
+        }
+
+        // ---- 环境光：取场景中第一个环境光组件 ----
+        {
+            auto ambientView = m_Registry.view<AmbientLightComponent>();
+            if (!ambientView.empty()) {
+                auto entity = *ambientView.begin();
+                auto &alc = ambientView.get<AmbientLightComponent>(entity);
+                lightParams.ambient = alc.Color;
+            } else {
+                // 场景中无环境光组件时，使用默认值保证可见性
+                lightParams.ambient = {0.3f, 0.3f, 0.3f, 1.0f};
+            }
+        }
+
+        // ---- 点光源 ----
+        size_t lightIndex = 0;
         auto pointLightView = m_Registry.view<TransformComponent, PointLightComponent>();
         for (auto entity : pointLightView) {
             if (lightIndex >= Renderer3D::MAX_POINT_LIGHTS) {
@@ -235,6 +271,14 @@ void Scene::OnComponentAdded<CameraComponent>(Entity entity, CameraComponent &co
 
 template <>
 void Scene::OnComponentAdded<PointLightComponent>(Entity entity, PointLightComponent &component) {
+}
+
+template <>
+void Scene::OnComponentAdded<DirectionalLightComponent>(Entity entity, DirectionalLightComponent &component) {
+}
+
+template <>
+void Scene::OnComponentAdded<AmbientLightComponent>(Entity entity, AmbientLightComponent &component) {
 }
 
 

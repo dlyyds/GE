@@ -40,6 +40,8 @@ private:
     Entity m_CameraEntity; ///< 相机实体
     Entity m_RedLightEntity; ///< 红色点光源实体
     Entity m_BlueLightEntity; ///< 蓝色点光源实体
+    Entity m_DirLightEntity; ///< 方向光实体
+    Entity m_AmbientLightEntity; ///< 环境光实体
 
     SceneHierarchyPanel m_HierarchyPanel; ///< 场景层级面板（ImGui）
 
@@ -71,6 +73,9 @@ private:
 
     /// 场景中查找名为 MainCamera 的实体并绑定到 m_CameraEntity
     void RebindCameraEntity();
+
+    /// 场景中查找方向光和环境光实体并绑定
+    void RebindLightEntities();
 };
 
 } // namespace GE

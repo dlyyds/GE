@@ -297,6 +297,20 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
             lightNode["RadiusInv"] = plc.RadiusInv;
         }
 
+        // ---- DirectionalLightComponent ----
+        if (entity.HasComponent<DirectionalLightComponent>()) {
+            const auto &dlc = entity.GetComponent<DirectionalLightComponent>();
+            YAML::Node lightNode = entityNode["DirectionalLight"];
+            lightNode["Color"] = SerializeVec4(dlc.Color);
+        }
+
+        // ---- AmbientLightComponent ----
+        if (entity.HasComponent<AmbientLightComponent>()) {
+            const auto &alc = entity.GetComponent<AmbientLightComponent>();
+            YAML::Node lightNode = entityNode["AmbientLight"];
+            lightNode["Color"] = SerializeVec4(alc.Color);
+        }
+
         // ---- ScriptComponent ----
         // 不序列化：std::function 无法持久化
 
@@ -472,6 +486,22 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
 
             plc.Color = DeserializeVec4(lightNode["Color"], {1.0f, 1.0f, 1.0f, 1.0f});
             plc.RadiusInv = lightNode["RadiusInv"] ? lightNode["RadiusInv"].as<float>(0.5f) : 0.5f;
+        }
+
+        // ---- DirectionalLightComponent ----
+        if (entityNode["DirectionalLight"]) {
+            YAML::Node lightNode = entityNode["DirectionalLight"];
+            auto &dlc = entity.AddComponent<DirectionalLightComponent>();
+
+            dlc.Color = DeserializeVec4(lightNode["Color"], {1.0f, 1.0f, 1.0f, 1.0f});
+        }
+
+        // ---- AmbientLightComponent ----
+        if (entityNode["AmbientLight"]) {
+            YAML::Node lightNode = entityNode["AmbientLight"];
+            auto &alc = entity.AddComponent<AmbientLightComponent>();
+
+            alc.Color = DeserializeVec4(lightNode["Color"], {0.3f, 0.3f, 0.3f, 1.0f});
         }
 
         // ---- ScriptComponent ----

@@ -267,6 +267,22 @@ void SceneHierarchyPanel::DrawComponents(Entity entity) {
             ImGui::CloseCurrentPopup();
         }
 
+        if (ImGui::MenuItem("Directional Light")) {
+            if (!m_SelectionContext.HasComponent<DirectionalLightComponent>())
+                m_SelectionContext.AddComponent<DirectionalLightComponent>();
+            else
+                GE_CORE_WARN("This entity already has Directional Light Component!");
+            ImGui::CloseCurrentPopup();
+        }
+
+        if (ImGui::MenuItem("Ambient Light")) {
+            if (!m_SelectionContext.HasComponent<AmbientLightComponent>())
+                m_SelectionContext.AddComponent<AmbientLightComponent>();
+            else
+                GE_CORE_WARN("This entity already has Ambient Light Component!");
+            ImGui::CloseCurrentPopup();
+        }
+
         ImGui::EndPopup();
     }
     ImGui::PopItemWidth();
@@ -388,6 +404,20 @@ void SceneHierarchyPanel::DrawComponents(Entity entity) {
         // 半径倒数（衰减系数）
         ImGui::DragFloat("Radius Inv (attenuation)", &component.RadiusInv, 0.01f, 0.01f, 5.0f);
         ImGui::Text("影响半径 ≈ %.2f", 1.0f / component.RadiusInv);
+    });
+
+    // ---- Directional Light 组件 ----
+    DrawComponent<DirectionalLightComponent>("Directional Light", entity, [](auto &component) {
+        // 颜色 + 强度（alpha 通道作为强度）
+        ImGui::ColorEdit4("Color + Intensity", glm::value_ptr(component.Color));
+        ImGui::TextDisabled("照射方向由 Transform 的 Rotation 决定");
+    });
+
+    // ---- Ambient Light 组件 ----
+    DrawComponent<AmbientLightComponent>("Ambient Light", entity, [](auto &component) {
+        // 颜色 + 强度（alpha 通道作为强度）
+        ImGui::ColorEdit4("Color + Intensity", glm::value_ptr(component.Color));
+        ImGui::TextDisabled("全局环境光，不依赖 Transform");
     });
 
     // ---- Script 组件 ----

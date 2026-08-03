@@ -261,4 +261,55 @@ struct PointLightComponent {
 };
 
 
+/**
+ * @brief 方向光组件 —— 挂载到实体上的方向光。
+ *
+ * 与 TransformComponent 配合使用：Transform 的 Rotation 决定方向光的照射方向。
+ * 光线方向取 Transform 前向向量（即 -Z 轴经过旋转后的方向），从光源指向被照物体。
+ * Color 的 rgb 分量表示光源颜色，a 分量表示光源强度。
+ *
+ * 由 Scene 在渲染前收集方向光组件，取场景中第一个方向光作为主方向光，
+ * 传递给 Renderer3D 的 LightParams。场景中存在多个方向光时，仅第一个生效。
+ */
+struct DirectionalLightComponent {
+    glm::vec4 Color{1.0f, 1.0f, 1.0f, 1.0f}; ///< 光源颜色(rgb) + 强度(a)
+
+    DirectionalLightComponent() = default;
+
+    DirectionalLightComponent(const DirectionalLightComponent &) = default;
+
+    /**
+     * @brief 指定颜色和强度的构造函数。
+     */
+    explicit DirectionalLightComponent(const glm::vec4 &color)
+        : Color(color) {
+    }
+};
+
+
+/**
+ * @brief 环境光组件 —— 场景全局环境光。
+ *
+ * 环境光不依赖实体的 Transform，是场景级别的全局光照。
+ * Color 的 rgb 分量表示环境光颜色，a 分量表示环境光强度系数。
+ *
+ * 由 Scene 在渲染前收集环境光组件，取场景中第一个环境光作为全局环境光，
+ * 传递给 Renderer3D 的 LightParams。若场景中无环境光组件，使用默认值。
+ */
+struct AmbientLightComponent {
+    glm::vec4 Color{0.3f, 0.3f, 0.3f, 1.0f}; ///< 环境光颜色(rgb) + 强度(a)
+
+    AmbientLightComponent() = default;
+
+    AmbientLightComponent(const AmbientLightComponent &) = default;
+
+    /**
+     * @brief 指定颜色和强度的构造函数。
+     */
+    explicit AmbientLightComponent(const glm::vec4 &color)
+        : Color(color) {
+    }
+};
+
+
 }

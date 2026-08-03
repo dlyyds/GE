@@ -2,6 +2,7 @@
 
 #include "ImGui/ImGuiLayer.h"
 
+
 #include "Core/Application.h"
 #include "Core/Log.h"
 
@@ -13,6 +14,7 @@
 #include <backends/imgui_impl_vulkan.h>
 
 #include "imgui.h"
+#include "ImGuizmo.h"
 
 namespace GE {
 
@@ -139,6 +141,7 @@ void ImGuiLayer::Begin() {
     ImGui_ImplVulkan_NewFrame();
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
+    ImGuizmo::BeginFrame();
 }
 
 void ImGuiLayer::End() {
@@ -149,7 +152,7 @@ void ImGuiLayer::End() {
 
     ImGui::Render();
 
-    auto &cmd   = Application::GetFrameCmd();
+    auto &cmd = Application::GetFrameCmd();
     auto vkCmd = cmd.GetHandle();
 
     // Render ImGui on top with loadOp = eLoad to preserve the scene.

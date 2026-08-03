@@ -33,6 +33,7 @@ Application::Application(const std::string &name, ApplicationCommandLineArgs arg
     m_Renderer = std::make_unique<Renderer>(*m_Window);
 
     m_ImGuiLayer = std::make_shared<ImGuiLayer>();
+    m_ImGuiLayer->BlockEvents(true);
     PushOverlay(m_ImGuiLayer);
 
 }
@@ -83,7 +84,7 @@ void Application::Run() {
             ZoneScopedN("RenderFrame");
 
             // 1. Begin frame — acquire + begin cmd + layout → ColorAttachment
-             m_Renderer->BeginFrame();
+            m_Renderer->BeginFrame();
 
             // 2. OnUpdate
             {

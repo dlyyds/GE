@@ -204,14 +204,6 @@ void ModelTestLayer::OnEvent(Event &event) {
         }
     }
 
-    // 如果上一帧正在使用 gizmo 或鼠标悬停在 gizmo 上，
-    // 则阻挡鼠标事件，避免相机同时旋转
-    if (m_GizmoUsing) {
-        if (event.IsInCategory(EventCategoryMouse)) {
-            return;
-        }
-    }
-
     // 将事件转发给相机（处理鼠标移动、滚轮、按键等交互）
     if (m_CameraEntity) {
         auto &cameraComp = m_CameraEntity.GetComponent<CameraComponent>();
@@ -475,7 +467,6 @@ void ModelTestLayer::RefreshLightScripts() {
 void ModelTestLayer::RenderImGuizmo() {
     Entity selected = m_HierarchyPanel.GetSelectedEntity();
     if (!selected || m_GizmoType == -1 || !m_CameraEntity) {
-        m_GizmoUsing = false;
         return;
     }
 
@@ -512,7 +503,7 @@ void ModelTestLayer::RenderImGuizmo() {
         glm::value_ptr(transform),
         nullptr,
         snapPtr
-    );
+        );
 
     // 如果用户拖拽了 gizmo，把结果写回 TransformComponent
     if (manipulated) {
@@ -522,15 +513,12 @@ void ModelTestLayer::RenderImGuizmo() {
             glm::value_ptr(translation),
             glm::value_ptr(rotation),
             glm::value_ptr(scale)
-        );
+            );
         tc.Translation = translation;
         // ImGuizmo 返回的旋转是欧拉角（度），内部存储弧度
         tc.Rotation = glm::radians(rotation);
         tc.Scale = scale;
     }
-
-    // 记录 gizmo 使用状态，用于下一帧阻挡相机事件
-    m_GizmoUsing = ImGuizmo::IsUsing() || ImGuizmo::IsOver();
 }
 
 // ============================================================
@@ -541,10 +529,14 @@ void ModelTestLayer::RenderImGuizmoPanel() {
 
     const char *modeStr = "关闭";
     switch (m_GizmoType) {
-        case ImGuizmo::TRANSLATE: modeStr = "平移 (Translate)"; break;
-        case ImGuizmo::ROTATE:    modeStr = "旋转 (Rotate)";    break;
-        case ImGuizmo::SCALE:     modeStr = "缩放 (Scale)";     break;
-        default:                  modeStr = "关闭";              break;
+    case ImGuizmo::TRANSLATE: modeStr = "平移 (Translate)";
+        break;
+    case ImGuizmo::ROTATE: modeStr = "旋转 (Rotate)";
+        break;
+    case ImGuizmo::SCALE: modeStr = "缩放 (Scale)";
+        break;
+    default: modeStr = "关闭";
+        break;
     }
     ImGui::Text("当前模式：%s", modeStr);
     ImGui::Checkbox("启用吸附 (Snap)", &m_UseSnap);

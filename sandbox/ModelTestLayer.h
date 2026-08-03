@@ -17,38 +17,44 @@ namespace GE {
 class ModelTestLayer : public Layer {
 public:
     ModelTestLayer();
+
     ~ModelTestLayer() override;
 
     void OnAttach() override;
+
     void OnDetach() override;
+
     void OnUpdate(Timestep &ts) override;
+
     void OnEvent(Event &event) override;
+
     void OnImGuiRender() override;
 
 private:
-    std::unique_ptr<Mesh>    m_CubeMesh;     ///< 立方体网格
-    std::unique_ptr<Texture> m_Texture;      ///< 棋盘纹理
-    std::unique_ptr<Scene>   m_Scene;        ///< 场景
-    Entity m_ModelEntity;                    ///< 模型实体
-    Entity m_CameraEntity;                   ///< 相机实体
-    Entity m_RedLightEntity;                 ///< 红色点光源实体
-    Entity m_BlueLightEntity;                ///< 蓝色点光源实体
+    std::unique_ptr<Mesh> m_CubeMesh; ///< 立方体网格
+    std::unique_ptr<Texture> m_Texture; ///< 棋盘纹理
+    std::unique_ptr<Scene> m_Scene; ///< 场景
+    Entity m_ModelEntity; ///< 模型实体
+    Entity m_CameraEntity; ///< 相机实体
+    Entity m_RedLightEntity; ///< 红色点光源实体
+    Entity m_BlueLightEntity; ///< 蓝色点光源实体
 
-    SceneHierarchyPanel m_HierarchyPanel;    ///< 场景层级面板（ImGui）
+    SceneHierarchyPanel m_HierarchyPanel; ///< 场景层级面板（ImGui）
 
     // ImGuizmo 相关
-    int   m_GizmoType{-1};                    ///< 当前 gizmo 操作类型（-1=关闭，对应 ImGuizmo::OPERATION）
-    bool  m_UseSnap{false};                   ///< 是否启用吸附
-    float m_SnapValue{0.5f};                  ///< 吸附步长
-    bool  m_GizmoUsing{false};                ///< 上一帧是否正在使用 gizmo（用于阻挡相机事件）
+    int m_GizmoType{-1}; ///< 当前 gizmo 操作类型（-1=关闭，对应 ImGuizmo::OPERATION）
+    bool m_UseSnap{false}; ///< 是否启用吸附
+    float m_SnapValue{0.5f}; ///< 吸附步长
 
     /// 绘制 ImGuizmo 3D 变换 gizmo（在 OnImGuiRender 中调用）
     void RenderImGuizmo();
+
     /// 绘制 ImGuizmo 控制面板（提示文字 + 模式/吸附参数）
     void RenderImGuizmoPanel();
 
     /// 刷新相机上的鼠标控制 ScriptComponent
     void RefreshCameraScript();
+
     /// 刷新点光源的旋转动画 ScriptComponent
     void RefreshLightScripts();
 };

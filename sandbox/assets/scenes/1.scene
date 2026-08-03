@@ -1,0 +1,53 @@
+Scene:
+  Entities:
+    - Name: BluePointLight
+      Transform:
+        Translation: [-1.0600721, 0.5, -1.061248]
+        Rotation: [0, 0, 0]
+        Scale: [0.15, 0.15, 0.15]
+      MeshRenderer:
+        Color: [0.4, 0.5, 1, 1]
+        Mesh: builtin:cube
+      PointLight:
+        Color: [0.2, 0.3, 1, 1.5]
+        RadiusInv: 0.4
+    - Name: RedPointLight
+      Transform:
+        Translation: [-1.663558, 1.5, -0.68744063]
+        Rotation: [0, 0, 0]
+        Scale: [0.15, 0.15, 0.15]
+      MeshRenderer:
+        Color: [1, 0.4, 0.4, 1]
+        Mesh: builtin:cube
+      PointLight:
+        Color: [1, 0.2, 0.2, 1.5]
+        RadiusInv: 0.4
+    - Name: MainCamera
+      Transform:
+        Translation: [0, 0, 0]
+        Rotation: [0, 0, 0]
+        Scale: [1, 1, 1]
+      Camera:
+        Primary: true
+        FixedAspectRatio: false
+        Mode: Orbit
+        Fov: 60
+        Aspect: 1.7777778
+        Near: 0.1
+        Far: 100
+        Target: [0, 0, 0]
+        Theta: 0
+        Phi: 0
+        Distance: 6
+        Position: [0, 0, 6]
+        Yaw: 0
+        Pitch: 0
+    - Name: Cube
+      Transform:
+        Translation: [0, 0, 0]
+        Rotation: [0, 0, 0]
+        Scale: [1, 1, 1]
+      MeshRenderer:
+        Color: [1, 1, 1, 1]
+        Mesh: builtin:cube
+        Texture: assets/textures/Checkerboard.png

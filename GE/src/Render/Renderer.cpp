@@ -128,6 +128,7 @@ void Renderer::SetPresentMode(vk::PresentModeKHR present_mode) {
     if (!m_RenderContext) {
         return;
     }
+    WaitIdle();
     m_RenderContext->UpdateSwapchain(present_mode);
     GE_CORE_INFO("Present mode changed");
 }

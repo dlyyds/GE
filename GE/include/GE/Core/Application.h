@@ -50,7 +50,6 @@ public:
     /**
      * @brief 切换呈现模式（垂直同步）。
      *
-     * 内部会重建 swapchain，可能导致短暂卡顿。
      * @param mode  目标垂直同步模式（ON / OFF / Default）
      */
     void SetPresentMode(VsyncMode mode);

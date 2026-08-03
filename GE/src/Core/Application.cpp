@@ -27,7 +27,7 @@ Application::Application(const std::string &name, ApplicationCommandLineArgs arg
     s_Instance = this;
 
     m_Window = Window::Create(WindowProperties(name, 1600, 900));
-    m_Window->SetVSync(VsyncMode::ON);
+    m_Window->SetVSync(VsyncMode::OFF);
     m_Window->SetEventCallback(GE_BIND_EVENT_FN(Application::OnEvent));
 
     // 初始化渲染器（内部完成 VulkanContext → RenderContext → Prepare 完整初始化链）
@@ -135,15 +135,12 @@ void Application::SetPresentMode(VsyncMode mode) {
     // 将 VsyncMode 映射到 Vulkan 呈现模式（与 VulkanRenderContext 构造中的逻辑一致）
     vk::PresentModeKHR present_mode;
     switch (mode) {
-    case VsyncMode::ON:
-        present_mode = vk::PresentModeKHR::eFifo;
+    case VsyncMode::ON: present_mode = vk::PresentModeKHR::eFifo;
         break;
-    case VsyncMode::OFF:
-        present_mode = vk::PresentModeKHR::eMailbox;
+    case VsyncMode::OFF: present_mode = vk::PresentModeKHR::eMailbox;
         break;
     case VsyncMode::Default:
-    default:
-        present_mode = vk::PresentModeKHR::eMailbox;
+    default: present_mode = vk::PresentModeKHR::eMailbox;
         break;
     }
 

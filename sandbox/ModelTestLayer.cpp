@@ -439,6 +439,7 @@ void ModelTestLayer::OnImGuiRender() {
     auto scriptView = m_Scene->Reg().view<ScriptComponent>();
     ImGui::Text("场景 3D 实体数：%zu", meshView.size());
     ImGui::Text("场景脚本数：%zu", scriptView.size());
+    ImGui::Text("FPS：%.1f", Application::Get().GetFPS());
 
     // 重置按钮
     if (ImGui::Button("重置参数")) {

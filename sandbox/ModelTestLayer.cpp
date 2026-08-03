@@ -354,26 +354,6 @@ void ModelTestLayer::OnImGuiRender() {
                           -1.0f, 1.0f);
         ImGui::ColorEdit4("方向光颜色 + 强度", &light.dirLightColor.r);
 
-        // 点光源（支持多个）
-        int plCount = static_cast<int>(light.pointLightCount);
-        if (ImGui::SliderInt("点光源数量", &plCount, 0,
-                             static_cast<int>(Renderer3D::MAX_POINT_LIGHTS))) {
-            light.pointLightCount = static_cast<size_t>(plCount);
-        }
-
-        for (size_t i = 0; i < light.pointLightCount; i++) {
-            auto &pl = light.pointLights[i];
-            char label[64];
-            snprintf(label, sizeof(label), "点光源 %zu 位置", i);
-            ImGui::DragFloat3(label, &pl.position.x, 0.1f, -10.0f, 10.0f);
-
-            snprintf(label, sizeof(label), "点光源 %zu 颜色 + 强度", i);
-            ImGui::ColorEdit4(label, &pl.color.r);
-
-            snprintf(label, sizeof(label), "点光源 %zu 半径倒数", i);
-            ImGui::DragFloat(label, &pl.radiusInv, 0.01f, 0.01f, 5.0f);
-        }
-
         // 环境光
         ImGui::ColorEdit4("环境光 + 强度", &light.ambient.r);
     }

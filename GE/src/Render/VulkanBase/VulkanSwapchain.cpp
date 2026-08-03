@@ -309,6 +309,25 @@ VulkanSwapchain::VulkanSwapchain(VulkanSwapchain &old_swapchain, const std::set<
 }
 
 // ============================================================================
+// 重建构造函数：仅修改 present mode
+// ============================================================================
+
+VulkanSwapchain::VulkanSwapchain(VulkanSwapchain &old_swapchain, vk::PresentModeKHR present_mode) : VulkanSwapchain{
+    old_swapchain,
+    old_swapchain.m_Device,
+    old_swapchain.m_Surface,
+    present_mode,
+    old_swapchain.m_PresentModePriorityList,
+    old_swapchain.m_SurfaceFormatPriorityList,
+    old_swapchain.m_Properties.extent,
+    old_swapchain.m_Properties.image_count,
+    old_swapchain.m_Properties.pre_transform,
+    old_swapchain.m_ImageUsageFlags,
+    old_swapchain.m_RequestedCompression,
+    old_swapchain.m_RequestedCompressionFixedRate} {
+}
+
+// ============================================================================
 // 重建构造函数：修改 extent + transform
 // ============================================================================
 

@@ -33,6 +33,9 @@ public:
     // -- 重建构造函数：仅修改 image usage --
     VulkanSwapchain(VulkanSwapchain &old_swapchain, const std::set<vk::ImageUsageFlagBits> &image_usage_flags);
 
+    // -- 重建构造函数：仅修改 present mode --
+    VulkanSwapchain(VulkanSwapchain &old_swapchain, vk::PresentModeKHR present_mode);
+
     // -- 重建构造函数：修改 extent + transform --
     VulkanSwapchain(VulkanSwapchain &swapchain, const vk::Extent2D &extent, const vk::SurfaceTransformFlagBitsKHR transform);
 

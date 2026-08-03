@@ -78,30 +78,16 @@ Renderer2D::~Renderer2D() {
 // 场景接口
 // ============================================================================
 
-void Renderer2D::BeginScene(const glm::mat4 &viewProjection,
-                            const glm::vec4 &clearColor) {
-    GE_CORE_ASSERT(!m_InScene, "Renderer2D::BeginScene called without EndScene!");
-    m_InScene = true;
-    m_View = glm::mat4(1.0f);
-    m_Projection = viewProjection;
-    m_ClearColor = clearColor;
-    m_UseDepth = false;
-
-    // 清空上一帧的批处理数据
-    for (auto &[tex, verts] : m_Batches) {
-        verts.clear();
-    }
-}
-
 void Renderer2D::BeginScene(const glm::mat4 &view,
                             const glm::mat4 &projection,
+                            bool useDepth,
                             const glm::vec4 &clearColor) {
     GE_CORE_ASSERT(!m_InScene, "Renderer2D::BeginScene called without EndScene!");
     m_InScene = true;
     m_View = view;
     m_Projection = projection;
+    m_UseDepth = useDepth;
     m_ClearColor = clearColor;
-    m_UseDepth = true;
 
     // 清空上一帧的批处理数据
     for (auto &[tex, verts] : m_Batches) {

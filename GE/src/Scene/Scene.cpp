@@ -47,7 +47,7 @@ void Scene::OnUpdate(Timestep ts,
 
     // ── 2D 精灵渲染 ────────────────────────────────────────────────────
     auto &r2d = Renderer::Get2DRenderer();
-    r2d.BeginScene(viewProjection, clearColor);
+    r2d.BeginScene(glm::mat4(1.0f), viewProjection, false, clearColor);
 
     auto view = m_Registry.view<TransformComponent, SpriteRendererComponent>();
     for (auto entity : view) {
@@ -132,7 +132,8 @@ void Scene::OnUpdate3D(Timestep ts,
     glm::mat4 viewProjection = projection * view;
 
     auto &r2d = Renderer::Get2DRenderer();
-    r2d.BeginScene(viewProjection, glm::vec4(-1.0f));
+    // 2D 精灵叠加在 3D 场景之上，不参与深度测试（永远显示在最前）
+    r2d.BeginScene(glm::mat4(1.0f), viewProjection, false, glm::vec4(-1.0f));
 
     auto spriteView = m_Registry.view<TransformComponent, SpriteRendererComponent>();
     for (auto entity : spriteView) {

@@ -49,24 +49,16 @@ public:
     // ========================================================================
 
     /**
-     * @brief 开始 2D 场景，清空批处理队列并设置视图投影矩阵。
+     * @brief 开始场景，清空批处理队列并设置视图/投影矩阵。
      *
-     * @param viewProjection  视图 × 投影 矩阵
-     * @param clearColor      清屏颜色（alpha 有效）。传入非负值则在 EndScene 时清屏；
-     *                        传负值（默认）则不清屏，叠加在已有渲染结果上。
-     */
-    void BeginScene(const glm::mat4 &viewProjection,
-                    const glm::vec4 &clearColor = glm::vec4(-1.0f));
-
-    /**
-     * @brief 开始 3D 场景，单独传入视图和投影矩阵（支持深度测试）。
-     *
-     * @param view        视图矩阵
+     * @param view        视图矩阵（2D 模式传单位矩阵即可）
      * @param projection  投影矩阵
-     * @param clearColor  清屏颜色（r < 0 表示不清屏）
+     * @param useDepth    是否启用深度测试（true=3D 世界空间，false=2D 屏幕空间/UI 叠加）
+     * @param clearColor  清屏颜色（r < 0 表示不清屏，叠加在已有结果上）
      */
     void BeginScene(const glm::mat4 &view,
                     const glm::mat4 &projection,
+                    bool useDepth,
                     const glm::vec4 &clearColor = glm::vec4(-1.0f));
 
     /**

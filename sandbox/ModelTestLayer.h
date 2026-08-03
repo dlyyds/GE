@@ -46,6 +46,11 @@ private:
     float m_SnapValue{0.5f};                  ///< 吸附步长
     bool  m_GizmoUsing{false};                ///< 上一帧是否正在使用 gizmo（用于阻挡相机事件）
 
+    /// 绘制 ImGuizmo 3D 变换 gizmo（在 OnImGuiRender 中调用）
+    void RenderImGuizmo();
+    /// 绘制 ImGuizmo 控制面板（提示文字 + 模式/吸附参数）
+    void RenderImGuizmoPanel();
+
     /// 刷新模型上的 ScriptComponent
     void RefreshScript();
     /// 刷新相机上的鼠标控制 ScriptComponent

@@ -12,6 +12,7 @@
 
 #include "imgui.h"
 #include "ImGuizmo.h"
+#include "glm/gtc/type_ptr.inl"
 
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -67,29 +68,29 @@ void ModelTestLayer::OnAttach() {
 
         // 立方体 6 个面（边长为 2，中心在原点，面向各轴向）
         // +Z 面（前）
-        add_quad({-1.0f, -1.0f,  1.0f}, { 1.0f, -1.0f,  1.0f},
-                 { 1.0f,  1.0f,  1.0f}, {-1.0f,  1.0f,  1.0f},
-                 { 0.0f,  0.0f,  1.0f});
+        add_quad({-1.0f, -1.0f, 1.0f}, {1.0f, -1.0f, 1.0f},
+                 {1.0f, 1.0f, 1.0f}, {-1.0f, 1.0f, 1.0f},
+                 {0.0f, 0.0f, 1.0f});
         // -Z 面（后）
-        add_quad({ 1.0f, -1.0f, -1.0f}, {-1.0f, -1.0f, -1.0f},
-                 {-1.0f,  1.0f, -1.0f}, { 1.0f,  1.0f, -1.0f},
-                 { 0.0f,  0.0f, -1.0f});
+        add_quad({1.0f, -1.0f, -1.0f}, {-1.0f, -1.0f, -1.0f},
+                 {-1.0f, 1.0f, -1.0f}, {1.0f, 1.0f, -1.0f},
+                 {0.0f, 0.0f, -1.0f});
         // +X 面（右）
-        add_quad({ 1.0f, -1.0f,  1.0f}, { 1.0f, -1.0f, -1.0f},
-                 { 1.0f,  1.0f, -1.0f}, { 1.0f,  1.0f,  1.0f},
-                 { 1.0f,  0.0f,  0.0f});
+        add_quad({1.0f, -1.0f, 1.0f}, {1.0f, -1.0f, -1.0f},
+                 {1.0f, 1.0f, -1.0f}, {1.0f, 1.0f, 1.0f},
+                 {1.0f, 0.0f, 0.0f});
         // -X 面（左）
-        add_quad({-1.0f, -1.0f, -1.0f}, {-1.0f, -1.0f,  1.0f},
-                 {-1.0f,  1.0f,  1.0f}, {-1.0f,  1.0f, -1.0f},
-                 {-1.0f,  0.0f,  0.0f});
+        add_quad({-1.0f, -1.0f, -1.0f}, {-1.0f, -1.0f, 1.0f},
+                 {-1.0f, 1.0f, 1.0f}, {-1.0f, 1.0f, -1.0f},
+                 {-1.0f, 0.0f, 0.0f});
         // +Y 面（上）
-        add_quad({-1.0f,  1.0f,  1.0f}, { 1.0f,  1.0f,  1.0f},
-                 { 1.0f,  1.0f, -1.0f}, {-1.0f,  1.0f, -1.0f},
-                 { 0.0f,  1.0f,  0.0f});
+        add_quad({-1.0f, 1.0f, 1.0f}, {1.0f, 1.0f, 1.0f},
+                 {1.0f, 1.0f, -1.0f}, {-1.0f, 1.0f, -1.0f},
+                 {0.0f, 1.0f, 0.0f});
         // -Y 面（下）
-        add_quad({-1.0f, -1.0f, -1.0f}, { 1.0f, -1.0f, -1.0f},
-                 { 1.0f, -1.0f,  1.0f}, {-1.0f, -1.0f,  1.0f},
-                 { 0.0f, -1.0f,  0.0f});
+        add_quad({-1.0f, -1.0f, -1.0f}, {1.0f, -1.0f, -1.0f},
+                 {1.0f, -1.0f, 1.0f}, {-1.0f, -1.0f, 1.0f},
+                 {0.0f, -1.0f, 0.0f});
 
         m_CubeMesh = Mesh::Create(device, vertices, indices);
         GE_CORE_ASSERT(m_CubeMesh, "创建立方体网格失败");
@@ -116,28 +117,28 @@ void ModelTestLayer::OnAttach() {
     m_RedLightEntity.GetComponent<TransformComponent>().Translation = {1.5f, 1.5f, 1.0f};
     m_RedLightEntity.GetComponent<TransformComponent>().Scale = {0.15f, 0.15f, 0.15f};
     m_RedLightEntity.AddComponent<PointLightComponent>(
-        glm::vec4(1.0f, 0.2f, 0.2f, 1.5f),  // 红色，强度 1.5
-        0.4f                                 // 半径倒数
-    );
+        glm::vec4(1.0f, 0.2f, 0.2f, 1.5f), // 红色，强度 1.5
+        0.4f // 半径倒数
+        );
     // 给光源加一个可视化小球（用立方体缩小代替，颜色和光源一致）
     m_RedLightEntity.AddComponent<MeshComponent>(
         m_CubeMesh.get(),
         glm::vec4(1.0f, 0.4f, 0.4f, 1.0f)
-    );
+        );
 
     // 创建蓝色点光源（左下方）
     m_BlueLightEntity = m_Scene->CreateEntity("BluePointLight");
     m_BlueLightEntity.GetComponent<TransformComponent>().Translation = {-1.5f, -1.0f, 1.0f};
     m_BlueLightEntity.GetComponent<TransformComponent>().Scale = {0.15f, 0.15f, 0.15f};
     m_BlueLightEntity.AddComponent<PointLightComponent>(
-        glm::vec4(0.2f, 0.3f, 1.0f, 1.5f),  // 蓝色，强度 1.5
-        0.4f                                 // 半径倒数
-    );
+        glm::vec4(0.2f, 0.3f, 1.0f, 1.5f), // 蓝色，强度 1.5
+        0.4f // 半径倒数
+        );
     // 给光源加一个可视化小球（用立方体缩小代替，颜色和光源一致）
     m_BlueLightEntity.AddComponent<MeshComponent>(
         m_CubeMesh.get(),
         glm::vec4(0.4f, 0.5f, 1.0f, 1.0f)
-    );
+        );
 
     // 添加脚本组件（自动旋转逻辑）
     RefreshScript();
@@ -191,12 +192,17 @@ void ModelTestLayer::OnEvent(Event &event) {
     if (event.GetEventType() == EventType::KeyPressed) {
         auto &keyEvent = static_cast<KeyPressedEvent &>(event);
         switch (keyEvent.GetKeyCode()) {
-            case Key::Q: m_GizmoType = -1; return;
-            case Key::W: m_GizmoType = ImGuizmo::TRANSLATE; return;
-            case Key::E: m_GizmoType = ImGuizmo::ROTATE; return;
-            case Key::R: m_GizmoType = ImGuizmo::SCALE; return;
-            case Key::T: m_UseSnap = !m_UseSnap; return;
-            default: break;
+        case Key::Q: m_GizmoType = -1;
+            return;
+        case Key::W: m_GizmoType = ImGuizmo::TRANSLATE;
+            return;
+        case Key::E: m_GizmoType = ImGuizmo::ROTATE;
+            return;
+        case Key::R: m_GizmoType = ImGuizmo::SCALE;
+            return;
+        case Key::T: m_UseSnap = !m_UseSnap;
+            return;
+        default: break;
         }
     }
 
@@ -216,63 +222,8 @@ void ModelTestLayer::OnEvent(Event &event) {
 }
 
 void ModelTestLayer::OnImGuiRender() {
-    // ---- ImGuizmo：视口内 3D 变换操作 ----
-    Entity selected = m_HierarchyPanel.GetSelectedEntity();
-    if (selected && m_GizmoType != -1 && m_CameraEntity) {
-        auto &cameraComp = m_CameraEntity.GetComponent<CameraComponent>();
-        auto &camera = cameraComp.CameraInstance;
-
-        glm::mat4 view = camera.GetView();
-        // ImGuizmo 内部使用 OpenGL 约定（Y 向上为正），需要去掉 Vulkan 的 Y 翻转
-        // （ImGui 绘制本身已正确适配 Vulkan 屏幕坐标，这里只是 3D 投影数学需要 OpenGL 风格）
-        glm::mat4 projection = camera.GetProj();
-        projection[1][1] *= -1.0f;
-
-        auto &tc = selected.GetComponent<TransformComponent>();
-        glm::mat4 transform = tc.GetTransform();
-
-        ImGuizmo::SetOrthographic(false);
-        ImGuizmo::SetDrawlist();
-
-        // gizmo 覆盖整个窗口（3D 场景渲染到整个 swapchain）
-        auto &io = ImGui::GetIO();
-        ImGuizmo::SetRect(0.0f, 0.0f, io.DisplaySize.x, io.DisplaySize.y);
-
-        // 吸附参数
-        float snap[3] = { m_SnapValue, m_SnapValue, m_SnapValue };
-        float *snapPtr = m_UseSnap ? snap : nullptr;
-
-        // 执行 gizmo 操作
-        bool manipulated = ImGuizmo::Manipulate(
-            glm::value_ptr(view),
-            glm::value_ptr(projection),
-            static_cast<ImGuizmo::OPERATION>(m_GizmoType),
-            ImGuizmo::LOCAL,
-            glm::value_ptr(transform),
-            nullptr,
-            snapPtr
-        );
-
-        // 如果用户拖拽了 gizmo，把结果写回 TransformComponent
-        if (manipulated) {
-            glm::vec3 translation, rotation, scale;
-            ImGuizmo::DecomposeMatrixToComponents(
-                glm::value_ptr(transform),
-                glm::value_ptr(translation),
-                glm::value_ptr(rotation),
-                glm::value_ptr(scale)
-            );
-            tc.Translation = translation;
-            // ImGuizmo 返回的旋转是欧拉角（度），内部存储弧度
-            tc.Rotation = glm::radians(rotation);
-            tc.Scale = scale;
-        }
-
-        // 记录 gizmo 使用状态，用于下一帧阻挡相机事件
-        m_GizmoUsing = ImGuizmo::IsUsing() || ImGuizmo::IsOver();
-    } else {
-        m_GizmoUsing = false;
-    }
+    // 视口内 3D 变换 gizmo
+    RenderImGuizmo();
 
     // 场景层级 + 属性面板
     m_HierarchyPanel.OnImGuiRender();
@@ -281,23 +232,8 @@ void ModelTestLayer::OnImGuiRender() {
     ImGui::Text("3D 模型渲染测试（Scene + MeshComponent + Renderer3D）");
     ImGui::Separator();
 
-    // Gizmo 操作提示 + 模式切换
-    {
-        ImGui::Text("Gizmo 快捷键：W=平移  E=旋转  R=缩放  Q=关闭  T=吸附");
-        const char *modeStr = "关闭";
-        switch (m_GizmoType) {
-            case ImGuizmo::TRANSLATE: modeStr = "平移 (Translate)"; break;
-            case ImGuizmo::ROTATE:    modeStr = "旋转 (Rotate)"; break;
-            case ImGuizmo::SCALE:     modeStr = "缩放 (Scale)"; break;
-            default:                  modeStr = "关闭"; break;
-        }
-        ImGui::Text("当前模式：%s", modeStr);
-        ImGui::Checkbox("启用吸附 (Snap)", &m_UseSnap);
-        if (m_UseSnap) {
-            ImGui::DragFloat("吸附步长", &m_SnapValue, 0.05f, 0.01f, 10.0f);
-        }
-        ImGui::Separator();
-    }
+    // Gizmo 控制面板
+    RenderImGuizmoPanel();
 
     if (!m_ModelEntity) {
         ImGui::TextDisabled("实体未创建");
@@ -570,7 +506,7 @@ void ModelTestLayer::RefreshLightScripts() {
 
     // 红色点光源：绕 Y 轴正方向旋转，半径 1.8，高度 1.5
     auto redLightCallback = [angle = 0.0f](Timestep ts, Entity entity) mutable {
-        angle += ts.GetSeconds() * 1.2f;  // 旋转速度
+        angle += ts.GetSeconds() * 1.2f; // 旋转速度
         auto &tc = entity.GetComponent<TransformComponent>();
         tc.Translation.x = std::cos(angle) * 1.8f;
         tc.Translation.z = std::sin(angle) * 1.8f;
@@ -579,7 +515,7 @@ void ModelTestLayer::RefreshLightScripts() {
 
     // 蓝色点光源：绕 Y 轴反方向旋转，半径 1.5，高度 0.5
     auto blueLightCallback = [angle = 0.0f](Timestep ts, Entity entity) mutable {
-        angle -= ts.GetSeconds() * 0.8f;  // 反向旋转，速度稍慢
+        angle -= ts.GetSeconds() * 0.8f; // 反向旋转，速度稍慢
         auto &tc = entity.GetComponent<TransformComponent>();
         tc.Translation.x = std::cos(angle) * 1.5f;
         tc.Translation.z = std::sin(angle) * 1.5f;
@@ -598,6 +534,89 @@ void ModelTestLayer::RefreshLightScripts() {
         m_BlueLightEntity.GetComponent<ScriptComponent>().OnUpdate = std::move(blueLightCallback);
     } else {
         m_BlueLightEntity.AddComponent<ScriptComponent>(std::move(blueLightCallback));
+    }
+}
+
+// ============================================================
+// ImGuizmo：视口内 3D 变换 gizmo 渲染
+// ============================================================
+void ModelTestLayer::RenderImGuizmo() {
+    Entity selected = m_HierarchyPanel.GetSelectedEntity();
+    if (!selected || m_GizmoType == -1 || !m_CameraEntity) {
+        m_GizmoUsing = false;
+        return;
+    }
+
+    auto &cameraComp = m_CameraEntity.GetComponent<CameraComponent>();
+    auto &camera = cameraComp.CameraInstance;
+
+    glm::mat4 view = camera.GetView();
+    // ImGuizmo 内部使用 OpenGL 约定（Y 向上为正），需要去掉 Vulkan 的 Y 翻转
+    // （ImGui 绘制本身已正确适配 Vulkan 屏幕坐标，这里只是 3D 投影数学需要 OpenGL 风格）
+    glm::mat4 projection = camera.GetProj();
+    projection[1][1] *= -1.0f;
+
+    auto &tc = selected.GetComponent<TransformComponent>();
+    glm::mat4 transform = tc.GetTransform();
+
+    ImGuizmo::SetOrthographic(false);
+    ImGuizmo::SetDrawlist();
+
+    // gizmo 覆盖整个窗口（3D 场景渲染到整个 swapchain）
+    auto &io = ImGui::GetIO();
+    ImGuizmo::SetRect(0.0f, 0.0f, io.DisplaySize.x, io.DisplaySize.y);
+
+    // 吸附参数
+    float snap[3] = {m_SnapValue, m_SnapValue, m_SnapValue};
+    float *snapPtr = m_UseSnap ? snap : nullptr;
+
+    // 执行 gizmo 操作
+    bool manipulated = ImGuizmo::Manipulate(
+        glm::value_ptr(view),
+        glm::value_ptr(projection),
+        static_cast<ImGuizmo::OPERATION>(m_GizmoType),
+        ImGuizmo::LOCAL,
+        glm::value_ptr(transform),
+        nullptr,
+        snapPtr
+    );
+
+    // 如果用户拖拽了 gizmo，把结果写回 TransformComponent
+    if (manipulated) {
+        glm::vec3 translation, rotation, scale;
+        ImGuizmo::DecomposeMatrixToComponents(
+            glm::value_ptr(transform),
+            glm::value_ptr(translation),
+            glm::value_ptr(rotation),
+            glm::value_ptr(scale)
+        );
+        tc.Translation = translation;
+        // ImGuizmo 返回的旋转是欧拉角（度），内部存储弧度
+        tc.Rotation = glm::radians(rotation);
+        tc.Scale = scale;
+    }
+
+    // 记录 gizmo 使用状态，用于下一帧阻挡相机事件
+    m_GizmoUsing = ImGuizmo::IsUsing() || ImGuizmo::IsOver();
+}
+
+// ============================================================
+// ImGuizmo：控制面板（提示 + 模式/吸附参数）
+// ============================================================
+void ModelTestLayer::RenderImGuizmoPanel() {
+    ImGui::Text("Gizmo 快捷键：W=平移  E=旋转  R=缩放  Q=关闭  T=吸附");
+
+    const char *modeStr = "关闭";
+    switch (m_GizmoType) {
+        case ImGuizmo::TRANSLATE: modeStr = "平移 (Translate)"; break;
+        case ImGuizmo::ROTATE:    modeStr = "旋转 (Rotate)";    break;
+        case ImGuizmo::SCALE:     modeStr = "缩放 (Scale)";     break;
+        default:                  modeStr = "关闭";              break;
+    }
+    ImGui::Text("当前模式：%s", modeStr);
+    ImGui::Checkbox("启用吸附 (Snap)", &m_UseSnap);
+    if (m_UseSnap) {
+        ImGui::DragFloat("吸附步长", &m_SnapValue, 0.05f, 0.01f, 10.0f);
     }
 }
 

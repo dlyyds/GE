@@ -218,18 +218,19 @@ void Renderer2D::EndScene() {
     ps.SetVertexInputFromShader(*m_VertShader);
 
     // 混合附件：启用 alpha 混合（预乘 alpha 模式）
+    // 着色器输出已预乘 alpha（rgb *= alpha），所以源因子用 eOne
     vk::PipelineColorBlendAttachmentState blendState{};
     blendState.colorWriteMask = vk::ColorComponentFlagBits::eR
                                 | vk::ColorComponentFlagBits::eG
                                 | vk::ColorComponentFlagBits::eB
                                 | vk::ColorComponentFlagBits::eA;
-    //blendState.blendEnable = VK_FALSE;
-    // blendState.srcColorBlendFactor = vk::BlendFactor::eOne; // 预乘 alpha: src = 1
-    // blendState.dstColorBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha;
-    // blendState.colorBlendOp = vk::BlendOp::eAdd;
-    // blendState.srcAlphaBlendFactor = vk::BlendFactor::eOne;
-    // blendState.dstAlphaBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha;
-    // blendState.alphaBlendOp = vk::BlendOp::eAdd;
+    blendState.blendEnable = VK_TRUE;
+    blendState.srcColorBlendFactor = vk::BlendFactor::eOne;
+    blendState.dstColorBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha;
+    blendState.colorBlendOp = vk::BlendOp::eAdd;
+    blendState.srcAlphaBlendFactor = vk::BlendFactor::eOne;
+    blendState.dstAlphaBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha;
+    blendState.alphaBlendOp = vk::BlendOp::eAdd;
     ps.SetBlendAttachments({blendState});
 
     // 2D 渲染：无背面剔除、无深度测试、三角形列表

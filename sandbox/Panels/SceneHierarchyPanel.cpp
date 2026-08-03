@@ -377,6 +377,7 @@ void SceneHierarchyPanel::DrawComponents(Entity entity) {
     DrawComponent<SpriteRendererComponent>("Sprite Renderer", entity, [](auto &component) {
         ImGui::ColorEdit4("Color", glm::value_ptr(component.Color));
         ImGui::Text("Texture: %s", component.SpriteTexture ? "(assigned)" : "(null)");
+        ImGui::Checkbox("Is UI (screen space, no depth)", &component.IsUI);
     });
 
     // ---- Point Light 组件 ----

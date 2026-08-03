@@ -128,26 +128,59 @@ void Scene::OnUpdate3D(Timestep ts,
 
     r3d.EndScene();
 
-    // ── 2D 精灵渲染（叠加在 3D 之上，不清屏） ──────────────────────────
+    // ── 2D 精灵渲染：分世界空间 + UI 空间两批 ─────────────────────────
     glm::mat4 viewProjection = projection * view;
 
     auto &r2d = Renderer::Get2DRenderer();
-    // 2D 精灵叠加在 3D 场景之上，不参与深度测试（永远显示在最前）
-    r2d.BeginScene(glm::mat4(1.0f), viewProjection, false, glm::vec4(-1.0f));
-
     auto spriteView = m_Registry.view<TransformComponent, SpriteRendererComponent>();
-    for (auto entity : spriteView) {
-        auto &tc = spriteView.get<TransformComponent>(entity);
-        auto &sc = spriteView.get<SpriteRendererComponent>(entity);
 
-        r2d.DrawSprite(
-            tc.GetTransform(),
-            sc.SpriteTexture,
-            sc.Color
-        );
+    // ---- 第一批：世界空间精灵（IsUI=false），参与深度测试 ----
+    bool hasWorldSprites = false;
+    for (auto entity : spriteView) {
+        if (!spriteView.get<SpriteRendererComponent>(entity).IsUI) {
+            hasWorldSprites = true;
+            break;
+        }
+    }
+    if (hasWorldSprites) {
+        r2d.BeginScene(view, projection, true, glm::vec4(-1.0f));
+        for (auto entity : spriteView) {
+            auto &tc = spriteView.get<TransformComponent>(entity);
+            auto &sc = spriteView.get<SpriteRendererComponent>(entity);
+            if (sc.IsUI) continue;
+
+            r2d.DrawSprite(
+                tc.GetTransform(),
+                sc.SpriteTexture,
+                sc.Color
+            );
+        }
+        r2d.EndScene();
     }
 
-    r2d.EndScene();
+    // ---- 第二批：UI 精灵（IsUI=true），屏幕空间叠加，无深度 ----
+    bool hasUISprites = false;
+    for (auto entity : spriteView) {
+        if (spriteView.get<SpriteRendererComponent>(entity).IsUI) {
+            hasUISprites = true;
+            break;
+        }
+    }
+    if (hasUISprites) {
+        r2d.BeginScene(glm::mat4(1.0f), viewProjection, false, glm::vec4(-1.0f));
+        for (auto entity : spriteView) {
+            auto &tc = spriteView.get<TransformComponent>(entity);
+            auto &sc = spriteView.get<SpriteRendererComponent>(entity);
+            if (!sc.IsUI) continue;
+
+            r2d.DrawSprite(
+                tc.GetTransform(),
+                sc.SpriteTexture,
+                sc.Color
+            );
+        }
+        r2d.EndScene();
+    }
 }
 
 

@@ -59,14 +59,18 @@ struct TransformComponent {
  * @brief 精灵渲染组件 —— 描述一个 2D 精灵的渲染属性。
  *
  * 与 TransformComponent 配合使用：Transform 决定位置/旋转/缩放，
- * SpriteRendererComponent 决定显示什么纹理、什么颜色。
+ * SpriteRendererComponent 决定显示什么纹理、什么颜色、是否为 UI。
  *
  * 纹理使用裸指针引用，不拥有资源。纹理资源由外部资源管理器（如 VulkanResourceCache）管理。
  * Color 为 RGBA 分量，白色 (1,1,1,1) 表示原样显示纹理。
+ *
+ * IsUI 为 true 时：精灵在屏幕空间叠加渲染，无深度测试，永远显示在最上层（适用于 HUD/UI）。
+ * IsUI 为 false 时：精灵在 3D 世界空间中渲染，参与深度测试，会被 3D 物体遮挡。
  */
 struct SpriteRendererComponent {
     glm::vec4 Color{1.0f, 1.0f, 1.0f, 1.0f}; ///< 叠加颜色（默认白色，即不染色）
     Texture  *SpriteTexture = nullptr;        ///< 精灵纹理（可选，为 null 时绘制纯色矩形）
+    bool      IsUI = false;                   ///< 是否为 UI 精灵（true=屏幕空间无深度，false=世界空间有深度）
 
     SpriteRendererComponent() = default;
 

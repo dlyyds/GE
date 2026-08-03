@@ -13,6 +13,10 @@
 #include <unordered_map>
 #include <cmath>
 
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 namespace GE {
 
 // ============================================================================
@@ -238,12 +242,12 @@ std::unique_ptr<Mesh> Mesh::CreateBuiltin(VulkanDevice &device, const std::strin
         const float radius = 1.0f;
 
         for (int lat = 0; lat <= latBands; ++lat) {
-            float theta = static_cast<float>(lat) * glm::pi<float>() / static_cast<float>(latBands);
+            float theta = static_cast<float>(lat) * static_cast<float>(M_PI) / static_cast<float>(latBands);
             float sinTheta = std::sin(theta);
             float cosTheta = std::cos(theta);
 
             for (int lon = 0; lon <= lonBands; ++lon) {
-                float phi = static_cast<float>(lon) * 2.0f * glm::pi<float>() / static_cast<float>(lonBands);
+                float phi = static_cast<float>(lon) * 2.0f * static_cast<float>(M_PI) / static_cast<float>(lonBands);
                 float sinPhi = std::sin(phi);
                 float cosPhi = std::cos(phi);
 

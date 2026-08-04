@@ -39,64 +39,11 @@ void ModelTestLayer::OnAttach() {
                                       vk::Filter::eNearest);
     m_Texture->SetDebugName("ModelTest_Checkerboard");
 
-    // 用代码生成立方体网格（带法线和 UV，避免 OBJ 缺少顶点属性）
+    // 创建立方体网格（内置）
     {
-        // 6 个面，每个面 4 个顶点，共 24 个顶点（每个面独立顶点以便面法线 + 面 UV）
-        std::vector<Vertex> vertices;
-        vertices.reserve(24);
-        std::vector<uint32_t> indices;
-        indices.reserve(36);
-
-        // 辅助 lambda：添加一个四边形（两个三角形）
-        auto add_quad = [&](const glm::vec3 &p0, const glm::vec3 &p1,
-                            const glm::vec3 &p2, const glm::vec3 &p3,
-                            const glm::vec3 &normal) {
-            uint32_t base = static_cast<uint32_t>(vertices.size());
-            // UV 按顶点顺序：左下、右下、右上、左上
-            glm::vec2 uvs[] = {{0.0f, 0.0f}, {1.0f, 0.0f}, {1.0f, 1.0f}, {0.0f, 1.0f}};
-            glm::vec3 pos[] = {p0, p1, p2, p3};
-            for (int i = 0; i < 4; ++i) {
-                vertices.push_back({pos[i], normal, uvs[i]});
-            }
-            // 两个三角形：0-1-2 和 0-2-3
-            indices.push_back(base + 0);
-            indices.push_back(base + 1);
-            indices.push_back(base + 2);
-            indices.push_back(base + 0);
-            indices.push_back(base + 2);
-            indices.push_back(base + 3);
-        };
-
-        // 立方体 6 个面（边长为 2，中心在原点，面向各轴向）
-        // +Z 面（前）
-        add_quad({-1.0f, -1.0f, 1.0f}, {1.0f, -1.0f, 1.0f},
-                 {1.0f, 1.0f, 1.0f}, {-1.0f, 1.0f, 1.0f},
-                 {0.0f, 0.0f, 1.0f});
-        // -Z 面（后）
-        add_quad({1.0f, -1.0f, -1.0f}, {-1.0f, -1.0f, -1.0f},
-                 {-1.0f, 1.0f, -1.0f}, {1.0f, 1.0f, -1.0f},
-                 {0.0f, 0.0f, -1.0f});
-        // +X 面（右）
-        add_quad({1.0f, -1.0f, 1.0f}, {1.0f, -1.0f, -1.0f},
-                 {1.0f, 1.0f, -1.0f}, {1.0f, 1.0f, 1.0f},
-                 {1.0f, 0.0f, 0.0f});
-        // -X 面（左）
-        add_quad({-1.0f, -1.0f, -1.0f}, {-1.0f, -1.0f, 1.0f},
-                 {-1.0f, 1.0f, 1.0f}, {-1.0f, 1.0f, -1.0f},
-                 {-1.0f, 0.0f, 0.0f});
-        // +Y 面（上）
-        add_quad({-1.0f, 1.0f, 1.0f}, {1.0f, 1.0f, 1.0f},
-                 {1.0f, 1.0f, -1.0f}, {-1.0f, 1.0f, -1.0f},
-                 {0.0f, 1.0f, 0.0f});
-        // -Y 面（下）
-        add_quad({-1.0f, -1.0f, -1.0f}, {1.0f, -1.0f, -1.0f},
-                 {1.0f, -1.0f, 1.0f}, {-1.0f, -1.0f, 1.0f},
-                 {0.0f, -1.0f, 0.0f});
-
-        m_CubeMesh = Mesh::Create(device, vertices, indices);
+        m_CubeMesh = Mesh::CreateBuiltin(device, "cube");
         GE_CORE_ASSERT(m_CubeMesh, "创建立方体网格失败");
         m_CubeMesh->SetDebugName("ModelTest_Cube");
-        m_CubeMesh->SetFilePath("builtin:cube"); // 标记为内置立方体，便于场景序列化时还原
 
         // 创建球体网格（光源可视化用）
         m_SphereMesh = Mesh::CreateBuiltin(device, "sphere");

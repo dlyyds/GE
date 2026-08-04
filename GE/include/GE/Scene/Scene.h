@@ -9,6 +9,7 @@
 namespace GE {
 
 class Entity;
+class Event;
 
 class Scene {
 public:
@@ -51,9 +52,21 @@ public:
                     const glm::vec3 &viewPos,
                     const glm::vec4 &clearColor = {0.1f, 0.1f, 0.1f, 1.0f});
 
+    /**
+     * @brief 场景事件入口。
+     *
+     * 处理系统级事件（如窗口大小变化），并将输入事件分发给所有 ScriptComponent。
+     * 由外层 Layer 在其 OnEvent 中调用。
+     *
+     * @param e 事件对象
+     */
+    void OnEvent(Event &e);
+
     void OnViewportResize(uint32_t width, uint32_t height);
 
 private:
+    /// 将输入事件分发给所有 ScriptComponent
+    void DispatchInputEventToScripts(Event &e);
     entt::registry m_Registry;
     uint32_t m_ViewportWidth = 0, m_ViewportHeight = 0;
 

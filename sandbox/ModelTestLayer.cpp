@@ -244,8 +244,13 @@ void ModelTestLayer::OnEvent(Event &event) {
         }
     }
 
+    // 将事件转发给场景（系统级处理 + ScriptComponent 事件回调）
+    if (m_Scene && !event.Handled) {
+        m_Scene->OnEvent(event);
+    }
+
     // 将事件转发给相机（处理鼠标移动、滚轮、按键等交互）
-    if (m_CameraEntity) {
+    if (m_CameraEntity && !event.Handled) {
         auto &cameraComp = m_CameraEntity.GetComponent<CameraComponent>();
         cameraComp.CameraInstance.OnEvent(event);
     }
@@ -551,11 +556,30 @@ void ModelTestLayer::RefreshLightScripts() {
         tc.Translation.y = 0.5f;
     };
 
-    // 红色光源脚本
+    // 红色光源脚本（旋转 + 空格切换颜色）
+    auto redKeyCallback = [](Entity entity, KeyCode key, int /*repeatCount*/) -> bool {
+        if (key == Key::Space) {
+            auto &light = entity.GetComponent<PointLightComponent>();
+            // 红色 ↔ 白色 切换，验证 ScriptComponent 按键回调
+            if (light.Color.r > 0.9f && light.Color.g > 0.9f && light.Color.b > 0.9f) {
+                light.Color = {1.0f, 0.2f, 0.2f, 1.0f};
+            } else {
+                light.Color = {1.0f, 1.0f, 1.0f, 1.0f};
+            }
+            return true;  // 消费事件
+        }
+        return false;
+    };
+
     if (m_RedLightEntity.HasComponent<ScriptComponent>()) {
-        m_RedLightEntity.GetComponent<ScriptComponent>().OnUpdate = std::move(redLightCallback);
+        auto &sc = m_RedLightEntity.GetComponent<ScriptComponent>();
+        sc.OnUpdate = std::move(redLightCallback);
+        sc.OnKeyPressed = std::move(redKeyCallback);
     } else {
-        m_RedLightEntity.AddComponent<ScriptComponent>(std::move(redLightCallback));
+        ScriptComponent sc;
+        sc.OnUpdate = std::move(redLightCallback);
+        sc.OnKeyPressed = std::move(redKeyCallback);
+        m_RedLightEntity.AddComponent<ScriptComponent>(std::move(sc));
     }
 
     // 蓝色光源脚本

@@ -11,6 +11,8 @@
 #include <glm/gtx/quaternion.hpp>
 
 #include "Render/Camera.h"
+#include "Core/KeyCodes.h"
+#include "Core/MouseCodes.h"
 
 namespace GE {
 
@@ -100,26 +102,37 @@ struct SpriteRendererComponent {
 
 
 /**
- * @brief 脚本组件 —— 挂载到实体上的每帧回调。
+ * @brief 脚本组件 —— 挂载到实体上的行为回调。
  *
- * 轻量级脚本系统：通过 std::function 绑定一个每帧执行的回调，
- * 在 Scene::OnUpdate 中被调用，用于实现实体的行为逻辑。
+ * 轻量级脚本系统：通过 std::function 绑定每帧更新和各类事件回调，
+ * 在 Scene::OnUpdate 中调用 OnUpdate，在 Scene::OnEvent 中调用对应事件回调，
+ * 用于实现实体的行为逻辑。
  *
- * 回调签名：void(Timestep ts, Entity entity)
- * - ts: 时间步长
- * - entity: 该组件所属的实体，可在回调中读写其组件
+ * 按键/鼠标按键类回调返回 bool：true 表示消费该事件，阻止后续脚本接收。
+ * 移动/滚动类回调返回 void，一般不消费事件。
  */
 struct ScriptComponent {
-    using Callback = std::function<void(Timestep, Entity)>;
+    using UpdateCallback       = std::function<void(Timestep, Entity)>;
+    using KeyCallback          = std::function<bool(Entity, KeyCode, int repeatCount)>;
+    using MouseButtonCallback  = std::function<bool(Entity, MouseCode)>;
+    using MouseMoveCallback    = std::function<void(Entity, float x, float y)>;
+    using MouseScrollCallback  = std::function<void(Entity, float xOffset, float yOffset)>;
 
-    Callback OnUpdate;  ///< 每帧更新回调
-    bool     Enabled = true; ///< 脚本是否启用（false 时跳过 OnUpdate 调用）
+    UpdateCallback      OnUpdate;              ///< 每帧更新回调
+    KeyCallback         OnKeyPressed;          ///< 按键按下，返回 true = 消费事件
+    KeyCallback         OnKeyReleased;         ///< 按键释放，返回 true = 消费事件
+    MouseButtonCallback OnMouseButtonPressed;  ///< 鼠标按下，返回 true = 消费事件
+    MouseButtonCallback OnMouseButtonReleased; ///< 鼠标释放，返回 true = 消费事件
+    MouseMoveCallback   OnMouseMoved;          ///< 鼠标移动
+    MouseScrollCallback OnMouseScrolled;       ///< 鼠标滚轮
+
+    bool Enabled = true; ///< 脚本是否启用（false 时跳过所有回调）
 
     ScriptComponent() = default;
 
     ScriptComponent(const ScriptComponent &) = default;
 
-    explicit ScriptComponent(Callback callback)
+    explicit ScriptComponent(UpdateCallback callback)
         : OnUpdate(std::move(callback)) {
     }
 };

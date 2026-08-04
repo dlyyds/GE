@@ -2,6 +2,10 @@
 #include "Scene/Scene.h"
 #include "Scene/Components.h"
 #include "Scene/Entity.h"
+#include "Events/Event.h"
+#include "Events/ApplicationEvent.h"
+#include "Events/KeyEvent.h"
+#include "Events/MouseEvent.h"
 #include "Render/Renderer.h"
 #include "Render/Renderer2D.h"
 #include "Render/Renderer3D.h"
@@ -232,6 +236,110 @@ void Scene::OnUpdate3D(Timestep ts,
     }
 }
 
+
+void Scene::OnEvent(Event &e) {
+    // ── 系统级事件 ──────────────────────────────────────────────────────
+    EventDispatcher dispatcher(e);
+    dispatcher.Dispatch<WindowResizeEvent>([this](WindowResizeEvent &ev) {
+        OnViewportResize(ev.GetWidth(), ev.GetHeight());
+        return false;  // 不消费，事件继续向 Layer 上层传播
+    });
+
+    // ── 输入事件：分发给所有 ScriptComponent ───────────────────────────
+    if (e.IsInCategory(EventCategoryInput)) {
+        DispatchInputEventToScripts(e);
+    }
+}
+
+void Scene::DispatchInputEventToScripts(Event &e) {
+    auto view = m_Registry.view<ScriptComponent>();
+    if (view.empty()) return;
+
+    EventDispatcher dispatcher(e);
+
+    // ---- 按键按下 ----
+    dispatcher.Dispatch<KeyPressedEvent>([&](KeyPressedEvent &ev) {
+        for (auto handle : view) {
+            auto &sc = view.get<ScriptComponent>(handle);
+            if (!sc.Enabled || !sc.OnKeyPressed) continue;
+            Entity entity{handle, this};
+            if (sc.OnKeyPressed(entity, ev.GetKeyCode(), ev.GetRepeatCount())) {
+                ev.Handled = true;
+                return true;
+            }
+        }
+        return false;
+    });
+    if (e.Handled) return;
+
+    // ---- 按键释放 ----
+    dispatcher.Dispatch<KeyReleasedEvent>([&](KeyReleasedEvent &ev) {
+        for (auto handle : view) {
+            auto &sc = view.get<ScriptComponent>(handle);
+            if (!sc.Enabled || !sc.OnKeyReleased) continue;
+            Entity entity{handle, this};
+            if (sc.OnKeyReleased(entity, ev.GetKeyCode(), 0)) {
+                ev.Handled = true;
+                return true;
+            }
+        }
+        return false;
+    });
+    if (e.Handled) return;
+
+    // ---- 鼠标按下 ----
+    dispatcher.Dispatch<MouseButtonPressedEvent>([&](MouseButtonPressedEvent &ev) {
+        for (auto handle : view) {
+            auto &sc = view.get<ScriptComponent>(handle);
+            if (!sc.Enabled || !sc.OnMouseButtonPressed) continue;
+            Entity entity{handle, this};
+            if (sc.OnMouseButtonPressed(entity, ev.GetMouseButton())) {
+                ev.Handled = true;
+                return true;
+            }
+        }
+        return false;
+    });
+    if (e.Handled) return;
+
+    // ---- 鼠标释放 ----
+    dispatcher.Dispatch<MouseButtonReleasedEvent>([&](MouseButtonReleasedEvent &ev) {
+        for (auto handle : view) {
+            auto &sc = view.get<ScriptComponent>(handle);
+            if (!sc.Enabled || !sc.OnMouseButtonReleased) continue;
+            Entity entity{handle, this};
+            if (sc.OnMouseButtonReleased(entity, ev.GetMouseButton())) {
+                ev.Handled = true;
+                return true;
+            }
+        }
+        return false;
+    });
+    if (e.Handled) return;
+
+    // ---- 鼠标移动（不消费事件） ----
+    dispatcher.Dispatch<MouseMovedEvent>([&](MouseMovedEvent &ev) {
+        for (auto handle : view) {
+            auto &sc = view.get<ScriptComponent>(handle);
+            if (!sc.Enabled || !sc.OnMouseMoved) continue;
+            Entity entity{handle, this};
+            sc.OnMouseMoved(entity, ev.GetX(), ev.GetY());
+        }
+        return false;
+    });
+    if (e.Handled) return;
+
+    // ---- 鼠标滚轮（不消费事件） ----
+    dispatcher.Dispatch<MouseScrolledEvent>([&](MouseScrolledEvent &ev) {
+        for (auto handle : view) {
+            auto &sc = view.get<ScriptComponent>(handle);
+            if (!sc.Enabled || !sc.OnMouseScrolled) continue;
+            Entity entity{handle, this};
+            sc.OnMouseScrolled(entity, ev.GetXOffset(), ev.GetYOffset());
+        }
+        return false;
+    });
+}
 
 void Scene::OnViewportResize(const uint32_t width, const uint32_t height) {
     m_ViewportWidth = width;

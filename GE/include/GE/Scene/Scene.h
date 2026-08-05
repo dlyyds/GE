@@ -5,11 +5,13 @@
 
 #include "Core/Timestep.h"
 #include <glm/glm.hpp>
+#include <memory>
 
 namespace GE {
 
 class Entity;
 class Event;
+namespace Physics { class PhysicsWorld; }
 
 class Scene {
 public:
@@ -70,10 +72,17 @@ private:
     entt::registry m_Registry;
     uint32_t m_ViewportWidth = 0, m_ViewportHeight = 0;
 
+    /// 物理世界（每个 Scene 一个实例）
+    std::unique_ptr<Physics::PhysicsWorld> m_PhysicsWorld;
+
     template <typename T>
     void OnComponentAdded(Entity entity, T &component);
 
+    /// 实体销毁回调（用于清理物理 body）
+    void OnRigidBodyDestroyed(entt::registry &registry, entt::entity entity);
+
     friend class Entity;
+    friend class Physics::PhysicsWorld;
 
 };
 

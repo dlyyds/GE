@@ -41,6 +41,26 @@ add_subdirectory(GE/third_party/tracy)
 
 find_package(Vulkan REQUIRED)
 
+# ==============================================
+# Jolt Physics
+# ==============================================
+# 关闭 Jolt 的示例/测试/Viewer 构建
+set(TARGET_UNIT_TESTS OFF CACHE BOOL "" FORCE)
+set(TARGET_HELLO_WORLD OFF CACHE BOOL "" FORCE)
+set(TARGET_PERFORMANCE_TEST OFF CACHE BOOL "" FORCE)
+set(TARGET_SAMPLES OFF CACHE BOOL "" FORCE)
+set(TARGET_VIEWER OFF CACHE BOOL "" FORCE)
+
+# 与项目保持一致：使用 DLL 运行时库 (/MD)，关闭浮点异常，启用 RTTI/异常
+set(USE_STATIC_MSVC_RUNTIME_LIBRARY OFF CACHE BOOL "" FORCE)
+set(FLOATING_POINT_EXCEPTIONS_ENABLED OFF CACHE BOOL "" FORCE)
+set(CPP_RTTI_ENABLED ON CACHE BOOL "" FORCE)
+set(CPP_EXCEPTIONS_ENABLED ON CACHE BOOL "" FORCE)
+set(ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+set(JPH_USE_DX12 OFF CACHE BOOL "" FORCE)
+
+add_subdirectory(GE/third_party/JoltPhysics/Build JoltPhysics)
+
 
 #GE lib
 # ==============================================
@@ -53,6 +73,7 @@ file(GLOB GE_SRC
         ${CMAKE_SOURCE_DIR}/GE/src/Render/*.cpp
         ${CMAKE_SOURCE_DIR}/GE/src/Render/VulkanBase/*.cpp
         ${CMAKE_SOURCE_DIR}/GE/src/Scene/*.cpp
+        ${CMAKE_SOURCE_DIR}/GE/src/Physics/*.cpp
         ${CMAKE_SOURCE_DIR}/GE/third_party/stb/stb_image.cpp
         ${CMAKE_SOURCE_DIR}/GE/third_party/tinyobjloader/tiny_obj_loader.cpp
 
@@ -94,6 +115,7 @@ target_link_libraries(${GE_NAME} PUBLIC
         yaml-cpp::yaml-cpp
         TracyClient
         ${Vulkan_LIBRARIES}
+        Jolt
 )
 
 # 链接 Vulkan SDK 自带的 SPIRV-Cross 预编译库

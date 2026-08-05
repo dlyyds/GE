@@ -43,6 +43,8 @@ private:
     Entity m_BlueLightEntity; ///< 蓝色点光源实体
     Entity m_DirLightEntity; ///< 方向光实体
     Entity m_AmbientLightEntity; ///< 环境光实体
+    Entity m_FloorEntity; ///< 物理地板实体
+    Entity m_PhysicsBallEntity; ///< 物理球体实体
 
     SceneHierarchyPanel m_HierarchyPanel; ///< 场景层级面板（ImGui）
 

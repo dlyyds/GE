@@ -2,6 +2,7 @@
 #include "Scene/Scene.h"
 #include "Scene/Components.h"
 #include "Scene/Entity.h"
+#include "Physics/PhysicsWorld.h"
 #include "Events/Event.h"
 #include "Events/ApplicationEvent.h"
 #include "Events/KeyEvent.h"
@@ -17,7 +18,13 @@
 namespace GE {
 
 
-Scene::Scene() = default;
+Scene::Scene() {
+    // 创建物理世界
+    m_PhysicsWorld = std::make_unique<Physics::PhysicsWorld>(this);
+
+    // 注册 RigidBodyComponent 销毁回调
+    m_Registry.on_destroy<RigidBodyComponent>().connect<&Scene::OnRigidBodyDestroyed>(this);
+}
 
 Scene::~Scene() = default;
 
@@ -84,6 +91,11 @@ void Scene::OnUpdate3D(Timestep ts,
                 sc.OnUpdate(ts, entity);
             }
         }
+    }
+
+    // ── 物理步进 ────────────────────────────────────────────────────────
+    if (m_PhysicsWorld) {
+        m_PhysicsWorld->Step(ts);
     }
 
     // ── 3D 网格渲染 ────────────────────────────────────────────────────
@@ -387,6 +399,47 @@ void Scene::OnComponentAdded<DirectionalLightComponent>(Entity entity, Direction
 
 template <>
 void Scene::OnComponentAdded<AmbientLightComponent>(Entity entity, AmbientLightComponent &component) {
+}
+
+template <>
+void Scene::OnComponentAdded<RigidBodyComponent>(Entity entity, RigidBodyComponent &component) {
+    // 延迟创建：将实体加入 PhysicsWorld 的待创建列表
+    // 实际创建发生在下一次 Step() 调用时，确保 collider 组件也已添加
+    if (m_PhysicsWorld) {
+        m_PhysicsWorld->RequestCreateRigidBody(static_cast<entt::entity>(entity));
+    }
+}
+
+template <>
+void Scene::OnComponentAdded<BoxColliderComponent>(Entity entity, BoxColliderComponent &component) {
+    // 如果实体已有 RigidBodyComponent，需要重新请求创建 body
+    if (entity.HasComponent<RigidBodyComponent>()) {
+        auto &rbc = entity.GetComponent<RigidBodyComponent>();
+        if (rbc.IsInitialized) {
+            // 已初始化，需要重建 body（先销毁再创建）
+            m_PhysicsWorld->DestroyRigidBody(static_cast<entt::entity>(entity));
+        }
+        m_PhysicsWorld->RequestCreateRigidBody(static_cast<entt::entity>(entity));
+    }
+}
+
+template <>
+void Scene::OnComponentAdded<SphereColliderComponent>(Entity entity, SphereColliderComponent &component) {
+    // 同 BoxColliderComponent 逻辑
+    if (entity.HasComponent<RigidBodyComponent>()) {
+        auto &rbc = entity.GetComponent<RigidBodyComponent>();
+        if (rbc.IsInitialized) {
+            m_PhysicsWorld->DestroyRigidBody(static_cast<entt::entity>(entity));
+        }
+        m_PhysicsWorld->RequestCreateRigidBody(static_cast<entt::entity>(entity));
+    }
+}
+
+void Scene::OnRigidBodyDestroyed(entt::registry &registry, entt::entity entity) {
+    // EnTT 的 on_destroy 回调，在实体销毁或组件移除时触发
+    if (m_PhysicsWorld) {
+        m_PhysicsWorld->DestroyRigidBody(entity);
+    }
 }
 
 

@@ -311,6 +311,42 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
             lightNode["Color"] = SerializeVec4(alc.Color);
         }
 
+        // ---- RigidBodyComponent ----
+        if (entity.HasComponent<RigidBodyComponent>()) {
+            const auto &rbc = entity.GetComponent<RigidBodyComponent>();
+            YAML::Node rbNode = entityNode["RigidBody"];
+
+            std::string typeStr;
+            switch (rbc.Type) {
+                case Physics::RigidBodyType::Static:    typeStr = "Static"; break;
+                case Physics::RigidBodyType::Kinematic: typeStr = "Kinematic"; break;
+                case Physics::RigidBodyType::Dynamic:   typeStr = "Dynamic"; break;
+            }
+            rbNode["Type"] = typeStr;
+            rbNode["Mass"] = rbc.Mass;
+            rbNode["Friction"] = rbc.Friction;
+            rbNode["Restitution"] = rbc.Restitution;
+            rbNode["LinearDamping"] = rbc.LinearDamping;
+            rbNode["AngularDamping"] = rbc.AngularDamping;
+            rbNode["IsSensor"] = rbc.IsSensor;
+        }
+
+        // ---- BoxColliderComponent ----
+        if (entity.HasComponent<BoxColliderComponent>()) {
+            const auto &bcc = entity.GetComponent<BoxColliderComponent>();
+            YAML::Node boxNode = entityNode["BoxCollider"];
+            boxNode["HalfExtents"] = SerializeVec3(bcc.HalfExtents);
+            boxNode["Offset"] = SerializeVec3(bcc.Offset);
+        }
+
+        // ---- SphereColliderComponent ----
+        if (entity.HasComponent<SphereColliderComponent>()) {
+            const auto &scc = entity.GetComponent<SphereColliderComponent>();
+            YAML::Node sphereNode = entityNode["SphereCollider"];
+            sphereNode["Radius"] = scc.Radius;
+            sphereNode["Offset"] = SerializeVec3(scc.Offset);
+        }
+
         // ---- ScriptComponent ----
         // 不序列化：std::function 无法持久化
 
@@ -502,6 +538,42 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
             auto &alc = entity.AddComponent<AmbientLightComponent>();
 
             alc.Color = DeserializeVec4(lightNode["Color"], {0.3f, 0.3f, 0.3f, 1.0f});
+        }
+
+        // ---- RigidBodyComponent ----
+        if (entityNode["RigidBody"]) {
+            YAML::Node rbNode = entityNode["RigidBody"];
+            auto &rbc = entity.AddComponent<RigidBodyComponent>();
+
+            std::string typeStr = rbNode["Type"] ? rbNode["Type"].as<std::string>("Static") : "Static";
+            if (typeStr == "Kinematic")      rbc.Type = Physics::RigidBodyType::Kinematic;
+            else if (typeStr == "Dynamic")   rbc.Type = Physics::RigidBodyType::Dynamic;
+            else                             rbc.Type = Physics::RigidBodyType::Static;
+
+            rbc.Mass           = rbNode["Mass"]           ? rbNode["Mass"].as<float>(1.0f) : 1.0f;
+            rbc.Friction       = rbNode["Friction"]       ? rbNode["Friction"].as<float>(0.6f) : 0.6f;
+            rbc.Restitution    = rbNode["Restitution"]    ? rbNode["Restitution"].as<float>(0.0f) : 0.0f;
+            rbc.LinearDamping  = rbNode["LinearDamping"]  ? rbNode["LinearDamping"].as<float>(0.05f) : 0.05f;
+            rbc.AngularDamping = rbNode["AngularDamping"] ? rbNode["AngularDamping"].as<float>(0.05f) : 0.05f;
+            rbc.IsSensor       = rbNode["IsSensor"]       ? rbNode["IsSensor"].as<bool>(false) : false;
+        }
+
+        // ---- BoxColliderComponent ----
+        if (entityNode["BoxCollider"]) {
+            YAML::Node boxNode = entityNode["BoxCollider"];
+            auto &bcc = entity.AddComponent<BoxColliderComponent>();
+
+            bcc.HalfExtents = DeserializeVec3(boxNode["HalfExtents"], {0.5f, 0.5f, 0.5f});
+            bcc.Offset      = DeserializeVec3(boxNode["Offset"], {0.0f, 0.0f, 0.0f});
+        }
+
+        // ---- SphereColliderComponent ----
+        if (entityNode["SphereCollider"]) {
+            YAML::Node sphereNode = entityNode["SphereCollider"];
+            auto &scc = entity.AddComponent<SphereColliderComponent>();
+
+            scc.Radius = sphereNode["Radius"] ? sphereNode["Radius"].as<float>(0.5f) : 0.5f;
+            scc.Offset = DeserializeVec3(sphereNode["Offset"], {0.0f, 0.0f, 0.0f});
         }
 
         // ---- ScriptComponent ----

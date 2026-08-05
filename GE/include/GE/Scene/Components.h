@@ -13,6 +13,7 @@
 #include "Render/Camera.h"
 #include "Core/KeyCodes.h"
 #include "Core/MouseCodes.h"
+#include "Physics/PhysicsTypes.h"
 
 namespace GE {
 
@@ -324,5 +325,69 @@ struct AmbientLightComponent {
     }
 };
 
+
+// ============================================================
+// 物理相关组件
+// ============================================================
+
+/**
+ * @brief 刚体组件 —— 描述实体的物理运动属性。
+ *
+ * 与 TransformComponent 配合使用：创建时从 Transform 初始化位置和旋转。
+ * 动态体每帧由物理模拟更新 TransformComponent，
+ * 运动学体由用户修改 Transform，通过 PhysicsWorld 同步到物理世界。
+ *
+ * RuntimeBodyID 和 IsInitialized 是运行时数据，不参与序列化。
+ */
+struct RigidBodyComponent {
+    Physics::RigidBodyType Type = Physics::RigidBodyType::Static; ///< 刚体类型
+    float Mass = 1.0f;        ///< 质量（kg，静态体/运动学体忽略）
+    float Friction = 0.6f;    ///< 摩擦系数（0~1）
+    float Restitution = 0.0f; ///< 弹性系数（0~1）
+    float LinearDamping = 0.05f;  ///< 线性阻尼
+    float AngularDamping = 0.05f; ///< 角阻尼
+    bool  IsSensor = false;   ///< 是否为触发器（不产生物理响应，只触发事件）
+
+    // 运行时数据（不参与序列化）
+    Physics::BodyID RuntimeBodyID{}; ///< Jolt Body 句柄（由 PhysicsWorld 设置）
+    bool IsInitialized = false;      ///< 是否已加入物理世界
+
+    RigidBodyComponent() = default;
+    RigidBodyComponent(const RigidBodyComponent &) = default;
+    explicit RigidBodyComponent(Physics::RigidBodyType type) : Type(type) {}
+};
+
+/**
+ * @brief 盒子碰撞体组件。
+ *
+ * HalfExtents 是半尺寸，即从中心到各面的距离。
+ * 一个 2x2x2 的立方体对应 HalfExtents = (1,1,1)。
+ * Offset 是碰撞体相对于刚体中心的偏移。
+ *
+ * 实体上可挂载多个碰撞体组件，PhysicsWorld 会合并为复合形状。
+ */
+struct BoxColliderComponent {
+    glm::vec3 HalfExtents = {0.5f, 0.5f, 0.5f}; ///< 半尺寸
+    glm::vec3 Offset = {0.0f, 0.0f, 0.0f};      ///< 相对于刚体中心的偏移
+
+    BoxColliderComponent() = default;
+    BoxColliderComponent(const BoxColliderComponent &) = default;
+    explicit BoxColliderComponent(const glm::vec3 &halfExtents) : HalfExtents(halfExtents) {}
+};
+
+/**
+ * @brief 球体碰撞体组件。
+ *
+ * Radius 为球体半径，Offset 为碰撞体相对于刚体中心的偏移。
+ * 实体上可挂载多个碰撞体组件，PhysicsWorld 会合并为复合形状。
+ */
+struct SphereColliderComponent {
+    float Radius = 0.5f;                       ///< 半径
+    glm::vec3 Offset = {0.0f, 0.0f, 0.0f};     ///< 偏移
+
+    SphereColliderComponent() = default;
+    SphereColliderComponent(const SphereColliderComponent &) = default;
+    explicit SphereColliderComponent(float radius) : Radius(radius) {}
+};
 
 }

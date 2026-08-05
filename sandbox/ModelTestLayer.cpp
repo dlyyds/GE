@@ -109,6 +109,39 @@ void ModelTestLayer::OnAttach() {
         glm::vec4(0.3f, 0.3f, 0.35f, 1.0f) // 偏冷灰，强度 1.0
         );
 
+    // ── 物理测试：创建地板 + 动态球体 ──────────────────────────────────
+    {
+        // 静态地板（Box collider + Static rigid body）
+        m_FloorEntity = m_Scene->CreateEntity("PhysicsFloor");
+        auto &floorTc = m_FloorEntity.GetComponent<TransformComponent>();
+        floorTc.Translation = {0.0f, -3.0f, 0.0f};  // 放在下方
+        floorTc.Scale = {10.0f, 0.5f, 10.0f};        // 大而扁的盒子
+        m_FloorEntity.AddComponent<BoxColliderComponent>(glm::vec3(0.5f, 0.5f, 0.5f));
+        m_FloorEntity.AddComponent<RigidBodyComponent>(Physics::RigidBodyType::Static);
+
+        // 给地板加一个网格组件用于可视化
+        m_FloorEntity.AddComponent<MeshComponent>(
+            m_CubeMesh.get(),
+            glm::vec4(0.5f, 0.5f, 0.5f, 1.0f)
+        );
+
+        // 动态球体（Sphere collider + Dynamic rigid body）
+        m_PhysicsBallEntity = m_Scene->CreateEntity("PhysicsBall");
+        auto &ballTc = m_PhysicsBallEntity.GetComponent<TransformComponent>();
+        ballTc.Translation = {0.0f, 5.0f, 0.0f};   // 放在高处
+        ballTc.Scale = {0.5f, 0.5f, 0.5f};
+        m_PhysicsBallEntity.AddComponent<SphereColliderComponent>(0.5f);
+        auto &ballRbc = m_PhysicsBallEntity.AddComponent<RigidBodyComponent>(Physics::RigidBodyType::Dynamic);
+        ballRbc.Mass = 1.0f;
+        ballRbc.Restitution = 0.3f;  // 有些弹性
+
+        // 给球体加一个网格组件用于可视化
+        m_PhysicsBallEntity.AddComponent<MeshComponent>(
+            m_SphereMesh.get(),
+            glm::vec4(0.2f, 0.6f, 1.0f, 1.0f)
+        );
+    }
+
     // 添加相机鼠标控制脚本
     RefreshCameraScript();
     // 添加点光源旋转动画脚本
@@ -125,6 +158,8 @@ void ModelTestLayer::OnDetach() {
     m_BlueLightEntity = {};
     m_DirLightEntity = {};
     m_AmbientLightEntity = {};
+    m_FloorEntity = {};
+    m_PhysicsBallEntity = {};
     m_HierarchyPanel.SetContext(nullptr);
     m_Scene.reset();
     m_Texture.reset();

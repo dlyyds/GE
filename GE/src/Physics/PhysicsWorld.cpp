@@ -269,22 +269,36 @@ void PhysicsWorld::ProcessPendingBodies() {
     auto &reg = m_Scene->Reg();
     auto &bodyInterface = m_PhysicsSystem->GetBodyInterface();
 
+    // 收集成功创建和仍需等待的 entity
+    std::vector<entt::entity> completed;
+    std::vector<entt::entity> stillPending;
+
     for (auto entity : m_PendingBodies) {
-        if (!reg.valid(entity)) continue;
+        if (!reg.valid(entity)) {
+            completed.push_back(entity); // 无效实体直接丢弃
+            continue;
+        }
 
         auto *rbc = reg.try_get<RigidBodyComponent>(entity);
-        if (!rbc || rbc->IsInitialized) continue;
+        if (!rbc || rbc->IsInitialized) {
+            completed.push_back(entity); // 已初始化或组件已移除
+            continue;
+        }
 
         // 需要 TransformComponent 和至少一个碰撞体
         auto *tc = reg.try_get<TransformComponent>(entity);
         if (!tc || !HasColliderComponent(entity)) {
-            // 条件不满足，暂时跳过，下次 Step 再尝试
+            // 条件不满足，保留在 pending 列表中等待下次 Step
+            stillPending.push_back(entity);
             continue;
         }
 
         // 构建碰撞形状
         JPH::ShapeRefC shape = BuildShapeForEntity(entity);
-        if (shape == nullptr) continue;
+        if (shape == nullptr) {
+            stillPending.push_back(entity);
+            continue;
+        }
 
         // 确定运动类型
         JPH::EMotionType motionType;
@@ -334,17 +348,23 @@ void PhysicsWorld::ProcessPendingBodies() {
             bodySettings.mMassPropertiesOverride.mMass = rbc->Mass;
         }
 
-        // 创建并添加 body
-        JPH::Body *body = bodyInterface.CreateBody(bodySettings);
-        JPH::BodyID bodyID = body->GetID();
+        // 创建并添加 body 到物理世界
+        // 静态体不需要激活，动态体需要激活才能开始模拟
+        JPH::EActivation activation = (motionType == JPH::EMotionType::Static)
+                                          ? JPH::EActivation::DontActivate
+                                          : JPH::EActivation::Activate;
+
+        JPH::BodyID bodyID = bodyInterface.CreateAndAddBody(bodySettings, activation);
 
         // 写回组件
         rbc->RuntimeBodyID = bodyID;
         rbc->IsInitialized = true;
+
+        completed.push_back(entity);
     }
 
-    // 清空待创建列表
-    m_PendingBodies.clear();
+    // 只保留仍需等待的 entity
+    m_PendingBodies = std::move(stillPending);
 }
 
 bool PhysicsWorld::HasColliderComponent(entt::entity entity) const {

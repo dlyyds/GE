@@ -16,8 +16,10 @@
 #include <Jolt/Physics/PhysicsSystem.h>
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
 #include <Jolt/Physics/Body/BodyInterface.h>
+#include <Jolt/Physics/Body/BodyLock.h>
 #include <Jolt/Physics/Body/Body.h>
 #include <Jolt/Physics/Body/MotionProperties.h>
+#include <Jolt/Physics/PhysicsSystem.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
 #include <Jolt/Physics/Collision/Shape/StaticCompoundShape.h>
@@ -275,24 +277,30 @@ void PhysicsWorld::UpdateRigidBodyProperties(entt::entity entity) {
     auto &bodyInterface = m_PhysicsSystem->GetBodyInterface();
     const JPH::BodyID &bodyID = rbc->RuntimeBodyID;
 
-    // 更新摩擦、弹性、阻尼
+    // 摩擦和弹性可通过 BodyInterface 直接设置
     bodyInterface.SetFriction(bodyID, rbc->Friction);
     bodyInterface.SetRestitution(bodyID, rbc->Restitution);
-    bodyInterface.SetLinearDamping(bodyID, rbc->LinearDamping);
-    bodyInterface.SetAngularDamping(bodyID, rbc->AngularDamping);
+
+    // 阻尼、传感器、质量需要通过 BodyLockWrite 访问 Body/MotionProperties
+    JPH::BodyLockWrite bodyLock(m_PhysicsSystem->GetBodyLockInterface(), bodyID);
+    if (!bodyLock.Succeeded()) return;
+
+    JPH::Body *body = bodyLock.GetBody();
 
     // 更新传感器标记
-    // 注意：Jolt 的 SetSensor 仅对已激活的 body 有效
-    bodyInterface.SetSensor(bodyID, rbc->IsSensor);
+    body->SetIsSensor(rbc->IsSensor);
 
-    // 更新质量（仅动态体）
-    if (rbc->Type == RigidBodyType::Dynamic && rbc->Mass > 0.0f) {
-        // 通过 MotionProperties 设置逆质量（Jolt 内部存储的是逆质量）
-        // 这里使用 SetMassProperties 方式重新计算惯性张量
-        // 简化处理：直接调用 SetInverseMass，保持惯性不变
-        JPH::MotionProperties *mp = bodyInterface.GetMotionProperties(bodyID);
+    // 更新阻尼（仅非静态体有 MotionProperties）
+    if (rbc->Type != RigidBodyType::Static) {
+        JPH::MotionProperties *mp = body->GetMotionProperties();
         if (mp) {
-            mp->SetInverseMass(1.0f / rbc->Mass);
+            mp->SetLinearDamping(rbc->LinearDamping);
+            mp->SetAngularDamping(rbc->AngularDamping);
+
+            // 更新质量（仅动态体，设置逆质量）
+            if (rbc->Type == RigidBodyType::Dynamic && rbc->Mass > 0.0f) {
+                mp->SetInverseMass(1.0f / rbc->Mass);
+            }
         }
     }
 }

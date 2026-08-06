@@ -25,7 +25,7 @@
 #include "Render/ShaderModule.h"
 
 #include <algorithm>
-#include <functional>
+#include <vulkan/vulkan_hash.hpp>
 
 namespace GE {
 
@@ -524,14 +524,15 @@ size_t VulkanPipelineState::hash() const {
     auto hashCombine = [&seed](size_t v) {
         seed ^= v + 0x9e3779b9 + (seed << 6) + (seed >> 2);
     };
+    auto combine = [&](const auto &v) {
+        hashCombine(std::hash<std::decay_t<decltype(v)>>{}(v));
+    };
 
     // —— 颜色附件格式 ——
     for (auto fmt : m_ColorFormats)
-        hashCombine(std::hash<vk::Format>{}(fmt));
-
-    // —— 深度/模板格式 ——
-    hashCombine(std::hash<vk::Format>{}(m_DepthFormat));
-    hashCombine(std::hash<vk::Format>{}(m_StencilFormat));
+        combine(fmt);
+    combine(m_DepthFormat);
+    combine(m_StencilFormat);
     hashCombine(m_ViewMask);
 
     // —— 顶点输入 ——
@@ -539,18 +540,18 @@ size_t VulkanPipelineState::hash() const {
     for (const auto &b : m_VertexBindings) {
         hashCombine(b.binding);
         hashCombine(b.stride);
-        hashCombine(static_cast<uint32_t>(b.inputRate));
+        combine(b.inputRate);
     }
     hashCombine(m_VertexAttributes.size());
     for (const auto &a : m_VertexAttributes) {
         hashCombine(a.location);
         hashCombine(a.binding);
-        hashCombine(std::hash<vk::Format>{}(a.format));
+        combine(a.format);
         hashCombine(a.offset);
     }
 
     // —— 输入装配 ——
-    hashCombine(std::hash<vk::PrimitiveTopology>{}(m_InputAssembly.topology));
+    combine(m_InputAssembly.topology);
     hashCombine(m_InputAssembly.primitiveRestartEnable);
 
     // —— 细分曲面 ——
@@ -563,14 +564,14 @@ size_t VulkanPipelineState::hash() const {
     // —— 光栅化 ——
     hashCombine(m_Rasterization.depthClampEnable);
     hashCombine(m_Rasterization.rasterizerDiscardEnable);
-    hashCombine(static_cast<uint32_t>(m_Rasterization.polygonMode));
-    hashCombine(static_cast<uint32_t>(m_Rasterization.cullMode));
-    hashCombine(static_cast<uint32_t>(m_Rasterization.frontFace));
+    combine(m_Rasterization.polygonMode);
+    combine(m_Rasterization.cullMode);
+    combine(m_Rasterization.frontFace);
     hashCombine(m_Rasterization.depthBiasEnable);
     hashCombine(std::hash<float>{}(m_Rasterization.lineWidth));
 
     // —— 多重采样 ——
-    hashCombine(static_cast<uint32_t>(m_Multisample.rasterizationSamples));
+    combine(m_Multisample.rasterizationSamples);
     hashCombine(m_Multisample.sampleShadingEnable);
     hashCombine(std::hash<float>{}(m_Multisample.minSampleShading));
     hashCombine(m_SampleMask);
@@ -580,43 +581,42 @@ size_t VulkanPipelineState::hash() const {
     // —— 深度/模板 ——
     hashCombine(m_DepthStencil.depthTestEnable);
     hashCombine(m_DepthStencil.depthWriteEnable);
-    hashCombine(static_cast<uint32_t>(m_DepthStencil.depthCompareOp));
+    combine(m_DepthStencil.depthCompareOp);
     hashCombine(m_DepthStencil.depthBoundsTestEnable);
     hashCombine(m_DepthStencil.stencilTestEnable);
-    // 正面模板
-    hashCombine(static_cast<uint32_t>(m_DepthStencil.front.failOp));
-    hashCombine(static_cast<uint32_t>(m_DepthStencil.front.passOp));
-    hashCombine(static_cast<uint32_t>(m_DepthStencil.front.depthFailOp));
-    hashCombine(static_cast<uint32_t>(m_DepthStencil.front.compareOp));
-    // 背面模板
-    hashCombine(static_cast<uint32_t>(m_DepthStencil.back.failOp));
-    hashCombine(static_cast<uint32_t>(m_DepthStencil.back.passOp));
-    hashCombine(static_cast<uint32_t>(m_DepthStencil.back.depthFailOp));
-    hashCombine(static_cast<uint32_t>(m_DepthStencil.back.compareOp));
+    // 正面/背面模板操作
+    combine(m_DepthStencil.front.failOp);
+    combine(m_DepthStencil.front.passOp);
+    combine(m_DepthStencil.front.depthFailOp);
+    combine(m_DepthStencil.front.compareOp);
+    combine(m_DepthStencil.back.failOp);
+    combine(m_DepthStencil.back.passOp);
+    combine(m_DepthStencil.back.depthFailOp);
+    combine(m_DepthStencil.back.compareOp);
 
     // —— 颜色混合 ——
     hashCombine(m_ColorBlend.logicOpEnable);
-    hashCombine(static_cast<uint32_t>(m_ColorBlend.logicOp));
+    combine(m_ColorBlend.logicOp);
     for (const auto &att : m_BlendAttachments) {
         hashCombine(att.blendEnable);
-        hashCombine(static_cast<uint32_t>(att.srcColorBlendFactor));
-        hashCombine(static_cast<uint32_t>(att.dstColorBlendFactor));
-        hashCombine(static_cast<uint32_t>(att.colorBlendOp));
-        hashCombine(static_cast<uint32_t>(att.srcAlphaBlendFactor));
-        hashCombine(static_cast<uint32_t>(att.dstAlphaBlendFactor));
-        hashCombine(static_cast<uint32_t>(att.alphaBlendOp));
-        hashCombine(static_cast<uint32_t>(att.colorWriteMask));
+        combine(att.srcColorBlendFactor);
+        combine(att.dstColorBlendFactor);
+        combine(att.colorBlendOp);
+        combine(att.srcAlphaBlendFactor);
+        combine(att.dstAlphaBlendFactor);
+        combine(att.alphaBlendOp);
+        combine(att.colorWriteMask);
     }
     for (float c : m_BlendConstants)
         hashCombine(std::hash<float>{}(c));
 
     // —— 动态状态集合 ——
     for (auto s : m_DynamicStateSet)
-        hashCombine(static_cast<uint32_t>(s));
+        combine(s);
 
     // —— PipelineLayout ——
     if (m_PipelineLayout) {
-        hashCombine(std::hash<vk::PipelineLayout>{}(m_PipelineLayout->GetHandle()));
+        combine(m_PipelineLayout->GetHandle());
     }
 
     return seed;

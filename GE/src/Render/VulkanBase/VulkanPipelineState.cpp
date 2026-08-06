@@ -24,8 +24,10 @@
 #include "Render/VulkanBase/VulkanPipelineLayout.h"
 #include "Render/ShaderModule.h"
 
-#include <algorithm>
 #include <vulkan/vulkan_hash.hpp>
+
+#include <algorithm>
+#include <functional>
 
 namespace GE {
 
@@ -62,13 +64,13 @@ const std::vector<vk::DynamicState> &VulkanPipelineState::getDynamicStates() con
 // ============================================================================
 
 VulkanPipelineState &VulkanPipelineState::setRenderingFormats(std::vector<vk::Format> colorFmts,
-                                                              vk::Format              depthFmt,
-                                                              vk::Format              stencilFmt,
-                                                              uint32_t                viewMask) {
-    m_ColorFormats   = std::move(colorFmts);
-    m_DepthFormat    = depthFmt;
-    m_StencilFormat  = stencilFmt;
-    m_ViewMask       = viewMask;
+                                                              vk::Format depthFmt,
+                                                              vk::Format stencilFmt,
+                                                              uint32_t viewMask) {
+    m_ColorFormats = std::move(colorFmts);
+    m_DepthFormat = depthFmt;
+    m_StencilFormat = stencilFmt;
+    m_ViewMask = viewMask;
     return *this;
 }
 
@@ -108,7 +110,7 @@ VulkanPipelineState &VulkanPipelineState::setVertexAttributes(const std::vector<
 }
 
 uint32_t VulkanPipelineState::setVertexInputFromShader(const ShaderModule &vertShader,
-                                                       uint32_t           binding,
+                                                       uint32_t binding,
                                                        vk::VertexInputRate rate) {
     // 1. 收集所有 Input 资源
     std::vector<const ShaderResource *> inputs;
@@ -134,9 +136,9 @@ uint32_t VulkanPipelineState::setVertexInputFromShader(const ShaderModule &vertS
         }
         attrs.push_back(vk::VertexInputAttributeDescription{
             .location = res->location,
-            .binding  = binding,
-            .format   = res->format,
-            .offset   = offset,
+            .binding = binding,
+            .format = res->format,
+            .offset = offset,
         });
 
         offset += GetVertexFormatSize(res->format) * res->array_size;
@@ -145,8 +147,8 @@ uint32_t VulkanPipelineState::setVertexInputFromShader(const ShaderModule &vertS
     // 4. 设置到 pipeline state
     m_VertexBindings = std::vector<vk::VertexInputBindingDescription>{
         vk::VertexInputBindingDescription{
-            .binding   = binding,
-            .stride    = offset,
+            .binding = binding,
+            .stride = offset,
             .inputRate = rate,
         }
     };
@@ -182,13 +184,13 @@ VulkanPipelineState &VulkanPipelineState::setViewportState(const vk::PipelineVie
     m_ViewportState = info;
     // pViewports / pScissors 指针不持有，重新设置为空（动态模式）
     m_ViewportState.pViewports = nullptr;
-    m_ViewportState.pScissors  = nullptr;
+    m_ViewportState.pScissors = nullptr;
     return *this;
 }
 
 VulkanPipelineState &VulkanPipelineState::setViewportCount(uint32_t viewportCount, uint32_t scissorCount) {
     m_ViewportState.viewportCount = viewportCount;
-    m_ViewportState.scissorCount  = scissorCount;
+    m_ViewportState.scissorCount = scissorCount;
     return *this;
 }
 
@@ -378,9 +380,9 @@ void VulkanPipelineState::buildCommon(vk::PipelineCreateFlags flags) const {
         for (const auto *mod : modules) {
             m_ShaderStageCache.push_back(
                 vk::PipelineShaderStageCreateInfo{
-                    .stage  = mod->get_stage(),
+                    .stage = mod->get_stage(),
                     .module = mod->GetHandle(),
-                    .pName  = mod->get_entry_point().c_str(),
+                    .pName = mod->get_entry_point().c_str(),
                 });
         }
     }
@@ -389,44 +391,44 @@ void VulkanPipelineState::buildCommon(vk::PipelineCreateFlags flags) const {
     const auto &dynStates = getDynamicStates();
     m_DynamicStateInfo = vk::PipelineDynamicStateCreateInfo{
         .dynamicStateCount = static_cast<uint32_t>(dynStates.size()),
-        .pDynamicStates    = dynStates.data(),
+        .pDynamicStates = dynStates.data(),
     };
 
     // ---- 3. 顶点输入（指针指向 m_VertexBindings / m_VertexAttributes） ----
     m_VertexInputInfo = vk::PipelineVertexInputStateCreateInfo{
-        .vertexBindingDescriptionCount   = static_cast<uint32_t>(m_VertexBindings.size()),
-        .pVertexBindingDescriptions      = m_VertexBindings.data(),
+        .vertexBindingDescriptionCount = static_cast<uint32_t>(m_VertexBindings.size()),
+        .pVertexBindingDescriptions = m_VertexBindings.data(),
         .vertexAttributeDescriptionCount = static_cast<uint32_t>(m_VertexAttributes.size()),
-        .pVertexAttributeDescriptions    = m_VertexAttributes.data(),
+        .pVertexAttributeDescriptions = m_VertexAttributes.data(),
     };
 
     // ---- 4. 颜色混合（指针指向 m_BlendAttachments / m_BlendConstants） ----
     m_ColorBlendInfo = m_ColorBlend;
     m_ColorBlendInfo.attachmentCount = static_cast<uint32_t>(m_BlendAttachments.size());
-    m_ColorBlendInfo.pAttachments    = m_BlendAttachments.data();
-    m_ColorBlendInfo.blendConstants  = m_BlendConstants;
+    m_ColorBlendInfo.pAttachments = m_BlendAttachments.data();
+    m_ColorBlendInfo.blendConstants = m_BlendConstants;
 
     // ---- 5. 多重采样的 pSampleMask 已在 setSampleMask / setMultisample 时同步 ----
 
     // ---- 6. 主 CreateInfo ----
     m_PipelineInfo = vk::GraphicsPipelineCreateInfo{
-        .flags               = flags,
-        .stageCount          = static_cast<uint32_t>(m_ShaderStageCache.size()),
-        .pStages             = m_ShaderStageCache.data(),
-        .pVertexInputState   = &m_VertexInputInfo,
+        .flags = flags,
+        .stageCount = static_cast<uint32_t>(m_ShaderStageCache.size()),
+        .pStages = m_ShaderStageCache.data(),
+        .pVertexInputState = &m_VertexInputInfo,
         .pInputAssemblyState = &m_InputAssembly,
-        .pTessellationState  = &m_Tessellation,
-        .pViewportState      = &m_ViewportState,
+        .pTessellationState = &m_Tessellation,
+        .pViewportState = &m_ViewportState,
         .pRasterizationState = &m_Rasterization,
-        .pMultisampleState   = &m_Multisample,
-        .pDepthStencilState  = &m_DepthStencil,
-        .pColorBlendState    = &m_ColorBlendInfo,
-        .pDynamicState       = &m_DynamicStateInfo,
-        .layout              = m_PipelineLayout ? m_PipelineLayout->GetHandle() : VK_NULL_HANDLE,
-        .renderPass          = VK_NULL_HANDLE,
-        .subpass             = 0,
-        .basePipelineHandle  = VK_NULL_HANDLE,
-        .basePipelineIndex   = -1,
+        .pMultisampleState = &m_Multisample,
+        .pDepthStencilState = &m_DepthStencil,
+        .pColorBlendState = &m_ColorBlendInfo,
+        .pDynamicState = &m_DynamicStateInfo,
+        .layout = m_PipelineLayout ? m_PipelineLayout->GetHandle() : VK_NULL_HANDLE,
+        .renderPass = VK_NULL_HANDLE,
+        .subpass = 0,
+        .basePipelineHandle = VK_NULL_HANDLE,
+        .basePipelineIndex = -1,
     };
 }
 
@@ -440,10 +442,10 @@ const vk::GraphicsPipelineCreateInfo &VulkanPipelineState::buildDynamicRendering
 
     // DynamicRendering pNext 链（颜色格式指针指向 m_ColorFormats）
     m_RenderingInfo = vk::PipelineRenderingCreateInfo{
-        .viewMask                = m_ViewMask,
-        .colorAttachmentCount    = static_cast<uint32_t>(m_ColorFormats.size()),
+        .viewMask = m_ViewMask,
+        .colorAttachmentCount = static_cast<uint32_t>(m_ColorFormats.size()),
         .pColorAttachmentFormats = m_ColorFormats.data(),
-        .depthAttachmentFormat   = m_DepthFormat,
+        .depthAttachmentFormat = m_DepthFormat,
         .stencilAttachmentFormat = m_StencilFormat,
     };
 
@@ -458,14 +460,14 @@ const vk::GraphicsPipelineCreateInfo &VulkanPipelineState::buildDynamicRendering
 // ============================================================================
 
 const vk::GraphicsPipelineCreateInfo &VulkanPipelineState::buildRenderPassPipeline(
-    vk::RenderPass          renderPass,
-    uint32_t                subpass,
+    vk::RenderPass renderPass,
+    uint32_t subpass,
     vk::PipelineCreateFlags flags) const {
     buildCommon(flags);
 
     m_PipelineInfo.renderPass = renderPass;
-    m_PipelineInfo.subpass    = subpass;
-    m_PipelineInfo.pNext      = nullptr;
+    m_PipelineInfo.subpass = subpass;
+    m_PipelineInfo.pNext = nullptr;
 
     return m_PipelineInfo;
 }
@@ -524,99 +526,72 @@ size_t VulkanPipelineState::hash() const {
     auto hashCombine = [&seed](size_t v) {
         seed ^= v + 0x9e3779b9 + (seed << 6) + (seed >> 2);
     };
-    auto combine = [&](const auto &v) {
-        hashCombine(std::hash<std::decay_t<decltype(v)>>{}(v));
-    };
 
     // —— 颜色附件格式 ——
     for (auto fmt : m_ColorFormats)
-        combine(fmt);
-    combine(m_DepthFormat);
-    combine(m_StencilFormat);
+        hashCombine(std::hash<vk::Format>{}(fmt));
+
+    // —— 深度/模板格式 ——
+    hashCombine(std::hash<vk::Format>{}(m_DepthFormat));
+    hashCombine(std::hash<vk::Format>{}(m_StencilFormat));
     hashCombine(m_ViewMask);
 
-    // —— 顶点输入 ——
+    // —— 顶点输入（数组内容需要手动遍历 hash，CreateInfo 的指针只 hash 地址）——
     hashCombine(m_VertexBindings.size());
     for (const auto &b : m_VertexBindings) {
         hashCombine(b.binding);
         hashCombine(b.stride);
-        combine(b.inputRate);
+        hashCombine(std::hash<vk::VertexInputRate>{}(b.inputRate));
     }
     hashCombine(m_VertexAttributes.size());
     for (const auto &a : m_VertexAttributes) {
         hashCombine(a.location);
         hashCombine(a.binding);
-        combine(a.format);
+        hashCombine(std::hash<vk::Format>{}(a.format));
         hashCombine(a.offset);
     }
 
-    // —— 输入装配 ——
-    combine(m_InputAssembly.topology);
-    hashCombine(m_InputAssembly.primitiveRestartEnable);
+    // —— 输入装配（整体 hash，含 sType/pNext/flags/topology/primitiveRestartEnable）——
+    hashCombine(std::hash<vk::PipelineInputAssemblyStateCreateInfo>{}(m_InputAssembly));
 
-    // —— 细分曲面 ——
-    hashCombine(m_Tessellation.patchControlPoints);
+    // —— 细分曲面（整体 hash）——
+    hashCombine(std::hash<vk::PipelineTessellationStateCreateInfo>{}(m_Tessellation));
 
-    // —— 视口计数 ——
+    // —— 视口（只用 count，pViewports/pScissors 为 nullptr 不影响）——
     hashCombine(m_ViewportState.viewportCount);
     hashCombine(m_ViewportState.scissorCount);
 
-    // —— 光栅化 ——
-    hashCombine(m_Rasterization.depthClampEnable);
-    hashCombine(m_Rasterization.rasterizerDiscardEnable);
-    combine(m_Rasterization.polygonMode);
-    combine(m_Rasterization.cullMode);
-    combine(m_Rasterization.frontFace);
-    hashCombine(m_Rasterization.depthBiasEnable);
-    hashCombine(std::hash<float>{}(m_Rasterization.lineWidth));
+    // —— 光栅化（整体 hash，含 depthBias* 等所有字段）——
+    hashCombine(std::hash<vk::PipelineRasterizationStateCreateInfo>{}(m_Rasterization));
 
-    // —— 多重采样 ——
-    combine(m_Multisample.rasterizationSamples);
+    // —— 多重采样（逐字段 hash，因为 pSampleMask 是指针，只 hash 地址不对）——
+    hashCombine(std::hash<vk::SampleCountFlagBits>{}(m_Multisample.rasterizationSamples));
     hashCombine(m_Multisample.sampleShadingEnable);
     hashCombine(std::hash<float>{}(m_Multisample.minSampleShading));
     hashCombine(m_SampleMask);
     hashCombine(m_Multisample.alphaToCoverageEnable);
     hashCombine(m_Multisample.alphaToOneEnable);
 
-    // —— 深度/模板 ——
-    hashCombine(m_DepthStencil.depthTestEnable);
-    hashCombine(m_DepthStencil.depthWriteEnable);
-    combine(m_DepthStencil.depthCompareOp);
-    hashCombine(m_DepthStencil.depthBoundsTestEnable);
-    hashCombine(m_DepthStencil.stencilTestEnable);
-    // 正面/背面模板操作
-    combine(m_DepthStencil.front.failOp);
-    combine(m_DepthStencil.front.passOp);
-    combine(m_DepthStencil.front.depthFailOp);
-    combine(m_DepthStencil.front.compareOp);
-    combine(m_DepthStencil.back.failOp);
-    combine(m_DepthStencil.back.passOp);
-    combine(m_DepthStencil.back.depthFailOp);
-    combine(m_DepthStencil.back.compareOp);
+    // —— 深度/模板（整体 hash，含 front/back 模板状态及 min/maxDepthBounds 等）——
+    hashCombine(std::hash<vk::PipelineDepthStencilStateCreateInfo>{}(m_DepthStencil));
 
-    // —— 颜色混合 ——
+    // —— 颜色混合：logicOp + 附件数组内容 + blendConstants ——
     hashCombine(m_ColorBlend.logicOpEnable);
-    combine(m_ColorBlend.logicOp);
-    for (const auto &att : m_BlendAttachments) {
-        hashCombine(att.blendEnable);
-        combine(att.srcColorBlendFactor);
-        combine(att.dstColorBlendFactor);
-        combine(att.colorBlendOp);
-        combine(att.srcAlphaBlendFactor);
-        combine(att.dstAlphaBlendFactor);
-        combine(att.alphaBlendOp);
-        combine(att.colorWriteMask);
-    }
+    hashCombine(std::hash<vk::LogicOp>{}(m_ColorBlend.logicOp));
+    for (const auto &att : m_BlendAttachments)
+        hashCombine(std::hash<vk::PipelineColorBlendAttachmentState>{}(att));
     for (float c : m_BlendConstants)
         hashCombine(std::hash<float>{}(c));
 
-    // —— 动态状态集合 ——
-    for (auto s : m_DynamicStateSet)
-        combine(s);
+    // —— 动态状态集合（unordered_set 遍历顺序不稳定，先排序再 hash）——
+    std::vector<vk::DynamicState> dynStates(m_DynamicStateSet.begin(), m_DynamicStateSet.end());
+    std::sort(dynStates.begin(), dynStates.end());
+    for (auto s : dynStates)
+        hashCombine(std::hash<vk::DynamicState>{}(s));
 
     // —— PipelineLayout ——
     if (m_PipelineLayout) {
-        combine(m_PipelineLayout->GetHandle());
+        hashCombine(std::hash<vk::PipelineLayout>{}(m_PipelineLayout->GetHandle()));
     }
 
     return seed;

@@ -85,4 +85,13 @@ void MaterialManager::Clear() {
     m_Materials.clear();
 }
 
+std::vector<std::string> MaterialManager::GetAllNames() const {
+    std::vector<std::string> names;
+    names.reserve(m_Materials.size());
+    for (const auto &pair : m_Materials) {
+        names.push_back(pair.first);
+    }
+    return names;
+}
+
 } // namespace GE

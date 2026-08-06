@@ -118,6 +118,13 @@ public:
      */
     size_t GetCount() const { return m_Textures.size(); }
 
+    /**
+     * @brief 获取所有已加载纹理的键名（文件路径或自定义 key）。
+     *
+     * 用于编辑器 UI 下拉选择器等场景。
+     */
+    std::vector<std::string> GetAllKeys() const;
+
 private:
     VulkanDevice        *m_Device = nullptr;  ///< Vulkan 设备（不拥有）
     VulkanResourceCache *m_Cache  = nullptr;  ///< 全局资源缓存（不拥有）

@@ -9,6 +9,8 @@
 #include "Render/VulkanBase/VulkanResourceCache.h"
 #include "Core/Log.h"
 
+#include <vector>
+
 namespace GE {
 
 TextureManager::TextureManager(VulkanDevice &device, VulkanResourceCache &cache)
@@ -76,6 +78,15 @@ void TextureManager::Unload(const std::string &filepath) {
 
 void TextureManager::Clear() {
     m_Textures.clear();
+}
+
+std::vector<std::string> TextureManager::GetAllKeys() const {
+    std::vector<std::string> keys;
+    keys.reserve(m_Textures.size());
+    for (const auto &pair : m_Textures) {
+        keys.push_back(pair.first);
+    }
+    return keys;
 }
 
 } // namespace GE

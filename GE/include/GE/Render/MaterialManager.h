@@ -26,6 +26,7 @@
 #include <string>
 #include <unordered_map>
 #include <memory>
+#include <vector>
 
 namespace GE {
 
@@ -106,6 +107,13 @@ public:
      * @brief 获取已加载材质数量。
      */
     size_t GetCount() const { return m_Materials.size(); }
+
+    /**
+     * @brief 获取所有已加载材质的名称。
+     *
+     * 用于编辑器 UI 下拉选择器等场景。
+     */
+    std::vector<std::string> GetAllNames() const;
 
 private:
     TextureManager *m_TextureMgr = nullptr;  ///< 纹理管理器（不拥有）

@@ -217,33 +217,37 @@ void Renderer3D::EndScene() {
     auto &ps = cmd.GetPipelineState();
     auto colorFmt = swapchain.GetFormat();
 
-    // 附件格式
-    ps.colorAttachmentFormats = {colorFmt};
-    if (renderTarget.HasDepth()) {
-        ps.depthFormat = renderTarget.GetDepthFormat();
-    } else {
-        ps.depthFormat = {};
-    }
-    ps.stencilFormat = {};
-
-    // 顶点输入：从顶点着色器反射自动生成
-    ps.SetVertexInputFromShader(*m_VertShader);
-
     // 混合附件：无 alpha 混合（3D 不透明物体）
     vk::PipelineColorBlendAttachmentState blendState{};
     blendState.colorWriteMask = vk::ColorComponentFlagBits::eR
                                 | vk::ColorComponentFlagBits::eG
                                 | vk::ColorComponentFlagBits::eB
                                 | vk::ColorComponentFlagBits::eA;
-    ps.SetBlendAttachments({blendState});
 
-    // 3D 渲染：背面剔除、深度测试、三角形列表
-    ps.cullMode.SetDynamic(true);
-    ps.frontFace.SetDynamic(true);
-    ps.topology.SetDynamic(true);
-    ps.depthTestEnable.SetDynamic(true);
-    ps.depthWriteEnable.SetDynamic(true);
-    ps.depthCompareOp.SetDynamic(true);
+    // 附件格式
+    vk::Format depthFmt = vk::Format::eUndefined;
+    if (renderTarget.HasDepth()) {
+        depthFmt = renderTarget.GetDepthFormat();
+    }
+
+    // 配置管线状态（链式 API）
+    ps.setRenderingFormats({colorFmt}, depthFmt)
+      .setInputAssembly(vk::PrimitiveTopology::eTriangleList)
+      .setColorBlendAttachments({blendState})
+      .setCullMode(vk::CullModeFlagBits::eBack)
+      .setFrontFace(vk::FrontFace::eCounterClockwise)
+      .setDepthTestEnable(VK_TRUE)
+      .setDepthWriteEnable(VK_TRUE)
+      .setDepthCompareOp(vk::CompareOp::eLess)
+      .enableDynamicState(vk::DynamicState::eCullMode)
+      .enableDynamicState(vk::DynamicState::eFrontFace)
+      .enableDynamicState(vk::DynamicState::ePrimitiveTopology)
+      .enableDynamicState(vk::DynamicState::eDepthTestEnable)
+      .enableDynamicState(vk::DynamicState::eDepthWriteEnable)
+      .enableDynamicState(vk::DynamicState::eDepthCompareOp);
+
+    // 顶点输入：从顶点着色器反射自动生成
+    ps.setVertexInputFromShader(*m_VertShader);
 
     // 动态状态
     vk::Viewport vp;
@@ -259,12 +263,12 @@ void Renderer3D::EndScene() {
     cmd.SetScissor(0, {scissor});
 
     // 写入动态管线状态
-    ps.cullMode = vk::CullModeFlagBits::eBack;
-    ps.frontFace = vk::FrontFace::eCounterClockwise;
-    ps.topology = vk::PrimitiveTopology::eTriangleList;
-    ps.depthTestEnable = VK_TRUE;
-    ps.depthWriteEnable = VK_TRUE;
-    ps.depthCompareOp = vk::CompareOp::eLess;
+    ps.setCullMode(vk::CullModeFlagBits::eBack);
+    ps.setFrontFace(vk::FrontFace::eCounterClockwise);
+    ps.setInputAssembly(vk::PrimitiveTopology::eTriangleList);
+    ps.setDepthTestEnable(VK_TRUE);
+    ps.setDepthWriteEnable(VK_TRUE);
+    ps.setDepthCompareOp(vk::CompareOp::eLess);
 
     // ── 5. 绑定 Frame UBO（set 0, binding 0，所有网格共享） ───────────
     cmd.BindBuffer(frameUboAlloc.get_buffer(), frameUboAlloc.get_offset(),

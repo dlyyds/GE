@@ -283,53 +283,7 @@ struct hash<GE::VulkanDescriptorSet> {
 template <>
 struct hash<GE::VulkanPipelineState> {
     size_t operator()(GE::VulkanPipelineState const &pipeline_state) const {
-        size_t result = 0;
-        // 颜色附件格式
-        GE::detail::hash_combine(result, pipeline_state.colorAttachmentFormats.Get());
-        // 深度/模板格式
-        GE::detail::hash_combine(result, pipeline_state.depthFormat.Get());
-        GE::detail::hash_combine(result, pipeline_state.stencilFormat.Get());
-        // 顶点输入
-        GE::detail::hash_combine(result, pipeline_state.vertexBindingDescriptions.Get());
-        GE::detail::hash_combine(result, pipeline_state.vertexAttributeDescriptions.Get());
-        // 输入装配
-        GE::detail::hash_combine(result, pipeline_state.topology.Get());
-        GE::detail::hash_combine(result, pipeline_state.primitiveRestartEnable.Get());
-        // 细分曲面
-        GE::detail::hash_combine(result, pipeline_state.patchControlPoints.Get());
-        // 视口/剪刀计数
-        GE::detail::hash_combine(result, pipeline_state.viewportCount.Get());
-        GE::detail::hash_combine(result, pipeline_state.scissorCount.Get());
-        // 光栅化
-        GE::detail::hash_combine(result, pipeline_state.depthClampEnable.Get());
-        GE::detail::hash_combine(result, pipeline_state.rasterizerDiscardEnable.Get());
-        GE::detail::hash_combine(result, pipeline_state.polygonMode.Get());
-        GE::detail::hash_combine(result, pipeline_state.cullMode.Get());
-        GE::detail::hash_combine(result, pipeline_state.frontFace.Get());
-        GE::detail::hash_combine(result, pipeline_state.depthBiasEnable.Get());
-        // 多重采样
-        GE::detail::hash_combine(result, pipeline_state.rasterizationSamples.Get());
-        GE::detail::hash_combine(result, pipeline_state.sampleShadingEnable.Get());
-        GE::detail::hash_combine(result, pipeline_state.minSampleShading.Get());
-        GE::detail::hash_combine(result, pipeline_state.sampleMask.Get());
-        GE::detail::hash_combine(result, pipeline_state.alphaToCoverageEnable.Get());
-        GE::detail::hash_combine(result, pipeline_state.alphaToOneEnable.Get());
-        // 深度/模板
-        GE::detail::hash_combine(result, pipeline_state.depthTestEnable.Get());
-        GE::detail::hash_combine(result, pipeline_state.depthWriteEnable.Get());
-        GE::detail::hash_combine(result, pipeline_state.depthCompareOp.Get());
-        GE::detail::hash_combine(result, pipeline_state.depthBoundsTestEnable.Get());
-        GE::detail::hash_combine(result, pipeline_state.stencilTestEnable.Get());
-        // 颜色混合
-        GE::detail::hash_combine(result, pipeline_state.logicOpEnable.Get());
-        GE::detail::hash_combine(result, pipeline_state.logicOp.Get());
-        // 混合附件（通过 GetBlendAttachments 访问）
-        GE::detail::hash_combine(result, pipeline_state.GetBlendAttachments());
-        // PipelineLayout 指针
-        if (pipeline_state.pipelineLayout.Get()) {
-            GE::detail::hash_combine(result, pipeline_state.pipelineLayout.Get()->GetHandle());
-        }
-        return result;
+        return pipeline_state.hash();
     }
 };
 

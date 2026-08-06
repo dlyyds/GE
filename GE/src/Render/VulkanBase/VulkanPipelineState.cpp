@@ -17,9 +17,7 @@
 
 /**
  * @file VulkanPipelineState.cpp
- * @brief VulkanPipelineState 实现。
- *
- * 包含 Dirty 检查、动态状态刷入、一键创建 Bundle 构建。
+ * @brief VulkanPipelineState 实现——链式状态构建器 + 动态状态刷入。
  */
 
 #include "Render/VulkanBase/VulkanPipelineState.h"
@@ -27,34 +25,90 @@
 #include "Render/ShaderModule.h"
 
 #include <algorithm>
-#include <cstring>
+#include <functional>
 
 namespace GE {
 
 // ============================================================================
-// 混合附件操作方法
+// 动态状态管理
 // ============================================================================
 
-void VulkanPipelineState::SetBlendAttachments(const std::vector<vk::PipelineColorBlendAttachmentState> &attachments) {
-    m_BlendAttachments = attachments;
-    m_BlendAttachmentsDirty = true;
+VulkanPipelineState &VulkanPipelineState::enableDynamicState(vk::DynamicState state) {
+    m_DynamicStateSet.insert(state);
+    m_DynamicStateCache.clear();
+    return *this;
 }
 
-void VulkanPipelineState::SetBlendAttachment(uint32_t index, const vk::PipelineColorBlendAttachmentState &attachment) {
-    if (index >= m_BlendAttachments.size()) {
-        m_BlendAttachments.resize(index + 1);
+VulkanPipelineState &VulkanPipelineState::disableDynamicState(vk::DynamicState state) {
+    m_DynamicStateSet.erase(state);
+    m_DynamicStateCache.clear();
+    return *this;
+}
+
+void VulkanPipelineState::clearDynamicStates() {
+    m_DynamicStateSet.clear();
+    m_DynamicStateCache.clear();
+}
+
+const std::vector<vk::DynamicState> &VulkanPipelineState::getDynamicStates() const {
+    if (m_DynamicStateCache.empty() && !m_DynamicStateSet.empty()) {
+        m_DynamicStateCache.assign(m_DynamicStateSet.begin(), m_DynamicStateSet.end());
     }
-    m_BlendAttachments[index] = attachment;
-    m_BlendAttachmentsDirty = true;
+    return m_DynamicStateCache;
 }
 
+// ============================================================================
+// 渲染附件格式
+// ============================================================================
+
+VulkanPipelineState &VulkanPipelineState::setRenderingFormats(std::vector<vk::Format> colorFmts,
+                                                              vk::Format              depthFmt,
+                                                              vk::Format              stencilFmt,
+                                                              uint32_t                viewMask) {
+    m_ColorFormats   = std::move(colorFmts);
+    m_DepthFormat    = depthFmt;
+    m_StencilFormat  = stencilFmt;
+    m_ViewMask       = viewMask;
+    return *this;
+}
 
 // ============================================================================
-// 顶点输入便利方法
+// 管线布局
 // ============================================================================
 
-uint32_t VulkanPipelineState::SetVertexInputFromShader(const ShaderModule &vertShader,
-                                                       uint32_t binding,
+VulkanPipelineState &VulkanPipelineState::setPipelineLayout(VulkanPipelineLayout *layout) {
+    m_PipelineLayout = layout;
+    return *this;
+}
+
+VulkanPipelineLayout *VulkanPipelineState::getPipelineLayout() const {
+    return m_PipelineLayout;
+}
+
+// ============================================================================
+// 顶点输入
+// ============================================================================
+
+VulkanPipelineState &VulkanPipelineState::setVertexInput(const vk::PipelineVertexInputStateCreateInfo &info) {
+    m_VertexBindings.assign(info.pVertexBindingDescriptions,
+                            info.pVertexBindingDescriptions + info.vertexBindingDescriptionCount);
+    m_VertexAttributes.assign(info.pVertexAttributeDescriptions,
+                              info.pVertexAttributeDescriptions + info.vertexAttributeDescriptionCount);
+    return *this;
+}
+
+VulkanPipelineState &VulkanPipelineState::setVertexBindings(const std::vector<vk::VertexInputBindingDescription> &bindings) {
+    m_VertexBindings = bindings;
+    return *this;
+}
+
+VulkanPipelineState &VulkanPipelineState::setVertexAttributes(const std::vector<vk::VertexInputAttributeDescription> &attrs) {
+    m_VertexAttributes = attrs;
+    return *this;
+}
+
+uint32_t VulkanPipelineState::setVertexInputFromShader(const ShaderModule &vertShader,
+                                                       uint32_t           binding,
                                                        vk::VertexInputRate rate) {
     // 1. 收集所有 Input 资源
     std::vector<const ShaderResource *> inputs;
@@ -89,470 +143,513 @@ uint32_t VulkanPipelineState::SetVertexInputFromShader(const ShaderModule &vertS
     }
 
     // 4. 设置到 pipeline state
-    vertexBindingDescriptions = std::vector<vk::VertexInputBindingDescription>{
+    m_VertexBindings = std::vector<vk::VertexInputBindingDescription>{
         vk::VertexInputBindingDescription{
             .binding   = binding,
             .stride    = offset,
             .inputRate = rate,
         }
     };
-    vertexAttributeDescriptions = std::move(attrs);
+    m_VertexAttributes = std::move(attrs);
 
     return offset; // stride
 }
 
 // ============================================================================
-// 脏标记查询
+// 输入装配
 // ============================================================================
 
-bool VulkanPipelineState::HasDynamicDirty() const {
-    // 检查所有 DynamicParam：当它是动态的且值发生过变更时返回 true
-    auto check = [](const auto &param) -> bool {
-        return param.IsDynamic() && param.IsValueDirty();
-    };
-
-    return check(topology)
-           || check(viewportCount)
-           || check(scissorCount)
-           || check(rasterizerDiscardEnable)
-           || check(cullMode)
-           || check(frontFace)
-           || check(depthBiasEnable)
-           || check(depthTestEnable)
-           || check(depthWriteEnable)
-           || check(depthCompareOp)
-           || check(depthBoundsTestEnable)
-           || check(stencilTestEnable)
-           || (stencilFront.IsAnyDynamic() && stencilFront.IsAnyValueDirty())
-           || (stencilBack.IsAnyDynamic() && stencilBack.IsAnyValueDirty());
+VulkanPipelineState &VulkanPipelineState::setInputAssembly(vk::PrimitiveTopology topology, vk::Bool32 restart) {
+    m_InputAssembly.topology = topology;
+    m_InputAssembly.primitiveRestartEnable = restart;
+    return *this;
 }
 
-bool VulkanPipelineState::HasPipelineDirty() const {
-    // ---- StaticParam 值脏 ----
-    if (colorAttachmentFormats.IsValueDirty()
-        || depthFormat.IsValueDirty()
-        || stencilFormat.IsValueDirty()
-        || pipelineLayout.IsValueDirty()
-        || vertexBindingDescriptions.IsValueDirty()
-        || vertexAttributeDescriptions.IsValueDirty()
-        || primitiveRestartEnable.IsValueDirty()
-        || patchControlPoints.IsValueDirty()
-        || depthClampEnable.IsValueDirty()
-        || polygonMode.IsValueDirty()
-        || rasterizationSamples.IsValueDirty()
-        || sampleShadingEnable.IsValueDirty()
-        || minSampleShading.IsValueDirty()
-        || sampleMask.IsValueDirty()
-        || alphaToCoverageEnable.IsValueDirty()
-        || alphaToOneEnable.IsValueDirty()
-        || logicOpEnable.IsValueDirty()
-        || logicOp.IsValueDirty()
-        || m_BlendAttachmentsDirty) {
-        return true;
-    }
+// ============================================================================
+// 细分曲面
+// ============================================================================
 
-    // ---- DynamicParam 值脏且当前为静态（值变更需重建管线） ----
-    auto checkStaticValue = [](const auto &param) -> bool {
-        return !param.IsDynamic() && param.IsValueDirty();
-    };
-
-    if (checkStaticValue(topology)
-        || checkStaticValue(viewportCount)
-        || checkStaticValue(scissorCount)
-        || checkStaticValue(rasterizerDiscardEnable)
-        || checkStaticValue(cullMode)
-        || checkStaticValue(frontFace)
-        || checkStaticValue(depthBiasEnable)
-        || checkStaticValue(depthTestEnable)
-        || checkStaticValue(depthWriteEnable)
-        || checkStaticValue(depthCompareOp)
-        || checkStaticValue(depthBoundsTestEnable)
-        || checkStaticValue(stencilTestEnable)) {
-        return true;
-    }
-
-    // StencilOpState：当子字段为静态且值变更时
-    if ((!stencilFront.IsAnyDynamic() && stencilFront.IsAnyValueDirty())
-        || (!stencilBack.IsAnyDynamic() && stencilBack.IsAnyValueDirty())) {
-        return true;
-    }
-
-    // ---- DynamicParam 配置变更（动态↔静态切换，需重建管线） ----
-    auto checkConfig = [](const auto &param) -> bool {
-        return param.IsConfigDirty();
-    };
-
-    if (checkConfig(topology)
-        || checkConfig(viewportCount)
-        || checkConfig(scissorCount)
-        || checkConfig(rasterizerDiscardEnable)
-        || checkConfig(cullMode)
-        || checkConfig(frontFace)
-        || checkConfig(depthBiasEnable)
-        || checkConfig(depthTestEnable)
-        || checkConfig(depthWriteEnable)
-        || checkConfig(depthCompareOp)
-        || checkConfig(depthBoundsTestEnable)
-        || checkConfig(stencilTestEnable)) {
-        return true;
-    }
-
-    if (stencilFront.IsAnyConfigDirty() || stencilBack.IsAnyConfigDirty()) {
-        return true;
-    }
-
-    return false;
+VulkanPipelineState &VulkanPipelineState::setTessellationPatchControlPoints(uint32_t patchControlPoints) {
+    m_Tessellation.patchControlPoints = patchControlPoints;
+    return *this;
 }
 
-void VulkanPipelineState::ClearAllDirty() {
-    // StaticParam
-    colorAttachmentFormats.ClearDirty();
-    depthFormat.ClearDirty();
-    stencilFormat.ClearDirty();
-    pipelineLayout.ClearDirty();
-    vertexBindingDescriptions.ClearDirty();
-    vertexAttributeDescriptions.ClearDirty();
-    primitiveRestartEnable.ClearDirty();
-    patchControlPoints.ClearDirty();
-    depthClampEnable.ClearDirty();
-    polygonMode.ClearDirty();
-    rasterizationSamples.ClearDirty();
-    sampleShadingEnable.ClearDirty();
-    minSampleShading.ClearDirty();
-    sampleMask.ClearDirty();
-    alphaToCoverageEnable.ClearDirty();
-    alphaToOneEnable.ClearDirty();
-    logicOpEnable.ClearDirty();
-    logicOp.ClearDirty();
+// ============================================================================
+// 视口
+// ============================================================================
 
-    // DynamicParam
-    topology.ClearDirty();
-    viewportCount.ClearDirty();
-    scissorCount.ClearDirty();
-    rasterizerDiscardEnable.ClearDirty();
-    cullMode.ClearDirty();
-    frontFace.ClearDirty();
-    depthBiasEnable.ClearDirty();
-    depthTestEnable.ClearDirty();
-    depthWriteEnable.ClearDirty();
-    depthCompareOp.ClearDirty();
-    depthBoundsTestEnable.ClearDirty();
-    stencilTestEnable.ClearDirty();
-
-    // StencilOpState
-    stencilFront.ClearAllDirty();
-    stencilBack.ClearAllDirty();
-
-    // Blend attachments
-    m_BlendAttachmentsDirty = false;
+VulkanPipelineState &VulkanPipelineState::setViewportState(const vk::PipelineViewportStateCreateInfo &info) {
+    m_ViewportState = info;
+    // pViewports / pScissors 指针不持有，重新设置为空（动态模式）
+    m_ViewportState.pViewports = nullptr;
+    m_ViewportState.pScissors  = nullptr;
+    return *this;
 }
 
-
-// ============================================================================
-// 动态状态枚举
-// ============================================================================
-
-std::vector<vk::DynamicState> VulkanPipelineState::GetEnabledDynamicStates() const {
-    std::vector<vk::DynamicState> states;
-
-    // 视口/剪刀矩形总是动态（现代 Vulkan 应用无理由在创建时固定）
-    states.push_back(vk::DynamicState::eViewport);
-    states.push_back(vk::DynamicState::eScissor);
-
-    // 输入装配
-    if (topology.IsDynamic())
-        states.push_back(vk::DynamicState::ePrimitiveTopology);
-
-    // 视口计数（仅当用户显式设为动态时启用 WithCount 变体）
-    if (viewportCount.IsDynamic())
-        states.push_back(vk::DynamicState::eViewportWithCount);
-    if (scissorCount.IsDynamic())
-        states.push_back(vk::DynamicState::eScissorWithCount);
-
-    // 光栅化
-    if (rasterizerDiscardEnable.IsDynamic())
-        states.push_back(vk::DynamicState::eRasterizerDiscardEnable);
-    if (cullMode.IsDynamic())
-        states.push_back(vk::DynamicState::eCullMode);
-    if (frontFace.IsDynamic())
-        states.push_back(vk::DynamicState::eFrontFace);
-    if (depthBiasEnable.IsDynamic())
-        states.push_back(vk::DynamicState::eDepthBiasEnable);
-
-    // 深度/模板
-    if (depthTestEnable.IsDynamic())
-        states.push_back(vk::DynamicState::eDepthTestEnable);
-    if (depthWriteEnable.IsDynamic())
-        states.push_back(vk::DynamicState::eDepthWriteEnable);
-    if (depthCompareOp.IsDynamic())
-        states.push_back(vk::DynamicState::eDepthCompareOp);
-    if (depthBoundsTestEnable.IsDynamic())
-        states.push_back(vk::DynamicState::eDepthBoundsTestEnable);
-    if (stencilTestEnable.IsDynamic())
-        states.push_back(vk::DynamicState::eStencilTestEnable);
-    if (stencilFront.IsAnyDynamic() || stencilBack.IsAnyDynamic())
-        states.push_back(vk::DynamicState::eStencilOp);
-
-    return states;
+VulkanPipelineState &VulkanPipelineState::setViewportCount(uint32_t viewportCount, uint32_t scissorCount) {
+    m_ViewportState.viewportCount = viewportCount;
+    m_ViewportState.scissorCount  = scissorCount;
+    return *this;
 }
 
+// ============================================================================
+// 光栅化
+// ============================================================================
+
+VulkanPipelineState &VulkanPipelineState::setRasterization(const vk::PipelineRasterizationStateCreateInfo &info) {
+    m_Rasterization = info;
+    return *this;
+}
+
+VulkanPipelineState &VulkanPipelineState::setDepthClampEnable(vk::Bool32 enable) {
+    m_Rasterization.depthClampEnable = enable;
+    return *this;
+}
+
+VulkanPipelineState &VulkanPipelineState::setRasterizerDiscardEnable(vk::Bool32 enable) {
+    m_Rasterization.rasterizerDiscardEnable = enable;
+    return *this;
+}
+
+VulkanPipelineState &VulkanPipelineState::setPolygonMode(vk::PolygonMode mode) {
+    m_Rasterization.polygonMode = mode;
+    return *this;
+}
+
+VulkanPipelineState &VulkanPipelineState::setCullMode(vk::CullModeFlags mode) {
+    m_Rasterization.cullMode = mode;
+    return *this;
+}
+
+VulkanPipelineState &VulkanPipelineState::setFrontFace(vk::FrontFace face) {
+    m_Rasterization.frontFace = face;
+    return *this;
+}
+
+VulkanPipelineState &VulkanPipelineState::setDepthBiasEnable(vk::Bool32 enable) {
+    m_Rasterization.depthBiasEnable = enable;
+    return *this;
+}
+
+VulkanPipelineState &VulkanPipelineState::setLineWidth(float lineWidth) {
+    m_Rasterization.lineWidth = lineWidth;
+    return *this;
+}
 
 // ============================================================================
-// 动态状态刷入
+// 多重采样
 // ============================================================================
 
-void VulkanPipelineState::FlushDynamicStates(vk::CommandBuffer cmd) const {
-    // ---- 输入装配 ----
-    if (topology.IsDynamic())
-        cmd.setPrimitiveTopology(topology.Get());
-
-    // ---- 光栅化 ----
-    if (rasterizerDiscardEnable.IsDynamic())
-        cmd.setRasterizerDiscardEnable(rasterizerDiscardEnable.Get());
-    if (cullMode.IsDynamic())
-        cmd.setCullMode(cullMode.Get());
-    if (frontFace.IsDynamic())
-        cmd.setFrontFace(frontFace.Get());
-    if (depthBiasEnable.IsDynamic())
-        cmd.setDepthBiasEnable(depthBiasEnable.Get());
-
-    // ---- 深度/模板 ----
-    if (depthTestEnable.IsDynamic())
-        cmd.setDepthTestEnable(depthTestEnable.Get());
-    if (depthWriteEnable.IsDynamic())
-        cmd.setDepthWriteEnable(depthWriteEnable.Get());
-    if (depthCompareOp.IsDynamic())
-        cmd.setDepthCompareOp(depthCompareOp.Get());
-    if (depthBoundsTestEnable.IsDynamic())
-        cmd.setDepthBoundsTestEnable(depthBoundsTestEnable.Get());
-    if (stencilTestEnable.IsDynamic())
-        cmd.setStencilTestEnable(stencilTestEnable.Get());
-
-    if (stencilFront.IsAnyDynamic()) {
-        cmd.setStencilOp(vk::StencilFaceFlagBits::eFront,
-                         stencilFront.failOp.Get(),
-                         stencilFront.passOp.Get(),
-                         stencilFront.depthFailOp.Get(),
-                         stencilFront.compareOp.Get());
+VulkanPipelineState &VulkanPipelineState::setMultisample(const vk::PipelineMultisampleStateCreateInfo &info) {
+    m_Multisample = info;
+    // pSampleMask 指针不持有，用内部 m_SampleMask 存储
+    if (info.pSampleMask) {
+        m_SampleMask = *info.pSampleMask;
     }
-    if (stencilBack.IsAnyDynamic()) {
-        cmd.setStencilOp(vk::StencilFaceFlagBits::eBack,
-                         stencilBack.failOp.Get(),
-                         stencilBack.passOp.Get(),
-                         stencilBack.depthFailOp.Get(),
-                         stencilBack.compareOp.Get());
-    }
+    m_Multisample.pSampleMask = nullptr; // 构建时再设置
+    return *this;
 }
 
+VulkanPipelineState &VulkanPipelineState::setRasterizationSamples(vk::SampleCountFlagBits samples) {
+    m_Multisample.rasterizationSamples = samples;
+    return *this;
+}
+
+VulkanPipelineState &VulkanPipelineState::setSampleShadingEnable(vk::Bool32 enable) {
+    m_Multisample.sampleShadingEnable = enable;
+    return *this;
+}
+
+VulkanPipelineState &VulkanPipelineState::setMinSampleShading(float rate) {
+    m_Multisample.minSampleShading = rate;
+    return *this;
+}
+
+VulkanPipelineState &VulkanPipelineState::setSampleMask(vk::SampleMask mask) {
+    m_SampleMask = mask;
+    return *this;
+}
+
+VulkanPipelineState &VulkanPipelineState::setAlphaToCoverageEnable(vk::Bool32 enable) {
+    m_Multisample.alphaToCoverageEnable = enable;
+    return *this;
+}
+
+VulkanPipelineState &VulkanPipelineState::setAlphaToOneEnable(vk::Bool32 enable) {
+    m_Multisample.alphaToOneEnable = enable;
+    return *this;
+}
 
 // ============================================================================
-// 一键创建 Bundle
+// 深度/模板
 // ============================================================================
 
-PipelineCreateBundle VulkanPipelineState::BuildCreateInfo(vk::PipelineCreateFlags flags) const {
-    PipelineCreateBundle bundle;
+VulkanPipelineState &VulkanPipelineState::setDepthStencil(const vk::PipelineDepthStencilStateCreateInfo &info) {
+    m_DepthStencil = info;
+    return *this;
+}
 
+VulkanPipelineState &VulkanPipelineState::setDepthTestEnable(vk::Bool32 enable) {
+    m_DepthStencil.depthTestEnable = enable;
+    return *this;
+}
+
+VulkanPipelineState &VulkanPipelineState::setDepthWriteEnable(vk::Bool32 enable) {
+    m_DepthStencil.depthWriteEnable = enable;
+    return *this;
+}
+
+VulkanPipelineState &VulkanPipelineState::setDepthCompareOp(vk::CompareOp op) {
+    m_DepthStencil.depthCompareOp = op;
+    return *this;
+}
+
+VulkanPipelineState &VulkanPipelineState::setDepthBoundsTestEnable(vk::Bool32 enable) {
+    m_DepthStencil.depthBoundsTestEnable = enable;
+    return *this;
+}
+
+VulkanPipelineState &VulkanPipelineState::setStencilTestEnable(vk::Bool32 enable) {
+    m_DepthStencil.stencilTestEnable = enable;
+    return *this;
+}
+
+VulkanPipelineState &VulkanPipelineState::setStencilFront(const vk::StencilOpState &state) {
+    m_DepthStencil.front = state;
+    return *this;
+}
+
+VulkanPipelineState &VulkanPipelineState::setStencilBack(const vk::StencilOpState &state) {
+    m_DepthStencil.back = state;
+    return *this;
+}
+
+// ============================================================================
+// 颜色混合
+// ============================================================================
+
+VulkanPipelineState &VulkanPipelineState::addColorBlendAttachment(const vk::PipelineColorBlendAttachmentState &att) {
+    m_BlendAttachments.push_back(att);
+    return *this;
+}
+
+VulkanPipelineState &VulkanPipelineState::clearColorBlendAttachments() {
+    m_BlendAttachments.clear();
+    return *this;
+}
+
+VulkanPipelineState &VulkanPipelineState::setColorBlendAttachments(const std::vector<vk::PipelineColorBlendAttachmentState> &attachments) {
+    m_BlendAttachments = attachments;
+    return *this;
+}
+
+const std::vector<vk::PipelineColorBlendAttachmentState> &VulkanPipelineState::getColorBlendAttachments() const {
+    return m_BlendAttachments;
+}
+
+VulkanPipelineState &VulkanPipelineState::setColorBlendConstants(float r, float g, float b, float a) {
+    m_BlendConstants = {r, g, b, a};
+    return *this;
+}
+
+VulkanPipelineState &VulkanPipelineState::setLogicOpEnable(vk::Bool32 enable) {
+    m_ColorBlend.logicOpEnable = enable;
+    return *this;
+}
+
+VulkanPipelineState &VulkanPipelineState::setLogicOp(vk::LogicOp op) {
+    m_ColorBlend.logicOp = op;
+    return *this;
+}
+
+// ============================================================================
+// 内部辅助：填充 CreateBundle 的公共部分
+// ============================================================================
+
+void VulkanPipelineState::fillBundleCommon(CreateBundle &bundle, vk::PipelineCreateFlags flags) const {
     // ---- 1. 着色器阶段（从 pipelineLayout 提取） ----
-    const auto *layout = pipelineLayout.Get();
-    if (layout) {
-        const auto &modules = layout->GetShaderModules();
+    if (m_PipelineLayout) {
+        const auto &modules = m_PipelineLayout->GetShaderModules();
         bundle.shaderStageCreateInfos.reserve(modules.size());
         for (const auto *mod : modules) {
             bundle.shaderStageCreateInfos.push_back(
                 vk::PipelineShaderStageCreateInfo{
-                    .stage = mod->get_stage(),
+                    .stage  = mod->get_stage(),
                     .module = mod->GetHandle(),
-                    .pName = mod->get_entry_point().c_str(),
+                    .pName  = mod->get_entry_point().c_str(),
                 });
         }
     }
 
     // ---- 2. 动态状态 ----
-    bundle.dynamicStates = GetEnabledDynamicStates();
+    bundle.dynamicStates = getDynamicStates();
 
     // ---- 3. 顶点输入 ----
-    const auto &bindings = vertexBindingDescriptions.Get();
-    const auto &attributes = vertexAttributeDescriptions.Get();
-    bundle.vertexBindings = bindings;
-    bundle.vertexAttributes = attributes;
+    bundle.vertexBindings   = m_VertexBindings;
+    bundle.vertexAttributes = m_VertexAttributes;
 
     // ---- 4. 混合附件 ----
     bundle.blendAttachmentStates = m_BlendAttachments;
 
     // ---- 5. 颜色附件格式 ----
-    bundle.colorAttachmentFormats = colorAttachmentFormats.Get();
+    bundle.colorAttachmentFormats = m_ColorFormats;
 
     // ---- 6. 构建各 CreateInfo ----
-    // 注意：项目禁用 vulkan.hpp 构造函数，使用 aggregate init，
-    // 必须用 designated initializer 显式指定字段。
 
     // VertexInput
     bundle.vertexInputInfo = vk::PipelineVertexInputStateCreateInfo{
-        .vertexBindingDescriptionCount = static_cast<uint32_t>(bundle.vertexBindings.size()),
-        .pVertexBindingDescriptions = bundle.vertexBindings.data(),
+        .vertexBindingDescriptionCount   = static_cast<uint32_t>(bundle.vertexBindings.size()),
+        .pVertexBindingDescriptions      = bundle.vertexBindings.data(),
         .vertexAttributeDescriptionCount = static_cast<uint32_t>(bundle.vertexAttributes.size()),
-        .pVertexAttributeDescriptions = bundle.vertexAttributes.data(),
+        .pVertexAttributeDescriptions    = bundle.vertexAttributes.data(),
     };
 
     // InputAssembly
-    bundle.inputAssemblyInfo = vk::PipelineInputAssemblyStateCreateInfo{
-        .topology = topology.Get(),
-        .primitiveRestartEnable = primitiveRestartEnable.Get(),
-    };
+    bundle.inputAssemblyInfo = m_InputAssembly;
 
     // Tessellation
-    bundle.tessellationInfo = vk::PipelineTessellationStateCreateInfo{
-        .patchControlPoints = patchControlPoints.Get(),
-    };
+    bundle.tessellationInfo = m_Tessellation;
 
-    // Viewport（如果动态，Vulkan 忽略 viewport/scissor 数据）
-    bundle.viewportInfo = vk::PipelineViewportStateCreateInfo{
-        .viewportCount = viewportCount.Get(),
-        .pViewports = nullptr, // 动态时忽略
-        .scissorCount = scissorCount.Get(),
-        .pScissors = nullptr, // 动态时忽略
-    };
+    // Viewport（动态模式下 pViewports/pScissors 为 nullptr，Vulkan 忽略）
+    bundle.viewportInfo = m_ViewportState;
 
     // Rasterization
-    bundle.rasterizationInfo = vk::PipelineRasterizationStateCreateInfo{
-        .depthClampEnable = depthClampEnable.Get(),
-        .rasterizerDiscardEnable = rasterizerDiscardEnable.Get(),
-        .polygonMode = polygonMode.Get(),
-        .cullMode = cullMode.Get(),
-        .frontFace = frontFace.Get(),
-        .depthBiasEnable = depthBiasEnable.Get(),
-        .depthBiasConstantFactor = 0.0f,
-        .depthBiasClamp = 0.0f,
-        .depthBiasSlopeFactor = 0.0f,
-        .lineWidth = 1.0f,
-    };
+    bundle.rasterizationInfo = m_Rasterization;
 
     // Multisample
-    // pSampleMask=nullptr 表示"启用所有 sample"，
-    // 指向 0 则"禁用所有 sample"（导致什么都画不出来）。
-    auto sampleMaskVal = sampleMask.Get();
-    bundle.sampleMaskData = sampleMaskVal;
-    bundle.multisampleInfo = vk::PipelineMultisampleStateCreateInfo{
-        .rasterizationSamples = rasterizationSamples.Get(),
-        .sampleShadingEnable = sampleShadingEnable.Get(),
-        .minSampleShading = minSampleShading.Get(),
-        .pSampleMask = sampleMaskVal ? &bundle.sampleMaskData : nullptr,
-        .alphaToCoverageEnable = alphaToCoverageEnable.Get(),
-        .alphaToOneEnable = alphaToOneEnable.Get(),
-    };
+    bundle.sampleMaskData = m_SampleMask;
+    bundle.multisampleInfo = m_Multisample;
+    // pSampleMask：0 表示"禁用所有 sample"，nullptr 表示"启用所有 sample"
+    bundle.multisampleInfo.pSampleMask = m_SampleMask ? &bundle.sampleMaskData : nullptr;
 
     // DepthStencil
-    bundle.depthStencilInfo = vk::PipelineDepthStencilStateCreateInfo{
-        .depthTestEnable = depthTestEnable.Get(),
-        .depthWriteEnable = depthWriteEnable.Get(),
-        .depthCompareOp = depthCompareOp.Get(),
-        .depthBoundsTestEnable = depthBoundsTestEnable.Get(),
-        .stencilTestEnable = stencilTestEnable.Get(),
-        .front = vk::StencilOpState{
-            stencilFront.failOp.Get(),
-            stencilFront.passOp.Get(),
-            stencilFront.depthFailOp.Get(),
-            stencilFront.compareOp.Get(),
-        },
-        .back = vk::StencilOpState{
-            stencilBack.failOp.Get(),
-            stencilBack.passOp.Get(),
-            stencilBack.depthFailOp.Get(),
-            stencilBack.compareOp.Get(),
-        },
-        .minDepthBounds = 0.0f,
-        .maxDepthBounds = 0.0f,
-    };
+    bundle.depthStencilInfo = m_DepthStencil;
 
     // ColorBlend
-    bundle.colorBlendInfo = vk::PipelineColorBlendStateCreateInfo{
-        .logicOpEnable = logicOpEnable.Get(),
-        .logicOp = logicOp.Get(),
-        .attachmentCount = static_cast<uint32_t>(bundle.blendAttachmentStates.size()),
-        .pAttachments = bundle.blendAttachmentStates.data(),
-        .blendConstants = {{0.0f, 0.0f, 0.0f, 0.0f}},
-    };
+    bundle.colorBlendInfo = m_ColorBlend;
+    bundle.colorBlendInfo.attachmentCount = static_cast<uint32_t>(bundle.blendAttachmentStates.size());
+    bundle.colorBlendInfo.pAttachments    = bundle.blendAttachmentStates.data();
+    bundle.colorBlendInfo.blendConstants  = m_BlendConstants;
 
     // DynamicState
     bundle.dynamicStateInfo = vk::PipelineDynamicStateCreateInfo{
         .dynamicStateCount = static_cast<uint32_t>(bundle.dynamicStates.size()),
-        .pDynamicStates = bundle.dynamicStates.data(),
-    };
-
-    // DynamicRendering
-    bundle.renderingInfo = vk::PipelineRenderingCreateInfo{
-        .viewMask = 0,
-        .colorAttachmentCount = static_cast<uint32_t>(bundle.colorAttachmentFormats.size()),
-        .pColorAttachmentFormats = bundle.colorAttachmentFormats.data(),
-        .depthAttachmentFormat = depthFormat.Get(),
-        .stencilAttachmentFormat = stencilFormat.Get(),
+        .pDynamicStates    = bundle.dynamicStates.data(),
     };
 
     // ---- 7. 主 CreateInfo ----
     bundle.pipelineInfo = vk::GraphicsPipelineCreateInfo{
-        .flags = flags,
-        .stageCount = static_cast<uint32_t>(bundle.shaderStageCreateInfos.size()),
-        .pStages = bundle.shaderStageCreateInfos.data(),
-        .pVertexInputState = &bundle.vertexInputInfo,
+        .flags              = flags,
+        .stageCount         = static_cast<uint32_t>(bundle.shaderStageCreateInfos.size()),
+        .pStages            = bundle.shaderStageCreateInfos.data(),
+        .pVertexInputState  = &bundle.vertexInputInfo,
         .pInputAssemblyState = &bundle.inputAssemblyInfo,
         .pTessellationState = &bundle.tessellationInfo,
-        .pViewportState = &bundle.viewportInfo,
+        .pViewportState     = &bundle.viewportInfo,
         .pRasterizationState = &bundle.rasterizationInfo,
-        .pMultisampleState = &bundle.multisampleInfo,
+        .pMultisampleState  = &bundle.multisampleInfo,
         .pDepthStencilState = &bundle.depthStencilInfo,
-        .pColorBlendState = &bundle.colorBlendInfo,
-        .pDynamicState = &bundle.dynamicStateInfo,
-        .layout = pipelineLayout.Get() ? pipelineLayout.Get()->GetHandle() : VK_NULL_HANDLE,
-        .renderPass = VK_NULL_HANDLE, // Dynamic Rendering 不用
-        .subpass = 0,
+        .pColorBlendState   = &bundle.colorBlendInfo,
+        .pDynamicState      = &bundle.dynamicStateInfo,
+        .layout             = m_PipelineLayout ? m_PipelineLayout->GetHandle() : VK_NULL_HANDLE,
+        .renderPass         = VK_NULL_HANDLE,
+        .subpass            = 0,
         .basePipelineHandle = VK_NULL_HANDLE,
-        .basePipelineIndex = -1,
+        .basePipelineIndex  = -1,
+    };
+}
+
+// ============================================================================
+// 管线构建：动态渲染模式
+// ============================================================================
+
+VulkanPipelineState::CreateBundle VulkanPipelineState::buildDynamicRenderingBundle(vk::PipelineCreateFlags flags) const {
+    CreateBundle bundle;
+    fillBundleCommon(bundle, flags);
+
+    // DynamicRendering pNext 链
+    bundle.renderingInfo = vk::PipelineRenderingCreateInfo{
+        .viewMask                  = m_ViewMask,
+        .colorAttachmentCount      = static_cast<uint32_t>(bundle.colorAttachmentFormats.size()),
+        .pColorAttachmentFormats   = bundle.colorAttachmentFormats.data(),
+        .depthAttachmentFormat     = m_DepthFormat,
+        .stencilAttachmentFormat   = m_StencilFormat,
     };
 
-    // pNext 链：renderingInfo → pipelineInfo
+    // pNext 挂载
     bundle.pipelineInfo.setPNext(&bundle.renderingInfo);
+    bundle.pipelineInfo.flags |= vk::PipelineCreateFlagBits::eDynamicRenderingKHR;
 
     return bundle;
 }
 
+// ============================================================================
+// 管线构建：传统 RenderPass 模式
+// ============================================================================
+
+VulkanPipelineState::CreateBundle VulkanPipelineState::buildRenderPassBundle(vk::RenderPass          renderPass,
+                                                                             uint32_t                subpass,
+                                                                             vk::PipelineCreateFlags flags) const {
+    CreateBundle bundle;
+    fillBundleCommon(bundle, flags);
+
+    bundle.pipelineInfo.renderPass = renderPass;
+    bundle.pipelineInfo.subpass    = subpass;
+    bundle.pipelineInfo.pNext      = nullptr;
+
+    return bundle;
+}
 
 // ============================================================================
-// 便利方法
+// 动态状态刷入
 // ============================================================================
 
-void VulkanPipelineState::SetAllInputAssemblyDynamic(bool dyn) {
-    topology.SetDynamic(dyn);
-    // primitiveRestartEnable 不可动态
+void VulkanPipelineState::flushDynamicStates(vk::CommandBuffer cmd) const {
+    // ---- 输入装配 ----
+    if (m_DynamicStateSet.count(vk::DynamicState::ePrimitiveTopology))
+        cmd.setPrimitiveTopology(m_InputAssembly.topology);
+
+    // ---- 光栅化 ----
+    if (m_DynamicStateSet.count(vk::DynamicState::eRasterizerDiscardEnable))
+        cmd.setRasterizerDiscardEnable(m_Rasterization.rasterizerDiscardEnable);
+    if (m_DynamicStateSet.count(vk::DynamicState::eCullMode))
+        cmd.setCullMode(m_Rasterization.cullMode);
+    if (m_DynamicStateSet.count(vk::DynamicState::eFrontFace))
+        cmd.setFrontFace(m_Rasterization.frontFace);
+    if (m_DynamicStateSet.count(vk::DynamicState::eDepthBiasEnable))
+        cmd.setDepthBiasEnable(m_Rasterization.depthBiasEnable);
+
+    // ---- 深度/模板 ----
+    // 优先使用 VK_EXT_extended_dynamic_state 扩展（Vulkan 1.3 core）
+    if (m_DynamicStateSet.count(vk::DynamicState::eDepthTestEnable))
+        cmd.setDepthTestEnableEXT(m_DepthStencil.depthTestEnable);
+    if (m_DynamicStateSet.count(vk::DynamicState::eDepthWriteEnable))
+        cmd.setDepthWriteEnableEXT(m_DepthStencil.depthWriteEnable);
+    if (m_DynamicStateSet.count(vk::DynamicState::eDepthCompareOp))
+        cmd.setDepthCompareOpEXT(m_DepthStencil.depthCompareOp);
+    if (m_DynamicStateSet.count(vk::DynamicState::eDepthBoundsTestEnable))
+        cmd.setDepthBoundsTestEnable(m_DepthStencil.depthBoundsTestEnable);
+    if (m_DynamicStateSet.count(vk::DynamicState::eStencilTestEnable))
+        cmd.setStencilTestEnableEXT(m_DepthStencil.stencilTestEnable);
+    if (m_DynamicStateSet.count(vk::DynamicState::eStencilOp)) {
+        cmd.setStencilOp(vk::StencilFaceFlagBits::eFront,
+                         m_DepthStencil.front.failOp,
+                         m_DepthStencil.front.passOp,
+                         m_DepthStencil.front.depthFailOp,
+                         m_DepthStencil.front.compareOp);
+        cmd.setStencilOp(vk::StencilFaceFlagBits::eBack,
+                         m_DepthStencil.back.failOp,
+                         m_DepthStencil.back.passOp,
+                         m_DepthStencil.back.depthFailOp,
+                         m_DepthStencil.back.compareOp);
+    }
 }
 
-void VulkanPipelineState::SetAllRasterizationDynamic(bool dyn) {
-    rasterizerDiscardEnable.SetDynamic(dyn);
-    cullMode.SetDynamic(dyn);
-    frontFace.SetDynamic(dyn);
-    depthBiasEnable.SetDynamic(dyn);
-    // depthClampEnable、polygonMode 不可动态
-}
+// ============================================================================
+// 哈希
+// ============================================================================
 
-void VulkanPipelineState::SetAllDepthStencilDynamic(bool dyn) {
-    depthTestEnable.SetDynamic(dyn);
-    depthWriteEnable.SetDynamic(dyn);
-    depthCompareOp.SetDynamic(dyn);
-    depthBoundsTestEnable.SetDynamic(dyn);
-    stencilTestEnable.SetDynamic(dyn);
-    stencilFront.SetAllDynamic(dyn);
-    stencilBack.SetAllDynamic(dyn);
-}
+size_t VulkanPipelineState::hash() const {
+    size_t seed = 0;
+    auto hashCombine = [&seed](size_t v) {
+        seed ^= v + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+    };
 
-void VulkanPipelineState::SetAllViewportDynamic(bool dyn) {
-    viewportCount.SetDynamic(dyn);
-    scissorCount.SetDynamic(dyn);
-}
+    // —— 颜色附件格式 ——
+    for (auto fmt : m_ColorFormats)
+        hashCombine(std::hash<vk::Format>{}(fmt));
 
-void VulkanPipelineState::SetAllDynamic(bool dyn) {
-    SetAllInputAssemblyDynamic(dyn);
-    SetAllRasterizationDynamic(dyn);
-    SetAllDepthStencilDynamic(dyn);
-    SetAllViewportDynamic(dyn);
+    // —— 深度/模板格式 ——
+    hashCombine(std::hash<vk::Format>{}(m_DepthFormat));
+    hashCombine(std::hash<vk::Format>{}(m_StencilFormat));
+    hashCombine(m_ViewMask);
+
+    // —— 顶点输入 ——
+    hashCombine(m_VertexBindings.size());
+    for (const auto &b : m_VertexBindings) {
+        hashCombine(b.binding);
+        hashCombine(b.stride);
+        hashCombine(static_cast<uint32_t>(b.inputRate));
+    }
+    hashCombine(m_VertexAttributes.size());
+    for (const auto &a : m_VertexAttributes) {
+        hashCombine(a.location);
+        hashCombine(a.binding);
+        hashCombine(std::hash<vk::Format>{}(a.format));
+        hashCombine(a.offset);
+    }
+
+    // —— 输入装配 ——
+    hashCombine(std::hash<vk::PrimitiveTopology>{}(m_InputAssembly.topology));
+    hashCombine(m_InputAssembly.primitiveRestartEnable);
+
+    // —— 细分曲面 ——
+    hashCombine(m_Tessellation.patchControlPoints);
+
+    // —— 视口计数 ——
+    hashCombine(m_ViewportState.viewportCount);
+    hashCombine(m_ViewportState.scissorCount);
+
+    // —— 光栅化 ——
+    hashCombine(m_Rasterization.depthClampEnable);
+    hashCombine(m_Rasterization.rasterizerDiscardEnable);
+    hashCombine(static_cast<uint32_t>(m_Rasterization.polygonMode));
+    hashCombine(static_cast<uint32_t>(m_Rasterization.cullMode));
+    hashCombine(static_cast<uint32_t>(m_Rasterization.frontFace));
+    hashCombine(m_Rasterization.depthBiasEnable);
+    hashCombine(std::hash<float>{}(m_Rasterization.lineWidth));
+
+    // —— 多重采样 ——
+    hashCombine(static_cast<uint32_t>(m_Multisample.rasterizationSamples));
+    hashCombine(m_Multisample.sampleShadingEnable);
+    hashCombine(std::hash<float>{}(m_Multisample.minSampleShading));
+    hashCombine(m_SampleMask);
+    hashCombine(m_Multisample.alphaToCoverageEnable);
+    hashCombine(m_Multisample.alphaToOneEnable);
+
+    // —— 深度/模板 ——
+    hashCombine(m_DepthStencil.depthTestEnable);
+    hashCombine(m_DepthStencil.depthWriteEnable);
+    hashCombine(static_cast<uint32_t>(m_DepthStencil.depthCompareOp));
+    hashCombine(m_DepthStencil.depthBoundsTestEnable);
+    hashCombine(m_DepthStencil.stencilTestEnable);
+    // 正面模板
+    hashCombine(static_cast<uint32_t>(m_DepthStencil.front.failOp));
+    hashCombine(static_cast<uint32_t>(m_DepthStencil.front.passOp));
+    hashCombine(static_cast<uint32_t>(m_DepthStencil.front.depthFailOp));
+    hashCombine(static_cast<uint32_t>(m_DepthStencil.front.compareOp));
+    // 背面模板
+    hashCombine(static_cast<uint32_t>(m_DepthStencil.back.failOp));
+    hashCombine(static_cast<uint32_t>(m_DepthStencil.back.passOp));
+    hashCombine(static_cast<uint32_t>(m_DepthStencil.back.depthFailOp));
+    hashCombine(static_cast<uint32_t>(m_DepthStencil.back.compareOp));
+
+    // —— 颜色混合 ——
+    hashCombine(m_ColorBlend.logicOpEnable);
+    hashCombine(static_cast<uint32_t>(m_ColorBlend.logicOp));
+    for (const auto &att : m_BlendAttachments) {
+        hashCombine(att.blendEnable);
+        hashCombine(static_cast<uint32_t>(att.srcColorBlendFactor));
+        hashCombine(static_cast<uint32_t>(att.dstColorBlendFactor));
+        hashCombine(static_cast<uint32_t>(att.colorBlendOp));
+        hashCombine(static_cast<uint32_t>(att.srcAlphaBlendFactor));
+        hashCombine(static_cast<uint32_t>(att.dstAlphaBlendFactor));
+        hashCombine(static_cast<uint32_t>(att.alphaBlendOp));
+        hashCombine(static_cast<uint32_t>(att.colorWriteMask));
+    }
+    for (float c : m_BlendConstants)
+        hashCombine(std::hash<float>{}(c));
+
+    // —— 动态状态集合 ——
+    for (auto s : m_DynamicStateSet)
+        hashCombine(static_cast<uint32_t>(s));
+
+    // —— PipelineLayout ——
+    if (m_PipelineLayout) {
+        hashCombine(std::hash<vk::PipelineLayout>{}(m_PipelineLayout->GetHandle()));
+    }
+
+    return seed;
 }
 
 } // namespace GE

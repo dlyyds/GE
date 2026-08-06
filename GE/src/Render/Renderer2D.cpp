@@ -229,18 +229,6 @@ void Renderer2D::EndScene() {
     auto &ps = cmd.GetPipelineState();
     auto colorFmt = swapchain.GetFormat();
 
-    // 附件格式
-    ps.colorAttachmentFormats = {colorFmt};
-    if (m_UseDepth && renderTarget.HasDepth()) {
-        ps.depthFormat = renderTarget.GetDepthFormat();
-    } else {
-        ps.depthFormat = {};
-    }
-    ps.stencilFormat = {};
-
-    // 顶点输入：从顶点着色器反射自动生成
-    ps.SetVertexInputFromShader(*m_VertShader);
-
     // 混合附件：启用 alpha 混合（预乘 alpha 模式）
     // 着色器输出已预乘 alpha（rgb *= alpha），所以源因子用 eOne
     vk::PipelineColorBlendAttachmentState blendState{};
@@ -255,16 +243,26 @@ void Renderer2D::EndScene() {
     blendState.srcAlphaBlendFactor = vk::BlendFactor::eOne;
     blendState.dstAlphaBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha;
     blendState.alphaBlendOp = vk::BlendOp::eAdd;
-    ps.SetBlendAttachments({blendState});
 
-    // 无背面剔除、三角形列表
-    ps.cullMode.SetDynamic(true);
-    ps.frontFace.SetDynamic(true);
-    ps.topology.SetDynamic(true);
+    // 配置管线状态（链式 API）
+    vk::Format depthFmt = vk::Format::eUndefined;
+    if (m_UseDepth && renderTarget.HasDepth()) {
+        depthFmt = renderTarget.GetDepthFormat();
+    }
 
-    // 深度测试：3D 模式开启，2D 模式关闭
-    ps.depthTestEnable = m_UseDepth ? VK_TRUE : VK_FALSE;
-    ps.depthWriteEnable = m_UseDepth ? VK_TRUE : VK_FALSE;
+    ps.setRenderingFormats({colorFmt}, depthFmt)
+      .setInputAssembly(vk::PrimitiveTopology::eTriangleList)
+      .setColorBlendAttachments({blendState})
+      .setCullMode(vk::CullModeFlagBits::eNone)
+      .setFrontFace(vk::FrontFace::eCounterClockwise)
+      .setDepthTestEnable(m_UseDepth ? VK_TRUE : VK_FALSE)
+      .setDepthWriteEnable(m_UseDepth ? VK_TRUE : VK_FALSE)
+      .enableDynamicState(vk::DynamicState::eCullMode)
+      .enableDynamicState(vk::DynamicState::eFrontFace)
+      .enableDynamicState(vk::DynamicState::ePrimitiveTopology);
+
+    // 顶点输入：从顶点着色器反射自动生成
+    ps.setVertexInputFromShader(*m_VertShader);
 
     // 动态状态
     vk::Viewport vp;
@@ -280,9 +278,9 @@ void Renderer2D::EndScene() {
     cmd.SetScissor(0, {scissor});
 
     // 写入动态管线状态
-    cmd.GetPipelineState().cullMode = vk::CullModeFlagBits::eNone;
-    cmd.GetPipelineState().frontFace = vk::FrontFace::eCounterClockwise;
-    cmd.GetPipelineState().topology = vk::PrimitiveTopology::eTriangleList;
+    ps.setCullMode(vk::CullModeFlagBits::eNone);
+    ps.setFrontFace(vk::FrontFace::eCounterClockwise);
+    ps.setInputAssembly(vk::PrimitiveTopology::eTriangleList);
 
     // ── 6. 绑定顶点 buffer ────────────────────────────────────────────
     cmd.BindVertexBuffers(0,

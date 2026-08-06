@@ -41,29 +41,25 @@ void TriangleLayer::OnAttach() {
         {m_VertShader, m_FragShader});
 
     // ── 3. 配置 PipelineState ────────────────────────────────────────
-    m_PipelineState = VulkanPipelineState{};
-    m_PipelineState.pipelineLayout = m_PipelineLayout;
-    m_PipelineState.colorAttachmentFormats = {colorFmt};
-    m_PipelineState.depthFormat = {};
-    m_PipelineState.stencilFormat = {};
-
-    // 顶点输入：从顶点着色器反射自动生成（vec2 position + vec3 color，紧密打包，stride = 20）
-    m_PipelineState.SetVertexInputFromShader(*m_VertShader);
-
     // 混合附件（必须显式设置 colorWriteMask，否则默认 0 导致不写入颜色）
     vk::PipelineColorBlendAttachmentState blendState{};
     blendState.colorWriteMask = vk::ColorComponentFlagBits::eR
                               | vk::ColorComponentFlagBits::eG
                               | vk::ColorComponentFlagBits::eB
                               | vk::ColorComponentFlagBits::eA;
-    m_PipelineState.SetBlendAttachments({blendState});
 
-    // 标记为动态状态（运行时通过 vkCmdSet* 更新）
-    m_PipelineState.cullMode.SetDynamic(true);
-    m_PipelineState.frontFace.SetDynamic(true);
-    m_PipelineState.topology.SetDynamic(true);
-    m_PipelineState.depthTestEnable = VK_FALSE;
-    m_PipelineState.depthWriteEnable = VK_FALSE;
+    m_PipelineState = VulkanPipelineState{};
+    m_PipelineState.setPipelineLayout(m_PipelineLayout)
+                   .setRenderingFormats({colorFmt})
+                   .setColorBlendAttachments({blendState})
+                   .setDepthTestEnable(VK_FALSE)
+                   .setDepthWriteEnable(VK_FALSE)
+                   .enableDynamicState(vk::DynamicState::eCullMode)
+                   .enableDynamicState(vk::DynamicState::eFrontFace)
+                   .enableDynamicState(vk::DynamicState::ePrimitiveTopology);
+
+    // 顶点输入：从顶点着色器反射自动生成（vec2 position + vec3 color，紧密打包，stride = 20）
+    m_PipelineState.setVertexInputFromShader(*m_VertShader);
 
     // ── 4. 通过全局资源缓存创建图形管线（去重）────────────────────
     m_Pipeline = &cache.RequestGraphicsPipeline(m_PipelineState);

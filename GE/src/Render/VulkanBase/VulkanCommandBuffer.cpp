@@ -133,7 +133,7 @@ void VulkanCommandBuffer::Reset() {
 // ============================================================================
 
 void VulkanCommandBuffer::BindPipelineLayout(VulkanPipelineLayout &pipeline_layout) {
-    m_PipelineState.pipelineLayout = &pipeline_layout;
+    m_PipelineState.setPipelineLayout(&pipeline_layout);
 }
 
 void VulkanCommandBuffer::BindVertexBuffers(
@@ -365,18 +365,7 @@ void VulkanCommandBuffer::Flush(vk::PipelineBindPoint pipeline_bind_point) {
 
 void VulkanCommandBuffer::FlushPipelineState(VulkanDevice &device,
                                              vk::PipelineBindPoint pipeline_bind_point) {
-    // 检查管线状态是否需要更新
-    if (!m_PipelineState.HasPipelineDirty()) {
-        // 即使 pipeline 不需要重建，也要刷入动态状态
-        if (m_PipelineState.HasDynamicDirty()) {
-            m_PipelineState.FlushDynamicStates(GetHandle());
-            m_PipelineState.ClearAllDirty();
-        }
-        return;
-    }
-
-    // 管线需要重建或更新
-    // 通过 ResourceCache 请求管线
+    // 通过 ResourceCache 请求管线（内部按状态 hash 去重）
     auto &cache = device.GetResourceCache();
 
     if (pipeline_bind_point == vk::PipelineBindPoint::eGraphics) {
@@ -387,9 +376,8 @@ void VulkanCommandBuffer::FlushPipelineState(VulkanDevice &device,
         GetHandle().bindPipeline(vk::PipelineBindPoint::eCompute, pipeline.GetHandle());
     }
 
-    // 刷入动态状态
-    m_PipelineState.FlushDynamicStates(GetHandle());
-    m_PipelineState.ClearAllDirty();
+    // 刷入动态状态（vkCmdSet* 系列）
+    m_PipelineState.flushDynamicStates(GetHandle());
 }
 
 void VulkanCommandBuffer::FlushPushConstants() {
@@ -398,7 +386,7 @@ void VulkanCommandBuffer::FlushPushConstants() {
     }
 
     // 获取 pipeline layout
-    auto *layout = m_PipelineState.pipelineLayout.Get();
+    auto *layout = m_PipelineState.getPipelineLayout();
     if (!layout) {
         m_StoredPushConstants.clear();
         return;
@@ -419,7 +407,7 @@ void VulkanCommandBuffer::FlushPushConstants() {
 
 void VulkanCommandBuffer::FlushDescriptorState(vk::PipelineBindPoint pipeline_bind_point) {
     // 获取 pipeline layout
-    auto *layout = m_PipelineState.pipelineLayout.Get();
+    auto *layout = m_PipelineState.getPipelineLayout();
     if (!layout) {
         return;
     }

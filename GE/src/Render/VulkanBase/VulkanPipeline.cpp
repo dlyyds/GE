@@ -54,8 +54,8 @@ VulkanGraphicsPipeline::VulkanGraphicsPipeline(VulkanDevice &device,
     // 复制外部状态
     m_State = pipeline_state;
 
-    // 构建管线创建信息
-    auto bundle = m_State.BuildCreateInfo();
+    // 构建动态渲染模式的管线创建信息
+    auto bundle = m_State.buildDynamicRenderingBundle();
 
     // 创建 VkPipeline
     auto result = GetDevice().GetHandle().createGraphicsPipeline(
@@ -67,9 +67,6 @@ VulkanGraphicsPipeline::VulkanGraphicsPipeline(VulkanDevice &device,
     }
 
     SetHandle(result.value);
-
-    // 清除脏标记，标记当前状态为已创建管线
-    m_State.ClearAllDirty();
 }
 
 VulkanGraphicsPipeline::~VulkanGraphicsPipeline() {

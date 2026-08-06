@@ -17,32 +17,24 @@
 
 /**
  * @file VulkanPipelineState.h
- * @brief 专为动态管线设计的管线状态封装。
+ * @brief 图形管线状态构建器（链式调用 + 动态渲染支持）。
  *
  * ==================== 设计说明 ====================
  *
- * 1. 每个可调参数单独封装为 DynamicParam<T> 或 StaticParam<T>：
- *    - DynamicParam<T>   —— 可自由切换动态/静态的参数（如 cullMode、depthTestEnable）
- *    - StaticParam<T>    —— 不可动态化的参数（如 vertex input、multisample），固定为静态
+ * 1. 纯构建器模式：所有 set 方法返回 VulkanPipelineState&，支持链式调用。
  *
- * 2. DynamicParam<T> 内部有 m_IsDynamic 标记：
- *    - true  = 运行时通过 vkCmdSet* 动态更新，变更不重建管线
- *    - false = 作为静态参数参与管线创建，变更触发重建
+ * 2. 动态状态管理：
+ *    - enableDynamicState() / disableDynamicState() 直接操作 vk::DynamicState 枚举
+ *    - 内部使用 unordered_set 去重，缓存 vector 用于管线创建
  *
- * 3. 每个参数有独立的脏标记追踪：
- *    - Set() 设置值并标记 m_ValueDirty
- *    - SetDynamic() 切换动态/静态并标记 m_ConfigDirty
- *    - 通过 HasDynamicDirty() / HasPipelineDirty() 聚合查询
+ * 3. 两种构建模式：
+ *    - buildDynamicRenderingPipeline()：动态渲染模式（VK_NULL_HANDLE renderPass + pNext 链）
+ *    - buildRenderPassPipeline()：传统 RenderPass 模式
  *
- * 4. 支持的 Vulkan 1.3 Core 动态状态：
- *    eViewport, eScissor, eCullMode, eFrontFace, ePrimitiveTopology,
- *    eDepthTestEnable, eDepthWriteEnable, eDepthCompareOp,
- *    eDepthBoundsTestEnable, eStencilTestEnable, eStencilOp,
- *    eRasterizerDiscardEnable, eDepthBiasEnable,
- *    eViewportWithCount, eScissorWithCount
+ * 4. flushDynamicStates()：成员方法，根据当前启用的动态状态集合
+ *    将当前状态值刷入 command buffer（调用 vkCmdSet* 系列）。
  *
- * 5. 对于 Vulkan 1.3 Core 不支持动态化的参数（如 polygonMode、blend 等），
- *    使用 StaticParam<T> 包装，始终为静态。
+ * 5. hash()：用于管线缓存去重，对所有影响管线创建的状态计算哈希。
  *
  * ==================================================
  */
@@ -53,6 +45,7 @@
 
 #include <cstdint>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 namespace GE {
@@ -66,327 +59,74 @@ class ShaderModule;
 
 
 // ============================================================================
-// 参数包装器模板
+// VulkanPipelineState —— 图形管线状态构建器
 // ============================================================================
 
 /**
- * @brief 可自由切换动态/静态的管线参数包装器。
- *
- * 内部状态：
- *   - m_Value：参数值
- *   - m_IsDynamic：是否为动态（true → vkCmdSet* 更新，false → 需重建管线）
- *   - m_ValueDirty：值是否在上次清除后发生过变更
- *   - m_ConfigDirty：动态/静态标记是否在上次清除后发生过变更
- */
-template <typename T>
-class DynamicParam {
-public:
-    explicit DynamicParam(const T &val = {})
-        : m_Value(val) {
-    }
-
-    /// 设置值并标记脏（总是标记 m_ValueDirty）
-    DynamicParam &operator=(const T &val) {
-        m_Value = val;
-        m_ValueDirty = true;
-        return *this;
-    }
-
-    /// 赋值但不标记脏（用于初始化）
-    void Assign(const T &val) {
-        m_Value = val;
-    }
-
-    const T &Get() const { return m_Value; }
-    T &Get() { return m_Value; }
-
-    /// 切换动态/静态。与上次不同时标记 m_ConfigDirty。
-    void SetDynamic(bool dyn) {
-        if (m_IsDynamic != dyn) {
-            m_IsDynamic = dyn;
-            m_ConfigDirty = true;
-        }
-    }
-
-    bool IsDynamic() const { return m_IsDynamic; }
-
-    bool IsValueDirty() const { return m_ValueDirty; }
-    bool IsConfigDirty() const { return m_ConfigDirty; }
-
-    void ClearDirty() {
-        m_ValueDirty = false;
-        m_ConfigDirty = false;
-    }
-
-private:
-    T m_Value{};
-    bool m_IsDynamic{false};
-    bool m_ValueDirty{false};
-    bool m_ConfigDirty{true}; // 初始为 true，管线尚未创建
-};
-
-
-/**
- * @brief 始终静态的管线参数包装器。
- *
- * 用于不可动态化的参数，仅追踪值变更脏标记。
- */
-template <typename T>
-class StaticParam {
-public:
-    explicit StaticParam(const T &val = {})
-        : m_Value(val) {
-    }
-
-    /// 设置值并标记脏（总是标记 m_ValueDirty）
-    StaticParam &operator=(const T &val) {
-        m_Value = val;
-        m_ValueDirty = true;
-        return *this;
-    }
-
-    /// 赋值但不标记脏（用于初始化）
-    void Assign(const T &val) {
-        m_Value = val;
-    }
-
-    const T &Get() const { return m_Value; }
-    T &Get() { return m_Value; }
-
-    bool IsValueDirty() const { return m_ValueDirty; }
-
-    void ClearDirty() {
-        m_ValueDirty = false;
-    }
-
-private:
-    T m_Value{};
-    bool m_ValueDirty{false};
-};
-
-
-// ============================================================================
-// 辅助结构体
-// ============================================================================
-
-/**
- * @brief 模板操作状态（可为动态）。
- *
- * 四个成员对应 VkStencilOpState 的四个字段，
- * 每个都可以独立控制是否为动态。
- */
-struct StencilOpState {
-    DynamicParam<vk::StencilOp> failOp{vk::StencilOp::eKeep};
-    DynamicParam<vk::StencilOp> passOp{vk::StencilOp::eKeep};
-    DynamicParam<vk::StencilOp> depthFailOp{vk::StencilOp::eKeep};
-    DynamicParam<vk::CompareOp> compareOp{vk::CompareOp::eAlways};
-
-    /// 是否有任一子字段标记为动态
-    bool IsAnyDynamic() const {
-        return failOp.IsDynamic() || passOp.IsDynamic()
-               || depthFailOp.IsDynamic() || compareOp.IsDynamic();
-    }
-
-    /// 是否有任一子字段的值是脏的
-    bool IsAnyValueDirty() const {
-        return failOp.IsValueDirty() || passOp.IsValueDirty()
-               || depthFailOp.IsValueDirty() || compareOp.IsValueDirty();
-    }
-
-    /// 是否有任一子字段的配置是脏的（动态/静态标记变更）
-    bool IsAnyConfigDirty() const {
-        return failOp.IsConfigDirty() || passOp.IsConfigDirty()
-               || depthFailOp.IsConfigDirty() || compareOp.IsConfigDirty();
-    }
-
-    void ClearAllDirty() {
-        failOp.ClearDirty();
-        passOp.ClearDirty();
-        depthFailOp.ClearDirty();
-        compareOp.ClearDirty();
-    }
-
-    /// 一键设置所有子字段的动态/静态
-    void SetAllDynamic(bool dyn) {
-        failOp.SetDynamic(dyn);
-        passOp.SetDynamic(dyn);
-        depthFailOp.SetDynamic(dyn);
-        compareOp.SetDynamic(dyn);
-    }
-};
-
-
-// 混合附件直接使用 vk::PipelineColorBlendAttachmentState，无需额外封装。
-
-
-// ============================================================================
-// PipelineCreateBundle —— 一键构建 VkGraphicsPipelineCreateInfo
-// ============================================================================
-
-/**
- * @brief 持有所有 Vk*CreateInfo 及其依赖数据的 Bundle。
- *
- * 由 VulkanPipelineState::BuildCreateInfo() 生成，
- * 可直接传给 vk::Device::createGraphicsPipeline()。
- * 生命周期：调用者需保证 Bundle 在 pipeline 创建完成前存活。
- */
-struct PipelineCreateBundle {
-    // —— 次级数据（被 CreateInfo 指向） ——
-    std::vector<vk::PipelineShaderStageCreateInfo> shaderStageCreateInfos;
-    std::vector<vk::DynamicState> dynamicStates;
-    std::vector<vk::VertexInputBindingDescription> vertexBindings;
-    std::vector<vk::VertexInputAttributeDescription> vertexAttributes;
-    std::vector<vk::PipelineColorBlendAttachmentState> blendAttachmentStates;
-    std::vector<vk::Format> colorAttachmentFormats;
-    std::vector<vk::Viewport> viewports; // 动态时可为空
-    std::vector<vk::Rect2D> scissors; // 动态时可为空
-    vk::SampleMask sampleMaskData{0};
-
-    // —— CreateInfo 链 ——
-    vk::PipelineShaderStageCreateInfo shaderStageInfo{}; // 实际未使用，stages 直接用 vector
-    vk::PipelineVertexInputStateCreateInfo vertexInputInfo{};
-    vk::PipelineInputAssemblyStateCreateInfo inputAssemblyInfo{};
-    vk::PipelineTessellationStateCreateInfo tessellationInfo{};
-    vk::PipelineViewportStateCreateInfo viewportInfo{};
-    vk::PipelineRasterizationStateCreateInfo rasterizationInfo{};
-    vk::PipelineMultisampleStateCreateInfo multisampleInfo{};
-    vk::PipelineDepthStencilStateCreateInfo depthStencilInfo{};
-    vk::PipelineColorBlendStateCreateInfo colorBlendInfo{};
-    vk::PipelineDynamicStateCreateInfo dynamicStateInfo{};
-    vk::PipelineRenderingCreateInfo renderingInfo{};
-
-    /// 主 CreateInfo（pNext 链已串联好）
-    vk::GraphicsPipelineCreateInfo pipelineInfo{};
-};
-
-
-// ============================================================================
-// VulkanPipelineState —— 动态管线状态主类
-// ============================================================================
-
-/**
- * @brief 专为动态管线设计的状态管理器。
- *
- * 特性：
- *   - 所有管线参数以 public 成员暴露，可直接读写
- *   - 每个参数独立追踪脏标记
- *   - FlushDynamicStates() 自动将动态参数刷入 command buffer
- *   - BuildCreateInfo() 一键生成完整的 GraphicsPipelineCreateInfo
- *   - 支持 Vulkan 1.3 Dynamic Rendering
+ * @brief 图形管线状态构建器，链式 API + 动态渲染 + 动态状态刷入。
  *
  * 使用示例：
  * @code
  *   VulkanPipelineState state;
- *   state.topology        = vk::PrimitiveTopology::eTriangleList;
- *   state.cullMode        = vk::CullModeFlagBits::eBack;
- *   state.depthTestEnable = VK_TRUE;
+ *   state.setInputAssembly(vk::PrimitiveTopology::eTriangleList)
+ *        .setCullMode(vk::CullModeFlagBits::eBack)
+ *        .setDepthTestEnable(VK_TRUE)
+ *        .enableDynamicState(vk::DynamicState::eCullMode)
+ *        .setRenderingFormats({vk::Format::eB8G8R8A8Unorm})
+ *        .setPipelineLayout(pipelineLayout);
  *
- *   // 设为动态
- *   state.cullMode.SetDynamic(true);
- *   state.depthTestEnable.SetDynamic(true);
- *
- *   // 创建管线
- *   auto bundle = state.BuildCreateInfo();
+ *   auto bundle = state.buildDynamicRenderingBundle();
  *   auto pipeline = device.createGraphicsPipeline(nullptr, bundle.pipelineInfo);
- *   state.ClearAllDirty();
  *
  *   // 运行时更新动态状态
- *   state.cullMode = vk::CullModeFlagBits::eFront;
- *   state.FlushDynamicStates(cmdBuffer);
+ *   state.setCullMode(vk::CullModeFlagBits::eFront);
+ *   state.flushDynamicStates(cmd);
  * @endcode
  */
 class VulkanPipelineState {
 public:
     // ====================================================================
-    // 管线参数（public 成员，直接读写）
+    // 动态状态管理
     // ====================================================================
 
-    // ----- 渲染附件格式（始终静态） -----
-    StaticParam<std::vector<vk::Format> > colorAttachmentFormats{};
-    StaticParam<vk::Format> depthFormat{};
-    StaticParam<vk::Format> stencilFormat{};
+    /// 启用一个动态状态（加入动态状态集合）
+    VulkanPipelineState &enableDynamicState(vk::DynamicState state);
 
-    // ----- 着色器阶段（始终静态，从 pipelineLayout->GetShaderModules() 获取） -----
-    // 无需单独存储，BuildCreateInfo 中从 VulkanPipelineLayout 提取。
+    /// 禁用一个动态状态（从动态状态集合移除）
+    VulkanPipelineState &disableDynamicState(vk::DynamicState state);
 
-    // ----- 管线布局（始终静态，指向外部所有的 VulkanPipelineLayout） -----
-    StaticParam<VulkanPipelineLayout *> pipelineLayout{nullptr};
+    /// 清空所有动态状态
+    void clearDynamicStates();
 
-    // ----- 顶点输入（始终静态） -----
-    StaticParam<std::vector<vk::VertexInputBindingDescription> > vertexBindingDescriptions{};
-    StaticParam<std::vector<vk::VertexInputAttributeDescription> > vertexAttributeDescriptions{};
-
-    // ----- 输入装配 -----
-    DynamicParam<vk::PrimitiveTopology> topology{vk::PrimitiveTopology::eTriangleList};
-    StaticParam<vk::Bool32> primitiveRestartEnable{VK_FALSE};
-
-    // ----- 细分曲面（始终静态） -----
-    StaticParam<uint32_t> patchControlPoints{3};
-
-    // ----- 视口 -----
-    // 视口/剪刀矩形本身不存储在这里（它们是每帧的动态数据），
-    // 只存储创建管线时所需的计数。当视口设为动态时，Vulkan 忽略这些计数值。
-    DynamicParam<uint32_t> viewportCount{1};
-    DynamicParam<uint32_t> scissorCount{1};
-
-    // ----- 光栅化 -----
-    StaticParam<vk::Bool32> depthClampEnable{VK_FALSE};
-    DynamicParam<vk::Bool32> rasterizerDiscardEnable{VK_FALSE};
-    StaticParam<vk::PolygonMode> polygonMode{vk::PolygonMode::eFill};
-    DynamicParam<vk::CullModeFlags> cullMode{vk::CullModeFlagBits::eBack};
-    DynamicParam<vk::FrontFace> frontFace{vk::FrontFace::eCounterClockwise};
-    DynamicParam<vk::Bool32> depthBiasEnable{VK_FALSE};
-
-    // ----- 多重采样（始终静态） -----
-    StaticParam<vk::SampleCountFlagBits> rasterizationSamples{vk::SampleCountFlagBits::e1};
-    StaticParam<vk::Bool32> sampleShadingEnable{VK_FALSE};
-    StaticParam<float> minSampleShading{0.0f};
-    StaticParam<vk::SampleMask> sampleMask{0};
-    StaticParam<vk::Bool32> alphaToCoverageEnable{VK_FALSE};
-    StaticParam<vk::Bool32> alphaToOneEnable{VK_FALSE};
-
-    // ----- 深度/模板 -----
-    DynamicParam<vk::Bool32> depthTestEnable{VK_TRUE};
-    DynamicParam<vk::Bool32> depthWriteEnable{VK_TRUE};
-    DynamicParam<vk::CompareOp> depthCompareOp{vk::CompareOp::eLess};
-    DynamicParam<vk::Bool32> depthBoundsTestEnable{VK_FALSE};
-    DynamicParam<vk::Bool32> stencilTestEnable{VK_FALSE};
-    StencilOpState stencilFront{};
-    StencilOpState stencilBack{};
-
-
-    StaticParam<vk::Bool32> logicOpEnable{VK_FALSE};
-    StaticParam<vk::LogicOp> logicOp{vk::LogicOp::eClear};
-
-private:
-    std::vector<vk::PipelineColorBlendAttachmentState> m_BlendAttachments{};
-
-    /// blendAttachments 的脏标记（vector 大小或内容变更）
-    bool m_BlendAttachmentsDirty{false};
-
-public:
-    // ====================================================================
-    // 混合附件操作方法
-    // ====================================================================
-
-    /// 设置完整的混合附件列表（标记脏）
-    void SetBlendAttachments(const std::vector<vk::PipelineColorBlendAttachmentState> &attachments);
-
-    /// 设置指定索引的混合附件（标记脏）
-    void SetBlendAttachment(uint32_t index, const vk::PipelineColorBlendAttachmentState &attachment);
-
-    /// 获取混合附件列表（只读）
-    const std::vector<vk::PipelineColorBlendAttachmentState> &GetBlendAttachments() const { return m_BlendAttachments; }
-
-    /// 获取可修改的混合附件列表引用（调用者需手动标记脏）
-    std::vector<vk::PipelineColorBlendAttachmentState> &GetMutableBlendAttachments() {
-        m_BlendAttachmentsDirty = true;
-        return m_BlendAttachments;
-    }
+    /// 获取当前所有启用的动态状态
+    const std::vector<vk::DynamicState> &getDynamicStates() const;
 
     // ====================================================================
-    // 顶点输入便利方法
+    // 渲染附件格式（动态渲染 pNext 数据）
     // ====================================================================
+
+    /// 设置动态渲染所需的附件格式信息
+    VulkanPipelineState &setRenderingFormats(std::vector<vk::Format> colorFmts,
+                                             vk::Format              depthFmt   = vk::Format::eUndefined,
+                                             vk::Format              stencilFmt = vk::Format::eUndefined,
+                                             uint32_t                viewMask   = 0);
+
+    // ====================================================================
+    // 管线布局
+    // ====================================================================
+
+    /// 设置管线布局（指针，外部所有）
+    VulkanPipelineState &setPipelineLayout(VulkanPipelineLayout *layout);
+
+    /// 获取管线布局指针
+    VulkanPipelineLayout *getPipelineLayout() const;
+
+    // ====================================================================
+    // 顶点输入
+    // ====================================================================
+
+    /// 直接设置完整的顶点输入 CreateInfo
+    VulkanPipelineState &setVertexInput(const vk::PipelineVertexInputStateCreateInfo &info);
 
     /// 从顶点着色器模块的反射数据自动生成单 binding 顶点输入描述（紧密打包）。
     /// 按 location 升序排列属性，offset 按属性大小紧密累加。
@@ -394,54 +134,348 @@ public:
     /// @param binding    顶点缓冲绑定点（默认 0）
     /// @param rate       顶点/实例速率（默认 eVertex）
     /// @return 单个顶点的 stride（字节数）
-    uint32_t SetVertexInputFromShader(const ShaderModule &vertShader,
-                                      uint32_t binding = 0,
-                                      vk::VertexInputRate rate = vk::VertexInputRate::eVertex);
+    uint32_t setVertexInputFromShader(const ShaderModule &vertShader,
+                                      uint32_t           binding = 0,
+                                      vk::VertexInputRate rate   = vk::VertexInputRate::eVertex);
+
+    /// 设置顶点绑定描述
+    VulkanPipelineState &setVertexBindings(const std::vector<vk::VertexInputBindingDescription> &bindings);
+
+    /// 设置顶点属性描述
+    VulkanPipelineState &setVertexAttributes(const std::vector<vk::VertexInputAttributeDescription> &attrs);
 
     // ====================================================================
-    // 公共方法
+    // 输入装配
     // ====================================================================
 
-    // ---- 脏标记查询 ----
+    /// 设置图元拓扑
+    VulkanPipelineState &setInputAssembly(vk::PrimitiveTopology topology, vk::Bool32 restart = VK_FALSE);
 
-    /// 是否有动态参数的值发生了变更（需要 vkCmdSet* 刷入）
-    [[nodiscard]] bool HasDynamicDirty() const;
+    // ====================================================================
+    // 细分曲面
+    // ====================================================================
 
-    /// 是否需要重建 VkPipeline（静态参数变更 / 动态标记变更 / blend attachments 变更）
-    [[nodiscard]] bool HasPipelineDirty() const;
+    /// 设置细分曲面 patch 控制点数量
+    VulkanPipelineState &setTessellationPatchControlPoints(uint32_t patchControlPoints);
 
-    /// 清除所有脏标记
-    void ClearAllDirty();
+    // ====================================================================
+    // 视口
+    // ====================================================================
 
-    // ---- 动态状态枚举 ----
+    /// 直接设置完整的视口状态 CreateInfo
+    VulkanPipelineState &setViewportState(const vk::PipelineViewportStateCreateInfo &info);
 
-    /// 收集当前所有标记为动态的 vk::DynamicState 值。
-    /// 用于创建 VkPipelineDynamicStateCreateInfo。
-    [[nodiscard]] std::vector<vk::DynamicState> GetEnabledDynamicStates() const;
+    /// 设置视口数量和剪刀矩形数量（动态时使用计数版本）
+    VulkanPipelineState &setViewportCount(uint32_t viewportCount, uint32_t scissorCount = 1);
 
-    // ---- 状态刷入 ----
+    // ====================================================================
+    // 光栅化
+    // ====================================================================
 
-    /// 将所有动态参数的最新值通过 vkCmdSet* 写入 command buffer。
-    /// 注意：不包含 Viewport/Scissor 矩形（需额外调用 vkCmdSetViewport/Scissor）。
-    void FlushDynamicStates(vk::CommandBuffer cmd) const;
+    /// 直接设置完整的光栅化状态 CreateInfo
+    VulkanPipelineState &setRasterization(const vk::PipelineRasterizationStateCreateInfo &info);
 
-    // ---- 管线创建 ----
+    /// 设置深度钳位
+    VulkanPipelineState &setDepthClampEnable(vk::Bool32 enable);
 
-    /// 从当前状态构建完整的 VkGraphicsPipelineCreateInfo。
-    /// @param flags 可选的 VkPipelineCreateFlags（如 eAllowDerivatives）
-    [[nodiscard]] PipelineCreateBundle BuildCreateInfo(vk::PipelineCreateFlags flags = {}) const;
+    /// 设置光栅化丢弃
+    VulkanPipelineState &setRasterizerDiscardEnable(vk::Bool32 enable);
 
-    // ---- 便利方法：批量切换动态/静态 ----
+    /// 设置多边形模式
+    VulkanPipelineState &setPolygonMode(vk::PolygonMode mode);
 
-    void SetAllInputAssemblyDynamic(bool dyn);
+    /// 设置剔除模式
+    VulkanPipelineState &setCullMode(vk::CullModeFlags mode);
 
-    void SetAllRasterizationDynamic(bool dyn);
+    /// 设置正面方向
+    VulkanPipelineState &setFrontFace(vk::FrontFace face);
 
-    void SetAllDepthStencilDynamic(bool dyn);
+    /// 设置深度偏移启用
+    VulkanPipelineState &setDepthBiasEnable(vk::Bool32 enable);
 
-    void SetAllViewportDynamic(bool dyn);
+    /// 设置线宽
+    VulkanPipelineState &setLineWidth(float lineWidth);
 
-    void SetAllDynamic(bool dyn); // 所有可动态参数设为 dyn
+    // ====================================================================
+    // 多重采样
+    // ====================================================================
+
+    /// 直接设置完整的多重采样状态 CreateInfo
+    VulkanPipelineState &setMultisample(const vk::PipelineMultisampleStateCreateInfo &info);
+
+    /// 设置采样数
+    VulkanPipelineState &setRasterizationSamples(vk::SampleCountFlagBits samples);
+
+    /// 设置采样着色启用
+    VulkanPipelineState &setSampleShadingEnable(vk::Bool32 enable);
+
+    /// 设置最小采样着色率
+    VulkanPipelineState &setMinSampleShading(float rate);
+
+    /// 设置采样遮罩
+    VulkanPipelineState &setSampleMask(vk::SampleMask mask);
+
+    /// 设置 Alpha 到覆盖
+    VulkanPipelineState &setAlphaToCoverageEnable(vk::Bool32 enable);
+
+    /// 设置 Alpha 到一
+    VulkanPipelineState &setAlphaToOneEnable(vk::Bool32 enable);
+
+    // ====================================================================
+    // 深度/模板
+    // ====================================================================
+
+    /// 直接设置完整的深度模板状态 CreateInfo
+    VulkanPipelineState &setDepthStencil(const vk::PipelineDepthStencilStateCreateInfo &info);
+
+    /// 设置深度测试启用
+    VulkanPipelineState &setDepthTestEnable(vk::Bool32 enable);
+
+    /// 设置深度写入启用
+    VulkanPipelineState &setDepthWriteEnable(vk::Bool32 enable);
+
+    /// 设置深度比较函数
+    VulkanPipelineState &setDepthCompareOp(vk::CompareOp op);
+
+    /// 设置深度边界测试启用
+    VulkanPipelineState &setDepthBoundsTestEnable(vk::Bool32 enable);
+
+    /// 设置模板测试启用
+    VulkanPipelineState &setStencilTestEnable(vk::Bool32 enable);
+
+    /// 设置正面模板操作
+    VulkanPipelineState &setStencilFront(const vk::StencilOpState &state);
+
+    /// 设置背面模板操作
+    VulkanPipelineState &setStencilBack(const vk::StencilOpState &state);
+
+    // ====================================================================
+    // 颜色混合
+    // ====================================================================
+
+    /// 添加一个颜色混合附件
+    VulkanPipelineState &addColorBlendAttachment(const vk::PipelineColorBlendAttachmentState &att);
+
+    /// 清空颜色混合附件
+    VulkanPipelineState &clearColorBlendAttachments();
+
+    /// 设置完整的颜色混合附件列表
+    VulkanPipelineState &setColorBlendAttachments(const std::vector<vk::PipelineColorBlendAttachmentState> &attachments);
+
+    /// 获取颜色混合附件列表
+    const std::vector<vk::PipelineColorBlendAttachmentState> &getColorBlendAttachments() const;
+
+    /// 设置混合常量
+    VulkanPipelineState &setColorBlendConstants(float r, float g, float b, float a);
+
+    /// 设置逻辑操作启用
+    VulkanPipelineState &setLogicOpEnable(vk::Bool32 enable);
+
+    /// 设置逻辑操作
+    VulkanPipelineState &setLogicOp(vk::LogicOp op);
+
+    // ====================================================================
+    // 管线构建
+    // ====================================================================
+
+    /**
+     * @brief 持有所有 Vk*CreateInfo 及其依赖数据的 Bundle。
+     *
+     * 可直接传给 vk::Device::createGraphicsPipeline()。
+     * 生命周期：调用者需保证 Bundle 在 pipeline 创建完成前存活。
+     */
+    struct CreateBundle {
+        // —— 次级数据（被 CreateInfo 指向） ——
+        std::vector<vk::PipelineShaderStageCreateInfo>      shaderStageCreateInfos;
+        std::vector<vk::DynamicState>                        dynamicStates;
+        std::vector<vk::VertexInputBindingDescription>      vertexBindings;
+        std::vector<vk::VertexInputAttributeDescription>    vertexAttributes;
+        std::vector<vk::PipelineColorBlendAttachmentState>  blendAttachmentStates;
+        std::vector<vk::Format>                              colorAttachmentFormats;
+        vk::SampleMask                                       sampleMaskData{0};
+
+        // —— CreateInfo 链 ——
+        vk::PipelineVertexInputStateCreateInfo    vertexInputInfo{};
+        vk::PipelineInputAssemblyStateCreateInfo  inputAssemblyInfo{};
+        vk::PipelineTessellationStateCreateInfo   tessellationInfo{};
+        vk::PipelineViewportStateCreateInfo       viewportInfo{};
+        vk::PipelineRasterizationStateCreateInfo  rasterizationInfo{};
+        vk::PipelineMultisampleStateCreateInfo    multisampleInfo{};
+        vk::PipelineDepthStencilStateCreateInfo   depthStencilInfo{};
+        vk::PipelineColorBlendStateCreateInfo     colorBlendInfo{};
+        vk::PipelineDynamicStateCreateInfo        dynamicStateInfo{};
+        vk::PipelineRenderingCreateInfo           renderingInfo{};
+
+        /// 主 CreateInfo（pNext 链已串联好）
+        vk::GraphicsPipelineCreateInfo pipelineInfo{};
+    };
+
+    /// 构建动态渲染模式的管线创建信息（renderPass = VK_NULL_HANDLE，自动挂载 pNext）
+    CreateBundle buildDynamicRenderingBundle(vk::PipelineCreateFlags flags = {}) const;
+
+    /// 构建传统 RenderPass 模式的管线创建信息
+    CreateBundle buildRenderPassBundle(vk::RenderPass renderPass,
+                                       uint32_t        subpass = 0,
+                                       vk::PipelineCreateFlags flags = {}) const;
+
+    // ====================================================================
+    // 动态状态刷入
+    // ====================================================================
+
+    /**
+     * @brief 将当前动态状态值通过 vkCmdSet* 写入 command buffer。
+     *
+     * 仅对已通过 enableDynamicState() 启用的动态状态执行刷入。
+     * 注意：不包含 Viewport/Scissor 矩形（需外部调用 vkCmdSetViewport/Scissor）。
+     */
+    void flushDynamicStates(vk::CommandBuffer cmd) const;
+
+    // ====================================================================
+    // 哈希（用于管线缓存去重）
+    // ====================================================================
+
+    /// 计算状态哈希（用于 unordered_map 缓存的 key）
+    size_t hash() const;
+
+    // ====================================================================
+    // 状态访问器（只读，供 hash 特化等使用）
+    // ====================================================================
+
+    // 注意：以下 Get 方法主要供 std::hash 特化和其他需要读取状态的代码使用。
+    // 对于设置状态，优先使用链式 set 方法。
+
+    vk::PrimitiveTopology                            getTopology()              const { return m_InputAssembly.topology; }
+    vk::Bool32                                       getPrimitiveRestartEnable() const { return m_InputAssembly.primitiveRestartEnable; }
+    uint32_t                                         getPatchControlPoints()    const { return m_Tessellation.patchControlPoints; }
+    uint32_t                                         getViewportCount()         const { return m_ViewportState.viewportCount; }
+    uint32_t                                         getScissorCount()          const { return m_ViewportState.scissorCount; }
+    vk::Bool32                                       getDepthClampEnable()      const { return m_Rasterization.depthClampEnable; }
+    vk::Bool32                                       getRasterizerDiscardEnable() const { return m_Rasterization.rasterizerDiscardEnable; }
+    vk::PolygonMode                                  getPolygonMode()           const { return m_Rasterization.polygonMode; }
+    vk::CullModeFlags                                getCullMode()              const { return m_Rasterization.cullMode; }
+    vk::FrontFace                                    getFrontFace()             const { return m_Rasterization.frontFace; }
+    vk::Bool32                                       getDepthBiasEnable()       const { return m_Rasterization.depthBiasEnable; }
+    float                                            getLineWidth()             const { return m_Rasterization.lineWidth; }
+    vk::SampleCountFlagBits                          getRasterizationSamples()  const { return m_Multisample.rasterizationSamples; }
+    vk::Bool32                                       getSampleShadingEnable()   const { return m_Multisample.sampleShadingEnable; }
+    float                                            getMinSampleShading()      const { return m_Multisample.minSampleShading; }
+    vk::SampleMask                                   getSampleMask()            const { return m_SampleMask; }
+    vk::Bool32                                       getAlphaToCoverageEnable() const { return m_Multisample.alphaToCoverageEnable; }
+    vk::Bool32                                       getAlphaToOneEnable()      const { return m_Multisample.alphaToOneEnable; }
+    vk::Bool32                                       getDepthTestEnable()       const { return m_DepthStencil.depthTestEnable; }
+    vk::Bool32                                       getDepthWriteEnable()      const { return m_DepthStencil.depthWriteEnable; }
+    vk::CompareOp                                    getDepthCompareOp()        const { return m_DepthStencil.depthCompareOp; }
+    vk::Bool32                                       getDepthBoundsTestEnable() const { return m_DepthStencil.depthBoundsTestEnable; }
+    vk::Bool32                                       getStencilTestEnable()     const { return m_DepthStencil.stencilTestEnable; }
+    const vk::StencilOpState &                       getStencilFront()          const { return m_DepthStencil.front; }
+    const vk::StencilOpState &                       getStencilBack()           const { return m_DepthStencil.back; }
+    vk::Bool32                                       getLogicOpEnable()         const { return m_ColorBlend.logicOpEnable; }
+    vk::LogicOp                                      getLogicOp()               const { return m_ColorBlend.logicOp; }
+    const std::array<float, 4> &                     getBlendConstants()        const { return m_BlendConstants; }
+    const std::vector<vk::VertexInputBindingDescription> &   getVertexBindings()   const { return m_VertexBindings; }
+    const std::vector<vk::VertexInputAttributeDescription> & getVertexAttributes() const { return m_VertexAttributes; }
+    const std::vector<vk::Format> &                          getColorFormats()    const { return m_ColorFormats; }
+    vk::Format                                               getDepthFormat()     const { return m_DepthFormat; }
+    vk::Format                                               getStencilFormat()   const { return m_StencilFormat; }
+    uint32_t                                                 getViewMask()        const { return m_ViewMask; }
+
+private:
+    // ====================================================================
+    // 内部状态存储
+    // ====================================================================
+
+    // —— 顶点输入 ——
+    std::vector<vk::VertexInputBindingDescription>   m_VertexBindings{};
+    std::vector<vk::VertexInputAttributeDescription> m_VertexAttributes{};
+
+    // —— 输入装配 ——
+    vk::PipelineInputAssemblyStateCreateInfo m_InputAssembly{
+        .topology = vk::PrimitiveTopology::eTriangleList,
+        .primitiveRestartEnable = VK_FALSE,
+    };
+
+    // —— 细分曲面 ——
+    vk::PipelineTessellationStateCreateInfo m_Tessellation{
+        .patchControlPoints = 3,
+    };
+
+    // —— 视口 ——
+    vk::PipelineViewportStateCreateInfo m_ViewportState{
+        .viewportCount = 1,
+        .pViewports    = nullptr,
+        .scissorCount  = 1,
+        .pScissors     = nullptr,
+    };
+
+    // —— 光栅化 ——
+    vk::PipelineRasterizationStateCreateInfo m_Rasterization{
+        .depthClampEnable        = VK_FALSE,
+        .rasterizerDiscardEnable = VK_FALSE,
+        .polygonMode             = vk::PolygonMode::eFill,
+        .cullMode                = vk::CullModeFlagBits::eBack,
+        .frontFace               = vk::FrontFace::eCounterClockwise,
+        .depthBiasEnable         = VK_FALSE,
+        .depthBiasConstantFactor = 0.0f,
+        .depthBiasClamp          = 0.0f,
+        .depthBiasSlopeFactor    = 0.0f,
+        .lineWidth               = 1.0f,
+    };
+
+    // —— 多重采样 ——
+    // sampleMask 单独存储，CreateInfo 中的 pSampleMask 指向它
+    vk::SampleMask                               m_SampleMask{0};
+    vk::PipelineMultisampleStateCreateInfo       m_Multisample{
+        .rasterizationSamples  = vk::SampleCountFlagBits::e1,
+        .sampleShadingEnable   = VK_FALSE,
+        .minSampleShading      = 0.0f,
+        .pSampleMask           = nullptr,
+        .alphaToCoverageEnable = VK_FALSE,
+        .alphaToOneEnable      = VK_FALSE,
+    };
+
+    // —— 深度/模板 ——
+    vk::PipelineDepthStencilStateCreateInfo m_DepthStencil{
+        .depthTestEnable       = VK_TRUE,
+        .depthWriteEnable      = VK_TRUE,
+        .depthCompareOp        = vk::CompareOp::eLess,
+        .depthBoundsTestEnable = VK_FALSE,
+        .stencilTestEnable     = VK_FALSE,
+        .front                 = {vk::StencilOp::eKeep, vk::StencilOp::eKeep, vk::StencilOp::eKeep, vk::CompareOp::eAlways},
+        .back                  = {vk::StencilOp::eKeep, vk::StencilOp::eKeep, vk::StencilOp::eKeep, vk::CompareOp::eAlways},
+        .minDepthBounds        = 0.0f,
+        .maxDepthBounds        = 0.0f,
+    };
+
+    // —— 颜色混合 ——
+    std::vector<vk::PipelineColorBlendAttachmentState> m_BlendAttachments{};
+    std::array<float, 4>                               m_BlendConstants{0.0f, 0.0f, 0.0f, 0.0f};
+    vk::PipelineColorBlendStateCreateInfo              m_ColorBlend{
+        .logicOpEnable = VK_FALSE,
+        .logicOp       = vk::LogicOp::eClear,
+        .attachmentCount = 0,
+        .pAttachments    = nullptr,
+        .blendConstants  = {{0.0f, 0.0f, 0.0f, 0.0f}},
+    };
+
+    // —— 动态状态 ——
+    std::unordered_set<vk::DynamicState>   m_DynamicStateSet;
+    mutable std::vector<vk::DynamicState>  m_DynamicStateCache;
+
+    // —— 动态渲染格式信息 ——
+    std::vector<vk::Format> m_ColorFormats{};
+    vk::Format              m_DepthFormat    = vk::Format::eUndefined;
+    vk::Format              m_StencilFormat  = vk::Format::eUndefined;
+    uint32_t                m_ViewMask       = 0;
+
+    // —— 管线布局（指针，外部所有） ——
+    VulkanPipelineLayout *m_PipelineLayout = nullptr;
+
+    // ====================================================================
+    // 内部辅助
+    // ====================================================================
+
+    /// 填充 CreateBundle 中各 CreateInfo 的公共部分（不含 renderPass / pNext）
+    void fillBundleCommon(CreateBundle &bundle, vk::PipelineCreateFlags flags) const;
 };
 
 } // namespace GE

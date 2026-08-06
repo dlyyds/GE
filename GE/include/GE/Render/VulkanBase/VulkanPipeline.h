@@ -24,8 +24,7 @@
  *     ├─ VulkanGraphicsPipeline（图形管线）
  *     └─ VulkanComputePipeline（计算管线）
  *
- * 基类持有由外部传入的 VulkanPipelineState 副本，
- * 构造函数创建管线后自动清除脏标记。
+ * 基类持有由外部传入的 VulkanPipelineState 副本。
  */
 
 #pragma once

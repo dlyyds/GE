@@ -39,6 +39,11 @@ void ModelTestLayer::OnAttach() {
                                       vk::Filter::eNearest);
     m_Texture->SetDebugName("ModelTest_Checkerboard");
 
+    // 创建模型材质（使用棋盘纹理作为 Albedo）
+    m_ModelMaterial = std::make_unique<Material>();
+    m_ModelMaterial->SetTexture(Material::Albedo, m_Texture.get());
+    m_ModelMaterial->SetDebugName("ModelTest_CubeMat");
+
     {
         // 创建立方体网格（内置）
         m_CubeMesh = Mesh::CreateBuiltin(device, "cube");
@@ -55,8 +60,8 @@ void ModelTestLayer::OnAttach() {
     m_Scene = std::make_unique<Scene>();
     m_ModelEntity = m_Scene->CreateEntity("Cube");
 
-    // 添加 3D 网格渲染组件（关联立方体网格 + 棋盘纹理）
-    m_ModelEntity.AddComponent<MeshComponent>(m_CubeMesh.get(), m_Texture.get());
+    // 添加 3D 网格渲染组件（关联立方体网格 + 模型材质）
+    m_ModelEntity.AddComponent<MeshComponent>(m_CubeMesh.get(), m_ModelMaterial.get());
 
     // 创建相机实体并添加相机组件
     m_CameraEntity = m_Scene->CreateEntity("MainCamera");
@@ -166,6 +171,7 @@ void ModelTestLayer::OnDetach() {
     m_PhysicsBallEntity = {};
     m_HierarchyPanel.SetContext(nullptr);
     m_Scene.reset();
+    m_ModelMaterial.reset();
     m_Texture.reset();
     m_CubeMesh.reset();
     m_SphereMesh.reset();
@@ -303,8 +309,12 @@ void ModelTestLayer::OnImGuiRender() {
     ImGui::ColorEdit4("颜色 (Color)", &mc.Color.r);
     ImGui::Text("网格顶点数：%u", m_CubeMesh ? m_CubeMesh->GetVertexCount() : 0);
     ImGui::Text("网格索引数：%u", m_CubeMesh ? m_CubeMesh->GetIndexCount() : 0);
-    ImGui::Text("纹理：%s",
-                mc.BaseTexture ? "Checkerboard.png" : "(null)");
+    ImGui::Text("材质：%s",
+                mc.MaterialPtr ? mc.MaterialPtr->GetDebugName().c_str() : "(null)");
+    if (mc.MaterialPtr) {
+        ImGui::Text("  Albedo：%s",
+            mc.MaterialPtr->HasTexture(Material::Albedo) ? "Checkerboard.png" : "(null)");
+    }
 
     ImGui::Separator();
 

@@ -174,23 +174,12 @@ void Scene::OnUpdate3D(Timestep ts,
         auto &mc = meshView.get<MeshComponent>(entity);
 
         if (mc.MeshPtr) {
-            // 优先使用 MaterialPtr（材质系统新接口），
-            // 否则 fallback 到 BaseTexture + Color（旧接口兼容）
-            if (mc.MaterialPtr) {
-                r3d.DrawMesh(
-                    tc.GetTransform(),
-                    mc.MeshPtr,
-                    mc.MaterialPtr,
-                    mc.Color
-                );
-            } else {
-                r3d.DrawMesh(
-                    tc.GetTransform(),
-                    mc.MeshPtr,
-                    mc.BaseTexture,
-                    mc.Color
-                );
-            }
+            r3d.DrawMesh(
+                tc.GetTransform(),
+                mc.MeshPtr,
+                mc.MaterialPtr,
+                mc.Color
+            );
         }
     }
 

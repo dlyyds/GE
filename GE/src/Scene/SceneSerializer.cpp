@@ -11,6 +11,7 @@
 #include "Scene/Scene.h"
 #include "Scene/Entity.h"
 #include "Scene/Components.h"
+#include "Render/Material.h"
 #include "Render/Texture.h"
 #include "Render/Mesh.h"
 #include "Render/VulkanBase/VulkanDevice.h"
@@ -176,7 +177,35 @@ Mesh *SceneSerializer::GetOrLoadMesh(const std::string &filepath) {
     return raw;
 }
 
+Material *SceneSerializer::GetOrCreateMaterial(const std::string &albedoPath) {
+    if (albedoPath.empty()) {
+        return nullptr;
+    }
+
+    // 按 Albedo 纹理路径去重
+    auto it = m_LoadedMaterials.find(albedoPath);
+    if (it != m_LoadedMaterials.end()) {
+        return it->second.get();
+    }
+
+    // 先加载 Albedo 纹理
+    Texture *albedo = GetOrLoadTexture(albedoPath);
+    if (!albedo) {
+        return nullptr;
+    }
+
+    // 创建 Material 并绑定 Albedo 槽位
+    auto mat = std::make_unique<Material>();
+    mat->SetTexture(Material::Albedo, albedo);
+    mat->SetDebugName("Mat_" + albedoPath);
+
+    Material *raw = mat.get();
+    m_LoadedMaterials[albedoPath] = std::move(mat);
+    return raw;
+}
+
 void SceneSerializer::ClearLoadedResources() {
+    m_LoadedMaterials.clear();
     m_LoadedTextures.clear();
     m_LoadedMeshes.clear();
 }
@@ -249,9 +278,12 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
                 meshNode["Mesh"] = mc.MeshPtr->GetFilePath();
             }
 
-            // 纹理路径
-            if (mc.BaseTexture && !mc.BaseTexture->GetFilePath().empty()) {
-                meshNode["Texture"] = mc.BaseTexture->GetFilePath();
+            // 材质 Albedo 纹理路径（以 "Texture" 字段名写入，兼容旧版本）
+            if (mc.MaterialPtr && mc.MaterialPtr->HasTexture(Material::Albedo)) {
+                Texture *albedo = mc.MaterialPtr->GetTexture(Material::Albedo);
+                if (albedo && !albedo->GetFilePath().empty()) {
+                    meshNode["Texture"] = albedo->GetFilePath();
+                }
             }
         }
 
@@ -464,10 +496,10 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
                 mc.MeshPtr = GetOrLoadMesh(meshPath);
             }
 
-            // 纹理路径
+            // 材质：从 "Texture" 字段创建单 Albedo 纹理材质（兼容旧版本格式）
             if (meshNode["Texture"]) {
                 std::string texPath = meshNode["Texture"].as<std::string>("");
-                mc.BaseTexture = GetOrLoadTexture(texPath);
+                mc.MaterialPtr = GetOrCreateMaterial(texPath);
             }
         }
 

@@ -11,6 +11,7 @@ class VulkanDevice;
 class VulkanResourceCache;
 class Texture;
 class Mesh;
+class Material;
 
 /**
  * @brief 场景序列化器 —— 基于 YAML 格式保存和加载场景。
@@ -84,8 +85,9 @@ private:
     VulkanResourceCache *m_ResourceCache = nullptr;
 
     // 反序列化时加载的资源（同路径去重，由 SceneSerializer 持有所有权）
-    std::unordered_map<std::string, std::unique_ptr<Texture>> m_LoadedTextures;
-    std::unordered_map<std::string, std::unique_ptr<Mesh>> m_LoadedMeshes;
+    std::unordered_map<std::string, std::unique_ptr<Texture>>  m_LoadedTextures;
+    std::unordered_map<std::string, std::unique_ptr<Mesh>>     m_LoadedMeshes;
+    std::unordered_map<std::string, std::unique_ptr<Material>> m_LoadedMaterials;
 
     /**
      * @brief 获取或加载指定路径的纹理（内部去重）。
@@ -98,6 +100,17 @@ private:
      * @return 网格指针，失败返回 nullptr
      */
     Mesh *GetOrLoadMesh(const std::string &filepath);
+
+    /**
+     * @brief 获取或创建一个"单 Albedo 纹理"材质（按纹理路径去重）。
+     *
+     * 用于反序列化时的兼容：旧版本 "Texture" 字段直接对应 Material 的 Albedo 槽位。
+     * 同一张纹理只会创建一个 Material 实例。
+     *
+     * @param albedoPath  Albedo 纹理路径
+     * @return 材质指针，失败返回 nullptr
+     */
+    Material *GetOrCreateMaterial(const std::string &albedoPath);
 };
 
 } // namespace GE

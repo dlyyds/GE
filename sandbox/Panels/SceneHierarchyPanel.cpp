@@ -422,10 +422,9 @@ void SceneHierarchyPanel::DrawComponents(Entity entity) {
             ImGui::Text("  Indices:  %u", component.MeshPtr->GetIndexCount());
         }
 
-        ImGui::Text("Texture: %s", component.BaseTexture ? "(assigned)" : "(null)");
-
-        // 材质显示（Material 优先路径）
-        ImGui::Text("Material: %s", component.MaterialPtr ? "(assigned)" : "(null)");
+        // 材质信息
+        ImGui::Text("Material: %s", component.MaterialPtr ?
+            component.MaterialPtr->GetDebugName().c_str() : "(null)");
         if (component.MaterialPtr) {
             const char *typeName = "Unknown";
             switch (component.MaterialPtr->GetType()) {

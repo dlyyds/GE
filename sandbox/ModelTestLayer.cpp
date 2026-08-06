@@ -70,7 +70,7 @@ void ModelTestLayer::OnAttach() {
     // 添加 3D 网格渲染组件
     m_ModelEntity.AddComponent<MeshComponent>(m_CubeMesh.get());
     // 添加材质组件（与网格解耦，独立管理）
-    m_ModelEntity.AddComponent<MaterialComponent>(m_ModelMaterial.get());
+    m_ModelEntity.AddComponent<MaterialComponent>(m_ModelMaterial);
 
     // 创建相机实体并添加相机组件
     m_CameraEntity = m_Scene->CreateEntity("MainCamera");

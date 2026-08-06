@@ -17,6 +17,8 @@
 #include "Render/Renderer.h"
 #include "Render/VulkanBase/VulkanDevice.h"
 #include "Core/Log.h"
+#include "Render/MaterialManager.h"
+#include "Render/TextureManager.h"
 
 #include <yaml-cpp/yaml.h>
 #include <glm/glm.hpp>
@@ -300,9 +302,12 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
 
             std::string typeStr;
             switch (rbc.Type) {
-                case Physics::RigidBodyType::Static:    typeStr = "Static"; break;
-                case Physics::RigidBodyType::Kinematic: typeStr = "Kinematic"; break;
-                case Physics::RigidBodyType::Dynamic:   typeStr = "Dynamic"; break;
+            case Physics::RigidBodyType::Static: typeStr = "Static";
+                break;
+            case Physics::RigidBodyType::Kinematic: typeStr = "Kinematic";
+                break;
+            case Physics::RigidBodyType::Dynamic: typeStr = "Dynamic";
+                break;
             }
             rbNode["Type"] = typeStr;
             rbNode["Mass"] = rbc.Mass;
@@ -451,7 +456,7 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
             if (meshNode["Texture"]) {
                 std::string texPath = meshNode["Texture"].as<std::string>("");
                 Material *mat = Renderer::GetMaterialManager()
-                                    .GetOrCreateFromAlbedo(texPath);
+                    .GetOrCreateFromAlbedo(texPath);
                 if (mat) {
                     entity.AddComponent<MaterialComponent>(mat);
                 }
@@ -467,7 +472,7 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
             if (matNode["AlbedoTexture"]) {
                 std::string texPath = matNode["AlbedoTexture"].as<std::string>("");
                 mat = Renderer::GetMaterialManager()
-                          .GetOrCreateFromAlbedo(texPath);
+                    .GetOrCreateFromAlbedo(texPath);
             }
 
             // 即使材质为空也添加组件（表示显式声明了材质组件）
@@ -549,16 +554,19 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
             auto &rbc = entity.AddComponent<RigidBodyComponent>();
 
             std::string typeStr = rbNode["Type"] ? rbNode["Type"].as<std::string>("Static") : "Static";
-            if (typeStr == "Kinematic")      rbc.Type = Physics::RigidBodyType::Kinematic;
-            else if (typeStr == "Dynamic")   rbc.Type = Physics::RigidBodyType::Dynamic;
-            else                             rbc.Type = Physics::RigidBodyType::Static;
+            if (typeStr == "Kinematic")
+                rbc.Type = Physics::RigidBodyType::Kinematic;
+            else if (typeStr == "Dynamic")
+                rbc.Type = Physics::RigidBodyType::Dynamic;
+            else
+                rbc.Type = Physics::RigidBodyType::Static;
 
-            rbc.Mass           = rbNode["Mass"]           ? rbNode["Mass"].as<float>(1.0f) : 1.0f;
-            rbc.Friction       = rbNode["Friction"]       ? rbNode["Friction"].as<float>(0.6f) : 0.6f;
-            rbc.Restitution    = rbNode["Restitution"]    ? rbNode["Restitution"].as<float>(0.0f) : 0.0f;
-            rbc.LinearDamping  = rbNode["LinearDamping"]  ? rbNode["LinearDamping"].as<float>(0.05f) : 0.05f;
+            rbc.Mass = rbNode["Mass"] ? rbNode["Mass"].as<float>(1.0f) : 1.0f;
+            rbc.Friction = rbNode["Friction"] ? rbNode["Friction"].as<float>(0.6f) : 0.6f;
+            rbc.Restitution = rbNode["Restitution"] ? rbNode["Restitution"].as<float>(0.0f) : 0.0f;
+            rbc.LinearDamping = rbNode["LinearDamping"] ? rbNode["LinearDamping"].as<float>(0.05f) : 0.05f;
             rbc.AngularDamping = rbNode["AngularDamping"] ? rbNode["AngularDamping"].as<float>(0.05f) : 0.05f;
-            rbc.IsSensor       = rbNode["IsSensor"]       ? rbNode["IsSensor"].as<bool>(false) : false;
+            rbc.IsSensor = rbNode["IsSensor"] ? rbNode["IsSensor"].as<bool>(false) : false;
         }
 
         // ---- BoxColliderComponent ----
@@ -567,7 +575,7 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
             auto &bcc = entity.AddComponent<BoxColliderComponent>();
 
             bcc.HalfExtents = DeserializeVec3(boxNode["HalfExtents"], {0.5f, 0.5f, 0.5f});
-            bcc.Offset      = DeserializeVec3(boxNode["Offset"], {0.0f, 0.0f, 0.0f});
+            bcc.Offset = DeserializeVec3(boxNode["Offset"], {0.0f, 0.0f, 0.0f});
         }
 
         // ---- SphereColliderComponent ----
@@ -585,9 +593,8 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
         entityCount++;
     }
 
-    GE_CORE_INFO("SceneSerializer: 场景已从 {} 加载（{} 个实体，{} 个纹理，{} 个网格）",
-                 filepath, entityCount,
-                 m_LoadedTextures.size(), m_LoadedMeshes.size());
+    GE_CORE_INFO("SceneSerializer: 场景已从 {} 加载（{} 个实体，{} 个网格）",
+                 filepath, entityCount, m_LoadedMeshes.size());
 
     return true;
 }

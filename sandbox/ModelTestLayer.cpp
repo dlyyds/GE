@@ -60,8 +60,10 @@ void ModelTestLayer::OnAttach() {
     m_Scene = std::make_unique<Scene>();
     m_ModelEntity = m_Scene->CreateEntity("Cube");
 
-    // 添加 3D 网格渲染组件（关联立方体网格 + 模型材质）
-    m_ModelEntity.AddComponent<MeshComponent>(m_CubeMesh.get(), m_ModelMaterial.get());
+    // 添加 3D 网格渲染组件
+    m_ModelEntity.AddComponent<MeshComponent>(m_CubeMesh.get());
+    // 添加材质组件（与网格解耦，独立管理）
+    m_ModelEntity.AddComponent<MaterialComponent>(m_ModelMaterial.get());
 
     // 创建相机实体并添加相机组件
     m_CameraEntity = m_Scene->CreateEntity("MainCamera");
@@ -309,11 +311,25 @@ void ModelTestLayer::OnImGuiRender() {
     ImGui::ColorEdit4("颜色 (Color)", &mc.Color.r);
     ImGui::Text("网格顶点数：%u", m_CubeMesh ? m_CubeMesh->GetVertexCount() : 0);
     ImGui::Text("网格索引数：%u", m_CubeMesh ? m_CubeMesh->GetIndexCount() : 0);
-    ImGui::Text("材质：%s",
-                mc.MaterialPtr ? mc.MaterialPtr->GetDebugName().c_str() : "(null)");
-    if (mc.MaterialPtr) {
-        ImGui::Text("  Albedo：%s",
-            mc.MaterialPtr->HasTexture(Material::Albedo) ? "Checkerboard.png" : "(null)");
+
+    ImGui::Separator();
+
+    // MaterialComponent 组件参数
+    bool hasMat = m_ModelEntity.HasComponent<MaterialComponent>();
+    ImGui::Text("MaterialComponent 组件");
+    if (!hasMat) {
+        ImGui::Text("材质：(null)");
+    } else {
+        auto &matComp = m_ModelEntity.GetComponent<MaterialComponent>();
+        ImGui::Text("材质：%s",
+                    matComp.MaterialPtr
+                        ? matComp.MaterialPtr->GetDebugName().c_str()
+                        : "(null)");
+        if (matComp.MaterialPtr) {
+            ImGui::Text("  Albedo：%s",
+                matComp.MaterialPtr->HasTexture(Material::Albedo)
+                    ? "Checkerboard.png" : "(null)");
+        }
     }
 
     ImGui::Separator();

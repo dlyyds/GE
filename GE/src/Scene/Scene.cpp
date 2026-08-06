@@ -173,14 +173,23 @@ void Scene::OnUpdate3D(Timestep ts,
         auto &tc = meshView.get<TransformComponent>(entity);
         auto &mc = meshView.get<MeshComponent>(entity);
 
-        if (mc.MeshPtr) {
-            r3d.DrawMesh(
-                tc.GetTransform(),
-                mc.MeshPtr,
-                mc.MaterialPtr,
-                mc.Color
-            );
+        if (!mc.MeshPtr) {
+            continue;
         }
+
+        // MaterialComponent 可选，没有则传 nullptr（使用白色 fallback）
+        Material *mat = nullptr;
+        auto *matComp = m_Registry.try_get<MaterialComponent>(entity);
+        if (matComp) {
+            mat = matComp->MaterialPtr;
+        }
+
+        r3d.DrawMesh(
+            tc.GetTransform(),
+            mc.MeshPtr,
+            mat,
+            mc.Color
+        );
     }
 
     r3d.EndScene();
@@ -387,6 +396,10 @@ void Scene::OnComponentAdded<ScriptComponent>(Entity entity, ScriptComponent &co
 
 template <>
 void Scene::OnComponentAdded<MeshComponent>(Entity entity, MeshComponent &component) {
+}
+
+template <>
+void Scene::OnComponentAdded<MaterialComponent>(Entity entity, MaterialComponent &component) {
 }
 
 template <>

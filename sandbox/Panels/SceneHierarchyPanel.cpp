@@ -263,6 +263,14 @@ void SceneHierarchyPanel::DrawComponents(Entity entity) {
             ImGui::CloseCurrentPopup();
         }
 
+        if (ImGui::MenuItem("Material")) {
+            if (!m_SelectionContext.HasComponent<MaterialComponent>())
+                m_SelectionContext.AddComponent<MaterialComponent>();
+            else
+                GE_CORE_WARN("This entity already has Material Component!");
+            ImGui::CloseCurrentPopup();
+        }
+
         if (ImGui::MenuItem("Sprite Renderer")) {
             if (!m_SelectionContext.HasComponent<SpriteRendererComponent>())
                 m_SelectionContext.AddComponent<SpriteRendererComponent>();
@@ -421,8 +429,10 @@ void SceneHierarchyPanel::DrawComponents(Entity entity) {
             ImGui::Text("  Vertices: %u", component.MeshPtr->GetVertexCount());
             ImGui::Text("  Indices:  %u", component.MeshPtr->GetIndexCount());
         }
+    });
 
-        // 材质信息
+    // ---- Material 组件 ----
+    DrawComponent<MaterialComponent>("Material", entity, [](auto &component) {
         ImGui::Text("Material: %s", component.MaterialPtr ?
             component.MaterialPtr->GetDebugName().c_str() : "(null)");
         if (component.MaterialPtr) {
@@ -430,12 +440,12 @@ void SceneHierarchyPanel::DrawComponents(Entity entity) {
             switch (component.MaterialPtr->GetType()) {
                 case Material::Type::BlinnPhong: typeName = "Blinn-Phong"; break;
             }
-            ImGui::Text("  Type: %s", typeName);
-            ImGui::Text("  Albedo: %s",
+            ImGui::Text("Type: %s", typeName);
+            ImGui::Text("Albedo: %s",
                 component.MaterialPtr->HasTexture(Material::Albedo) ? "(assigned)" : "(null)");
-            ImGui::Text("  Normal: %s",
+            ImGui::Text("Normal: %s",
                 component.MaterialPtr->HasTexture(Material::Normal) ? "(assigned)" : "(null)");
-            ImGui::Text("  Emissive: %s",
+            ImGui::Text("Emissive: %s",
                 component.MaterialPtr->HasTexture(Material::Emissive) ? "(assigned)" : "(null)");
         }
     });

@@ -277,12 +277,18 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
             if (mc.MeshPtr && !mc.MeshPtr->GetFilePath().empty()) {
                 meshNode["Mesh"] = mc.MeshPtr->GetFilePath();
             }
+        }
 
-            // 材质 Albedo 纹理路径（以 "Texture" 字段名写入，兼容旧版本）
-            if (mc.MaterialPtr && mc.MaterialPtr->HasTexture(Material::Albedo)) {
-                Texture *albedo = mc.MaterialPtr->GetTexture(Material::Albedo);
+        // ---- MaterialComponent ----
+        if (entity.HasComponent<MaterialComponent>()) {
+            const auto &matc = entity.GetComponent<MaterialComponent>();
+            YAML::Node matNode = entityNode["Material"];
+
+            // Albedo 纹理路径
+            if (matc.MaterialPtr && matc.MaterialPtr->HasTexture(Material::Albedo)) {
+                Texture *albedo = matc.MaterialPtr->GetTexture(Material::Albedo);
                 if (albedo && !albedo->GetFilePath().empty()) {
-                    meshNode["Texture"] = albedo->GetFilePath();
+                    matNode["AlbedoTexture"] = albedo->GetFilePath();
                 }
             }
         }
@@ -496,11 +502,30 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
                 mc.MeshPtr = GetOrLoadMesh(meshPath);
             }
 
-            // 材质：从 "Texture" 字段创建单 Albedo 纹理材质（兼容旧版本格式）
+            // 兼容旧版本格式：MeshRenderer 节点内的 Texture 字段
+            // → 自动创建 MaterialComponent 并绑定 Albedo 纹理
             if (meshNode["Texture"]) {
                 std::string texPath = meshNode["Texture"].as<std::string>("");
-                mc.MaterialPtr = GetOrCreateMaterial(texPath);
+                Material *mat = GetOrCreateMaterial(texPath);
+                if (mat) {
+                    entity.AddComponent<MaterialComponent>(mat);
+                }
             }
+        }
+
+        // ---- MaterialComponent ----
+        if (entityNode["Material"]) {
+            YAML::Node matNode = entityNode["Material"];
+
+            // Albedo 纹理路径
+            Material *mat = nullptr;
+            if (matNode["AlbedoTexture"]) {
+                std::string texPath = matNode["AlbedoTexture"].as<std::string>("");
+                mat = GetOrCreateMaterial(texPath);
+            }
+
+            // 即使材质为空也添加组件（表示显式声明了材质组件）
+            entity.AddComponent<MaterialComponent>(mat);
         }
 
         // ---- CameraComponent ----

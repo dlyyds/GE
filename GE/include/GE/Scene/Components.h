@@ -141,22 +141,21 @@ struct ScriptComponent {
 
 
 /**
- * @brief 静态网格渲染组件 —— 描述一个 3D 网格的渲染属性。
+ * @brief 静态网格组件 —— 描述一个 3D 网格资源。
  *
  * 与 TransformComponent 配合使用：Transform 决定位置/旋转/缩放，
- * MeshComponent 决定绘制什么网格、使用什么材质。
+ * MeshComponent 决定绘制什么网格。
+ * 材质由独立的 MaterialComponent 提供，两者组合起来决定最终渲染效果。
  *
- * Mesh 和 Material 使用裸指针引用，不拥有资源。资源由外部资源管理器管理。
+ * Mesh 使用裸指针引用，不拥有资源。资源由外部资源管理器管理。
  * Color 为 RGBA 分量，白色 (1,1,1,1) 表示原样显示材质颜色。
- * Material 为 nullptr 时使用纯白色替代（相当于无纹理的纯色网格）。
  *
  * 由 Renderer3D 在 Scene::OnUpdate3D() 中遍历并绘制，
  * 支持深度测试、背面剔除和 Blinn-Phong 光照。
  */
 struct MeshComponent {
     glm::vec4 Color{1.0f, 1.0f, 1.0f, 1.0f}; ///< 叠加颜色（默认白色，即不染色）
-    Mesh     *MeshPtr     = nullptr;          ///< 网格资源指针（可选，为 null 时不绘制）
-    Material *MaterialPtr = nullptr;          ///< 材质指针（从其 Albedo 槽位取主纹理）
+    Mesh     *MeshPtr = nullptr;              ///< 网格资源指针（可选，为 null 时不绘制）
 
     MeshComponent() = default;
 
@@ -170,31 +169,43 @@ struct MeshComponent {
     }
 
     /**
-     * @brief 指定网格的构造函数（颜色默认白色，无材质）。
+     * @brief 指定网格的构造函数（颜色默认白色）。
      */
     explicit MeshComponent(Mesh *mesh)
         : MeshPtr(mesh) {
     }
 
     /**
-     * @brief 同时指定网格和材质的构造函数（颜色默认白色）。
-     */
-    MeshComponent(Mesh *mesh, Material *material)
-        : MeshPtr(mesh), MaterialPtr(material) {
-    }
-
-    /**
-     * @brief 同时指定网格和颜色的构造函数（无材质）。
+     * @brief 同时指定网格和颜色的构造函数。
      */
     MeshComponent(Mesh *mesh, const glm::vec4 &color)
         : Color(color), MeshPtr(mesh) {
     }
+};
+
+
+/**
+ * @brief 材质组件 —— 为实体指定 3D 渲染所用的材质。
+ *
+ * 与 MeshComponent 配合使用：Mesh 决定几何形状，Material 决定表面着色。
+ * 实体可以只有 MeshComponent 而没有 MaterialComponent（此时使用纯白色 fallback），
+ * 也可以有 MaterialComponent 而没有 MeshComponent（此时不参与渲染，但可被其他系统引用）。
+ *
+ * Material 使用裸指针引用，不拥有资源。资源由外部材质管理器管理。
+ * 多个实体可以共享同一个 Material 实例（指针相同）。
+ */
+struct MaterialComponent {
+    Material *MaterialPtr = nullptr;  ///< 材质指针
+
+    MaterialComponent() = default;
+
+    MaterialComponent(const MaterialComponent &) = default;
 
     /**
-     * @brief 同时指定网格、材质和颜色的构造函数。
+     * @brief 指定材质的构造函数。
      */
-    MeshComponent(Mesh *mesh, Material *material, const glm::vec4 &color)
-        : Color(color), MeshPtr(mesh), MaterialPtr(material) {
+    explicit MaterialComponent(Material *material)
+        : MaterialPtr(material) {
     }
 };
 

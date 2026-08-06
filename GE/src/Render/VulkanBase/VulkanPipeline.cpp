@@ -55,12 +55,12 @@ VulkanGraphicsPipeline::VulkanGraphicsPipeline(VulkanDevice &device,
     m_State = pipeline_state;
 
     // 构建动态渲染模式的管线创建信息
-    auto bundle = m_State.buildDynamicRenderingBundle();
+    const auto &pipelineInfo = m_State.buildDynamicRenderingPipeline();
 
     // 创建 VkPipeline
     auto result = GetDevice().GetHandle().createGraphicsPipeline(
         vk::PipelineCache{pipeline_cache},
-        bundle.pipelineInfo);
+        pipelineInfo);
 
     if (result.result != vk::Result::eSuccess) {
         throw std::runtime_error("Failed to create graphics pipeline");

@@ -75,8 +75,8 @@ class ShaderModule;
  *        .setRenderingFormats({vk::Format::eB8G8R8A8Unorm})
  *        .setPipelineLayout(pipelineLayout);
  *
- *   auto bundle = state.buildDynamicRenderingBundle();
- *   auto pipeline = device.createGraphicsPipeline(nullptr, bundle.pipelineInfo);
+ *   auto &pipelineInfo = state.buildDynamicRenderingPipeline();
+ *   auto pipeline = device.createGraphicsPipeline(nullptr, pipelineInfo);
  *
  *   // 运行时更新动态状态
  *   state.setCullMode(vk::CullModeFlagBits::eFront);
@@ -279,44 +279,30 @@ public:
     // ====================================================================
 
     /**
-     * @brief 持有所有 Vk*CreateInfo 及其依赖数据的 Bundle。
+     * @brief 构建动态渲染模式的管线创建信息。
      *
-     * 可直接传给 vk::Device::createGraphicsPipeline()。
-     * 生命周期：调用者需保证 Bundle 在 pipeline 创建完成前存活。
+     * 组装所有内部 CreateInfo 的指针后返回主 CreateInfo 的 const 引用。
+     * 所有指针指向 VulkanPipelineState 自身的成员数据，调用者需保证
+     * VulkanPipelineState 对象在管线创建完成前存活。
+     *
+     * @param flags  可选的管线创建标志（如 eAllowDerivatives）
+     * @return 主 GraphicsPipelineCreateInfo 的 const 引用（pNext 链已串联）
      */
-    struct CreateBundle {
-        // —— 次级数据（被 CreateInfo 指向） ——
-        std::vector<vk::PipelineShaderStageCreateInfo>      shaderStageCreateInfos;
-        std::vector<vk::DynamicState>                        dynamicStates;
-        std::vector<vk::VertexInputBindingDescription>      vertexBindings;
-        std::vector<vk::VertexInputAttributeDescription>    vertexAttributes;
-        std::vector<vk::PipelineColorBlendAttachmentState>  blendAttachmentStates;
-        std::vector<vk::Format>                              colorAttachmentFormats;
-        vk::SampleMask                                       sampleMaskData{0};
+    const vk::GraphicsPipelineCreateInfo &buildDynamicRenderingPipeline(
+        vk::PipelineCreateFlags flags = {}) const;
 
-        // —— CreateInfo 链 ——
-        vk::PipelineVertexInputStateCreateInfo    vertexInputInfo{};
-        vk::PipelineInputAssemblyStateCreateInfo  inputAssemblyInfo{};
-        vk::PipelineTessellationStateCreateInfo   tessellationInfo{};
-        vk::PipelineViewportStateCreateInfo       viewportInfo{};
-        vk::PipelineRasterizationStateCreateInfo  rasterizationInfo{};
-        vk::PipelineMultisampleStateCreateInfo    multisampleInfo{};
-        vk::PipelineDepthStencilStateCreateInfo   depthStencilInfo{};
-        vk::PipelineColorBlendStateCreateInfo     colorBlendInfo{};
-        vk::PipelineDynamicStateCreateInfo        dynamicStateInfo{};
-        vk::PipelineRenderingCreateInfo           renderingInfo{};
-
-        /// 主 CreateInfo（pNext 链已串联好）
-        vk::GraphicsPipelineCreateInfo pipelineInfo{};
-    };
-
-    /// 构建动态渲染模式的管线创建信息（renderPass = VK_NULL_HANDLE，自动挂载 pNext）
-    CreateBundle buildDynamicRenderingBundle(vk::PipelineCreateFlags flags = {}) const;
-
-    /// 构建传统 RenderPass 模式的管线创建信息
-    CreateBundle buildRenderPassBundle(vk::RenderPass renderPass,
-                                       uint32_t        subpass = 0,
-                                       vk::PipelineCreateFlags flags = {}) const;
+    /**
+     * @brief 构建传统 RenderPass 模式的管线创建信息。
+     *
+     * @param renderPass  RenderPass 句柄
+     * @param subpass     子通道索引（默认 0）
+     * @param flags       可选的管线创建标志
+     * @return 主 GraphicsPipelineCreateInfo 的 const 引用
+     */
+    const vk::GraphicsPipelineCreateInfo &buildRenderPassPipeline(
+        vk::RenderPass          renderPass,
+        uint32_t                subpass = 0,
+        vk::PipelineCreateFlags flags   = {}) const;
 
     // ====================================================================
     // 动态状态刷入
@@ -471,11 +457,33 @@ private:
     VulkanPipelineLayout *m_PipelineLayout = nullptr;
 
     // ====================================================================
+    // 内部构建缓存（mutable，build 时填充，指针指向 state 自身成员）
+    // ====================================================================
+
+    // 着色器阶段缓存（从 pipeline layout 提取，pStages 指向这里）
+    mutable std::vector<vk::PipelineShaderStageCreateInfo> m_ShaderStageCache;
+
+    // 动态状态 CreateInfo（pDynamicStates 指向 m_DynamicStateCache）
+    mutable vk::PipelineDynamicStateCreateInfo m_DynamicStateInfo{};
+
+    // 顶点输入 CreateInfo（指向 m_VertexBindings / m_VertexAttributes）
+    mutable vk::PipelineVertexInputStateCreateInfo m_VertexInputInfo{};
+
+    // 颜色混合 CreateInfo（指向 m_BlendAttachments / m_BlendConstants）
+    mutable vk::PipelineColorBlendStateCreateInfo m_ColorBlendInfo{};
+
+    // 动态渲染 pNext 结构体（指向 m_ColorFormats）
+    mutable vk::PipelineRenderingCreateInfo m_RenderingInfo{};
+
+    // 主 CreateInfo
+    mutable vk::GraphicsPipelineCreateInfo m_PipelineInfo{};
+
+    // ====================================================================
     // 内部辅助
     // ====================================================================
 
-    /// 填充 CreateBundle 中各 CreateInfo 的公共部分（不含 renderPass / pNext）
-    void fillBundleCommon(CreateBundle &bundle, vk::PipelineCreateFlags flags) const;
+    /// 组装内部各 CreateInfo 的公共部分（不含 renderPass / pNext）
+    void buildCommon(vk::PipelineCreateFlags flags) const;
 };
 
 } // namespace GE

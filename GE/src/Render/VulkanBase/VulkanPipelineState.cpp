@@ -246,7 +246,8 @@ VulkanPipelineState &VulkanPipelineState::setMultisample(const vk::PipelineMulti
     if (info.pSampleMask) {
         m_SampleMask = *info.pSampleMask;
     }
-    m_Multisample.pSampleMask = nullptr; // 构建时再设置
+    // 重新指向内部存储
+    m_Multisample.pSampleMask = m_SampleMask ? &m_SampleMask : nullptr;
     return *this;
 }
 
@@ -267,6 +268,8 @@ VulkanPipelineState &VulkanPipelineState::setMinSampleShading(float rate) {
 
 VulkanPipelineState &VulkanPipelineState::setSampleMask(vk::SampleMask mask) {
     m_SampleMask = mask;
+    // 同步更新 multisample CreateInfo 中的指针（0 表示禁用所有 sample，nullptr 表示启用所有 sample）
+    m_Multisample.pSampleMask = m_SampleMask ? &m_SampleMask : nullptr;
     return *this;
 }
 
@@ -363,16 +366,17 @@ VulkanPipelineState &VulkanPipelineState::setLogicOp(vk::LogicOp op) {
 }
 
 // ============================================================================
-// 内部辅助：填充 CreateBundle 的公共部分
+// 内部辅助：组装内部各 CreateInfo 的公共部分
 // ============================================================================
 
-void VulkanPipelineState::fillBundleCommon(CreateBundle &bundle, vk::PipelineCreateFlags flags) const {
-    // ---- 1. 着色器阶段（从 pipelineLayout 提取） ----
+void VulkanPipelineState::buildCommon(vk::PipelineCreateFlags flags) const {
+    // ---- 1. 着色器阶段（从 pipelineLayout 提取，缓存到 m_ShaderStageCache） ----
+    m_ShaderStageCache.clear();
     if (m_PipelineLayout) {
         const auto &modules = m_PipelineLayout->GetShaderModules();
-        bundle.shaderStageCreateInfos.reserve(modules.size());
+        m_ShaderStageCache.reserve(modules.size());
         for (const auto *mod : modules) {
-            bundle.shaderStageCreateInfos.push_back(
+            m_ShaderStageCache.push_back(
                 vk::PipelineShaderStageCreateInfo{
                     .stage  = mod->get_stage(),
                     .module = mod->GetHandle(),
@@ -381,81 +385,48 @@ void VulkanPipelineState::fillBundleCommon(CreateBundle &bundle, vk::PipelineCre
         }
     }
 
-    // ---- 2. 动态状态 ----
-    bundle.dynamicStates = getDynamicStates();
-
-    // ---- 3. 顶点输入 ----
-    bundle.vertexBindings   = m_VertexBindings;
-    bundle.vertexAttributes = m_VertexAttributes;
-
-    // ---- 4. 混合附件 ----
-    bundle.blendAttachmentStates = m_BlendAttachments;
-
-    // ---- 5. 颜色附件格式 ----
-    bundle.colorAttachmentFormats = m_ColorFormats;
-
-    // ---- 6. 构建各 CreateInfo ----
-
-    // VertexInput
-    bundle.vertexInputInfo = vk::PipelineVertexInputStateCreateInfo{
-        .vertexBindingDescriptionCount   = static_cast<uint32_t>(bundle.vertexBindings.size()),
-        .pVertexBindingDescriptions      = bundle.vertexBindings.data(),
-        .vertexAttributeDescriptionCount = static_cast<uint32_t>(bundle.vertexAttributes.size()),
-        .pVertexAttributeDescriptions    = bundle.vertexAttributes.data(),
+    // ---- 2. 动态状态（确保 m_DynamicStateCache 已刷新） ----
+    const auto &dynStates = getDynamicStates();
+    m_DynamicStateInfo = vk::PipelineDynamicStateCreateInfo{
+        .dynamicStateCount = static_cast<uint32_t>(dynStates.size()),
+        .pDynamicStates    = dynStates.data(),
     };
 
-    // InputAssembly
-    bundle.inputAssemblyInfo = m_InputAssembly;
-
-    // Tessellation
-    bundle.tessellationInfo = m_Tessellation;
-
-    // Viewport（动态模式下 pViewports/pScissors 为 nullptr，Vulkan 忽略）
-    bundle.viewportInfo = m_ViewportState;
-
-    // Rasterization
-    bundle.rasterizationInfo = m_Rasterization;
-
-    // Multisample
-    bundle.sampleMaskData = m_SampleMask;
-    bundle.multisampleInfo = m_Multisample;
-    // pSampleMask：0 表示"禁用所有 sample"，nullptr 表示"启用所有 sample"
-    bundle.multisampleInfo.pSampleMask = m_SampleMask ? &bundle.sampleMaskData : nullptr;
-
-    // DepthStencil
-    bundle.depthStencilInfo = m_DepthStencil;
-
-    // ColorBlend
-    bundle.colorBlendInfo = m_ColorBlend;
-    bundle.colorBlendInfo.attachmentCount = static_cast<uint32_t>(bundle.blendAttachmentStates.size());
-    bundle.colorBlendInfo.pAttachments    = bundle.blendAttachmentStates.data();
-    bundle.colorBlendInfo.blendConstants  = m_BlendConstants;
-
-    // DynamicState
-    bundle.dynamicStateInfo = vk::PipelineDynamicStateCreateInfo{
-        .dynamicStateCount = static_cast<uint32_t>(bundle.dynamicStates.size()),
-        .pDynamicStates    = bundle.dynamicStates.data(),
+    // ---- 3. 顶点输入（指针指向 m_VertexBindings / m_VertexAttributes） ----
+    m_VertexInputInfo = vk::PipelineVertexInputStateCreateInfo{
+        .vertexBindingDescriptionCount   = static_cast<uint32_t>(m_VertexBindings.size()),
+        .pVertexBindingDescriptions      = m_VertexBindings.data(),
+        .vertexAttributeDescriptionCount = static_cast<uint32_t>(m_VertexAttributes.size()),
+        .pVertexAttributeDescriptions    = m_VertexAttributes.data(),
     };
 
-    // ---- 7. 主 CreateInfo ----
-    bundle.pipelineInfo = vk::GraphicsPipelineCreateInfo{
-        .flags              = flags,
-        .stageCount         = static_cast<uint32_t>(bundle.shaderStageCreateInfos.size()),
-        .pStages            = bundle.shaderStageCreateInfos.data(),
-        .pVertexInputState  = &bundle.vertexInputInfo,
-        .pInputAssemblyState = &bundle.inputAssemblyInfo,
-        .pTessellationState = &bundle.tessellationInfo,
-        .pViewportState     = &bundle.viewportInfo,
-        .pRasterizationState = &bundle.rasterizationInfo,
-        .pMultisampleState  = &bundle.multisampleInfo,
-        .pDepthStencilState = &bundle.depthStencilInfo,
-        .pColorBlendState   = &bundle.colorBlendInfo,
-        .pDynamicState      = &bundle.dynamicStateInfo,
-        .layout             = m_PipelineLayout ? m_PipelineLayout->GetHandle() : VK_NULL_HANDLE,
-        .renderPass         = VK_NULL_HANDLE,
-        .subpass            = 0,
-        .basePipelineHandle = VK_NULL_HANDLE,
-        .basePipelineIndex  = -1,
+    // ---- 4. 颜色混合（指针指向 m_BlendAttachments / m_BlendConstants） ----
+    m_ColorBlendInfo = m_ColorBlend;
+    m_ColorBlendInfo.attachmentCount = static_cast<uint32_t>(m_BlendAttachments.size());
+    m_ColorBlendInfo.pAttachments    = m_BlendAttachments.data();
+    m_ColorBlendInfo.blendConstants  = m_BlendConstants;
+
+    // ---- 5. 多重采样的 pSampleMask 已在 setSampleMask / setMultisample 时同步 ----
+
+    // ---- 6. 主 CreateInfo ----
+    m_PipelineInfo = vk::GraphicsPipelineCreateInfo{
+        .flags               = flags,
+        .stageCount          = static_cast<uint32_t>(m_ShaderStageCache.size()),
+        .pStages             = m_ShaderStageCache.data(),
+        .pVertexInputState   = &m_VertexInputInfo,
+        .pInputAssemblyState = &m_InputAssembly,
+        .pTessellationState  = &m_Tessellation,
+        .pViewportState      = &m_ViewportState,
+        .pRasterizationState = &m_Rasterization,
+        .pMultisampleState   = &m_Multisample,
+        .pDepthStencilState  = &m_DepthStencil,
+        .pColorBlendState    = &m_ColorBlendInfo,
+        .pDynamicState       = &m_DynamicStateInfo,
+        .layout              = m_PipelineLayout ? m_PipelineLayout->GetHandle() : VK_NULL_HANDLE,
+        .renderPass          = VK_NULL_HANDLE,
+        .subpass             = 0,
+        .basePipelineHandle  = VK_NULL_HANDLE,
+        .basePipelineIndex   = -1,
     };
 }
 
@@ -463,41 +434,41 @@ void VulkanPipelineState::fillBundleCommon(CreateBundle &bundle, vk::PipelineCre
 // 管线构建：动态渲染模式
 // ============================================================================
 
-VulkanPipelineState::CreateBundle VulkanPipelineState::buildDynamicRenderingBundle(vk::PipelineCreateFlags flags) const {
-    CreateBundle bundle;
-    fillBundleCommon(bundle, flags);
+const vk::GraphicsPipelineCreateInfo &VulkanPipelineState::buildDynamicRenderingPipeline(
+    vk::PipelineCreateFlags flags) const {
+    buildCommon(flags);
 
-    // DynamicRendering pNext 链
-    bundle.renderingInfo = vk::PipelineRenderingCreateInfo{
-        .viewMask                  = m_ViewMask,
-        .colorAttachmentCount      = static_cast<uint32_t>(bundle.colorAttachmentFormats.size()),
-        .pColorAttachmentFormats   = bundle.colorAttachmentFormats.data(),
-        .depthAttachmentFormat     = m_DepthFormat,
-        .stencilAttachmentFormat   = m_StencilFormat,
+    // DynamicRendering pNext 链（颜色格式指针指向 m_ColorFormats）
+    m_RenderingInfo = vk::PipelineRenderingCreateInfo{
+        .viewMask                = m_ViewMask,
+        .colorAttachmentCount    = static_cast<uint32_t>(m_ColorFormats.size()),
+        .pColorAttachmentFormats = m_ColorFormats.data(),
+        .depthAttachmentFormat   = m_DepthFormat,
+        .stencilAttachmentFormat = m_StencilFormat,
     };
 
     // pNext 挂载
-    bundle.pipelineInfo.setPNext(&bundle.renderingInfo);
-    bundle.pipelineInfo.flags |= vk::PipelineCreateFlagBits::eDynamicRenderingKHR;
+    m_PipelineInfo.setPNext(&m_RenderingInfo);
+    m_PipelineInfo.flags |= vk::PipelineCreateFlagBits::eDynamicRenderingKHR;
 
-    return bundle;
+    return m_PipelineInfo;
 }
 
 // ============================================================================
 // 管线构建：传统 RenderPass 模式
 // ============================================================================
 
-VulkanPipelineState::CreateBundle VulkanPipelineState::buildRenderPassBundle(vk::RenderPass          renderPass,
-                                                                             uint32_t                subpass,
-                                                                             vk::PipelineCreateFlags flags) const {
-    CreateBundle bundle;
-    fillBundleCommon(bundle, flags);
+const vk::GraphicsPipelineCreateInfo &VulkanPipelineState::buildRenderPassPipeline(
+    vk::RenderPass          renderPass,
+    uint32_t                subpass,
+    vk::PipelineCreateFlags flags) const {
+    buildCommon(flags);
 
-    bundle.pipelineInfo.renderPass = renderPass;
-    bundle.pipelineInfo.subpass    = subpass;
-    bundle.pipelineInfo.pNext      = nullptr;
+    m_PipelineInfo.renderPass = renderPass;
+    m_PipelineInfo.subpass    = subpass;
+    m_PipelineInfo.pNext      = nullptr;
 
-    return bundle;
+    return m_PipelineInfo;
 }
 
 // ============================================================================

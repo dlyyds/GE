@@ -740,8 +740,8 @@ void ModelTestLayer::LoadScene() {
         m_Scene = std::make_unique<Scene>();
     }
 
-    // 创建新的序列化器（带设备和缓存，用于加载资源）
-    m_SceneSerializer = std::make_unique<SceneSerializer>(m_Scene.get(), &device, &cache);
+    // 创建新的序列化器（带设备，用于加载网格资源；纹理/材质使用全局管理器）
+    m_SceneSerializer = std::make_unique<SceneSerializer>(m_Scene.get(), &device);
 
     if (!m_SceneSerializer->Deserialize(filepath)) {
         GE_CORE_WARN("加载场景失败: {0}", filepath);
@@ -771,11 +771,10 @@ void ModelTestLayer::NewScene() {
     // 创建新场景
     m_Scene = std::make_unique<Scene>();
 
-    // 创建新的序列化器（清空旧资源）
+    // 创建新的序列化器（清空旧网格资源；纹理/材质由全局管理器管理）
     auto &ctx = Application::GetVulkanContext();
     auto &device = ctx.GetDevice();
-    auto &cache = device.GetResourceCache();
-    m_SceneSerializer = std::make_unique<SceneSerializer>(m_Scene.get(), &device, &cache);
+    m_SceneSerializer = std::make_unique<SceneSerializer>(m_Scene.get(), &device);
 
     // 更新层级面板
     m_HierarchyPanel.SetContext(m_Scene.get());

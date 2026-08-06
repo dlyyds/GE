@@ -38,7 +38,7 @@ private:
     std::unique_ptr<Texture>  m_Texture;      ///< 棋盘纹理（资源所有者）
     std::unique_ptr<Material> m_ModelMaterial; ///< 模型材质（使用棋盘纹理）
     std::unique_ptr<Scene> m_Scene; ///< 场景
-    std::unique_ptr<SceneSerializer> m_SceneSerializer; ///< 场景序列化器（持有加载的资源）
+    std::unique_ptr<SceneSerializer> m_SceneSerializer; ///< 场景序列化器（持有加载的网格资源）
     Entity m_ModelEntity; ///< 模型实体
     Entity m_CameraEntity; ///< 相机实体
     Entity m_RedLightEntity; ///< 红色点光源实体

@@ -10,6 +10,8 @@ namespace GE {
 class Window;
 class Renderer2D;
 class Renderer3D;
+class TextureManager;
+class MaterialManager;
 
 /**
  * @brief 渲染器：统一管理 Vulkan 资源和帧渲染流程。
@@ -102,6 +104,12 @@ public:
     /// 访问 3D 网格渲染器。
     static Renderer3D &Get3DRenderer();
 
+    /// 访问纹理管理器。
+    static TextureManager &GetTextureManager();
+
+    /// 访问材质管理器。
+    static MaterialManager &GetMaterialManager();
+
 private:
     /// Vulkan 全局上下文（Instance / PhysicalDevice / Surface / Device / VMA）。
     std::unique_ptr<VulkanContext> m_VulkanContext;
@@ -117,6 +125,12 @@ private:
 
     /// 3D 网格渲染器。
     std::unique_ptr<Renderer3D> m_3DRenderer;
+
+    /// 全局纹理管理器（按路径去重缓存）。
+    std::unique_ptr<TextureManager> m_TextureManager;
+
+    /// 全局材质管理器（按名称去重缓存）。
+    std::unique_ptr<MaterialManager> m_MaterialManager;
 
     /// 窗口引用。
     Window &m_Window;

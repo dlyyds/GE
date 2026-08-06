@@ -24,12 +24,13 @@ class Material;
  *
  * 资源处理：
  * - 纹理和网格以文件路径字符串形式保存在 YAML 中
- * - 反序列化时自动从文件加载资源，同一资源路径只加载一次（内部去重）
- * - 加载的资源由 SceneSerializer 持有，调用方需保证 SceneSerializer 生命周期长于 Scene
+ * - 纹理 / 材质使用全局管理器（Renderer::GetTextureManager / GetMaterialManager）
+ * - 网格由 SceneSerializer 内部缓存（网格加载也需要 device，且网格资源生命周期
+ *   通常随场景，与纹理/材质不同）
  *
  * 使用方式：
  * @code
- *   SceneSerializer serializer(scene, &device, &cache);
+ *   SceneSerializer serializer(scene, &device);
  *   serializer.Serialize("assets/scenes/test.scene");  // 保存
  *   serializer.Deserialize("assets/scenes/test.scene"); // 加载（会清空当前场景）
  * @endcode
@@ -39,13 +40,11 @@ public:
     /**
      * @brief 构造场景序列化器。
      * @param scene  目标场景（序列化时作为源，反序列化时作为目标——会被清空）
-     * @param device Vulkan 设备指针（用于加载纹理/网格，仅反序列化需要；
+     * @param device Vulkan 设备指针（用于加载网格，仅反序列化需要；
      *               如果只做序列化可传 nullptr）
-     * @param cache  Vulkan 资源缓存指针（用于 Sampler 去重，仅反序列化需要）
      */
-    SceneSerializer(Scene *scene,
-                    VulkanDevice *device = nullptr,
-                    VulkanResourceCache *cache = nullptr);
+    explicit SceneSerializer(Scene *scene,
+                             VulkanDevice *device = nullptr);
 
     ~SceneSerializer();
 
@@ -64,7 +63,7 @@ public:
      * @brief 从 YAML 文件反序列化场景。
      *
      * 会先清空当前场景（m_Scene）中的所有实体，然后根据 YAML 内容重建。
-     * 加载的纹理和网格资源存储在 SceneSerializer 内部。
+     * 网格资源存储在 SceneSerializer 内部；纹理和材质使用全局管理器。
      *
      * @param filepath 场景文件路径
      * @return true  加载成功
@@ -73,44 +72,26 @@ public:
     bool Deserialize(const std::string &filepath);
 
     /**
-     * @brief 清空内部加载的资源缓存（纹理和网格）。
+     * @brief 清空内部加载的网格缓存。
      *
-     * 注意：调用前请确保没有组件还在引用这些资源的指针。
+     * 注意：调用前请确保没有组件还在引用这些网格指针。
+     * 纹理和材质由全局管理器管理，不受此方法影响。
      */
     void ClearLoadedResources();
 
 private:
     Scene *m_Scene = nullptr;
     VulkanDevice *m_Device = nullptr;
-    VulkanResourceCache *m_ResourceCache = nullptr;
 
-    // 反序列化时加载的资源（同路径去重，由 SceneSerializer 持有所有权）
-    std::unordered_map<std::string, std::unique_ptr<Texture>>  m_LoadedTextures;
-    std::unordered_map<std::string, std::unique_ptr<Mesh>>     m_LoadedMeshes;
-    std::unordered_map<std::string, std::unique_ptr<Material>> m_LoadedMaterials;
-
-    /**
-     * @brief 获取或加载指定路径的纹理（内部去重）。
-     * @return 纹理指针，失败返回 nullptr
-     */
-    Texture *GetOrLoadTexture(const std::string &filepath);
+    // 反序列化时加载的网格（同路径去重，由 SceneSerializer 持有所有权）
+    // 纹理和材质走全局管理器（Renderer::GetTextureManager / GetMaterialManager）
+    std::unordered_map<std::string, std::unique_ptr<Mesh>> m_LoadedMeshes;
 
     /**
      * @brief 获取或加载指定路径的网格（内部去重）。
      * @return 网格指针，失败返回 nullptr
      */
     Mesh *GetOrLoadMesh(const std::string &filepath);
-
-    /**
-     * @brief 获取或创建一个"单 Albedo 纹理"材质（按纹理路径去重）。
-     *
-     * 用于反序列化时的兼容：旧版本 "Texture" 字段直接对应 Material 的 Albedo 槽位。
-     * 同一张纹理只会创建一个 Material 实例。
-     *
-     * @param albedoPath  Albedo 纹理路径
-     * @return 材质指针，失败返回 nullptr
-     */
-    Material *GetOrCreateMaterial(const std::string &albedoPath);
 };
 
 } // namespace GE

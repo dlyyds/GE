@@ -14,8 +14,8 @@
 #include "Render/Material.h"
 #include "Render/Texture.h"
 #include "Render/Mesh.h"
+#include "Render/Renderer.h"
 #include "Render/VulkanBase/VulkanDevice.h"
-#include "Render/VulkanBase/VulkanResourceCache.h"
 #include "Core/Log.h"
 
 #include <yaml-cpp/yaml.h>
@@ -101,9 +101,8 @@ glm::vec4 DeserializeVec4(const YAML::Node &node, const glm::vec4 &def = {0.0f, 
 // ============================================================
 
 SceneSerializer::SceneSerializer(Scene *scene,
-                                 VulkanDevice *device,
-                                 VulkanResourceCache *cache)
-    : m_Scene(scene), m_Device(device), m_ResourceCache(cache) {
+                                 VulkanDevice *device)
+    : m_Scene(scene), m_Device(device) {
 }
 
 SceneSerializer::~SceneSerializer() {
@@ -113,34 +112,6 @@ SceneSerializer::~SceneSerializer() {
 // ============================================================
 // 资源加载辅助
 // ============================================================
-
-Texture *SceneSerializer::GetOrLoadTexture(const std::string &filepath) {
-    if (filepath.empty()) {
-        return nullptr;
-    }
-
-    // 先查缓存
-    auto it = m_LoadedTextures.find(filepath);
-    if (it != m_LoadedTextures.end()) {
-        return it->second.get();
-    }
-
-    // 需要设备和缓存才能加载
-    if (!m_Device || !m_ResourceCache) {
-        GE_CORE_WARN("SceneSerializer: 无法加载纹理 {0}（未提供 VulkanDevice/ResourceCache）", filepath);
-        return nullptr;
-    }
-
-    auto tex = Texture::LoadFromFile(*m_Device, *m_ResourceCache, filepath);
-    if (!tex) {
-        GE_CORE_WARN("SceneSerializer: 纹理加载失败: {0}", filepath);
-        return nullptr;
-    }
-
-    Texture *raw = tex.get();
-    m_LoadedTextures[filepath] = std::move(tex);
-    return raw;
-}
 
 Mesh *SceneSerializer::GetOrLoadMesh(const std::string &filepath) {
     if (filepath.empty()) {
@@ -177,37 +148,10 @@ Mesh *SceneSerializer::GetOrLoadMesh(const std::string &filepath) {
     return raw;
 }
 
-Material *SceneSerializer::GetOrCreateMaterial(const std::string &albedoPath) {
-    if (albedoPath.empty()) {
-        return nullptr;
-    }
-
-    // 按 Albedo 纹理路径去重
-    auto it = m_LoadedMaterials.find(albedoPath);
-    if (it != m_LoadedMaterials.end()) {
-        return it->second.get();
-    }
-
-    // 先加载 Albedo 纹理
-    Texture *albedo = GetOrLoadTexture(albedoPath);
-    if (!albedo) {
-        return nullptr;
-    }
-
-    // 创建 Material 并绑定 Albedo 槽位
-    auto mat = std::make_unique<Material>();
-    mat->SetTexture(Material::Albedo, albedo);
-    mat->SetDebugName("Mat_" + albedoPath);
-
-    Material *raw = mat.get();
-    m_LoadedMaterials[albedoPath] = std::move(mat);
-    return raw;
-}
-
 void SceneSerializer::ClearLoadedResources() {
-    m_LoadedMaterials.clear();
-    m_LoadedTextures.clear();
     m_LoadedMeshes.clear();
+    // 纹理和材质由全局管理器（Renderer::GetTextureManager / GetMaterialManager）管理，
+    // 不在此方法不清理它们（生命周期随应用而非场景，多次反序列化不会导致纹理/渲染器
 }
 
 // ============================================================
@@ -485,7 +429,7 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
             // 纹理路径（如果有 Texture 字段，尝试加载）
             if (spriteNode["Texture"]) {
                 std::string texPath = spriteNode["Texture"].as<std::string>("");
-                src.SpriteTexture = GetOrLoadTexture(texPath);
+                src.SpriteTexture = Renderer::GetTextureManager().Load(texPath);
             }
         }
 
@@ -506,7 +450,8 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
             // → 自动创建 MaterialComponent 并绑定 Albedo 纹理
             if (meshNode["Texture"]) {
                 std::string texPath = meshNode["Texture"].as<std::string>("");
-                Material *mat = GetOrCreateMaterial(texPath);
+                Material *mat = Renderer::GetMaterialManager()
+                                    .GetOrCreateFromAlbedo(texPath);
                 if (mat) {
                     entity.AddComponent<MaterialComponent>(mat);
                 }
@@ -521,7 +466,8 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
             Material *mat = nullptr;
             if (matNode["AlbedoTexture"]) {
                 std::string texPath = matNode["AlbedoTexture"].as<std::string>("");
-                mat = GetOrCreateMaterial(texPath);
+                mat = Renderer::GetMaterialManager()
+                          .GetOrCreateFromAlbedo(texPath);
             }
 
             // 即使材质为空也添加组件（表示显式声明了材质组件）

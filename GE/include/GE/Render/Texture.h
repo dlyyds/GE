@@ -47,6 +47,8 @@
 
 namespace GE {
 
+class VulkanCommandBuffer;
+
 /**
  * @brief 纹理封装 —— 持有 VulkanImage + ImageView + Sampler。
  *
@@ -77,6 +79,7 @@ public:
      * @param format      纹理格式（默认 eR8G8B8A8Unorm）
      * @param mag_filter  放大过滤器（默认 eLinear）
      * @param min_filter  缩小过滤器（默认 eLinear）
+     * @param generate_mipmaps  是否自动生成完整 mip 链（默认 true）
      * @return std::unique_ptr<Texture>  失败时返回 nullptr
      */
     static std::unique_ptr<Texture> LoadFromFile(
@@ -85,7 +88,8 @@ public:
         const std::string &filepath,
         vk::Format format = vk::Format::eR8G8B8A8Unorm,
         vk::Filter mag_filter = vk::Filter::eLinear,
-        vk::Filter min_filter = vk::Filter::eLinear);
+        vk::Filter min_filter = vk::Filter::eLinear,
+        bool generate_mipmaps = true);
 
     /**
      * @brief 从内存像素数据创建纹理。
@@ -98,6 +102,7 @@ public:
      * @param format      纹理格式（默认 eR8G8B8A8Unorm）
      * @param mag_filter  放大过滤器（默认 eLinear）
      * @param min_filter  缩小过滤器（默认 eLinear）
+     * @param generate_mipmaps  是否自动生成完整 mip 链（默认 true）
      * @return std::unique_ptr<Texture>  失败时返回 nullptr
      */
     static std::unique_ptr<Texture> LoadFromMemory(
@@ -107,7 +112,8 @@ public:
         uint32_t width, uint32_t height,
         vk::Format format = vk::Format::eR8G8B8A8Unorm,
         vk::Filter mag_filter = vk::Filter::eLinear,
-        vk::Filter min_filter = vk::Filter::eLinear);
+        vk::Filter min_filter = vk::Filter::eLinear,
+        bool generate_mipmaps = true);
 
     // ========================================================================
     // 直接构造（空白纹理，不传数据）
@@ -119,14 +125,34 @@ public:
      * 适用于需要预分配纹理的场景（如 RenderTarget）。
      * 图像默认使用 eTransferDst | eSampled 用法，
      * 可通过 extra_usage 添加额外标志（如 eColorAttachment）。
+     * 当 mip_levels > 1 时会自动添加 eTransferSrc 用法（用于 blit 源）。
      *
      * @note 此构造函数不设置 Sampler，需要手动调用 SetupSampler() 或
      *       在创建后通过 GetSampler() 设置。
+     *
+     * @param device       Vulkan 设备
+     * @param extent       纹理尺寸
+     * @param format       纹理格式
+     * @param extra_usage  额外的图像用法标志
+     * @param mip_levels   mip 级别数（默认 1，即无 mipmap）
      */
     Texture(VulkanDevice &device,
             vk::Extent3D extent,
             vk::Format format,
-            vk::ImageUsageFlags extra_usage = {});
+            vk::ImageUsageFlags extra_usage = {},
+            uint32_t mip_levels = 1);
+
+    /**
+     * @brief 生成 mipmap 链（使用 blit + 线性过滤）。
+     *
+     * 要求：
+     * - Image 创建时已指定 mip_levels > 1
+     * - Image 具有 eTransferSrc 和 eTransferDst 用法
+     * - level 0 已包含有效数据，布局为 TransferDstOptimal 或 ShaderReadOnlyOptimal
+     *
+     * 生成后所有 mip level 的布局均为 ShaderReadOnlyOptimal。
+     */
+    void GenerateMipmaps(VulkanDevice &device);
 
     ~Texture();
 
@@ -205,6 +231,14 @@ private:
      */
     void UploadPixels(VulkanDevice &device, const void *pixels,
                       uint32_t width, uint32_t height);
+
+    /**
+     * @brief 在给定 command buffer 上生成 mipmap 链（blit 方式）。
+     *
+     * 前置条件：level 0 布局为 TransferDstOptimal 且包含有效数据。
+     * 后置条件：所有 mip level 布局为 ShaderReadOnlyOptimal。
+     */
+    void GenerateMipmapsInternal(class VulkanCommandBuffer &cmd);
 
     /**
      * @brief 创建 ImageView 并通过缓存请求 Sampler。

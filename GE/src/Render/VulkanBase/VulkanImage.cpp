@@ -264,6 +264,11 @@ void TransitionLayout(vk::CommandBuffer cmd, vk::Image image,
 	     vk::PipelineStageFlagBits2::eTransfer, vk::AccessFlagBits2::eTransferWrite,
 	     vk::PipelineStageFlagBits2::eFragmentShader, vk::AccessFlagBits2::eShaderRead},
 
+	    // ShaderReadOnly → TransferDst:  已采样的纹理重新作为传输目标（如重新生成 mip）
+	    {vk::ImageLayout::eShaderReadOnlyOptimal, vk::ImageLayout::eTransferDstOptimal,
+	     vk::PipelineStageFlagBits2::eFragmentShader, vk::AccessFlagBits2::eShaderRead,
+	     vk::PipelineStageFlagBits2::eTransfer, vk::AccessFlagBits2::eTransferWrite},
+
 	    // Undefined → ColorAttachment:  新 swapchain image，准备渲染
 	    {vk::ImageLayout::eUndefined, vk::ImageLayout::eColorAttachmentOptimal,
 	     vk::PipelineStageFlagBits2::eTopOfPipe, vk::AccessFlagBits2::eNone,

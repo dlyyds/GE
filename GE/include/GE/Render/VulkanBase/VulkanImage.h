@@ -167,6 +167,11 @@ public:
 
     uint32_t get_array_layer_count() const;
 
+    /**
+     * @brief 获取 mip 级别总数。
+     */
+    uint32_t get_mip_level_count() const { return create_info.mipLevels; }
+
     std::unordered_set<VulkanImageView *> &get_views();
 
 private:

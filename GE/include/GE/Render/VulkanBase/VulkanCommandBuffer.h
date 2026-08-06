@@ -173,6 +173,21 @@ public:
     void CopyBufferToImage(VulkanBuffer const &buffer, VulkanImage const &image,
                            std::vector<vk::BufferImageCopy> const &regions);
 
+    /**
+     * @brief 图像 blit（用于 mipmap 生成等场景）。
+     *
+     * @param srcImage   源图像
+     * @param srcLayout  源图像布局（一般为 eTransferSrcOptimal）
+     * @param dstImage   目标图像
+     * @param dstLayout  目标图像布局（一般为 eTransferDstOptimal）
+     * @param regions    blit 区域列表
+     * @param filter     采样过滤方式（默认线性过滤）
+     */
+    void BlitImage(VulkanImage const &srcImage, vk::ImageLayout srcLayout,
+                   VulkanImage const &dstImage, vk::ImageLayout dstLayout,
+                   std::vector<vk::ImageBlit> const &regions,
+                   vk::Filter filter = vk::Filter::eLinear);
+
     // ========================================================================
     // 访问器
     // ========================================================================

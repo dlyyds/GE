@@ -336,6 +336,15 @@ void VulkanCommandBuffer::CopyBufferToImage(VulkanBuffer const &buffer,
                                   vk::ImageLayout::eTransferDstOptimal, regions);
 }
 
+void VulkanCommandBuffer::BlitImage(VulkanImage const &srcImage, vk::ImageLayout srcLayout,
+                                    VulkanImage const &dstImage, vk::ImageLayout dstLayout,
+                                    std::vector<vk::ImageBlit> const &regions,
+                                    vk::Filter filter) {
+    GetHandle().blitImage(srcImage.GetHandle(), srcLayout,
+                          dstImage.GetHandle(), dstLayout,
+                          regions, filter);
+}
+
 // ============================================================================
 // 访问器
 // ============================================================================

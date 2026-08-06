@@ -50,8 +50,8 @@ public:
     EngineBroadPhaseLayerInterface() {
         // 创建映射表：ObjectLayer → BroadPhaseLayer
         m_ObjectToBroadPhase[static_cast<JPH::ObjectLayer>(CollisionLayer::Default)] = JPH::BroadPhaseLayer(0);
-        m_ObjectToBroadPhase[static_cast<JPH::ObjectLayer>(CollisionLayer::Player)]  = JPH::BroadPhaseLayer(1);
-        m_ObjectToBroadPhase[static_cast<JPH::ObjectLayer>(CollisionLayer::Enemy)]   = JPH::BroadPhaseLayer(2);
+        m_ObjectToBroadPhase[static_cast<JPH::ObjectLayer>(CollisionLayer::Player)] = JPH::BroadPhaseLayer(1);
+        m_ObjectToBroadPhase[static_cast<JPH::ObjectLayer>(CollisionLayer::Enemy)] = JPH::BroadPhaseLayer(2);
         m_ObjectToBroadPhase[static_cast<JPH::ObjectLayer>(CollisionLayer::Trigger)] = JPH::BroadPhaseLayer(3);
     }
 
@@ -67,11 +67,11 @@ public:
 #if defined(JPH_EXTERNAL_PROFILE) || defined(JPH_PROFILE_ENABLED)
     const char *GetBroadPhaseLayerName(JPH::BroadPhaseLayer inLayer) const override {
         switch (static_cast<JPH::BroadPhaseLayer::Type>(inLayer)) {
-            case 0: return "Default";
-            case 1: return "Player";
-            case 2: return "Enemy";
-            case 3: return "Trigger";
-            default: return "Unknown";
+        case 0: return "Default";
+        case 1: return "Player";
+        case 2: return "Enemy";
+        case 3: return "Trigger";
+        default: return "Unknown";
         }
     }
 #endif // JPH_EXTERNAL_PROFILE || JPH_PROFILE_ENABLED
@@ -160,9 +160,9 @@ void PhysicsWorld::InitJolt() {
     JPH::RegisterTypes();
 
     // 创建碰撞层映射
-    m_BroadPhaseLayerInterface    = std::make_unique<EngineBroadPhaseLayerInterface>();
-    m_ObjectVsBroadPhaseFilter    = std::make_unique<EngineObjectVsBroadPhaseLayerFilter>();
-    m_ObjectLayerPairFilter       = std::make_unique<EngineObjectLayerPairFilter>();
+    m_BroadPhaseLayerInterface = std::make_unique<EngineBroadPhaseLayerInterface>();
+    m_ObjectVsBroadPhaseFilter = std::make_unique<EngineObjectVsBroadPhaseLayerFilter>();
+    m_ObjectLayerPairFilter = std::make_unique<EngineObjectLayerPairFilter>();
 
     // 创建临时分配器（10MB，足够大多数场景使用）
     m_TempAllocator = std::make_unique<JPH::TempAllocatorImpl>(10 * 1024 * 1024);
@@ -172,12 +172,12 @@ void PhysicsWorld::InitJolt() {
         JPH::cMaxPhysicsJobs,
         JPH::cMaxPhysicsBarriers,
         std::max(static_cast<int>(std::thread::hardware_concurrency()) - 1, 1)
-    );
+        );
 
     // 物理系统配置
-    constexpr uint32_t cMaxBodies = 4096;             // 最大刚体数量
-    constexpr uint32_t cMaxBodyPairs = 32768;          // 最大刚体对
-    constexpr uint32_t cMaxContactConstraints = 4096;  // 最大接触约束
+    constexpr uint32_t cMaxBodies = 4096; // 最大刚体数量
+    constexpr uint32_t cMaxBodyPairs = 32768; // 最大刚体对
+    constexpr uint32_t cMaxContactConstraints = 4096; // 最大接触约束
 
     // 创建物理系统
     m_PhysicsSystem = std::make_unique<JPH::PhysicsSystem>();
@@ -189,7 +189,7 @@ void PhysicsWorld::InitJolt() {
         *m_BroadPhaseLayerInterface,
         *m_ObjectVsBroadPhaseFilter,
         *m_ObjectLayerPairFilter
-    );
+        );
 
     // 设置重力
     m_PhysicsSystem->SetGravity(ToJoltVec3(m_Gravity));
@@ -202,7 +202,8 @@ void PhysicsWorld::InitJolt() {
 // ============================================================
 
 void PhysicsWorld::Step(Timestep ts) {
-    if (!m_PhysicsSystem) return;
+    if (!m_PhysicsSystem)
+        return;
 
     // Step 1: 处理待创建刚体列表
     ProcessPendingBodies();
@@ -219,10 +220,10 @@ void PhysicsWorld::Step(Timestep ts) {
     while (m_Accumulator >= FIXED_TIMESTEP && subSteps < MAX_SUBSTEPS) {
         m_PhysicsSystem->Update(
             FIXED_TIMESTEP,
-            1,      // collisionSteps
+            1, // collisionSteps
             m_TempAllocator.get(),
             m_JobSystem.get()
-        );
+            );
         m_Accumulator -= FIXED_TIMESTEP;
         subSteps++;
     }
@@ -243,19 +244,23 @@ void PhysicsWorld::Step(Timestep ts) {
 void PhysicsWorld::RequestCreateRigidBody(entt::entity entity) {
     // 去重检查
     for (auto pending : m_PendingBodies) {
-        if (pending == entity) return;
+        if (pending == entity)
+            return;
     }
     m_PendingBodies.push_back(entity);
 }
 
 void PhysicsWorld::DestroyRigidBody(entt::entity entity) {
-    if (!m_Scene) return;
+    if (!m_Scene)
+        return;
 
     auto &reg = m_Scene->Reg();
-    if (!reg.valid(entity)) return;
+    if (!reg.valid(entity))
+        return;
 
     auto *rbc = reg.try_get<RigidBodyComponent>(entity);
-    if (!rbc || !rbc->IsInitialized) return;
+    if (!rbc || !rbc->IsInitialized)
+        return;
 
     auto &bodyInterface = m_PhysicsSystem->GetBodyInterface();
     bodyInterface.RemoveBody(rbc->RuntimeBodyID);
@@ -266,13 +271,16 @@ void PhysicsWorld::DestroyRigidBody(entt::entity entity) {
 }
 
 void PhysicsWorld::UpdateRigidBodyProperties(entt::entity entity) {
-    if (!m_Scene || !m_PhysicsSystem) return;
+    if (!m_Scene || !m_PhysicsSystem)
+        return;
 
     auto &reg = m_Scene->Reg();
-    if (!reg.valid(entity)) return;
+    if (!reg.valid(entity))
+        return;
 
     auto *rbc = reg.try_get<RigidBodyComponent>(entity);
-    if (!rbc || !rbc->IsInitialized) return;
+    if (!rbc || !rbc->IsInitialized)
+        return;
 
     auto &bodyInterface = m_PhysicsSystem->GetBodyInterface();
     const JPH::BodyID &bodyID = rbc->RuntimeBodyID;
@@ -280,15 +288,14 @@ void PhysicsWorld::UpdateRigidBodyProperties(entt::entity entity) {
     // 摩擦和弹性可通过 BodyInterface 直接设置
     bodyInterface.SetFriction(bodyID, rbc->Friction);
     bodyInterface.SetRestitution(bodyID, rbc->Restitution);
+    bodyInterface.SetIsSensor(bodyID, rbc->IsSensor);
 
     // 阻尼、传感器、质量需要通过 BodyLockWrite 访问 Body/MotionProperties
     JPH::BodyLockWrite bodyLock(m_PhysicsSystem->GetBodyLockInterface(), bodyID);
-    if (!bodyLock.Succeeded()) return;
+    if (!bodyLock.Succeeded())
+        return;
 
     JPH::Body &body = bodyLock.GetBody();
-
-    // 更新传感器标记
-    body.SetIsSensor(rbc->IsSensor);
 
     // 更新阻尼（仅非静态体有 MotionProperties）
     if (rbc->Type != RigidBodyType::Static) {
@@ -306,13 +313,16 @@ void PhysicsWorld::UpdateRigidBodyProperties(entt::entity entity) {
 }
 
 void PhysicsWorld::RebuildRigidBody(entt::entity entity) {
-    if (!m_Scene || !m_PhysicsSystem) return;
+    if (!m_Scene || !m_PhysicsSystem)
+        return;
 
     auto &reg = m_Scene->Reg();
-    if (!reg.valid(entity)) return;
+    if (!reg.valid(entity))
+        return;
 
     auto *rbc = reg.try_get<RigidBodyComponent>(entity);
-    if (!rbc) return;
+    if (!rbc)
+        return;
 
     // 如果 body 已初始化，先销毁
     if (rbc->IsInitialized) {
@@ -324,7 +334,8 @@ void PhysicsWorld::RebuildRigidBody(entt::entity entity) {
 }
 
 void PhysicsWorld::ProcessPendingBodies() {
-    if (m_PendingBodies.empty() || !m_Scene) return;
+    if (m_PendingBodies.empty() || !m_Scene)
+        return;
 
     auto &reg = m_Scene->Reg();
     auto &bodyInterface = m_PhysicsSystem->GetBodyInterface();
@@ -364,22 +375,18 @@ void PhysicsWorld::ProcessPendingBodies() {
         JPH::EMotionType motionType;
         JPH::ObjectLayer objectLayer;
         switch (rbc->Type) {
-            case RigidBodyType::Static:
-                motionType = JPH::EMotionType::Static;
-                objectLayer = static_cast<JPH::ObjectLayer>(CollisionLayer::Default);
-                break;
-            case RigidBodyType::Kinematic:
-                motionType = JPH::EMotionType::Kinematic;
-                objectLayer = static_cast<JPH::ObjectLayer>(CollisionLayer::Default);
-                break;
-            case RigidBodyType::Dynamic:
-                motionType = JPH::EMotionType::Dynamic;
-                objectLayer = static_cast<JPH::ObjectLayer>(CollisionLayer::Default);
-                break;
-            default:
-                motionType = JPH::EMotionType::Static;
-                objectLayer = static_cast<JPH::ObjectLayer>(CollisionLayer::Default);
-                break;
+        case RigidBodyType::Static: motionType = JPH::EMotionType::Static;
+            objectLayer = static_cast<JPH::ObjectLayer>(CollisionLayer::Default);
+            break;
+        case RigidBodyType::Kinematic: motionType = JPH::EMotionType::Kinematic;
+            objectLayer = static_cast<JPH::ObjectLayer>(CollisionLayer::Default);
+            break;
+        case RigidBodyType::Dynamic: motionType = JPH::EMotionType::Dynamic;
+            objectLayer = static_cast<JPH::ObjectLayer>(CollisionLayer::Default);
+            break;
+        default: motionType = JPH::EMotionType::Static;
+            objectLayer = static_cast<JPH::ObjectLayer>(CollisionLayer::Default);
+            break;
         }
 
         // 从 TransformComponent 获取初始位置和旋转
@@ -394,7 +401,7 @@ void PhysicsWorld::ProcessPendingBodies() {
             rotation,
             motionType,
             objectLayer
-        );
+            );
 
         // 设置物理属性
         bodySettings.mFriction = rbc->Friction;
@@ -428,17 +435,20 @@ void PhysicsWorld::ProcessPendingBodies() {
 }
 
 bool PhysicsWorld::HasColliderComponent(entt::entity entity) const {
-    if (!m_Scene) return false;
+    if (!m_Scene)
+        return false;
     auto &reg = m_Scene->Reg();
     return reg.any_of<BoxColliderComponent, SphereColliderComponent>(entity);
 }
 
 JPH::ShapeRefC PhysicsWorld::BuildShapeForEntity(entt::entity entity) {
-    if (!m_Scene) return nullptr;
+    if (!m_Scene)
+        return nullptr;
 
     auto &reg = m_Scene->Reg();
     auto *tc = reg.try_get<TransformComponent>(entity);
-    if (!tc) return nullptr;
+    if (!tc)
+        return nullptr;
 
     std::vector<JPH::ShapeRefC> subShapes;
 
@@ -450,14 +460,14 @@ JPH::ShapeRefC PhysicsWorld::BuildShapeForEntity(entt::entity entity) {
             ToJoltVec3(scaledHalfExtents),
             0.0f, // convexRadius（0 表示使用默认值）
             nullptr // 材质（nullptr 表示默认）
-        );
+            );
 
         if (boxColliders->Offset != glm::vec3(0.0f)) {
             JPH::RotatedTranslatedShapeSettings offsetSettings(
                 ToJoltVec3(boxColliders->Offset),
                 JPH::Quat::sIdentity(),
                 boxShape
-            );
+                );
             auto result = offsetSettings.Create();
             if (result.IsValid()) {
                 subShapes.push_back(result.Get());
@@ -478,7 +488,7 @@ JPH::ShapeRefC PhysicsWorld::BuildShapeForEntity(entt::entity entity) {
                 ToJoltVec3(sphereColliders->Offset),
                 JPH::Quat::sIdentity(),
                 sphereShape
-            );
+                );
             auto result = offsetSettings.Create();
             if (result.IsValid()) {
                 subShapes.push_back(result.Get());
@@ -516,7 +526,8 @@ JPH::ShapeRefC PhysicsWorld::BuildShapeForEntity(entt::entity entity) {
 // ============================================================
 
 void PhysicsWorld::SyncBodiesToTransforms() {
-    if (!m_Scene) return;
+    if (!m_Scene)
+        return;
 
     auto &reg = m_Scene->Reg();
     auto view = reg.view<TransformComponent, RigidBodyComponent>();
@@ -524,8 +535,10 @@ void PhysicsWorld::SyncBodiesToTransforms() {
 
     for (auto entity : view) {
         auto &rbc = view.get<RigidBodyComponent>(entity);
-        if (!rbc.IsInitialized) continue;
-        if (rbc.Type != RigidBodyType::Dynamic) continue;
+        if (!rbc.IsInitialized)
+            continue;
+        if (rbc.Type != RigidBodyType::Dynamic)
+            continue;
 
         JPH::Vec3 pos = bodyInterface.GetPosition(rbc.RuntimeBodyID);
         JPH::Quat rot = bodyInterface.GetRotation(rbc.RuntimeBodyID);
@@ -537,7 +550,8 @@ void PhysicsWorld::SyncBodiesToTransforms() {
 }
 
 void PhysicsWorld::SyncKinematicTransformsToBodies() {
-    if (!m_Scene) return;
+    if (!m_Scene)
+        return;
 
     auto &reg = m_Scene->Reg();
     auto view = reg.view<TransformComponent, RigidBodyComponent>();
@@ -545,8 +559,10 @@ void PhysicsWorld::SyncKinematicTransformsToBodies() {
 
     for (auto entity : view) {
         auto &rbc = view.get<RigidBodyComponent>(entity);
-        if (!rbc.IsInitialized) continue;
-        if (rbc.Type != RigidBodyType::Kinematic) continue;
+        if (!rbc.IsInitialized)
+            continue;
+        if (rbc.Type != RigidBodyType::Kinematic)
+            continue;
 
         auto &tc = view.get<TransformComponent>(entity);
         glm::quat glmRot = glm::quat(tc.Rotation);
@@ -556,7 +572,7 @@ void PhysicsWorld::SyncKinematicTransformsToBodies() {
             ToJoltVec3(tc.Translation),
             ToJoltQuat(glmRot),
             FIXED_TIMESTEP
-        );
+            );
     }
 }
 

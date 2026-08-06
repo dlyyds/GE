@@ -285,14 +285,14 @@ void PhysicsWorld::UpdateRigidBodyProperties(entt::entity entity) {
     JPH::BodyLockWrite bodyLock(m_PhysicsSystem->GetBodyLockInterface(), bodyID);
     if (!bodyLock.Succeeded()) return;
 
-    JPH::Body *body = bodyLock.GetBody();
+    JPH::Body &body = bodyLock.GetBody();
 
     // 更新传感器标记
-    body->SetIsSensor(rbc->IsSensor);
+    body.SetIsSensor(rbc->IsSensor);
 
     // 更新阻尼（仅非静态体有 MotionProperties）
     if (rbc->Type != RigidBodyType::Static) {
-        JPH::MotionProperties *mp = body->GetMotionProperties();
+        JPH::MotionProperties *mp = body.GetMotionProperties();
         if (mp) {
             mp->SetLinearDamping(rbc->LinearDamping);
             mp->SetAngularDamping(rbc->AngularDamping);

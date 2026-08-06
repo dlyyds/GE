@@ -8,6 +8,8 @@
 #include "GE/Core/KeyCodes.h"
 #include "GE/Render/Renderer.h"
 #include "GE/Render/Renderer3D.h"
+#include "GE/Render/TextureManager.h"
+#include "GE/Render/MaterialManager.h"
 #include "GE/Scene/Components.h"
 #include "GE/Utils/PlatformUtils.h"
 
@@ -31,18 +33,23 @@ void ModelTestLayer::OnAttach() {
     auto &device = ctx.GetDevice();
     auto &cache = device.GetResourceCache();
 
-    // 加载棋盘纹理（用于立方体表面）
-    m_Texture = Texture::LoadFromFile(device, cache,
-                                      "assets/textures/Checkerboard.png",
-                                      vk::Format::eR8G8B8A8Srgb,
-                                      vk::Filter::eNearest,
-                                      vk::Filter::eNearest);
-    m_Texture->SetDebugName("ModelTest_Checkerboard");
+    // 从全局纹理管理器加载棋盘纹理（自动去重）
+    auto &texMgr = Renderer::GetTextureManager();
+    m_Texture = texMgr.Load("assets/textures/Checkerboard.png",
+                            vk::Format::eR8G8B8A8Srgb,
+                            vk::Filter::eNearest,
+                            vk::Filter::eNearest);
+    if (m_Texture) {
+        m_Texture->SetDebugName("ModelTest_Checkerboard");
+    }
 
-    // 创建模型材质（使用棋盘纹理作为 Albedo）
-    m_ModelMaterial = std::make_unique<Material>();
-    m_ModelMaterial->SetTexture(Material::Albedo, m_Texture.get());
-    m_ModelMaterial->SetDebugName("ModelTest_CubeMat");
+    // 从全局材质管理器获取/创建单 Albedo 材质（自动按纹理路径去重）
+    auto &matMgr = Renderer::GetMaterialManager();
+    m_ModelMaterial = matMgr.GetOrCreateFromAlbedo(
+        "assets/textures/Checkerboard.png");
+    if (m_ModelMaterial) {
+        m_ModelMaterial->SetDebugName("ModelTest_CubeMat");
+    }
 
     {
         // 创建立方体网格（内置）
@@ -173,8 +180,8 @@ void ModelTestLayer::OnDetach() {
     m_PhysicsBallEntity = {};
     m_HierarchyPanel.SetContext(nullptr);
     m_Scene.reset();
-    m_ModelMaterial.reset();
-    m_Texture.reset();
+    m_ModelMaterial = nullptr;  // 由全局 MaterialManager 管理生命周期
+    m_Texture = nullptr;       // 由全局 TextureManager 管理生命周期
     m_CubeMesh.reset();
     m_SphereMesh.reset();
 }

@@ -39,8 +39,8 @@ void ModelTestLayer::OnAttach() {
                                       vk::Filter::eNearest);
     m_Texture->SetDebugName("ModelTest_Checkerboard");
 
-    // 创建立方体网格（内置）
     {
+        // 创建立方体网格（内置）
         m_CubeMesh = Mesh::CreateBuiltin(device, "cube");
         GE_CORE_ASSERT(m_CubeMesh, "创建立方体网格失败");
         m_CubeMesh->SetDebugName("ModelTest_Cube");
@@ -93,6 +93,10 @@ void ModelTestLayer::OnAttach() {
         m_SphereMesh.get(),
         glm::vec4(0.4f, 0.5f, 1.0f, 1.0f)
         );
+    m_BlueLightEntity.AddComponent<SphereColliderComponent>(1);
+    auto &ballRbc = m_BlueLightEntity.AddComponent<RigidBodyComponent>(Physics::RigidBodyType::Dynamic);
+    ballRbc.Mass = 1.0f;
+    ballRbc.Restitution = 0.3f; // 有些弹性
 
     // 创建方向光
     m_DirLightEntity = m_Scene->CreateEntity("DirectionalLight");
@@ -114,32 +118,32 @@ void ModelTestLayer::OnAttach() {
         // 静态地板（Box collider + Static rigid body）
         m_FloorEntity = m_Scene->CreateEntity("PhysicsFloor");
         auto &floorTc = m_FloorEntity.GetComponent<TransformComponent>();
-        floorTc.Translation = {0.0f, -3.0f, 0.0f};  // 放在下方
-        floorTc.Scale = {10.0f, 0.5f, 10.0f};        // 大而扁的盒子
-        m_FloorEntity.AddComponent<BoxColliderComponent>(glm::vec3(0.5f, 0.5f, 0.5f));
+        floorTc.Translation = {0.0f, -3.0f, 0.0f}; // 放在下方
+        floorTc.Scale = {10.0f, 0.5f, 10.0f}; // 大而扁的盒子
+        m_FloorEntity.AddComponent<BoxColliderComponent>(glm::vec3(1, 1, 1));
         m_FloorEntity.AddComponent<RigidBodyComponent>(Physics::RigidBodyType::Static);
 
         // 给地板加一个网格组件用于可视化
         m_FloorEntity.AddComponent<MeshComponent>(
             m_CubeMesh.get(),
             glm::vec4(0.5f, 0.5f, 0.5f, 1.0f)
-        );
+            );
 
         // 动态球体（Sphere collider + Dynamic rigid body）
         m_PhysicsBallEntity = m_Scene->CreateEntity("PhysicsBall");
         auto &ballTc = m_PhysicsBallEntity.GetComponent<TransformComponent>();
-        ballTc.Translation = {0.0f, 5.0f, 0.0f};   // 放在高处
+        ballTc.Translation = {0.0f, 5.0f, 0.0f}; // 放在高处
         ballTc.Scale = {0.5f, 0.5f, 0.5f};
-        m_PhysicsBallEntity.AddComponent<SphereColliderComponent>(0.5f);
-        auto &ballRbc = m_PhysicsBallEntity.AddComponent<RigidBodyComponent>(Physics::RigidBodyType::Dynamic);
+        m_PhysicsBallEntity.AddComponent<SphereColliderComponent>(1);
+        auto &ballRbc = m_PhysicsBallEntity.AddComponent<RigidBodyComponent>(Physics::RigidBodyType::Kinematic);
         ballRbc.Mass = 1.0f;
-        ballRbc.Restitution = 0.3f;  // 有些弹性
+        ballRbc.Restitution = 0.3f; // 有些弹性
 
         // 给球体加一个网格组件用于可视化
         m_PhysicsBallEntity.AddComponent<MeshComponent>(
             m_SphereMesh.get(),
             glm::vec4(0.2f, 0.6f, 1.0f, 1.0f)
-        );
+            );
     }
 
     // 添加相机鼠标控制脚本
@@ -310,74 +314,74 @@ void ModelTestLayer::OnImGuiRender() {
         if (!m_CameraEntity) {
             ImGui::TextDisabled("（场景中无相机实体）");
         } else {
-        auto &cameraComp = m_CameraEntity.GetComponent<CameraComponent>();
-        auto &camera = cameraComp.CameraInstance;
+            auto &cameraComp = m_CameraEntity.GetComponent<CameraComponent>();
+            auto &camera = cameraComp.CameraInstance;
 
-        // 相机模式切换
-        int mode = static_cast<int>(camera.GetMode());
-        if (ImGui::Combo("模式", &mode, "Orbit\0FPS\0")) {
-            camera.SetMode(static_cast<Camera::Mode>(mode));
-        }
+            // 相机模式切换
+            int mode = static_cast<int>(camera.GetMode());
+            if (ImGui::Combo("模式", &mode, "Orbit\0FPS\0")) {
+                camera.SetMode(static_cast<Camera::Mode>(mode));
+            }
 
-        // FOV（通过临时变量修改，因为 GetFov 返回值拷贝）
-        float fov = camera.GetFov();
-        if (ImGui::SliderFloat("FOV (度)", &fov, 10.0f, 120.0f)) {
-            camera.SetPerspective(fov, camera.GetAspect(), 0.1f, 100.0f);
-        }
+            // FOV（通过临时变量修改，因为 GetFov 返回值拷贝）
+            float fov = camera.GetFov();
+            if (ImGui::SliderFloat("FOV (度)", &fov, 10.0f, 120.0f)) {
+                camera.SetPerspective(fov, camera.GetAspect(), 0.1f, 100.0f);
+            }
 
-        ImGui::Checkbox("主相机", &cameraComp.Primary);
-        ImGui::Checkbox("固定宽高比", &cameraComp.FixedAspectRatio);
+            ImGui::Checkbox("主相机", &cameraComp.Primary);
+            ImGui::Checkbox("固定宽高比", &cameraComp.FixedAspectRatio);
 
-        if (camera.GetMode() == Camera::Mode::Orbit) {
-            // 轨道相机参数
-            glm::vec3 target = camera.GetTarget();
-            float theta = camera.GetTheta();
-            float phi = camera.GetPhi();
-            float distance = camera.GetDistance();
+            if (camera.GetMode() == Camera::Mode::Orbit) {
+                // 轨道相机参数
+                glm::vec3 target = camera.GetTarget();
+                float theta = camera.GetTheta();
+                float phi = camera.GetPhi();
+                float distance = camera.GetDistance();
 
-            if (ImGui::DragFloat3("目标点 (Target)", &target.x, 0.1f,
-                                  -10.0f, 10.0f)) {
-                camera.SetTarget(target);
-            }
-            if (ImGui::SliderFloat("方位角 (Theta, deg)", &theta,
-                                   -180.0f, 180.0f)) {
-                camera.SetOrbit(theta, phi, distance);
-            }
-            if (ImGui::SliderFloat("俯仰角 (Phi, deg)", &phi,
-                                   -89.0f, 89.0f)) {
-                camera.SetOrbit(theta, phi, distance);
-            }
-            if (ImGui::DragFloat("距离 (Distance)", &distance, 0.1f,
-                                 0.5f, 50.0f)) {
-                camera.SetOrbit(theta, phi, distance);
-            }
-        } else {
-            // FPS 相机参数
-            glm::vec3 pos = camera.GetPosition();
-            float yaw = camera.GetYaw();
-            float pitch = camera.GetPitch();
+                if (ImGui::DragFloat3("目标点 (Target)", &target.x, 0.1f,
+                                      -10.0f, 10.0f)) {
+                    camera.SetTarget(target);
+                }
+                if (ImGui::SliderFloat("方位角 (Theta, deg)", &theta,
+                                       -180.0f, 180.0f)) {
+                    camera.SetOrbit(theta, phi, distance);
+                }
+                if (ImGui::SliderFloat("俯仰角 (Phi, deg)", &phi,
+                                       -89.0f, 89.0f)) {
+                    camera.SetOrbit(theta, phi, distance);
+                }
+                if (ImGui::DragFloat("距离 (Distance)", &distance, 0.1f,
+                                     0.5f, 50.0f)) {
+                    camera.SetOrbit(theta, phi, distance);
+                }
+            } else {
+                // FPS 相机参数
+                glm::vec3 pos = camera.GetPosition();
+                float yaw = camera.GetYaw();
+                float pitch = camera.GetPitch();
 
-            if (ImGui::DragFloat3("位置 (Position)", &pos.x, 0.1f,
-                                  -20.0f, 20.0f)) {
-                camera.SetPosition(pos);
+                if (ImGui::DragFloat3("位置 (Position)", &pos.x, 0.1f,
+                                      -20.0f, 20.0f)) {
+                    camera.SetPosition(pos);
+                }
+                if (ImGui::SliderFloat("偏航角 (Yaw, deg)", &yaw,
+                                       -180.0f, 180.0f)) {
+                    camera.SetYawPitch(yaw, pitch);
+                }
+                if (ImGui::SliderFloat("俯仰角 (Pitch, deg)", &pitch,
+                                       -89.0f, 89.0f)) {
+                    camera.SetYawPitch(yaw, pitch);
+                }
             }
-            if (ImGui::SliderFloat("偏航角 (Yaw, deg)", &yaw,
-                                   -180.0f, 180.0f)) {
-                camera.SetYawPitch(yaw, pitch);
-            }
-            if (ImGui::SliderFloat("俯仰角 (Pitch, deg)", &pitch,
-                                   -89.0f, 89.0f)) {
-                camera.SetYawPitch(yaw, pitch);
-            }
-        }
 
-        // 相机灵敏度
-        ImGui::DragFloat("鼠标灵敏度", &camera.MouseSensitivity,
-                         0.01f, 0.01f, 5.0f);
-        ImGui::DragFloat("滚轮灵敏度", &camera.ScrollSensitivity,
-                         0.05f, 0.1f, 10.0f);
-        ImGui::DragFloat("移动速度", &camera.MoveSpeed,
-                         0.1f, 0.1f, 20.0f);
+            // 相机灵敏度
+            ImGui::DragFloat("鼠标灵敏度", &camera.MouseSensitivity,
+                             0.01f, 0.01f, 5.0f);
+            ImGui::DragFloat("滚轮灵敏度", &camera.ScrollSensitivity,
+                             0.05f, 0.1f, 10.0f);
+            ImGui::DragFloat("移动速度", &camera.MoveSpeed,
+                             0.1f, 0.1f, 20.0f);
         } // m_CameraEntity
     }
 
@@ -437,13 +441,17 @@ void ModelTestLayer::OnImGuiRender() {
 
         const char *modeNames[] = {"Default", "ON (FIFO)", "OFF (Mailbox)"};
         int currentIndex = 0;
-        if (currentMode == VsyncMode::ON) currentIndex = 1;
-        else if (currentMode == VsyncMode::OFF) currentIndex = 2;
+        if (currentMode == VsyncMode::ON)
+            currentIndex = 1;
+        else if (currentMode == VsyncMode::OFF)
+            currentIndex = 2;
 
         if (ImGui::Combo("垂直同步", &currentIndex, modeNames, 3)) {
             VsyncMode newMode = VsyncMode::Default;
-            if (currentIndex == 1) newMode = VsyncMode::ON;
-            else if (currentIndex == 2) newMode = VsyncMode::OFF;
+            if (currentIndex == 1)
+                newMode = VsyncMode::ON;
+            else if (currentIndex == 2)
+                newMode = VsyncMode::OFF;
             app.SetPresentMode(newMode);
         }
     }
@@ -548,7 +556,7 @@ void ModelTestLayer::RefreshLightScripts() {
             } else {
                 light.Color = {1.0f, 1.0f, 1.0f, 1.0f};
             }
-            return true;  // 消费事件
+            return true; // 消费事件
         }
         return false;
     };

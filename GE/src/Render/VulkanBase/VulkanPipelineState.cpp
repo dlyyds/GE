@@ -478,32 +478,32 @@ const vk::GraphicsPipelineCreateInfo &VulkanPipelineState::buildRenderPassPipeli
 
 void VulkanPipelineState::flushDynamicStates(vk::CommandBuffer cmd) const {
     // ---- 输入装配 ----
-    if (m_DynamicStateSet.count(vk::DynamicState::ePrimitiveTopology))
+    if (m_DynamicStateSet.contains(vk::DynamicState::ePrimitiveTopology))
         cmd.setPrimitiveTopology(m_InputAssembly.topology);
 
     // ---- 光栅化 ----
-    if (m_DynamicStateSet.count(vk::DynamicState::eRasterizerDiscardEnable))
+    if (m_DynamicStateSet.contains(vk::DynamicState::eRasterizerDiscardEnable))
         cmd.setRasterizerDiscardEnable(m_Rasterization.rasterizerDiscardEnable);
-    if (m_DynamicStateSet.count(vk::DynamicState::eCullMode))
+    if (m_DynamicStateSet.contains(vk::DynamicState::eCullMode))
         cmd.setCullMode(m_Rasterization.cullMode);
-    if (m_DynamicStateSet.count(vk::DynamicState::eFrontFace))
+    if (m_DynamicStateSet.contains(vk::DynamicState::eFrontFace))
         cmd.setFrontFace(m_Rasterization.frontFace);
-    if (m_DynamicStateSet.count(vk::DynamicState::eDepthBiasEnable))
+    if (m_DynamicStateSet.contains(vk::DynamicState::eDepthBiasEnable))
         cmd.setDepthBiasEnable(m_Rasterization.depthBiasEnable);
 
     // ---- 深度/模板 ----
     // 优先使用 VK_EXT_extended_dynamic_state 扩展（Vulkan 1.3 core）
-    if (m_DynamicStateSet.count(vk::DynamicState::eDepthTestEnable))
+    if (m_DynamicStateSet.contains(vk::DynamicState::eDepthTestEnable))
         cmd.setDepthTestEnableEXT(m_DepthStencil.depthTestEnable);
-    if (m_DynamicStateSet.count(vk::DynamicState::eDepthWriteEnable))
+    if (m_DynamicStateSet.contains(vk::DynamicState::eDepthWriteEnable))
         cmd.setDepthWriteEnableEXT(m_DepthStencil.depthWriteEnable);
-    if (m_DynamicStateSet.count(vk::DynamicState::eDepthCompareOp))
+    if (m_DynamicStateSet.contains(vk::DynamicState::eDepthCompareOp))
         cmd.setDepthCompareOpEXT(m_DepthStencil.depthCompareOp);
-    if (m_DynamicStateSet.count(vk::DynamicState::eDepthBoundsTestEnable))
+    if (m_DynamicStateSet.contains(vk::DynamicState::eDepthBoundsTestEnable))
         cmd.setDepthBoundsTestEnable(m_DepthStencil.depthBoundsTestEnable);
-    if (m_DynamicStateSet.count(vk::DynamicState::eStencilTestEnable))
+    if (m_DynamicStateSet.contains(vk::DynamicState::eStencilTestEnable))
         cmd.setStencilTestEnableEXT(m_DepthStencil.stencilTestEnable);
-    if (m_DynamicStateSet.count(vk::DynamicState::eStencilOp)) {
+    if (m_DynamicStateSet.contains(vk::DynamicState::eStencilOp)) {
         cmd.setStencilOp(vk::StencilFaceFlagBits::eFront,
                          m_DepthStencil.front.failOp,
                          m_DepthStencil.front.passOp,
@@ -525,6 +525,14 @@ size_t VulkanPipelineState::hash() const {
     size_t seed = 0;
     auto hashCombine = [&seed](size_t v) {
         seed ^= v + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+    };
+
+    // 辅助：仅当指定动态状态未启用时才 hash 对应值
+    // —— 动态状态的值在管线创建时被忽略，不应参与管线 hash
+    // —— 只处理 flushDynamicStates() 中实际支持的动态状态
+    auto hashIfNotDynamic = [&](vk::DynamicState s, size_t v) {
+        if (!m_DynamicStateSet.count(s))
+            hashCombine(v);
     };
 
     // —— 颜色附件格式 ——
@@ -551,20 +559,37 @@ size_t VulkanPipelineState::hash() const {
         hashCombine(a.offset);
     }
 
-    // —— 输入装配（整体 hash，含 sType/pNext/flags/topology/primitiveRestartEnable）——
-    hashCombine(std::hash<vk::PipelineInputAssemblyStateCreateInfo>{}(m_InputAssembly));
+    // —— 输入装配 ——
+    hashCombine(m_InputAssembly.primitiveRestartEnable);
+    hashIfNotDynamic(vk::DynamicState::ePrimitiveTopology,
+                     std::hash<vk::PrimitiveTopology>{}(m_InputAssembly.topology));
 
     // —— 细分曲面（整体 hash）——
     hashCombine(std::hash<vk::PipelineTessellationStateCreateInfo>{}(m_Tessellation));
 
-    // —— 视口（只用 count，pViewports/pScissors 为 nullptr 不影响）——
+    // —— 视口（count 参与管线创建，视口矩形本身是动态的）——
     hashCombine(m_ViewportState.viewportCount);
     hashCombine(m_ViewportState.scissorCount);
 
-    // —— 光栅化（整体 hash，含 depthBias* 等所有字段）——
-    hashCombine(std::hash<vk::PipelineRasterizationStateCreateInfo>{}(m_Rasterization));
+    // —— 光栅化（逐字段 hash，动态状态对应字段跳过）——
+    hashCombine(m_Rasterization.depthClampEnable);
+    hashIfNotDynamic(vk::DynamicState::eRasterizerDiscardEnable,
+                     m_Rasterization.rasterizerDiscardEnable);
+    hashCombine(std::hash<vk::PolygonMode>{}(m_Rasterization.polygonMode));
+    hashIfNotDynamic(vk::DynamicState::eCullMode,
+                     std::hash<vk::CullModeFlags>{}(m_Rasterization.cullMode));
+    hashIfNotDynamic(vk::DynamicState::eFrontFace,
+                     std::hash<vk::FrontFace>{}(m_Rasterization.frontFace));
+    hashIfNotDynamic(vk::DynamicState::eDepthBiasEnable,
+                     m_Rasterization.depthBiasEnable);
+    // 注：depthBias 三个因子 / lineWidth / depthBiasClamp 等当前 flush 未支持，
+    //     暂视为始终参与 hash，后续扩展动态状态时再补充
+    hashCombine(std::hash<float>{}(m_Rasterization.depthBiasConstantFactor));
+    hashCombine(std::hash<float>{}(m_Rasterization.depthBiasClamp));
+    hashCombine(std::hash<float>{}(m_Rasterization.depthBiasSlopeFactor));
+    hashCombine(std::hash<float>{}(m_Rasterization.lineWidth));
 
-    // —— 多重采样（逐字段 hash，因为 pSampleMask 是指针，只 hash 地址不对）——
+    // —— 多重采样（当前无对应动态状态，全部参与 hash）——
     hashCombine(std::hash<vk::SampleCountFlagBits>{}(m_Multisample.rasterizationSamples));
     hashCombine(m_Multisample.sampleShadingEnable);
     hashCombine(std::hash<float>{}(m_Multisample.minSampleShading));
@@ -572,10 +597,41 @@ size_t VulkanPipelineState::hash() const {
     hashCombine(m_Multisample.alphaToCoverageEnable);
     hashCombine(m_Multisample.alphaToOneEnable);
 
-    // —— 深度/模板（整体 hash，含 front/back 模板状态及 min/maxDepthBounds 等）——
-    hashCombine(std::hash<vk::PipelineDepthStencilStateCreateInfo>{}(m_DepthStencil));
+    // —— 深度/模板（逐字段 hash，动态状态对应字段跳过）——
+    hashIfNotDynamic(vk::DynamicState::eDepthTestEnable,
+                     m_DepthStencil.depthTestEnable);
+    hashIfNotDynamic(vk::DynamicState::eDepthWriteEnable,
+                     m_DepthStencil.depthWriteEnable);
+    hashIfNotDynamic(vk::DynamicState::eDepthCompareOp,
+                     std::hash<vk::CompareOp>{}(m_DepthStencil.depthCompareOp));
+    hashIfNotDynamic(vk::DynamicState::eDepthBoundsTestEnable,
+                     m_DepthStencil.depthBoundsTestEnable);
+    hashIfNotDynamic(vk::DynamicState::eStencilTestEnable,
+                     m_DepthStencil.stencilTestEnable);
+    // 模板操作（eStencilOp 对应 front+back 的 failOp/passOp/depthFailOp/compareOp）
+    if (!m_DynamicStateSet.count(vk::DynamicState::eStencilOp)) {
+        // 正面
+        hashCombine(std::hash<vk::StencilOp>{}(m_DepthStencil.front.failOp));
+        hashCombine(std::hash<vk::StencilOp>{}(m_DepthStencil.front.passOp));
+        hashCombine(std::hash<vk::StencilOp>{}(m_DepthStencil.front.depthFailOp));
+        hashCombine(std::hash<vk::CompareOp>{}(m_DepthStencil.front.compareOp));
+        hashCombine(m_DepthStencil.front.compareMask);
+        hashCombine(m_DepthStencil.front.writeMask);
+        hashCombine(m_DepthStencil.front.reference);
+        // 背面
+        hashCombine(std::hash<vk::StencilOp>{}(m_DepthStencil.back.failOp));
+        hashCombine(std::hash<vk::StencilOp>{}(m_DepthStencil.back.passOp));
+        hashCombine(std::hash<vk::StencilOp>{}(m_DepthStencil.back.depthFailOp));
+        hashCombine(std::hash<vk::CompareOp>{}(m_DepthStencil.back.compareOp));
+        hashCombine(m_DepthStencil.back.compareMask);
+        hashCombine(m_DepthStencil.back.writeMask);
+        hashCombine(m_DepthStencil.back.reference);
+    }
+    // min/maxDepthBounds 暂未实现动态状态，始终参与 hash
+    hashCombine(std::hash<float>{}(m_DepthStencil.minDepthBounds));
+    hashCombine(std::hash<float>{}(m_DepthStencil.maxDepthBounds));
 
-    // —— 颜色混合：logicOp + 附件数组内容 + blendConstants ——
+    // —— 颜色混合（当前无对应动态状态，全部参与 hash）——
     hashCombine(m_ColorBlend.logicOpEnable);
     hashCombine(std::hash<vk::LogicOp>{}(m_ColorBlend.logicOp));
     for (const auto &att : m_BlendAttachments)
@@ -583,7 +639,7 @@ size_t VulkanPipelineState::hash() const {
     for (float c : m_BlendConstants)
         hashCombine(std::hash<float>{}(c));
 
-    // —— 动态状态集合（unordered_set 遍历顺序不稳定，先排序再 hash）——
+    // —— 动态状态集合本身参与 hash（决定了哪些字段被跳过）——
     std::vector<vk::DynamicState> dynStates(m_DynamicStateSet.begin(), m_DynamicStateSet.end());
     std::sort(dynStates.begin(), dynStates.end());
     for (auto s : dynStates)

@@ -220,6 +220,11 @@ std::unique_ptr<VulkanDevice> VulkanContext::CreateDevice() {
             // 启用 Extended Dynamic State
             auto &ext_dyn_state = gpu.AddExtensionFeatures<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>();
             ext_dyn_state.extendedDynamicState = true;
+
+            // 启用各向异性过滤（所有现代 GPU 均支持，用于提升曲面纹理质量）
+            if (gpu.GetFeatures().samplerAnisotropy) {
+                gpu.GetMutableRequestedFeatures().samplerAnisotropy = VK_TRUE;
+            }
         });
 }
 

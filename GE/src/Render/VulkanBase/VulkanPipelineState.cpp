@@ -447,9 +447,8 @@ const vk::GraphicsPipelineCreateInfo &VulkanPipelineState::buildDynamicRendering
         .stencilAttachmentFormat = m_StencilFormat,
     };
 
-    // pNext 挂载
+    // pNext 挂载（Vulkan 1.3 core，pNext 链中有 rendering info 即可）
     m_PipelineInfo.setPNext(&m_RenderingInfo);
-    m_PipelineInfo.flags |= vk::PipelineCreateFlagBits::eDynamicRenderingKHR;
 
     return m_PipelineInfo;
 }

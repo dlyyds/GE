@@ -66,6 +66,9 @@ public:
 
     void OnViewportResize(uint32_t width, uint32_t height);
 
+    /** @brief 获取物理世界指针（可能为 nullptr，如果物理系统未启用） */
+    [[nodiscard]] Physics::PhysicsWorld *GetPhysicsWorld() const { return m_PhysicsWorld.get(); }
+
 private:
     /// 将输入事件分发给所有 ScriptComponent
     void DispatchInputEventToScripts(Event &e);
@@ -80,6 +83,9 @@ private:
 
     /// 实体销毁回调（用于清理物理 body）
     void OnRigidBodyDestroyed(entt::registry &registry, entt::entity entity);
+
+    /// 碰撞体销毁回调（移除碰撞体时重建刚体形状）
+    void OnColliderDestroyed(entt::registry &registry, entt::entity entity);
 
     friend class Entity;
     friend class Physics::PhysicsWorld;

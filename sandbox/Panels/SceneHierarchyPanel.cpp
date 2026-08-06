@@ -8,6 +8,8 @@
 #include <imgui_internal.h>
 
 #include "GE/Scene/Components.h"
+#include "GE/Scene/Scene.h"
+#include "GE/Physics/PhysicsWorld.h"
 #include "GE/Render/Camera.h"
 #include "GE/Render/Mesh.h"
 
@@ -104,10 +106,11 @@ void SceneHierarchyPanel::DrawEntityNode(Entity entity) {
 // ============================================================
 // 辅助：Vec3 控件（带 X/Y/Z 重置按钮）
 // ============================================================
-static void DrawVec3Control(const std::string &label, glm::vec3 &values, float resetValue = 0.0f, float columnWidth = 100.0f) {
+static bool DrawVec3Control(const std::string &label, glm::vec3 &values, float resetValue = 0.0f, float columnWidth = 100.0f) {
     ImGui::PushID(label.c_str());
 
     const auto boldFont = ImGui::GetIO().Fonts->Fonts[0];
+    bool changed = false;
 
     ImGui::Columns(2);
     ImGui::SetColumnWidth(0, columnWidth);
@@ -125,13 +128,15 @@ static void DrawVec3Control(const std::string &label, glm::vec3 &values, float r
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4{0.9f, 0.2f, 0.2f, 1.0f});
     ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4{0.8f, 0.1f, 0.15f, 1.0f});
     ImGui::PushFont(boldFont);
-    if (ImGui::Button("X", buttonSize))
+    if (ImGui::Button("X", buttonSize)) {
         values.x = resetValue;
+        changed = true;
+    }
     ImGui::PopStyleColor(3);
     ImGui::PopFont();
 
     ImGui::SameLine();
-    ImGui::DragFloat("##X", &values.x, 0.1f, 0.0f, 0.0f, "%.2f");
+    changed |= ImGui::DragFloat("##X", &values.x, 0.1f, 0.0f, 0.0f, "%.2f");
     ImGui::PopItemWidth();
     ImGui::SameLine();
 
@@ -140,13 +145,15 @@ static void DrawVec3Control(const std::string &label, glm::vec3 &values, float r
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4{0.3f, 0.8f, 0.3f, 1.0f});
     ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4{0.2f, 0.7f, 0.2f, 1.0f});
     ImGui::PushFont(boldFont);
-    if (ImGui::Button("Y", buttonSize))
+    if (ImGui::Button("Y", buttonSize)) {
         values.y = resetValue;
+        changed = true;
+    }
     ImGui::PopStyleColor(3);
     ImGui::PopFont();
 
     ImGui::SameLine();
-    ImGui::DragFloat("##Y", &values.y, 0.1f, 0.0f, 0.0f, "%.2f");
+    changed |= ImGui::DragFloat("##Y", &values.y, 0.1f, 0.0f, 0.0f, "%.2f");
     ImGui::PopItemWidth();
     ImGui::SameLine();
 
@@ -155,13 +162,15 @@ static void DrawVec3Control(const std::string &label, glm::vec3 &values, float r
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4{0.2f, 0.35f, 0.9f, 1.0f});
     ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4{0.1f, 0.25f, 0.8f, 1.0f});
     ImGui::PushFont(boldFont);
-    if (ImGui::Button("Z", buttonSize))
+    if (ImGui::Button("Z", buttonSize)) {
         values.z = resetValue;
+        changed = true;
+    }
     ImGui::PopStyleColor(3);
     ImGui::PopFont();
 
     ImGui::SameLine();
-    ImGui::DragFloat("##Z", &values.z, 0.1f, 0.0f, 0.0f, "%.2f");
+    changed |= ImGui::DragFloat("##Z", &values.z, 0.1f, 0.0f, 0.0f, "%.2f");
     ImGui::PopItemWidth();
 
     ImGui::PopStyleVar();
@@ -169,6 +178,8 @@ static void DrawVec3Control(const std::string &label, glm::vec3 &values, float r
     ImGui::Columns(1);
 
     ImGui::PopID();
+
+    return changed;
 }
 
 // ============================================================
@@ -445,49 +456,103 @@ void SceneHierarchyPanel::DrawComponents(Entity entity) {
     });
 
     // ---- Rigid Body 组件 ----
-    DrawComponent<RigidBodyComponent>("Rigid Body", entity, [](auto &component) {
-        // 刚体类型下拉框
-        const char *typeStrings[] = {"Static", "Kinematic", "Dynamic"};
-        int currentType = static_cast<int>(component.Type);
-        if (ImGui::BeginCombo("Type", typeStrings[currentType])) {
-            for (int i = 0; i < 3; i++) {
-                const bool isSelected = currentType == i;
-                if (ImGui::Selectable(typeStrings[i], isSelected)) {
-                    component.Type = static_cast<Physics::RigidBodyType>(i);
+    DrawComponent<RigidBodyComponent>("Rigid Body", entity, [&](auto &component) {
+        Physics::PhysicsWorld *physicsWorld = m_Context->GetPhysicsWorld();
+        const auto entityHandle = (entt::entity)entity;
+
+        // 刚体类型下拉框（类型改变需要重建 body）
+        {
+            const char *typeStrings[] = {"Static", "Kinematic", "Dynamic"};
+            int currentType = static_cast<int>(component.Type);
+            if (ImGui::BeginCombo("Type", typeStrings[currentType])) {
+                for (int i = 0; i < 3; i++) {
+                    const bool isSelected = currentType == i;
+                    if (ImGui::Selectable(typeStrings[i], isSelected)) {
+                        component.Type = static_cast<Physics::RigidBodyType>(i);
+                        // 运动类型改变 → 销毁并重建刚体
+                        if (physicsWorld)
+                            physicsWorld->RebuildRigidBody(entityHandle);
+                    }
+                    if (isSelected)
+                        ImGui::SetItemDefaultFocus();
                 }
-                if (isSelected)
-                    ImGui::SetItemDefaultFocus();
+                ImGui::EndCombo();
             }
-            ImGui::EndCombo();
         }
 
-        // 质量（仅动态体有效）
+        // 质量（仅动态体有效，改变后需要更新属性）
         bool massDisabled = (component.Type != Physics::RigidBodyType::Dynamic);
         if (massDisabled) ImGui::BeginDisabled();
-        ImGui::DragFloat("Mass (kg)", &component.Mass, 0.1f, 0.01f, 10000.0f);
+        if (ImGui::DragFloat("Mass (kg)", &component.Mass, 0.1f, 0.01f, 10000.0f)) {
+            if (physicsWorld)
+                physicsWorld->UpdateRigidBodyProperties(entityHandle);
+        }
         if (massDisabled) ImGui::EndDisabled();
 
-        ImGui::DragFloat("Friction", &component.Friction, 0.01f, 0.0f, 1.0f);
-        ImGui::DragFloat("Restitution", &component.Restitution, 0.01f, 0.0f, 1.0f);
-        ImGui::DragFloat("Linear Damping", &component.LinearDamping, 0.01f, 0.0f, 10.0f);
-        ImGui::DragFloat("Angular Damping", &component.AngularDamping, 0.01f, 0.0f, 10.0f);
+        // 摩擦系数
+        if (ImGui::DragFloat("Friction", &component.Friction, 0.01f, 0.0f, 1.0f)) {
+            if (physicsWorld)
+                physicsWorld->UpdateRigidBodyProperties(entityHandle);
+        }
 
-        ImGui::Checkbox("Is Sensor (Trigger)", &component.IsSensor);
+        // 弹性系数
+        if (ImGui::DragFloat("Restitution", &component.Restitution, 0.01f, 0.0f, 1.0f)) {
+            if (physicsWorld)
+                physicsWorld->UpdateRigidBodyProperties(entityHandle);
+        }
+
+        // 线性阻尼
+        if (ImGui::DragFloat("Linear Damping", &component.LinearDamping, 0.01f, 0.0f, 10.0f)) {
+            if (physicsWorld)
+                physicsWorld->UpdateRigidBodyProperties(entityHandle);
+        }
+
+        // 角阻尼
+        if (ImGui::DragFloat("Angular Damping", &component.AngularDamping, 0.01f, 0.0f, 10.0f)) {
+            if (physicsWorld)
+                physicsWorld->UpdateRigidBodyProperties(entityHandle);
+        }
+
+        // 传感器标记（改变后需要更新属性）
+        if (ImGui::Checkbox("Is Sensor (Trigger)", &component.IsSensor)) {
+            if (physicsWorld)
+                physicsWorld->UpdateRigidBodyProperties(entityHandle);
+        }
 
         ImGui::Separator();
         ImGui::TextDisabled("Runtime Body ID: %s", component.IsInitialized ? "valid" : "uninitialized");
     });
 
     // ---- Box Collider 组件 ----
-    DrawComponent<BoxColliderComponent>("Box Collider", entity, [](auto &component) {
-        DrawVec3Control("Half Extents", component.HalfExtents, 0.5f, 120);
-        DrawVec3Control("Offset", component.Offset, 0.0f, 120);
+    DrawComponent<BoxColliderComponent>("Box Collider", entity, [&](auto &component) {
+        Physics::PhysicsWorld *physicsWorld = m_Context->GetPhysicsWorld();
+        const auto entityHandle = (entt::entity)entity;
+
+        // 形状改变 → 重建刚体
+        if (DrawVec3Control("Half Extents", component.HalfExtents, 0.5f, 120)) {
+            if (physicsWorld)
+                physicsWorld->RebuildRigidBody(entityHandle);
+        }
+        if (DrawVec3Control("Offset", component.Offset, 0.0f, 120)) {
+            if (physicsWorld)
+                physicsWorld->RebuildRigidBody(entityHandle);
+        }
     });
 
     // ---- Sphere Collider 组件 ----
-    DrawComponent<SphereColliderComponent>("Sphere Collider", entity, [](auto &component) {
-        ImGui::DragFloat("Radius", &component.Radius, 0.05f, 0.001f, 1000.0f);
-        DrawVec3Control("Offset", component.Offset, 0.0f, 120);
+    DrawComponent<SphereColliderComponent>("Sphere Collider", entity, [&](auto &component) {
+        Physics::PhysicsWorld *physicsWorld = m_Context->GetPhysicsWorld();
+        const auto entityHandle = (entt::entity)entity;
+
+        // 形状改变 → 重建刚体
+        if (ImGui::DragFloat("Radius", &component.Radius, 0.05f, 0.001f, 1000.0f)) {
+            if (physicsWorld)
+                physicsWorld->RebuildRigidBody(entityHandle);
+        }
+        if (DrawVec3Control("Offset", component.Offset, 0.0f, 120)) {
+            if (physicsWorld)
+                physicsWorld->RebuildRigidBody(entityHandle);
+        }
     });
 
     // ---- Script 组件 ----

@@ -263,6 +263,58 @@ void PhysicsWorld::DestroyRigidBody(entt::entity entity) {
     rbc->IsInitialized = false;
 }
 
+void PhysicsWorld::UpdateRigidBodyProperties(entt::entity entity) {
+    if (!m_Scene || !m_PhysicsSystem) return;
+
+    auto &reg = m_Scene->Reg();
+    if (!reg.valid(entity)) return;
+
+    auto *rbc = reg.try_get<RigidBodyComponent>(entity);
+    if (!rbc || !rbc->IsInitialized) return;
+
+    auto &bodyInterface = m_PhysicsSystem->GetBodyInterface();
+    const JPH::BodyID &bodyID = rbc->RuntimeBodyID;
+
+    // 更新摩擦、弹性、阻尼
+    bodyInterface.SetFriction(bodyID, rbc->Friction);
+    bodyInterface.SetRestitution(bodyID, rbc->Restitution);
+    bodyInterface.SetLinearDamping(bodyID, rbc->LinearDamping);
+    bodyInterface.SetAngularDamping(bodyID, rbc->AngularDamping);
+
+    // 更新传感器标记
+    // 注意：Jolt 的 SetSensor 仅对已激活的 body 有效
+    bodyInterface.SetSensor(bodyID, rbc->IsSensor);
+
+    // 更新质量（仅动态体）
+    if (rbc->Type == RigidBodyType::Dynamic && rbc->Mass > 0.0f) {
+        // 通过 MotionProperties 设置逆质量（Jolt 内部存储的是逆质量）
+        // 这里使用 SetMassProperties 方式重新计算惯性张量
+        // 简化处理：直接调用 SetInverseMass，保持惯性不变
+        JPH::MotionProperties *mp = bodyInterface.GetMotionProperties(bodyID);
+        if (mp) {
+            mp->SetInverseMass(1.0f / rbc->Mass);
+        }
+    }
+}
+
+void PhysicsWorld::RebuildRigidBody(entt::entity entity) {
+    if (!m_Scene || !m_PhysicsSystem) return;
+
+    auto &reg = m_Scene->Reg();
+    if (!reg.valid(entity)) return;
+
+    auto *rbc = reg.try_get<RigidBodyComponent>(entity);
+    if (!rbc) return;
+
+    // 如果 body 已初始化，先销毁
+    if (rbc->IsInitialized) {
+        DestroyRigidBody(entity);
+    }
+
+    // 加入待创建列表，下一次 Step() 时重建
+    RequestCreateRigidBody(entity);
+}
+
 void PhysicsWorld::ProcessPendingBodies() {
     if (m_PendingBodies.empty() || !m_Scene) return;
 

@@ -105,6 +105,26 @@ public:
      */
     void DestroyRigidBody(entt::entity entity);
 
+    /**
+     * @brief 同步更新已创建刚体的属性（质量、摩擦、弹性、阻尼、传感器标记）。
+     *
+     * 用于编辑器面板修改属性后同步到 Jolt 物理世界。
+     * 不涉及运动类型或碰撞形状的改变。
+     *
+     * @param entity 实体句柄
+     */
+    void UpdateRigidBodyProperties(entt::entity entity);
+
+    /**
+     * @brief 销毁并重建 Jolt 刚体（用于运动类型改变或碰撞形状改变时）。
+     *
+     * 先销毁当前 body，再将 entity 加入待创建列表，
+     * 下一次 Step() 时会根据最新组件数据重新创建。
+     *
+     * @param entity 实体句柄
+     */
+    void RebuildRigidBody(entt::entity entity);
+
     // ========================================================================
     // 重力
     // ========================================================================

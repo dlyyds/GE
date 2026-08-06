@@ -24,6 +24,10 @@ Scene::Scene() {
 
     // 注册 RigidBodyComponent 销毁回调
     m_Registry.on_destroy<RigidBodyComponent>().connect<&Scene::OnRigidBodyDestroyed>(this);
+
+    // 注册碰撞体销毁回调（移除碰撞体时触发刚体重建）
+    m_Registry.on_destroy<BoxColliderComponent>().connect<&Scene::OnColliderDestroyed>(this);
+    m_Registry.on_destroy<SphereColliderComponent>().connect<&Scene::OnColliderDestroyed>(this);
 }
 
 Scene::~Scene() = default;
@@ -439,6 +443,17 @@ void Scene::OnRigidBodyDestroyed(entt::registry &registry, entt::entity entity) 
     // EnTT 的 on_destroy 回调，在实体销毁或组件移除时触发
     if (m_PhysicsWorld) {
         m_PhysicsWorld->DestroyRigidBody(entity);
+    }
+}
+
+void Scene::OnColliderDestroyed(entt::registry &registry, entt::entity entity) {
+    // 碰撞体被移除时，如果实体还有 RigidBodyComponent 且已初始化，
+    // 则重建刚体以反映新的碰撞形状
+    if (!m_PhysicsWorld) return;
+
+    auto *rbc = registry.try_get<RigidBodyComponent>(entity);
+    if (rbc && rbc->IsInitialized) {
+        m_PhysicsWorld->RebuildRigidBody(entity);
     }
 }
 

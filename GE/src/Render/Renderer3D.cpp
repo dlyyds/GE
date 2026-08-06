@@ -139,7 +139,7 @@ void Renderer3D::EndScene() {
     for (size_t i = 0; i < lightCount; i++) {
         const auto &pl = m_LightParams.pointLights[i];
         frameUBO.pointLightPositions[i] = glm::vec4(pl.position, pl.radiusInv);
-        frameUBO.pointLightColors[i]    = pl.color;
+        frameUBO.pointLightColors[i] = pl.color;
     }
     frameUBO.pointLightCount = glm::vec4(static_cast<float>(lightCount), 0.0f, 0.0f, 0.0f);
 
@@ -211,34 +211,55 @@ void Renderer3D::EndScene() {
 
     renderInfo.Begin(vkCmd);
 
-    // ── 4. 绑定 pipeline layout + 设置管线状态 ────────────────────────
+    // ====================================================================
+    // 4. 配置管线状态
+    // ====================================================================
+    //
+    // 管线状态分两类：
+    //   A. 管线创建态 —— 决定管线 hash，命中缓存则复用已有管线
+    //      - 附件格式、颜色混合、顶点输入、光栅化/深度/模板的"非动态"部分
+    //   B. 动态状态值 —— 运行时通过 vkCmdSet* 改变，不影响管线 hash
+    //      - 视口、剪刀、剔除模式、正面方向、图元拓扑、深度测试开关等
+    //
+    // 注意：某些状态（如 cullMode、depthTestEnable）既参与管线创建（当未设为
+    //       动态时），也作为动态状态的当前值。这里在 enableDynamicState 之后
+    //       仍保留 set* 调用，是为了设置动态状态的"初始值"。
+    // ====================================================================
+
     cmd.BindPipelineLayout(*m_PipelineLayout);
 
     auto &ps = cmd.GetPipelineState();
     auto colorFmt = swapchain.GetFormat();
 
-    // 混合附件：无 alpha 混合（3D 不透明物体）
+    // —— 4a. 附件格式 ——
+    vk::Format depthFmt = vk::Format::eUndefined;
+    if (renderTarget.HasDepth()) {
+        depthFmt = renderTarget.GetDepthFormat();
+    }
+    ps.setRenderingFormats({colorFmt}, depthFmt);
+
+    // —— 4b. 颜色混合（3D 不透明物体：无 alpha 混合，全通道写入）——
     vk::PipelineColorBlendAttachmentState blendState{};
     blendState.colorWriteMask = vk::ColorComponentFlagBits::eR
                                 | vk::ColorComponentFlagBits::eG
                                 | vk::ColorComponentFlagBits::eB
                                 | vk::ColorComponentFlagBits::eA;
+    ps.setColorBlendAttachments({blendState});
 
-    // 附件格式
-    vk::Format depthFmt = vk::Format::eUndefined;
-    if (renderTarget.HasDepth()) {
-        depthFmt = renderTarget.GetDepthFormat();
-    }
+    // —— 4c. 顶点输入（从顶点着色器反射自动生成）——
+    ps.setVertexInputFromShader(*m_VertShader);
 
-    // 配置管线状态（链式 API）
-    ps.setRenderingFormats({colorFmt}, depthFmt)
-      .setInputAssembly(vk::PrimitiveTopology::eTriangleList)
-      .setColorBlendAttachments({blendState})
+    // —— 4d. 光栅化 + 深度/模板（默认值，同时作为动态状态初始值）——
+    ps.setInputAssembly(vk::PrimitiveTopology::eTriangleList)
       .setCullMode(vk::CullModeFlagBits::eBack)
       .setFrontFace(vk::FrontFace::eCounterClockwise)
       .setDepthTestEnable(VK_TRUE)
       .setDepthWriteEnable(VK_TRUE)
-      .setDepthCompareOp(vk::CompareOp::eLess)
+      .setDepthCompareOp(vk::CompareOp::eLess);
+
+    // —— 4e. 启用动态状态（这些状态运行时可通过 vkCmdSet* 改变）——
+    ps.enableDynamicState(vk::DynamicState::eViewport)
+      .enableDynamicState(vk::DynamicState::eScissor)
       .enableDynamicState(vk::DynamicState::eCullMode)
       .enableDynamicState(vk::DynamicState::eFrontFace)
       .enableDynamicState(vk::DynamicState::ePrimitiveTopology)
@@ -246,29 +267,18 @@ void Renderer3D::EndScene() {
       .enableDynamicState(vk::DynamicState::eDepthWriteEnable)
       .enableDynamicState(vk::DynamicState::eDepthCompareOp);
 
-    // 顶点输入：从顶点着色器反射自动生成
-    ps.setVertexInputFromShader(*m_VertShader);
-
-    // 动态状态
+    // —— 4f. 视口 + 剪刀矩形（动态状态，直接写入 command buffer）——
     vk::Viewport vp;
-    vp.width = static_cast<float>(extent.width);
-    vp.height = static_cast<float>(extent.height);
+    vp.width    = static_cast<float>(extent.width);
+    vp.height   = static_cast<float>(extent.height);
     vp.minDepth = 0.0f;
     vp.maxDepth = 1.0f;
     cmd.SetViewport(0, {vp});
 
     vk::Rect2D scissor;
-    scissor.extent.width = extent.width;
+    scissor.extent.width  = extent.width;
     scissor.extent.height = extent.height;
     cmd.SetScissor(0, {scissor});
-
-    // 写入动态管线状态
-    ps.setCullMode(vk::CullModeFlagBits::eBack);
-    ps.setFrontFace(vk::FrontFace::eCounterClockwise);
-    ps.setInputAssembly(vk::PrimitiveTopology::eTriangleList);
-    ps.setDepthTestEnable(VK_TRUE);
-    ps.setDepthWriteEnable(VK_TRUE);
-    ps.setDepthCompareOp(vk::CompareOp::eLess);
 
     // ── 5. 绑定 Frame UBO（set 0, binding 0，所有网格共享） ───────────
     cmd.BindBuffer(frameUboAlloc.get_buffer(), frameUboAlloc.get_offset(),

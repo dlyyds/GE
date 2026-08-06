@@ -105,7 +105,21 @@ void Renderer3D::DrawMesh(const glm::mat4 &transform,
         return;
     }
 
-    m_Meshes.push_back({transform, mesh, texture, color});
+    // 旧接口：material 为 nullptr，texture 字段直接保存
+    m_Meshes.push_back({transform, mesh, nullptr, texture, color});
+}
+
+void Renderer3D::DrawMesh(const glm::mat4 &transform,
+                          Mesh *mesh,
+                          Material *material,
+                          const glm::vec4 &color) {
+    GE_CORE_ASSERT(m_InScene, "DrawMesh called outside BeginScene/EndScene!");
+
+    if (!mesh || mesh->GetIndexCount() == 0) {
+        return;
+    }
+
+    m_Meshes.push_back({transform, mesh, material, nullptr, color});
 }
 
 void Renderer3D::EndScene() {
@@ -282,9 +296,18 @@ void Renderer3D::EndScene() {
                        uboAlloc.get_size(), 2, 0);
 
         // 绑定纹理（set 1, binding 0）
-        // 无纹理时使用默认 1x1 白色纹理，避免未定义行为
-        Texture *tex = instance.texture ? instance.texture
-                                        : m_DefaultWhiteTexture.get();
+        // 优先使用 material 的 Albedo 槽位，其次使用旧接口的 texture，
+        // 都没有则使用默认 1x1 白色纹理，避免未定义行为
+        Texture *tex = nullptr;
+        if (instance.material) {
+            tex = instance.material->GetTexture(Material::Albedo);
+        }
+        if (!tex) {
+            tex = instance.texture;
+        }
+        if (!tex) {
+            tex = m_DefaultWhiteTexture.get();
+        }
         if (tex) {
             cmd.BindImage(tex->GetImageView(),
                           tex->GetSampler(),

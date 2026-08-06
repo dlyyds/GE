@@ -19,6 +19,7 @@ namespace GE {
 
 class Texture;  // 前向声明，避免引入整个 Texture 头文件
 class Mesh;     // 前向声明，避免引入整个 Mesh 头文件
+class Material; // 前向声明，避免引入整个 Material 头文件
 class Entity;   // 前向声明，供 ScriptComponent 回调签名使用
 class Timestep; // 前向声明，供 ScriptComponent 回调签名使用
 
@@ -155,7 +156,8 @@ struct ScriptComponent {
 struct MeshComponent {
     glm::vec4 Color{1.0f, 1.0f, 1.0f, 1.0f}; ///< 叠加颜色（默认白色，即不染色）
     Mesh     *MeshPtr = nullptr;              ///< 网格资源指针（可选，为 null 时不绘制）
-    Texture  *BaseTexture = nullptr;          ///< 主纹理指针（可选，为 null 时使用纯白色）
+    Texture  *BaseTexture = nullptr;          ///< 主纹理指针（可选，MaterialPtr 为 null 时使用）
+    Material *MaterialPtr = nullptr;          ///< 材质指针（优先使用，从其 Albedo 槽位取纹理）
 
     MeshComponent() = default;
 
@@ -194,6 +196,20 @@ struct MeshComponent {
      */
     MeshComponent(Mesh *mesh, Texture *texture, const glm::vec4 &color)
         : Color(color), MeshPtr(mesh), BaseTexture(texture) {
+    }
+
+    /**
+     * @brief 同时指定网格和材质的构造函数（颜色默认白色）。
+     */
+    MeshComponent(Mesh *mesh, Material *material)
+        : MeshPtr(mesh), MaterialPtr(material) {
+    }
+
+    /**
+     * @brief 同时指定网格、材质和颜色的构造函数。
+     */
+    MeshComponent(Mesh *mesh, Material *material, const glm::vec4 &color)
+        : Color(color), MeshPtr(mesh), MaterialPtr(material) {
     }
 };
 

@@ -11,6 +11,7 @@
 #include "GE/Scene/Scene.h"
 #include "GE/Physics/PhysicsWorld.h"
 #include "GE/Render/Camera.h"
+#include "GE/Render/Material.h"
 #include "GE/Render/Mesh.h"
 
 #include <glm/gtc/type_ptr.hpp>
@@ -422,6 +423,22 @@ void SceneHierarchyPanel::DrawComponents(Entity entity) {
         }
 
         ImGui::Text("Texture: %s", component.BaseTexture ? "(assigned)" : "(null)");
+
+        // 材质显示（Material 优先路径）
+        ImGui::Text("Material: %s", component.MaterialPtr ? "(assigned)" : "(null)");
+        if (component.MaterialPtr) {
+            const char *typeName = "Unknown";
+            switch (component.MaterialPtr->GetType()) {
+                case Material::Type::BlinnPhong: typeName = "Blinn-Phong"; break;
+            }
+            ImGui::Text("  Type: %s", typeName);
+            ImGui::Text("  Albedo: %s",
+                component.MaterialPtr->HasTexture(Material::Albedo) ? "(assigned)" : "(null)");
+            ImGui::Text("  Normal: %s",
+                component.MaterialPtr->HasTexture(Material::Normal) ? "(assigned)" : "(null)");
+            ImGui::Text("  Emissive: %s",
+                component.MaterialPtr->HasTexture(Material::Emissive) ? "(assigned)" : "(null)");
+        }
     });
 
     // ---- Sprite Renderer 组件 ----

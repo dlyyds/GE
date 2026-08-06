@@ -212,14 +212,22 @@ void Texture::CreateViewAndSampler(VulkanDevice &device,
         vk::ImageViewType::e2D,
         m_Format);
 
-    // 通过缓存获取 Sampler（默认参数）
+    // 查询设备支持的最大各向异性级别
+    float maxAnisotropy = device.GetGpu().GetProperties().limits.maxSamplerAnisotropy;
+    // 设备支持各向异性时才启用（基本所有现代 GPU 都支持，这里做个保险判断）
+    vk::Bool32 enableAnisotropy = (maxAnisotropy > 1.0f) ? VK_TRUE : VK_FALSE;
+
+    // 通过缓存获取 Sampler（启用各向异性过滤，提升曲面纹理质量）
     m_Sampler = &cache.RequestSampler(
-        mag_filter,  // mag
-        min_filter,  // min
-        vk::SamplerMipmapMode::eLinear,   // mipmap
-        vk::SamplerAddressMode::eRepeat,  // address U
-        vk::SamplerAddressMode::eRepeat,  // address V
-        vk::SamplerAddressMode::eRepeat); // address W
+        mag_filter,                        // mag
+        min_filter,                        // min
+        vk::SamplerMipmapMode::eLinear,    // mipmap
+        vk::SamplerAddressMode::eRepeat,   // address U
+        vk::SamplerAddressMode::eRepeat,   // address V
+        vk::SamplerAddressMode::eRepeat,   // address W
+        0.0f,                              // mip_lod_bias
+        enableAnisotropy,                  // anisotropy_enable
+        maxAnisotropy);                    // max_anisotropy
 }
 
 } // namespace GE

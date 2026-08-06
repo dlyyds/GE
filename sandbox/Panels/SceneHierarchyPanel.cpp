@@ -283,6 +283,30 @@ void SceneHierarchyPanel::DrawComponents(Entity entity) {
             ImGui::CloseCurrentPopup();
         }
 
+        if (ImGui::MenuItem("Rigid Body")) {
+            if (!m_SelectionContext.HasComponent<RigidBodyComponent>())
+                m_SelectionContext.AddComponent<RigidBodyComponent>();
+            else
+                GE_CORE_WARN("This entity already has Rigid Body Component!");
+            ImGui::CloseCurrentPopup();
+        }
+
+        if (ImGui::MenuItem("Box Collider")) {
+            if (!m_SelectionContext.HasComponent<BoxColliderComponent>())
+                m_SelectionContext.AddComponent<BoxColliderComponent>();
+            else
+                GE_CORE_WARN("This entity already has Box Collider Component!");
+            ImGui::CloseCurrentPopup();
+        }
+
+        if (ImGui::MenuItem("Sphere Collider")) {
+            if (!m_SelectionContext.HasComponent<SphereColliderComponent>())
+                m_SelectionContext.AddComponent<SphereColliderComponent>();
+            else
+                GE_CORE_WARN("This entity already has Sphere Collider Component!");
+            ImGui::CloseCurrentPopup();
+        }
+
         ImGui::EndPopup();
     }
     ImGui::PopItemWidth();
@@ -418,6 +442,52 @@ void SceneHierarchyPanel::DrawComponents(Entity entity) {
         // 颜色 + 强度（alpha 通道作为强度）
         ImGui::ColorEdit4("Color + Intensity", glm::value_ptr(component.Color));
         ImGui::TextDisabled("全局环境光，不依赖 Transform");
+    });
+
+    // ---- Rigid Body 组件 ----
+    DrawComponent<RigidBodyComponent>("Rigid Body", entity, [](auto &component) {
+        // 刚体类型下拉框
+        const char *typeStrings[] = {"Static", "Kinematic", "Dynamic"};
+        int currentType = static_cast<int>(component.Type);
+        if (ImGui::BeginCombo("Type", typeStrings[currentType])) {
+            for (int i = 0; i < 3; i++) {
+                const bool isSelected = currentType == i;
+                if (ImGui::Selectable(typeStrings[i], isSelected)) {
+                    component.Type = static_cast<Physics::RigidBodyType>(i);
+                }
+                if (isSelected)
+                    ImGui::SetItemDefaultFocus();
+            }
+            ImGui::EndCombo();
+        }
+
+        // 质量（仅动态体有效）
+        bool massDisabled = (component.Type != Physics::RigidBodyType::Dynamic);
+        if (massDisabled) ImGui::BeginDisabled();
+        ImGui::DragFloat("Mass (kg)", &component.Mass, 0.1f, 0.01f, 10000.0f);
+        if (massDisabled) ImGui::EndDisabled();
+
+        ImGui::DragFloat("Friction", &component.Friction, 0.01f, 0.0f, 1.0f);
+        ImGui::DragFloat("Restitution", &component.Restitution, 0.01f, 0.0f, 1.0f);
+        ImGui::DragFloat("Linear Damping", &component.LinearDamping, 0.01f, 0.0f, 10.0f);
+        ImGui::DragFloat("Angular Damping", &component.AngularDamping, 0.01f, 0.0f, 10.0f);
+
+        ImGui::Checkbox("Is Sensor (Trigger)", &component.IsSensor);
+
+        ImGui::Separator();
+        ImGui::TextDisabled("Runtime Body ID: %s", component.IsInitialized ? "valid" : "uninitialized");
+    });
+
+    // ---- Box Collider 组件 ----
+    DrawComponent<BoxColliderComponent>("Box Collider", entity, [](auto &component) {
+        DrawVec3Control("Half Extents", component.HalfExtents, 0.5f, 120);
+        DrawVec3Control("Offset", component.Offset, 0.0f, 120);
+    });
+
+    // ---- Sphere Collider 组件 ----
+    DrawComponent<SphereColliderComponent>("Sphere Collider", entity, [](auto &component) {
+        ImGui::DragFloat("Radius", &component.Radius, 0.05f, 0.001f, 1000.0f);
+        DrawVec3Control("Offset", component.Offset, 0.0f, 120);
     });
 
     // ---- Script 组件 ----

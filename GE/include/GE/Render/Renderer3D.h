@@ -12,7 +12,7 @@
  * @code
  *   auto& renderer3d = Renderer::Get3DRenderer();
  *   renderer3d.BeginScene(view, projection, viewPos, clearColor);
- *   renderer3d.DrawMesh(transform, mesh, texture, color);
+ *   renderer3d.DrawMesh(transform, mesh, material, color);
  *   renderer3d.EndScene();
  * @endcode
  */
@@ -22,7 +22,6 @@
 #include "Core/Base.h"
 #include "Render/Material.h"
 #include "Render/Mesh.h"
-#include "Render/Texture.h"
 
 #include <glm/glm.hpp>
 
@@ -113,27 +112,11 @@ public:
                     const glm::vec4 &clearColor = glm::vec4(-1.0f));
 
     /**
-     * @brief 提交一个 3D 网格（旧接口：单纹理 + 颜色）。
+     * @brief 提交一个 3D 网格。
      *
      * @param transform  模型变换矩阵
      * @param mesh       网格资源（不能为空）
-     * @param texture    主纹理（nullptr 则使用纯白色）
-     * @param color      叠加颜色（tint），默认白色
-     *
-     * @note 内部会构造一个 Material 等价物调用新接口，
-     *       新代码建议使用 DrawMesh(transform, mesh, material)。
-     */
-    void DrawMesh(const glm::mat4 &transform,
-                  Mesh *mesh,
-                  Texture *texture,
-                  const glm::vec4 &color = {1.0f, 1.0f, 1.0f, 1.0f});
-
-    /**
-     * @brief 提交一个 3D 网格（新接口：Material 材质）。
-     *
-     * @param transform  模型变换矩阵
-     * @param mesh       网格资源（不能为空）
-     * @param material   材质（不能为空，使用其 Albedo 槽位纹理 + 参数）
+     * @param material   材质（可为 nullptr，nullptr 时使用纯白色 fallback）
      * @param color      叠加颜色（tint），默认白色；与材质纹理颜色相乘
      */
     void DrawMesh(const glm::mat4 &transform,
@@ -184,8 +167,7 @@ private:
     struct MeshInstance {
         glm::mat4 transform;   ///< 模型变换矩阵
         Mesh     *mesh;        ///< 网格资源
-        Material *material;    ///< 材质（优先使用，从其 Albedo 槽位取纹理）
-        Texture  *texture;     ///< 主纹理（旧接口兼容用，material 为非空时忽略）
+        Material *material;    ///< 材质（可为 nullptr，nullptr 时使用白色 fallback）
         glm::vec4 color;       ///< 叠加颜色
     };
 

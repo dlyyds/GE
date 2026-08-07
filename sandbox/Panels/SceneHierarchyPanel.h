@@ -4,6 +4,7 @@
 #include "GE/Core/Log.h"
 #include "GE/Scene/Scene.h"
 #include "GE/Scene/Entity.h"
+#include "GE/Scene/Components.h"
 
 #include "GE/Debug/Assert.h"
 
@@ -45,6 +46,51 @@ private:
 
     /// 绘制选中实体的所有组件属性
     void DrawComponents(Entity entity);
+
+    // ---- 组件绘制辅助（每个复杂组件一个函数，保持 DrawComponents 简洁） ----
+
+    /// 绘制 "Add Component" 弹窗
+    void DrawAddComponentPopup();
+
+    /// 尝试为当前选中实体添加组件，若已存在则输出警告
+    template <typename T>
+    bool TryAddComponent(const char *name);
+
+    /// 绘制 Transform 组件属性
+    static void DrawTransformComponent(TransformComponent &component);
+
+    /// 绘制 Camera 组件属性
+    static void DrawCameraComponent(CameraComponent &component);
+
+    /// 绘制 Mesh 组件属性
+    static void DrawMeshComponent(MeshComponent &component);
+
+    /// 绘制 Material 组件属性
+    static void DrawMaterialComponent(MaterialComponent &component);
+
+    /// 绘制 SpriteRenderer 组件属性
+    static void DrawSpriteRendererComponent(SpriteRendererComponent &component);
+
+    /// 绘制 PointLight 组件属性
+    static void DrawPointLightComponent(PointLightComponent &component);
+
+    /// 绘制 DirectionalLight 组件属性
+    static void DrawDirectionalLightComponent(DirectionalLightComponent &component);
+
+    /// 绘制 AmbientLight 组件属性
+    static void DrawAmbientLightComponent(AmbientLightComponent &component);
+
+    /// 绘制 RigidBody 组件属性
+    void DrawRigidBodyComponent(Entity entity, RigidBodyComponent &component);
+
+    /// 绘制 BoxCollider 组件属性
+    void DrawBoxColliderComponent(Entity entity, BoxColliderComponent &component);
+
+    /// 绘制 SphereCollider 组件属性
+    void DrawSphereColliderComponent(Entity entity, SphereColliderComponent &component);
+
+    /// 绘制 Script 组件属性
+    static void DrawScriptComponent(ScriptComponent &component);
 
 private:
     Scene *m_Context = nullptr;     ///< 关联的场景（非拥有）

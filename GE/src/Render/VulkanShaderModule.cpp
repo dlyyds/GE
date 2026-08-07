@@ -16,7 +16,7 @@
  */
 
 /**
- * @file ShaderModule.cpp
+ * @file VulkanShaderModule.cpp
  * @brief ShaderModule 实现，从 Vulkan-Samples 适配。
  */
 

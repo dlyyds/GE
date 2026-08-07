@@ -63,7 +63,9 @@ Thumbs.db
 # ============================================
 *.log
 logs/
-build_output.txt
+build_output*.txt
+build_log*.txt
+build_*.txt
 
 # ============================================
 # Temporary files

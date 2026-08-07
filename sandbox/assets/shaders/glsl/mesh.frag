@@ -22,16 +22,16 @@ layout (set = 0, binding = 0, std140) uniform FrameUBO
     mat4 view;
     vec4 viewPos;
 
-    // 方向光
+// 方向光
     vec4 dirLightDirection;
     vec4 dirLightColor;
 
-    // 点光源数组（每个灯 2 个 vec4：position.w = 半径倒数，color.a = 强度）
+// 点光源数组（每个灯 2 个 vec4：position.w = 半径倒数，color.a = 强度）
     vec4 pointLightPositions[MAX_POINT_LIGHTS];
     vec4 pointLightColors[MAX_POINT_LIGHTS];
-    vec4 pointLightCount;   // x = 实际点光源数量，yzw 填充对齐
+    vec4 pointLightCount;// x = 实际点光源数量，yzw 填充对齐
 
-    // 环境光
+// 环境光
     vec4 ambient;
 } frame;
 

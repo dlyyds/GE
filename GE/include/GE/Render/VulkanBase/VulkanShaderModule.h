@@ -16,10 +16,10 @@
  */
 
 /**
- * @file ShaderModule.h
+ * @file VulkanShaderModule.h
  * @brief 着色器模块封装，从 Vulkan-Samples 适配而来。
  *
- * 包含 ShaderResource、ShaderVariant、ShaderSource、ShaderModule 等类型，
+ * 包含 ShaderResource、ShaderVariant、ShaderSource、VulkanShaderModule 等类型，
  * 提供 SPIR-V 加载、反射、变体管理等完整着色器功能。
  */
 
@@ -224,32 +224,32 @@ class ShaderSource
 /**
  * @brief 包含特定着色器阶段的代码及入口点。
  * 为 PipelineLayout 创建 Pipeline 提供必需的着色器信息。
- * ShaderModule 可以自动将着色器代码与纹理做绑定配对，
+ * VulkanShaderModule 可以自动将着色器代码与纹理做绑定配对，
  * 仅基于纹理名称修改底层绑定，并为每个纹理生成变体（如 HAS_BASE_COLOR_TEX）。
  * 属性位置也以类似方式处理。
  *
  * 当前限制：仅考虑 set 0；统一缓冲区目前是硬编码的。
  */
-class ShaderModule : public VulkanResourceBase<vk::ShaderModule>
+class VulkanShaderModule : public VulkanResourceBase<vk::ShaderModule>
 {
   public:
     using Parent = VulkanResourceBase<vk::ShaderModule>;
 
-    ShaderModule(VulkanDevice              &device,
-                 vk::ShaderStageFlagBits    stage,
-                 const ShaderSource        &shader_source,
-                 const std::string         &entry_point,
-                 const ShaderVariant       &shader_variant);
+    VulkanShaderModule(VulkanDevice              &device,
+                       vk::ShaderStageFlagBits    stage,
+                       const ShaderSource        &shader_source,
+                       const std::string         &entry_point,
+                       const ShaderVariant       &shader_variant);
 
-    ShaderModule(const ShaderModule &) = delete;
+    VulkanShaderModule(const VulkanShaderModule &) = delete;
 
-    ShaderModule(ShaderModule &&other);
+    VulkanShaderModule(VulkanShaderModule &&other);
 
-    ~ShaderModule();
+    ~VulkanShaderModule();
 
-    ShaderModule &operator=(const ShaderModule &) = delete;
+    VulkanShaderModule &operator=(const VulkanShaderModule &) = delete;
 
-    ShaderModule &operator=(ShaderModule &&) = delete;
+    VulkanShaderModule &operator=(VulkanShaderModule &&) = delete;
 
     size_t get_id() const;
 

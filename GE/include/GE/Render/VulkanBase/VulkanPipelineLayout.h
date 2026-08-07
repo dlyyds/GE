@@ -32,7 +32,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "Render/ShaderModule.h"
+#include "Render/VulkanBase/VulkanShaderModule.h"
 #include "Render/VulkanBase/VulkanResourceBase.h"
 
 namespace GE
@@ -49,7 +49,7 @@ class VulkanDescriptorSetLayout;
  * - 设备引用（GetDevice）
  * - 调试命名（SetDebugName / GetDebugName）
  *
- * 从一组 ShaderModule 中收集所有着色器资源，
+ * 从一组 VulkanShaderModule 中收集所有着色器资源，
  * 按 set 分组并为每组创建 VulkanDescriptorSetLayout，
  * 最终汇总创建 VkPipelineLayout 句柄。
  */
@@ -58,7 +58,7 @@ class VulkanPipelineLayout : public VulkanResourceBase<vk::PipelineLayout>
   public:
     using Parent = VulkanResourceBase<vk::PipelineLayout>;
 
-    VulkanPipelineLayout(VulkanDevice &device, const std::vector<ShaderModule *> &shader_modules);
+    VulkanPipelineLayout(VulkanDevice &device, const std::vector<VulkanShaderModule *> &shader_modules);
 
     VulkanPipelineLayout(const VulkanPipelineLayout &) = delete;
 
@@ -70,7 +70,7 @@ class VulkanPipelineLayout : public VulkanResourceBase<vk::PipelineLayout>
 
     VulkanPipelineLayout &operator=(VulkanPipelineLayout &&) = delete;
 
-    const std::vector<ShaderModule *> &GetShaderModules() const;
+    const std::vector<VulkanShaderModule *> &GetShaderModules() const;
 
     const std::vector<ShaderResource> GetResources(const ShaderResourceType &type = ShaderResourceType::All, vk::ShaderStageFlags stage = vk::ShaderStageFlagBits::eAll) const;
 
@@ -84,7 +84,7 @@ class VulkanPipelineLayout : public VulkanResourceBase<vk::PipelineLayout>
 
   private:
     /// 此 pipeline layout 使用的着色器模块
-    std::vector<ShaderModule *> m_ShaderModules;
+    std::vector<VulkanShaderModule *> m_ShaderModules;
 
     /// 按名称索引的着色器资源
     std::unordered_map<std::string, ShaderResource> m_ShaderResources;

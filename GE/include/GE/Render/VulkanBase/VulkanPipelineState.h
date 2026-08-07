@@ -55,7 +55,7 @@ namespace GE {
 // ============================================================================
 
 class VulkanPipelineLayout;
-class ShaderModule;
+class VulkanShaderModule;
 
 
 // ============================================================================
@@ -130,11 +130,11 @@ public:
 
     /// 从顶点着色器模块的反射数据自动生成单 binding 顶点输入描述（紧密打包）。
     /// 按 location 升序排列属性，offset 按属性大小紧密累加。
-    /// @param vertShader 顶点阶段的 ShaderModule（需已完成反射）
+    /// @param vertShader 顶点阶段的 VulkanShaderModule（需已完成反射）
     /// @param binding    顶点缓冲绑定点（默认 0）
     /// @param rate       顶点/实例速率（默认 eVertex）
     /// @return 单个顶点的 stride（字节数）
-    uint32_t setVertexInputFromShader(const ShaderModule &vertShader,
+    uint32_t setVertexInputFromShader(const VulkanShaderModule &vertShader,
                                       uint32_t           binding = 0,
                                       vk::VertexInputRate rate   = vk::VertexInputRate::eVertex);
 

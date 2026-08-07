@@ -13,7 +13,7 @@
 #include "Render/VulkanBase/VulkanRenderFrame.h"
 #include "Render/VulkanBase/VulkanRenderingInfo.h"
 #include "Render/VulkanBase/VulkanResourceCache.h"
-#include "Render/ShaderModule.h"
+#include "Render/VulkanBase/VulkanShaderModule.h"
 
 #include "tracy/Tracy.hpp"
 

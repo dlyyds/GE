@@ -17,10 +17,10 @@
 
 /**
  * @file VulkanShaderModule.cpp
- * @brief ShaderModule 实现，从 Vulkan-Samples 适配。
+ * @brief VulkanShaderModule 实现，从 Vulkan-Samples 适配。
  */
 
-#include "Render/ShaderModule.h"
+#include "Render/VulkanBase/VulkanShaderModule.h"
 
 #include "Render/SPIRVReflection.h"
 #include "Render/VulkanBase/VulkanDevice.h"
@@ -54,14 +54,14 @@ std::string read_text_file(const std::string &filename)
 } // anonymous namespace
 
 // ============================================================
-// ShaderModule
+// VulkanShaderModule
 // ============================================================
 
-ShaderModule::ShaderModule(VulkanDevice            &device,
-                           vk::ShaderStageFlagBits  stage,
-                           const ShaderSource      &shader_source,
-                           const std::string       &entry_point,
-                           const ShaderVariant     &shader_variant) :
+VulkanShaderModule::VulkanShaderModule(VulkanDevice            &device,
+                                       vk::ShaderStageFlagBits  stage,
+                                       const ShaderSource      &shader_source,
+                                       const std::string       &entry_point,
+                                       const ShaderVariant     &shader_variant) :
     Parent(vk::ShaderModule{}, &device), stage{stage}, entry_point{entry_point}
 {
     std::string debug_name = fmt::format("{} [variant {:X}] [entrypoint {}]",
@@ -95,7 +95,7 @@ ShaderModule::ShaderModule(VulkanDevice            &device,
     SetDebugName(debug_name);
 }
 
-ShaderModule::~ShaderModule()
+VulkanShaderModule::~VulkanShaderModule()
 {
     if (HasHandle())
     {
@@ -103,7 +103,7 @@ ShaderModule::~ShaderModule()
     }
 }
 
-ShaderModule::ShaderModule(ShaderModule &&other) :
+VulkanShaderModule::VulkanShaderModule(VulkanShaderModule &&other) :
     Parent(std::move(other)),
     id{other.id},
     stage{other.stage},
@@ -115,32 +115,32 @@ ShaderModule::ShaderModule(ShaderModule &&other) :
     other.stage = {};
 }
 
-size_t ShaderModule::get_id() const
+size_t VulkanShaderModule::get_id() const
 {
     return id;
 }
 
-vk::ShaderStageFlagBits ShaderModule::get_stage() const
+vk::ShaderStageFlagBits VulkanShaderModule::get_stage() const
 {
     return stage;
 }
 
-const std::string &ShaderModule::get_entry_point() const
+const std::string &VulkanShaderModule::get_entry_point() const
 {
     return entry_point;
 }
 
-const std::vector<ShaderResource> &ShaderModule::get_resources() const
+const std::vector<ShaderResource> &VulkanShaderModule::get_resources() const
 {
     return resources;
 }
 
-const std::vector<uint32_t> &ShaderModule::get_binary() const
+const std::vector<uint32_t> &VulkanShaderModule::get_binary() const
 {
     return spirv;
 }
 
-void ShaderModule::set_resource_mode(const std::string &resource_name, const ShaderResourceMode &resource_mode)
+void VulkanShaderModule::set_resource_mode(const std::string &resource_name, const ShaderResourceMode &resource_mode)
 {
     auto it = std::ranges::find_if(resources, [&resource_name](const ShaderResource &resource) { return resource.name == resource_name; });
 

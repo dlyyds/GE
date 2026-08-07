@@ -4,7 +4,7 @@
 #include "GE/Render/VulkanBase/VulkanBuffer.h"
 #include "GE/Render/VulkanBase/VulkanPipeline.h"
 #include "GE/Render/VulkanBase/VulkanPipelineLayout.h"
-#include "GE/Render/ShaderModule.h"
+#include "GE/Render/VulkanBase/VulkanShaderModule.h"
 
 namespace GE {
 
@@ -21,8 +21,8 @@ public:
     void OnImGuiRender() override;
 
 private:
-    ShaderModule                   *m_VertShader = nullptr;
-    ShaderModule                   *m_FragShader = nullptr;
+    VulkanShaderModule             *m_VertShader = nullptr;
+    VulkanShaderModule             *m_FragShader = nullptr;
     VulkanPipelineLayout           *m_PipelineLayout = nullptr;
     VulkanPipelineState             m_PipelineState;
     VulkanGraphicsPipeline         *m_Pipeline = nullptr;

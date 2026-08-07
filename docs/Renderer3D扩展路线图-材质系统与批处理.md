@@ -204,7 +204,7 @@ struct RenderBatch {
 ### 关键设计
 
 #### 4.1 ShaderVariant 增强
-**文件**：`GE/include/GE/Render/ShaderModule.h` / `.cpp`
+**文件**：`GE/include/GE/Render/VulkanBase/VulkanShaderModule.h` / `.cpp`
 
 1. 在 `ShaderVariant` 中增加宏定义列表：
    ```cpp
@@ -279,8 +279,8 @@ HAS_NORMAL_MAP, HAS_EMISSIVE_MAP, ALPHA_TEST, ...
 | `GE/src/Render/Renderer3D.cpp` | 排序、合批、Dynamic UBO、instancing |
 | `GE/include/GE/Scene/Components.h` | MeshComponent 增加 MaterialPtr |
 | `GE/src/Scene/Scene.cpp` | OnUpdate3D 适配 MaterialPtr |
-| `GE/include/GE/Render/ShaderModule.h` | ShaderVariant 增加宏定义 |
-| `GE/src/Render/ShaderModule.cpp` | GLSL 在线编译支持 |
+| `GE/include/GE/Render/VulkanBase/VulkanShaderModule.h` | ShaderVariant 增加宏定义 |
+| `GE/src/Render/VulkanBase/VulkanShaderModule.cpp` | GLSL 在线编译支持 |
 | `assets/shaders/glsl/mesh.vert` / `.frag`（新增源文件） | 着色器源码（需重建或找回） |
 
 ---

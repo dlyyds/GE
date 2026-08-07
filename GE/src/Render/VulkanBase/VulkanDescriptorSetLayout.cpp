@@ -22,7 +22,7 @@
 
 #include "Render/VulkanBase/VulkanDescriptorSetLayout.h"
 
-#include "Render/ShaderModule.h"
+#include "Render/VulkanBase/VulkanShaderModule.h"
 #include "Render/VulkanBase/VulkanDevice.h"
 #include "Core/Log.h"
 
@@ -79,7 +79,7 @@ inline bool validate_flags(const std::vector<vk::DescriptorSetLayoutBinding> &bi
 VulkanDescriptorSetLayout::VulkanDescriptorSetLayout(
     VulkanDevice &device,
     uint32_t set_index,
-    const std::vector<ShaderModule *> &shader_modules,
+    const std::vector<VulkanShaderModule *> &shader_modules,
     const std::vector<ShaderResource> &resource_set) : m_Device(device),
                                                        m_SetIndex(set_index),
                                                        m_ShaderModules(shader_modules) {
@@ -222,7 +222,7 @@ vk::DescriptorBindingFlagsEXT VulkanDescriptorSetLayout::GetLayoutBindingFlag(ui
     return it->second;
 }
 
-const std::vector<ShaderModule *> &VulkanDescriptorSetLayout::GetShaderModules() const {
+const std::vector<VulkanShaderModule *> &VulkanDescriptorSetLayout::GetShaderModules() const {
     return m_ShaderModules;
 }
 

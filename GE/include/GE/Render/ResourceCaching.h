@@ -40,7 +40,7 @@
 #include "Render/VulkanBase/VulkanPipelineLayout.h"
 #include "Render/VulkanBase/VulkanPipelineState.h"
 #include "Render/VulkanBase/VulkanSampler.h"
-#include "Render/ShaderModule.h"
+#include "Render/VulkanBase/VulkanShaderModule.h"
 
 #include <vulkan/vulkan.hpp>
 #include <vulkan/vulkan_hash.hpp>
@@ -131,11 +131,11 @@ struct hash<GE::LoadStoreInfo> {
 // ---- vk::PipelineColorBlendAttachmentState ----
 // vulkan_hash.hpp 已提供 std::hash 特化，无需重复定义
 
-// ---- GE::ShaderModule ----
+// ---- GE::VulkanShaderModule ----
 
 template <>
-struct hash<GE::ShaderModule> {
-    size_t operator()(GE::ShaderModule const &shader_module) const {
+struct hash<GE::VulkanShaderModule> {
+    size_t operator()(GE::VulkanShaderModule const &shader_module) const {
         return std::hash<size_t>()(shader_module.get_id());
     }
 };

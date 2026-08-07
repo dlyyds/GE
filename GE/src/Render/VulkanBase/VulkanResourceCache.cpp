@@ -46,21 +46,21 @@ VulkanResourceCache::~VulkanResourceCache() {
 // 资源请求接口
 // ============================================================================
 
-ShaderModule &VulkanResourceCache::RequestShaderModule(vk::ShaderStageFlagBits stage,
-                                                        const ShaderSource &shader_source,
-                                                        const std::string &entry_point,
-                                                        const ShaderVariant &shader_variant) {
-    return RequestResource<ShaderModule>(m_ShaderModuleMutex, m_ShaderModules,
-                                         stage, shader_source, entry_point, shader_variant);
+VulkanShaderModule &VulkanResourceCache::RequestShaderModule(vk::ShaderStageFlagBits stage,
+                                                              const ShaderSource &shader_source,
+                                                              const std::string &entry_point,
+                                                              const ShaderVariant &shader_variant) {
+    return RequestResource<VulkanShaderModule>(m_ShaderModuleMutex, m_ShaderModules,
+                                               stage, shader_source, entry_point, shader_variant);
 }
 
-VulkanPipelineLayout &VulkanResourceCache::RequestPipelineLayout(const std::vector<ShaderModule *> &shader_modules) {
+VulkanPipelineLayout &VulkanResourceCache::RequestPipelineLayout(const std::vector<VulkanShaderModule *> &shader_modules) {
     return RequestResource<VulkanPipelineLayout>(m_PipelineLayoutMutex, m_PipelineLayouts,
                                                   shader_modules);
 }
 
 VulkanDescriptorSetLayout &VulkanResourceCache::RequestDescriptorSetLayout(uint32_t set_index,
-                                                                             const std::vector<ShaderModule *> &shader_modules,
+                                                                             const std::vector<VulkanShaderModule *> &shader_modules,
                                                                              const std::vector<ShaderResource> &set_resources) {
     return RequestResource<VulkanDescriptorSetLayout>(m_DescriptorSetLayoutMutex, m_DescriptorSetLayouts,
                                                        set_index, shader_modules, set_resources);

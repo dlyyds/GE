@@ -24,7 +24,7 @@ void TriangleLayer::OnAttach() {
     auto &swapchain = Application::GetSwapchain();
     auto colorFmt = swapchain.GetFormat();
 
-    // ── 1. 通过全局资源缓存创建 ShaderModule（去重）──────────────
+    // ── 1. 通过全局资源缓存创建 VulkanShaderModule（去重）─────────
     auto &cache = device.GetResourceCache();
     m_VertShader = &cache.RequestShaderModule(
         vk::ShaderStageFlagBits::eVertex,

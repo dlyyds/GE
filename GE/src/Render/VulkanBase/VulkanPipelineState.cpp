@@ -22,7 +22,7 @@
 
 #include "Render/VulkanBase/VulkanPipelineState.h"
 #include "Render/VulkanBase/VulkanPipelineLayout.h"
-#include "Render/ShaderModule.h"
+#include "Render/VulkanBase/VulkanShaderModule.h"
 
 #include <vulkan/vulkan_hash.hpp>
 
@@ -109,7 +109,7 @@ VulkanPipelineState &VulkanPipelineState::setVertexAttributes(const std::vector<
     return *this;
 }
 
-uint32_t VulkanPipelineState::setVertexInputFromShader(const ShaderModule &vertShader,
+uint32_t VulkanPipelineState::setVertexInputFromShader(const VulkanShaderModule &vertShader,
                                                        uint32_t binding,
                                                        vk::VertexInputRate rate) {
     // 1. 收集所有 Input 资源

@@ -19,7 +19,7 @@
  * @file VulkanResourceCache.h
  * @brief 全局资源去重缓存。
  *
- * 提供重量级 Vulkan 资源的全局去重缓存，避免重复创建 ShaderModule、
+ * 提供重量级 Vulkan 资源的全局去重缓存，避免重复创建 VulkanShaderModule、
  * PipelineLayout、DescriptorSetLayout、GraphicsPipeline 和 ComputePipeline。
  *
  * 与 VulkanRenderFrame 互补：
@@ -38,7 +38,7 @@
 #pragma once
 
 #include "Render/ResourceCaching.h"
-#include "Render/ShaderModule.h"
+#include "Render/VulkanBase/VulkanShaderModule.h"
 #include "Render/VulkanBase/VulkanDescriptorSetLayout.h"
 #include "Render/VulkanBase/VulkanPipeline.h"
 #include "Render/VulkanBase/VulkanPipelineLayout.h"
@@ -82,22 +82,22 @@ public:
     /**
      * @brief 请求着色器模块（按 stage + source + entry_point + variant 去重）。
      */
-    ShaderModule &RequestShaderModule(vk::ShaderStageFlagBits stage,
-                                       const ShaderSource &shader_source,
-                                       const std::string &entry_point = "main",
-                                       const ShaderVariant &shader_variant = {});
+    VulkanShaderModule &RequestShaderModule(vk::ShaderStageFlagBits stage,
+                                            const ShaderSource &shader_source,
+                                            const std::string &entry_point = "main",
+                                            const ShaderVariant &shader_variant = {});
 
     /**
      * @brief 请求 PipelineLayout（按 shader_modules 指针集合去重）。
      */
-    VulkanPipelineLayout &RequestPipelineLayout(const std::vector<ShaderModule *> &shader_modules);
+    VulkanPipelineLayout &RequestPipelineLayout(const std::vector<VulkanShaderModule *> &shader_modules);
 
     /**
      * @brief 请求 DescriptorSetLayout（按 set_index + shader_modules + resources 去重）。
      */
     VulkanDescriptorSetLayout &RequestDescriptorSetLayout(uint32_t set_index,
-                                                           const std::vector<ShaderModule *> &shader_modules,
-                                                           const std::vector<ShaderResource> &set_resources);
+                                                          const std::vector<VulkanShaderModule *> &shader_modules,
+                                                          const std::vector<ShaderResource> &set_resources);
 
     /**
      * @brief 请求图形管线（按 pipeline_state 去重）。
@@ -173,7 +173,7 @@ private:
     VulkanDevice &m_Device;
 
     // 缓存容器
-    std::unordered_map<size_t, ShaderModule>              m_ShaderModules;
+    std::unordered_map<size_t, VulkanShaderModule>        m_ShaderModules;
     std::unordered_map<size_t, VulkanPipelineLayout>      m_PipelineLayouts;
     std::unordered_map<size_t, VulkanDescriptorSetLayout> m_DescriptorSetLayouts;
     std::unordered_map<size_t, VulkanGraphicsPipeline>    m_GraphicsPipelines;

@@ -12,7 +12,7 @@
 namespace GE {
 
 class VulkanPipelineLayout;
-class ShaderModule;
+class VulkanShaderModule;
 
 /**
  * @file Renderer2D.h
@@ -145,10 +145,10 @@ private:
     // ========================================================================
 
     /// 精灵顶点着色器（由全局资源缓存管理，不拥有）
-    ShaderModule         *m_VertShader = nullptr;
+    VulkanShaderModule   *m_VertShader = nullptr;
 
     /// 精灵片元着色器（由全局资源缓存管理，不拥有）
-    ShaderModule         *m_FragShader = nullptr;
+    VulkanShaderModule   *m_FragShader = nullptr;
 
     /// Pipeline layout（由全局资源缓存管理，不拥有）
     VulkanPipelineLayout *m_PipelineLayout = nullptr;

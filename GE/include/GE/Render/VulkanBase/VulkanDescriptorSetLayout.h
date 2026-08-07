@@ -35,7 +35,7 @@
 
 namespace GE {
 
-class ShaderModule;
+class VulkanShaderModule;
 class VulkanDevice;
 struct ShaderResource;
 
@@ -55,7 +55,7 @@ public:
      */
     VulkanDescriptorSetLayout(VulkanDevice &device,
                               uint32_t set_index,
-                              const std::vector<ShaderModule *> &shader_modules,
+                              const std::vector<VulkanShaderModule *> &shader_modules,
                               const std::vector<ShaderResource> &resource_set);
 
     VulkanDescriptorSetLayout(const VulkanDescriptorSetLayout &) = delete;
@@ -82,7 +82,7 @@ public:
 
     vk::DescriptorBindingFlagsEXT GetLayoutBindingFlag(uint32_t binding_index) const;
 
-    const std::vector<ShaderModule *> &GetShaderModules() const;
+    const std::vector<VulkanShaderModule *> &GetShaderModules() const;
 
 private:
     VulkanDevice &m_Device;
@@ -101,7 +101,7 @@ private:
 
     std::unordered_map<std::string, uint32_t> m_ResourcesLookup;
 
-    std::vector<ShaderModule *> m_ShaderModules;
+    std::vector<VulkanShaderModule *> m_ShaderModules;
 };
 
 } // namespace GE

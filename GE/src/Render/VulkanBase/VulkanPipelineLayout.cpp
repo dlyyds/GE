@@ -19,7 +19,7 @@
  * @file VulkanPipelineLayout.cpp
  * @brief VulkanPipelineLayout 实现，从 Vulkan-Samples 适配。
  *
- * 聚合 ShaderModule 的反射资源，按 set 分组创建 DescriptorSetLayout，
+ * 聚合 VulkanShaderModule 的反射资源，按 set 分组创建 DescriptorSetLayout，
  * 并创建最终的 VkPipelineLayout。
  */
 
@@ -32,7 +32,7 @@
 namespace GE
 {
 
-VulkanPipelineLayout::VulkanPipelineLayout(VulkanDevice &device, const std::vector<ShaderModule *> &shader_modules) :
+VulkanPipelineLayout::VulkanPipelineLayout(VulkanDevice &device, const std::vector<VulkanShaderModule *> &shader_modules) :
     Parent(vk::PipelineLayout{}, &device),
     m_ShaderModules{shader_modules}
 {
@@ -160,7 +160,7 @@ VulkanPipelineLayout::~VulkanPipelineLayout()
     // m_DescriptorSetLayouts 由 VulkanResourceCache 持有生命周期，无需手动清理
 }
 
-const std::vector<ShaderModule *> &VulkanPipelineLayout::GetShaderModules() const
+const std::vector<VulkanShaderModule *> &VulkanPipelineLayout::GetShaderModules() const
 {
     return m_ShaderModules;
 }

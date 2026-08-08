@@ -310,7 +310,7 @@ void Renderer2D::EndScene() {
     for (const auto &batch : batchInfos) {
         triangles += batch.vertexCount / 3;
     }
-    Renderer::Get().AddStats(static_cast<uint32_t>(batchInfos.size()), triangles);
+    Renderer::Get().AddStats2D(static_cast<uint32_t>(batchInfos.size()), triangles);
 
     // ── 9. 结束渲染 ───────────────────────────────────────────────────
     VulkanRenderingInfo::End(vkCmd);

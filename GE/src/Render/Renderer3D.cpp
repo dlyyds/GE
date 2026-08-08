@@ -326,7 +326,7 @@ void Renderer3D::EndScene() {
     for (const auto &instance : m_Meshes) {
         triangles += instance.mesh->GetIndexCount() / 3;
     }
-    Renderer::Get().AddStats(static_cast<uint32_t>(m_Meshes.size()), triangles);
+    Renderer::Get().AddStats3D(static_cast<uint32_t>(m_Meshes.size()), triangles);
 
     // ── 7. 结束渲染 ───────────────────────────────────────────────────
     VulkanRenderingInfo::End(vkCmd);

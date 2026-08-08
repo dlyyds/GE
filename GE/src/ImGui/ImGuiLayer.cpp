@@ -6,6 +6,7 @@
 #include "Core/Application.h"
 #include "Core/Log.h"
 
+#include "Render/Renderer.h"
 #include "Render/VulkanBase/VulkanRenderingInfo.h"
 
 #include "GLFW/glfw3.h"
@@ -168,6 +169,29 @@ void ImGuiLayer::End() {
 }
 
 void ImGuiLayer::OnImGuiRender() {
+    // ── 渲染统计面板 ──────────────────────────────────────────────────
+    if (ImGui::Begin("渲染统计")) {
+        const auto &stats = Renderer::GetStats();
+        const auto &app = Application::Get();
+
+        ImGui::Text("帧率: %.1f FPS", app.GetFPS());
+
+        ImGui::Separator();
+        ImGui::Text("2D（精灵批处理）");
+        ImGui::BulletText("Draw Calls: %u", stats.drawCalls2D);
+        ImGui::BulletText("三角形: %u", stats.triangles2D);
+
+        ImGui::Separator();
+        ImGui::Text("3D（网格）");
+        ImGui::BulletText("Draw Calls: %u", stats.drawCalls3D);
+        ImGui::BulletText("三角形: %u", stats.triangles3D);
+
+        ImGui::Separator();
+        ImGui::Text("总计");
+        ImGui::BulletText("Draw Calls: %u", stats.TotalDrawCalls());
+        ImGui::BulletText("三角形: %u", stats.TotalTriangles());
+    }
+    ImGui::End();
 }
 
 void ImGuiLayer::SetDarkThemeColors() {

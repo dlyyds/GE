@@ -204,9 +204,14 @@ const RendererStats &Renderer::GetStats() {
     return Get().m_Stats;
 }
 
-void Renderer::AddStats(uint32_t drawCalls, uint32_t triangles) {
-    m_Stats.drawCalls += drawCalls;
-    m_Stats.triangles += triangles;
+void Renderer::AddStats2D(uint32_t drawCalls, uint32_t triangles) {
+    m_Stats.drawCalls2D += drawCalls;
+    m_Stats.triangles2D += triangles;
+}
+
+void Renderer::AddStats3D(uint32_t drawCalls, uint32_t triangles) {
+    m_Stats.drawCalls3D += drawCalls;
+    m_Stats.triangles3D += triangles;
 }
 
 } // namespace GE

@@ -14,11 +14,19 @@ class TextureManager;
 class MaterialManager;
 
 /**
- * @brief 渲染统计（每帧由 BeginFrame 重置）。
+ * @brief 渲染统计（每帧由 BeginFrame 重置），2D / 3D 分开统计。
  */
 struct RendererStats {
-    uint32_t drawCalls = 0; ///< 本帧 CPU 提交的 draw call 数量
-    uint32_t triangles = 0; ///< 本帧绘制三角形数量（近似：索引数 / 3）
+    uint32_t drawCalls2D = 0; ///< 本帧 2D 批处理提交的 draw call 数量
+    uint32_t triangles2D = 0; ///< 本帧 2D 绘制三角形数量（近似：顶点数 / 3）
+    uint32_t drawCalls3D = 0; ///< 本帧 3D 网格提交的 draw call 数量
+    uint32_t triangles3D = 0; ///< 本帧 3D 绘制三角形数量（近似：索引数 / 3）
+
+    /// 本帧 draw call 总数。
+    uint32_t TotalDrawCalls() const { return drawCalls2D + drawCalls3D; }
+
+    /// 本帧三角形总数。
+    uint32_t TotalTriangles() const { return triangles2D + triangles3D; }
 };
 
 /**
@@ -125,8 +133,11 @@ private:
     friend class Renderer2D;
     friend class Renderer3D;
 
-    /// 记录一次批量绘制产生的 draw call 与三角形数量（供内部渲染器调用）。
-    void AddStats(uint32_t drawCalls, uint32_t triangles);
+    /// 记录 2D 批量绘制产生的 draw call 与三角形数量（供 Renderer2D 调用）。
+    void AddStats2D(uint32_t drawCalls, uint32_t triangles);
+
+    /// 记录 3D 网格绘制产生的 draw call 与三角形数量（供 Renderer3D 调用）。
+    void AddStats3D(uint32_t drawCalls, uint32_t triangles);
     /// Vulkan 全局上下文（Instance / PhysicalDevice / Surface / Device / VMA）。
     std::unique_ptr<VulkanContext> m_VulkanContext;
 

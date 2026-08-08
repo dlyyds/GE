@@ -6,6 +6,7 @@
 #include "Render/Renderer3D.h"
 
 #include <algorithm>
+#include <bit>
 
 #include "Core/Log.h"
 #include "Render/Texture.h"
@@ -105,7 +106,41 @@ void Renderer3D::DrawMesh(const glm::mat4 &transform,
         return;
     }
 
-    m_Meshes.push_back({transform, mesh, material, color});
+    // 计算排序键（管线 → 纹理 → view 空间深度），用于 EndScene 前的状态分组排序
+    uint64_t sortKey = ComputeSortKey(GetEffectiveTexture(material), transform);
+
+    m_Meshes.push_back({transform, mesh, material, color, sortKey});
+}
+
+// ============================================================================
+// 内部工具方法（排序键相关）
+// ============================================================================
+
+Texture *Renderer3D::GetEffectiveTexture(const Material *material) const {
+    // 优先取材质 Albedo 槽位纹理，无材质或无纹理时回退到默认白色纹理
+    Texture *tex = (material ? material->GetTexture(Material::Albedo) : nullptr);
+    return tex ? tex : m_DefaultWhiteTexture.get();
+}
+
+uint64_t Renderer3D::ComputeSortKey(Texture *texture, const glm::mat4 &transform) const {
+    // 管线 id：当前仅一套管线状态，恒为 0（后续阶段从管线 hash 获取）
+    uint64_t pipelineId = 0;
+
+    // 纹理分组：纹理指针哈希折叠到 24 位，减少纹理绑定切换
+    uint64_t texHash = 0;
+    if (texture) {
+        texHash = std::hash<const void *>{}(texture) & TEXTURE_HASH_MASK;
+    }
+
+    // 深度：取模型变换的平移分量转换到 view 空间，取反得到正值（越大越远）。
+    // 正浮点数的 IEEE 位模式随值单调递增，故可直接按位作为排序键，
+    // 升序排列即实现不透明物体从前往后（early-z 优化）。
+    glm::vec4 viewPos = m_View * glm::vec4(transform[3], 1.0f);
+    uint32_t depthBits = std::bit_cast<uint32_t>(-viewPos.z);
+
+    return (pipelineId << PIPELINE_ID_SHIFT)
+         | (texHash << TEXTURE_HASH_SHIFT)
+         | static_cast<uint64_t>(depthBits);
 }
 
 void Renderer3D::EndScene() {
@@ -118,6 +153,14 @@ void Renderer3D::EndScene() {
     if (m_Meshes.empty()) {
         return;
     }
+
+    // ── 0. 按排序键排序（管线 → 纹理 → 深度） ──────────────────────────
+    //    使同材质的 mesh 连续排列，减少管线/纹理切换；深度从前往后，
+    //    利用 early-z 减少过绘制。为后续 Dynamic UBO / 合批打基础。
+    std::sort(m_Meshes.begin(), m_Meshes.end(),
+              [](const MeshInstance &a, const MeshInstance &b) {
+                  return a.sortKey < b.sortKey;
+              });
 
     auto &cmd = Renderer::GetFrameCmd();
     auto vkCmd = cmd.GetHandle();
@@ -298,13 +341,7 @@ void Renderer3D::EndScene() {
         // 绑定纹理（set 1, binding 0）
         // 从 material 的 Albedo 槽位取纹理，无材质或无纹理时使用
         // 默认 1x1 白色纹理，避免未定义行为
-        Texture *tex = nullptr;
-        if (instance.material) {
-            tex = instance.material->GetTexture(Material::Albedo);
-        }
-        if (!tex) {
-            tex = m_DefaultWhiteTexture.get();
-        }
+        Texture *tex = GetEffectiveTexture(instance.material);
         if (tex) {
             cmd.BindImage(tex->GetImageView(),
                           tex->GetSampler(),
@@ -327,6 +364,17 @@ void Renderer3D::EndScene() {
         triangles += instance.mesh->GetIndexCount() / 3;
     }
     Renderer::Get().AddStats3D(static_cast<uint32_t>(m_Meshes.size()), triangles);
+
+    // 统计排序后的批次数（按有效纹理指针分组，反映同材质连续排列的程度，
+    // 用于观察状态分组优化收益：批次数越少 → 纹理切换越少）
+    uint32_t batches = 1;
+    for (size_t i = 1; i < m_Meshes.size(); ++i) {
+        if (GetEffectiveTexture(m_Meshes[i].material)
+                != GetEffectiveTexture(m_Meshes[i - 1].material)) {
+            ++batches;
+        }
+    }
+    Renderer::Get().AddBatches3D(batches);
 
     // ── 7. 结束渲染 ───────────────────────────────────────────────────
     VulkanRenderingInfo::End(vkCmd);

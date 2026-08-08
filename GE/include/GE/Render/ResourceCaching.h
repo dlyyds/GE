@@ -128,8 +128,6 @@ struct hash<GE::LoadStoreInfo> {
     }
 };
 
-// ---- vk::PipelineColorBlendAttachmentState ----
-// vulkan_hash.hpp 已提供 std::hash 特化，无需重复定义
 
 // ---- GE::VulkanShaderModule ----
 

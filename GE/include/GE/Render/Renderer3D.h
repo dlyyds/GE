@@ -5,7 +5,9 @@
  * 提供基于 Blinn-Phong 光照模型的 3D 网格绘制接口，
  * 使用 BeginScene / DrawMesh / EndScene 三段式 API。
  *
- * 每个 DrawMesh 提交一个 draw call（按纹理批处理暂未实现），
+ * 每个 DrawMesh 提交一个 draw call；EndScene 绘制前会按
+ * 排序键（管线 → 纹理 → 深度）排序，使同材质 mesh 连续排列以减少
+ * 管线/纹理切换（真正的合批在后续阶段实现）。
  * 顶点数据使用 Mesh 自身的 GPU 缓冲，UBO 从当前帧 BufferPool 动态分配。
  *
  * 使用方式：
@@ -28,6 +30,8 @@
 #include <vector>
 #include <array>
 #include <memory>
+#include <cstdint>
+#include <functional>
 
 namespace GE {
 
@@ -47,6 +51,27 @@ class Renderer3D {
 public:
     /// 点光源最大数量，必须与 GLSL 中的 MAX_POINT_LIGHTS 保持一致
     static constexpr size_t MAX_POINT_LIGHTS = 8;
+
+    // ========================================================================
+    // 排序键布局（阶段1：按材质排序 + 状态分组）
+    // ========================================================================
+    //
+    // 64 位排序键，高优先级字段放在高位：
+    //   [ 8bit pipeline_id ][ 24bit texture_hash ][ 32bit depth ]
+    // - 高位按管线分组 → 最少的管线切换
+    // - 中位按纹理分组 → 减少纹理绑定切换（为同材质合批打基础）
+    // - 低位按深度排序 → 不透明物体从前往后（early-z 优化）
+    //
+    // 注：当前仅一套管线状态，pipeline_id 恒为 0，主要收益来自纹理分组。
+
+    /// 管线 id 在排序键中的起始位（最高 8 位）
+    static constexpr int    PIPELINE_ID_SHIFT   = 56;
+    /// 纹理哈希在排序键中的起始位
+    static constexpr int    TEXTURE_HASH_SHIFT  = 32;
+    /// 纹理哈希占 24 位
+    static constexpr int    TEXTURE_HASH_BITS   = 24;
+    /// 纹理哈希掩码
+    static constexpr uint64_t TEXTURE_HASH_MASK = (1ull << TEXTURE_HASH_BITS) - 1;
 
     /**
      * @brief 单个点光源参数。
@@ -169,7 +194,27 @@ private:
         Mesh     *mesh;        ///< 网格资源
         Material *material;    ///< 材质（可为 nullptr，nullptr 时使用白色 fallback）
         glm::vec4 color;       ///< 叠加颜色
+        uint64_t  sortKey;     ///< 排序键（EndScene 绘制前按此排序）
     };
+
+    // ========================================================================
+    // 内部工具方法
+    // ========================================================================
+
+    /**
+     * @brief 计算某个网格实例的排序键。
+     *
+     * 由当前视图矩阵、变换矩阵和有效纹理计算：
+     * 管线 id（恒 0）+ 纹理哈希 + view 空间深度。
+     */
+    uint64_t ComputeSortKey(Texture *texture, const glm::mat4 &transform) const;
+
+    /**
+     * @brief 解析材质对应的有效纹理。
+     *
+     * 优先取材质 Albedo 槽位纹理，无材质或无纹理时回退到默认白色纹理。
+     */
+    Texture *GetEffectiveTexture(const Material *material) const;
 
     // ========================================================================
     // 成员

@@ -97,6 +97,11 @@ void DrawMesh(const glm::mat4& transform, Mesh* mesh, Material* material);
 
 ## 阶段 1：按材质排序 + 状态分组
 
+> **状态：✅ 已完成**（2026-08-08）
+> - `MeshInstance` 增加 `sortKey`，`DrawMesh` 时计算（管线→纹理→view 深度）
+> - `EndScene` 绘制前按 `sortKey` 升序排序（不透明物体从前往后，early-z）
+> - 统计 `batches3D`（按有效纹理指针分组的连续批次数），ImGui 面板显示
+
 ### 目标
 在不改变 draw call 数量的前提下，通过排序减少 GPU 状态切换（管线切换、纹理绑定切换），**是后续所有合批优化的基础**。
 

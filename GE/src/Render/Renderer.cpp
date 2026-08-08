@@ -214,4 +214,8 @@ void Renderer::AddStats3D(uint32_t drawCalls, uint32_t triangles) {
     m_Stats.triangles3D += triangles;
 }
 
+void Renderer::AddBatches3D(uint32_t batches) {
+    m_Stats.batches3D += batches;
+}
+
 } // namespace GE

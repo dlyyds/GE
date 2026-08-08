@@ -21,6 +21,7 @@ struct RendererStats {
     uint32_t triangles2D = 0; ///< 本帧 2D 绘制三角形数量（近似：顶点数 / 3）
     uint32_t drawCalls3D = 0; ///< 本帧 3D 网格提交的 draw call 数量
     uint32_t triangles3D = 0; ///< 本帧 3D 绘制三角形数量（近似：索引数 / 3）
+    uint32_t batches3D   = 0; ///< 本帧 3D 排序后的批次数（同材质连续分组，用于观察合批收益）
 
     /// 本帧 draw call 总数。
     uint32_t TotalDrawCalls() const { return drawCalls2D + drawCalls3D; }
@@ -138,6 +139,7 @@ private:
 
     /// 记录 3D 网格绘制产生的 draw call 与三角形数量（供 Renderer3D 调用）。
     void AddStats3D(uint32_t drawCalls, uint32_t triangles);
+    void AddBatches3D(uint32_t batches);
     /// Vulkan 全局上下文（Instance / PhysicalDevice / Surface / Device / VMA）。
     std::unique_ptr<VulkanContext> m_VulkanContext;
 

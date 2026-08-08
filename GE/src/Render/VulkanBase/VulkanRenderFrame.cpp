@@ -217,11 +217,11 @@ VulkanDescriptorSet &VulkanRenderFrame::RequestDescriptorSet(
         // 通过缓存请求 descriptor set
         assert(thread_index < m_DescriptorSets.size() && "线程索引越界（descriptor sets）");
         auto &ds_map = m_DescriptorSets[thread_index];
-        size_t before_count = ds_map.size();
+        //size_t before_count = ds_map.size();
         auto &descriptor_set = request_resource(
             m_Device, ds_map,
             descriptor_set_layout, descriptor_pool, buffer_infos, image_infos);
-        bool cache_hit = (ds_map.size() == before_count);
+        //bool cache_hit = (ds_map.size() == before_count);
 
         // GE_CORE_TRACE("RequestDescriptorSet: set={}, cache_{}, total_sets={}",
         //               descriptor_set_layout.GetIndex(),

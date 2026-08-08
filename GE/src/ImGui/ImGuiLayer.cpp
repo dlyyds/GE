@@ -184,6 +184,7 @@ void ImGuiLayer::OnImGuiRender() {
         ImGui::Separator();
         ImGui::Text("3D（网格）");
         ImGui::BulletText("Draw Calls: %u", stats.drawCalls3D);
+        ImGui::BulletText("排序批次: %u", stats.batches3D);
         ImGui::BulletText("三角形: %u", stats.triangles3D);
 
         ImGui::Separator();

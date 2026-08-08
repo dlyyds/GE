@@ -42,8 +42,8 @@ namespace GE {
 
 VulkanCommandBuffer::VulkanCommandBuffer(VulkanCommandPool &pool, vk::CommandBufferLevel level)
     : VulkanResourceBase(nullptr, &pool.GetDevice())
-    , m_Pool(pool)
-    , m_Level(level) {
+      , m_Pool(pool)
+      , m_Level(level) {
     vk::CommandBufferAllocateInfo alloc_info{
         .commandPool = pool.GetHandle(),
         .level = level,
@@ -61,22 +61,22 @@ VulkanCommandBuffer::VulkanCommandBuffer(VulkanCommandPool &pool,
                                          vk::CommandBufferLevel level,
                                          vk::CommandBuffer handle)
     : VulkanResourceBase(handle, &pool.GetDevice())
-    , m_Pool(pool)
-    , m_Level(level) {
+      , m_Pool(pool)
+      , m_Level(level) {
     auto const &props = GetDevice().GetGpu().GetProperties();
     m_MaxPushConstantsSize = props.limits.maxPushConstantsSize;
 }
 
 VulkanCommandBuffer::VulkanCommandBuffer(VulkanCommandBuffer &&other) noexcept
     : VulkanResourceBase(std::move(other))
-    , m_Pool(other.m_Pool)
-    , m_Level(std::exchange(other.m_Level, vk::CommandBufferLevel::ePrimary))
-    , m_PipelineState(std::move(other.m_PipelineState))
-    , m_ResourceSets(std::move(other.m_ResourceSets))
-    , m_ResourceBindingDirty(std::exchange(other.m_ResourceBindingDirty, false))
-    , m_BoundDescriptorSetLayouts(std::move(other.m_BoundDescriptorSetLayouts))
-    , m_StoredPushConstants(std::move(other.m_StoredPushConstants))
-    , m_MaxPushConstantsSize(std::exchange(other.m_MaxPushConstantsSize, 128)) {
+      , m_Pool(other.m_Pool)
+      , m_Level(std::exchange(other.m_Level, vk::CommandBufferLevel::ePrimary))
+      , m_PipelineState(std::move(other.m_PipelineState))
+      , m_ResourceSets(std::move(other.m_ResourceSets))
+      , m_ResourceBindingDirty(std::exchange(other.m_ResourceBindingDirty, false))
+      , m_BoundDescriptorSetLayouts(std::move(other.m_BoundDescriptorSetLayouts))
+      , m_StoredPushConstants(std::move(other.m_StoredPushConstants))
+      , m_MaxPushConstantsSize(std::exchange(other.m_MaxPushConstantsSize, 128)) {
 }
 
 VulkanCommandBuffer::~VulkanCommandBuffer() {
@@ -138,7 +138,7 @@ void VulkanCommandBuffer::BindPipelineLayout(VulkanPipelineLayout &pipeline_layo
 
 void VulkanCommandBuffer::BindVertexBuffers(
     uint32_t first_binding,
-    std::vector<std::reference_wrapper<const VulkanBuffer>> const &buffers,
+    std::vector<std::reference_wrapper<const VulkanBuffer> > const &buffers,
     std::vector<vk::DeviceSize> const &offsets) {
     std::vector<vk::Buffer> buffer_handles(buffers.size(), nullptr);
     for (size_t i = 0; i < buffers.size(); ++i) {

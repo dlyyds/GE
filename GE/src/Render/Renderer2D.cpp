@@ -305,6 +305,13 @@ void Renderer2D::EndScene() {
         cmd.Draw(batch.vertexCount, 1, batch.vertexOffset, 0);
     }
 
+    // ── 8b. 统计 draw call 与三角形数量（每批次一个 draw call） ─────────
+    uint32_t triangles = 0;
+    for (const auto &batch : batchInfos) {
+        triangles += batch.vertexCount / 3;
+    }
+    Renderer::Get().AddStats(static_cast<uint32_t>(batchInfos.size()), triangles);
+
     // ── 9. 结束渲染 ───────────────────────────────────────────────────
     VulkanRenderingInfo::End(vkCmd);
 }

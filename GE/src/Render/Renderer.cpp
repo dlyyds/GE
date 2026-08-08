@@ -75,6 +75,9 @@ void Renderer::WaitIdle() {
 VulkanCommandBuffer &Renderer::BeginFrame() {
     ZoneScopedN("Renderer::BeginFrame");
 
+    // 0. 重置每帧渲染统计
+    m_Stats = {};
+
     // 1. Acquire next image + 获取 command buffer
     m_ActiveFrameCmd = &m_RenderContext->Begin();
 
@@ -195,6 +198,15 @@ TextureManager &Renderer::GetTextureManager() {
 MaterialManager &Renderer::GetMaterialManager() {
     GE_CORE_ASSERT(Get().m_MaterialManager, "MaterialManager not initialized!");
     return *Get().m_MaterialManager;
+}
+
+const RendererStats &Renderer::GetStats() {
+    return Get().m_Stats;
+}
+
+void Renderer::AddStats(uint32_t drawCalls, uint32_t triangles) {
+    m_Stats.drawCalls += drawCalls;
+    m_Stats.triangles += triangles;
 }
 
 } // namespace GE

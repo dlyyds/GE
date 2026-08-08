@@ -321,6 +321,13 @@ void Renderer3D::EndScene() {
         cmd.DrawIndexed(instance.mesh->GetIndexCount(), 1, 0, 0, 0);
     }
 
+    // ── 6b. 统计 draw call 与三角形数量（每个网格一个 draw call） ───────
+    uint32_t triangles = 0;
+    for (const auto &instance : m_Meshes) {
+        triangles += instance.mesh->GetIndexCount() / 3;
+    }
+    Renderer::Get().AddStats(static_cast<uint32_t>(m_Meshes.size()), triangles);
+
     // ── 7. 结束渲染 ───────────────────────────────────────────────────
     VulkanRenderingInfo::End(vkCmd);
 }

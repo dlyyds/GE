@@ -14,6 +14,14 @@ class TextureManager;
 class MaterialManager;
 
 /**
+ * @brief 渲染统计（每帧由 BeginFrame 重置）。
+ */
+struct RendererStats {
+    uint32_t drawCalls = 0; ///< 本帧 CPU 提交的 draw call 数量
+    uint32_t triangles = 0; ///< 本帧绘制三角形数量（近似：索引数 / 3）
+};
+
+/**
  * @brief 渲染器：统一管理 Vulkan 资源和帧渲染流程。
  *
  * Renderer 是 Application 和渲染层之间的中间层，负责：
@@ -110,7 +118,15 @@ public:
     /// 访问材质管理器。
     static MaterialManager &GetMaterialManager();
 
+    /// 获取本帧渲染统计（draw call / 三角形数量）。
+    static const RendererStats &GetStats();
+
 private:
+    friend class Renderer2D;
+    friend class Renderer3D;
+
+    /// 记录一次批量绘制产生的 draw call 与三角形数量（供内部渲染器调用）。
+    void AddStats(uint32_t drawCalls, uint32_t triangles);
     /// Vulkan 全局上下文（Instance / PhysicalDevice / Surface / Device / VMA）。
     std::unique_ptr<VulkanContext> m_VulkanContext;
 
@@ -134,6 +150,9 @@ private:
 
     /// 窗口引用。
     Window &m_Window;
+
+    /// 本帧渲染统计（每帧 BeginFrame 重置）。
+    RendererStats m_Stats;
 
     /// 静态单例。
     static Renderer *s_Instance;

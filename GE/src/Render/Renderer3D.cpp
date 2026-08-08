@@ -44,15 +44,10 @@ Renderer3D::Renderer3D() {
         ShaderSource("assets/shaders/glsl/mesh.frag.spv"),
         "main", ShaderVariant{});
 
-    // ── 2. 将 ObjectUBO 标记为 Dynamic（阶段2：同材质合批） ────────────
-    //    必须在请求 PipelineLayout 之前设置：反射出的 DescriptorSetLayout
-    //    会据此把 set 2 binding 0 创建为 eUniformBufferDynamic，使同材质
-    //    的多个 mesh 共享同一 descriptor set，draw 间仅更新动态偏移。
-    //    ObjectUBO 在顶点/片元着色器中都有声明，此处设置顶点着色器即可，
-    //    PipelineLayout 合并同名资源时保留先出现资源的 mode。
-    m_VertShader->set_resource_mode("ObjectUBO", ShaderResourceMode::Dynamic);
-
     // ── 3. 请求 PipelineLayout（通过反射自动构建） ─────────────────────
+    //    注：阶段2 曾将 ObjectUBO 设为 Dynamic 以降低 descriptor set 数量，
+    //    阶段3 把 per-instance 数据（model/color）迁入 InstanceData SSBO 后，
+    //    ObjectUBO 仅按材质共享 lodBias，改回普通 uniform buffer（每材质组一个）。
     m_PipelineLayout = &cache.RequestPipelineLayout(
         {m_VertShader, m_FragShader});
     m_PipelineLayout->SetDebugName("Mesh3D_PipelineLayout");
@@ -114,8 +109,9 @@ void Renderer3D::DrawMesh(const glm::mat4 &transform,
         return;
     }
 
-    // 计算排序键（管线 → 材质 → view 空间深度），用于 EndScene 前的状态分组排序
-    uint64_t sortKey = ComputeSortKey(material, transform);
+    // 计算排序键（材质 → mesh → view 空间深度），用于 EndScene 前分组排序，
+    // 使同材质同 mesh 的实例连续，便于 instancing 合批
+    uint64_t sortKey = ComputeSortKey(material, mesh, transform);
 
     m_Meshes.push_back({transform, mesh, material, color, sortKey});
 }
@@ -130,11 +126,8 @@ Texture *Renderer3D::GetEffectiveTexture(const Material *material) const {
     return tex ? tex : m_DefaultWhiteTexture.get();
 }
 
-uint64_t Renderer3D::ComputeSortKey(const Material *material, const glm::mat4 &transform) const {
-    // 管线 id：当前仅一套管线状态，恒为 0（后续阶段从管线 hash 获取）
-    uint64_t pipelineId = 0;
-
-    // 材质分组：材质指针哈希折叠到 24 位，减少管线/纹理切换。
+uint64_t Renderer3D::ComputeSortKey(const Material *material, const Mesh *mesh, const glm::mat4 &transform) const {
+    // 材质分组：材质指针哈希折叠到 20 位，减少管线/纹理切换。
     // 材质完整决定渲染状态（纹理组合、着色器类型、混合等），比纹理更精确。
     // nullptr 材质统一视为 0，使其彼此相邻。
     uint64_t matHash = 0;
@@ -142,14 +135,18 @@ uint64_t Renderer3D::ComputeSortKey(const Material *material, const glm::mat4 &t
         matHash = std::hash<const void *>{}(material) & MATERIAL_HASH_MASK;
     }
 
+    // mesh 分组：指针哈希折叠到 12 位，使同材质内同 mesh 实例连续便于合批。
+    // 仅用于排序，合批分组用指针相等判断，哈希碰撞不会导致错误合批。
+    uint64_t meshHash = std::hash<const void *>{}(mesh) & MESH_HASH_MASK;
+
     // 深度：取模型变换的平移分量转换到 view 空间，取反得到正值（越大越远）。
     // 正浮点数的 IEEE 位模式随值单调递增，故可直接按位作为排序键，
     // 升序排列即实现不透明物体从前往后（early-z 优化）。
     glm::vec4 viewPos = m_View * transform[3];
     uint32_t depthBits = std::bit_cast<uint32_t>(-viewPos.z);
 
-    return (pipelineId << PIPELINE_ID_SHIFT)
-         | (matHash << MATERIAL_HASH_SHIFT)
+    return (matHash << MATERIAL_HASH_SHIFT)
+         | (meshHash << MESH_HASH_SHIFT)
          | static_cast<uint64_t>(depthBits);
 }
 
@@ -164,9 +161,9 @@ void Renderer3D::EndScene() {
         return;
     }
 
-    // ── 0. 按排序键排序（管线 → 纹理 → 深度） ──────────────────────────
-    //    使同材质的 mesh 连续排列，减少管线/纹理切换；深度从前往后，
-    //    利用 early-z 减少过绘制。为后续 Dynamic UBO / 合批打基础。
+    // ── 0. 按排序键排序（材质 → mesh → 深度） ─────────────────────────
+    //    使同材质同 mesh 的实例连续排列，既减少管线/纹理切换，又便于
+    //    instancing 合批；深度从前往后，利用 early-z 减少过绘制。
     std::sort(m_Meshes.begin(), m_Meshes.end(),
               [](const MeshInstance &a, const MeshInstance &b) {
                   return a.sortKey < b.sortKey;
@@ -202,63 +199,64 @@ void Renderer3D::EndScene() {
         vk::BufferUsageFlagBits::eUniformBuffer, sizeof(FrameUBO));
     frameUboAlloc.update(frameUBO);
 
-    // ── 2. ObjectUBO 改为 Dynamic：按材质分组分配连续 UBO 块 ──────────
-    //    set 2 binding 0 已标记为 eUniformBufferDynamic，因此同材质
-    //    （同有效纹理）的 mesh 共享同一个 DescriptorSet，draw 间仅更新
-    //    动态偏移，大幅减少 descriptor set 分配/绑定开销。
-    //
-    //    同一材质组内所有 mesh 的 ObjectUBO 写入一块连续内存，每个 mesh
-    //    的偏移对齐到 minUniformBufferOffsetAlignment，一次性上传。
-    auto &device = Renderer::GetVulkanContext().GetDevice();
-    vk::DeviceSize uboAlign = device.GetGpu().GetProperties()
-                                  .limits.minUniformBufferOffsetAlignment;
-    vk::DeviceSize alignedUboSize = ((sizeof(ObjectUBO) + uboAlign - 1) / uboAlign) * uboAlign;
+    // ── 2. 阶段3：按 (mesh, material) 分组合批，构建 per-instance SSBO ──
+    //    排序键已保证同材质同 mesh 的实例连续。单趟扫描把 (mesh, material)
+    //    指针相等且连续的实例归为一个 RenderBatch，并把每个实例的 (model,
+    //    color) 收集进 instances 数组，最终一次性上传到全局 storage buffer。
+    //    ObjectUBO 按材质共享（仅 lodBias），材质变化时分配一个普通 UBO。
+    std::vector<InstanceData> instances;
+    instances.reserve(m_Meshes.size());
 
-    // 记录每个 mesh 绘制时绑定的组缓冲 + 动态偏移
-    struct ObjectUboBinding {
-        BufferAllocation alloc;        ///< 所属材质组的 UBO 分配（组内共享）
-        vk::DeviceSize   dynamicOffset; ///< 该 mesh 在组缓冲内的动态偏移
-    };
-    std::vector<ObjectUboBinding> objectUboBindings;
-    objectUboBindings.reserve(m_Meshes.size());
+    std::vector<RenderBatch> batches;
+    batches.reserve(m_Meshes.size());
 
-    // 分组遍历：阶段1 排序已保证同材质 mesh 连续，识别组边界即可。
-    // 以材质指针为分组键（与排序键中位一致），材质完整决定渲染状态。
+    const Material *currentMat = nullptr;
+    BufferAllocation currentObjectUbo;  // 当前材质的共享 ObjectUBO（lodBias）
+
     for (size_t i = 0; i < m_Meshes.size();) {
-        const Material *groupMat = m_Meshes[i].material;
+        const auto &first = m_Meshes[i];
+        // 注意：RenderBatch.material 为非 const 指针（沿用 MeshInstance 风格），
+        // 此处用非 const 引用赋值，避免丢弃 const 限定导致编译错误。
+        Material *mat = first.material;
+        Mesh     *mesh = first.mesh;
 
-        // 找到当前组的结束位置（材质变化处）
-        size_t groupStart = i;
-        while (i < m_Meshes.size() && m_Meshes[i].material == groupMat) {
+        // 找同 (mesh, material) 的连续区间
+        size_t runStart = i;
+        while (i < m_Meshes.size()
+               && m_Meshes[i].material == mat
+               && m_Meshes[i].mesh == mesh) {
             ++i;
         }
-        size_t groupCount = i - groupStart;
 
-        // 为组内所有 mesh 分配一块连续 UBO 内存
-        BufferAllocation groupAlloc = frame.AllocateBuffer(
-            vk::BufferUsageFlagBits::eUniformBuffer,
-            groupCount * alignedUboSize);
-
-        // 写入组内每个 mesh 的 ObjectUBO（偏移按对齐后大小递增）。
-        // 动态偏移必须是该 mesh 数据在底层 VkBuffer 中的绝对偏移：
-        // BufferPool 采用 MultipleAllocationsPerBuffer，多个材质组共享同一
-        // VkBuffer，Dynamic UBO 的 descriptor 绑定 buffer offset 0，
-        // 若只用组内相对偏移，会读到其他组的数据（颜色/模型混乱）。
-        vk::DeviceSize groupBase = groupAlloc.get_offset();
-        for (size_t k = 0; k < groupCount; ++k) {
-            const auto &instance = m_Meshes[groupStart + k];
+        // 材质变化：为该材质分配共享 ObjectUBO（lodBias）
+        if (mat != currentMat) {
+            currentMat = mat;
+            currentObjectUbo = frame.AllocateBuffer(
+                vk::BufferUsageFlagBits::eUniformBuffer, sizeof(ObjectUBO));
             ObjectUBO ubo{};
-            ubo.model = instance.transform;
             ubo.lodBias = 0.0f;
             ubo._pad = glm::vec3(0.0f);
-            ubo.color = instance.color;
-
-            vk::DeviceSize absOffset = groupBase + k * alignedUboSize;
-            groupAlloc.update(ubo, static_cast<uint32_t>(k * alignedUboSize));
-            objectUboBindings.push_back(
-                ObjectUboBinding{groupAlloc, absOffset});
+            currentObjectUbo.update(ubo);
         }
+
+        // 收集本批次实例的 per-instance 数据
+        uint32_t firstInstance = static_cast<uint32_t>(instances.size());
+        for (size_t k = runStart; k < i; ++k) {
+            const auto &inst = m_Meshes[k];
+            instances.push_back(InstanceData{inst.transform, inst.color});
+        }
+
+        batches.push_back(RenderBatch{
+            mesh, mat, firstInstance,
+            static_cast<uint32_t>(i - runStart),
+            currentObjectUbo});
     }
+
+    // 分配全局实例 SSBO 并一次性上传（所有批次共享）
+    BufferAllocation instanceBuffer = frame.AllocateBuffer(
+        vk::BufferUsageFlagBits::eStorageBuffer,
+        instances.size() * sizeof(InstanceData));
+    instanceBuffer.update(instances);
 
     // ── 3. 开始动态渲染 ───────────────────────────────────────────────
     //    使用 FromRenderTarget 自动构建颜色 + 深度附件
@@ -377,54 +375,49 @@ void Renderer3D::EndScene() {
     cmd.BindBuffer(frameUboAlloc.get_buffer(), frameUboAlloc.get_offset(),
                    frameUboAlloc.get_size(), 0, 0);
 
-    // ── 6. 逐个绘制网格 ───────────────────────────────────────────────
+    // ── 6. 逐批次 instanced 绘制 ─────────────────────────────────────
     vk::DeviceSize vertexOffset = 0;
-    for (size_t i = 0; i < m_Meshes.size(); ++i) {
-        const auto &instance = m_Meshes[i];
-        const auto &ubo = objectUboBindings[i];
-
-        // 绑定 Object UBO（set 2, binding 0，动态）
-        // 传入组缓冲 + 该 mesh 的动态偏移；descriptor set 在组内复用，
-        // bindDescriptorSets 每次传递新的动态偏移，draw 间不重复分配
-        cmd.BindBuffer(ubo.alloc.get_buffer(), ubo.dynamicOffset,
-                       alignedUboSize, 2, 0);
-
+    for (const auto &batch : batches) {
         // 绑定纹理（set 1, binding 0）
         // 从 material 的 Albedo 槽位取纹理，无材质或无纹理时使用
         // 默认 1x1 白色纹理，避免未定义行为
-        Texture *tex = GetEffectiveTexture(instance.material);
+        Texture *tex = GetEffectiveTexture(batch.material);
         if (tex) {
             cmd.BindImage(tex->GetImageView(),
                           tex->GetSampler(),
                           1, 0);
         }
 
+        // 绑定 ObjectUBO（set 2, binding 0，普通 uniform，按材质共享）
+        cmd.BindBuffer(batch.objectUbo.get_buffer(), batch.objectUbo.get_offset(),
+                       batch.objectUbo.get_size(), 2, 0);
+
+        // 绑定全局实例 SSBO（set 2, binding 1）——所有批次共享同一缓冲
+        cmd.BindBuffer(instanceBuffer.get_buffer(), instanceBuffer.get_offset(),
+                       instanceBuffer.get_size(), 2, 1);
+
         // 绑定顶点缓冲 + 索引缓冲
         cmd.BindVertexBuffers(0,
-                              {std::ref(instance.mesh->GetVertexBuffer())},
+                              {std::ref(batch.mesh->GetVertexBuffer())},
                               {vertexOffset});
-        cmd.BindIndexBuffer(instance.mesh->GetIndexBuffer(), 0, vk::IndexType::eUint32);
+        cmd.BindIndexBuffer(batch.mesh->GetIndexBuffer(), 0, vk::IndexType::eUint32);
 
-        // 绘制
-        cmd.DrawIndexed(instance.mesh->GetIndexCount(), 1, 0, 0, 0);
+        // 绘制：instanced。firstInstance 让 gl_InstanceIndex 从全局实例缓冲
+        // 的起始索引开始，所有实例在单个 vkCmdDrawIndexedInstanced 中完成。
+        cmd.DrawIndexed(batch.mesh->GetIndexCount(), batch.instanceCount,
+                        0, 0, batch.firstInstance);
     }
 
-    // ── 6b. 统计 draw call 与三角形数量（每个网格一个 draw call） ───────
+    // ── 6b. 统计 draw call 与三角形数量（draw call = 批次数量） ───────
     uint32_t triangles = 0;
     for (const auto &instance : m_Meshes) {
         triangles += instance.mesh->GetIndexCount() / 3;
     }
-    Renderer::Get().AddStats3D(static_cast<uint32_t>(m_Meshes.size()), triangles);
+    Renderer::Get().AddStats3D(static_cast<uint32_t>(batches.size()), triangles);
 
-    // 统计排序后的批次数（按材质指针分组，与状态分组一致），
-    // 用于观察状态分组优化收益：批次数越少 → 管线/纹理切换越少）
-    uint32_t batches = 1;
-    for (size_t i = 1; i < m_Meshes.size(); ++i) {
-        if (m_Meshes[i].material != m_Meshes[i - 1].material) {
-            ++batches;
-        }
-    }
-    Renderer::Get().AddBatches3D(batches);
+    // 统计 instancing 批次数量（相同 mesh + 相同材质分一组），
+    // 用于观察合批收益：批次数越少 → draw call 越少
+    Renderer::Get().AddBatches3D(static_cast<uint32_t>(batches.size()));
 
     // ── 7. 结束渲染 ───────────────────────────────────────────────────
     VulkanRenderingInfo::End(vkCmd);

@@ -10,6 +10,8 @@
 
 #include "Panels/SceneHierarchyPanel.h"
 
+#include <vector>
+
 namespace GE {
 
 /// 3D 模型渲染测试层。
@@ -47,6 +49,7 @@ private:
     Entity m_AmbientLightEntity; ///< 环境光实体
     Entity m_FloorEntity; ///< 物理地板实体
     Entity m_PhysicsBallEntity; ///< 物理球体实体
+    std::vector<Entity> m_InstancedCubes; ///< instancing 演示：共享同材质同 mesh 的立方体实例
 
     SceneHierarchyPanel m_HierarchyPanel; ///< 场景层级面板（ImGui）
 

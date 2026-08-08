@@ -160,6 +160,27 @@ void ModelTestLayer::OnAttach() {
             );
     }
 
+    // ── 阶段3 instancing 演示：5x5 网格立方体，共享同材质 + 同 mesh ──
+    //    相同 (mesh, material) 的实例会被 Renderer3D 合并为单个
+    //    vkCmdDrawIndexedInstanced，用于验证 GPU instancing 生效。
+    {
+        constexpr int  GRID = 5;
+        constexpr float SPACING = 0.55f;
+        for (int x = 0; x < GRID; ++x) {
+            for (int z = 0; z < GRID; ++z) {
+                Entity cube = m_Scene->CreateEntity("InstancedCube");
+                auto &tc = cube.GetComponent<TransformComponent>();
+                tc.Translation = {static_cast<float>(x - GRID / 2) * SPACING,
+                                  0.0f,
+                                  static_cast<float>(z - GRID / 2) * SPACING};
+                tc.Scale = {0.22f, 0.22f, 0.22f};
+                cube.AddComponent<MeshComponent>(m_CubeMesh.get());
+                cube.AddComponent<MaterialComponent>(m_ModelMaterial);
+                m_InstancedCubes.push_back(cube);
+            }
+        }
+    }
+
     // 添加相机鼠标控制脚本
     RefreshCameraScript();
     // 添加点光源旋转动画脚本
@@ -178,6 +199,7 @@ void ModelTestLayer::OnDetach() {
     m_AmbientLightEntity = {};
     m_FloorEntity = {};
     m_PhysicsBallEntity = {};
+    m_InstancedCubes.clear();
     m_HierarchyPanel.SetContext(nullptr);
     m_Scene.reset();
     m_ModelMaterial = nullptr;  // 由全局 MaterialManager 管理生命周期

@@ -1,4 +1,4 @@
-#version 450
+#version 460
 /* Copyright (c) 2019-2024, Sascha Willems
  *
  * SPDX-License-Identifier: Apache-2.0
@@ -8,13 +8,6 @@
 #define MAX_POINT_LIGHTS 8
 
 layout (set = 1, binding = 0) uniform sampler2D samplerColor;
-
-layout (set = 2, binding = 0, std140) uniform ObjectUBO
-{
-    mat4 model;
-    float lodBias;
-    vec4 color;
-} object;
 
 layout (set = 0, binding = 0, std140) uniform FrameUBO
 {
@@ -40,6 +33,7 @@ layout (location = 1) in float inLodBias;
 layout (location = 2) in vec3 inWorldPos;
 layout (location = 3) in vec3 inNormal;
 layout (location = 4) in vec3 inViewVec;
+layout (location = 5) in flat vec4 inColor;    // per-instance tint，由顶点着色器传入
 
 layout (location = 0) out vec4 outFragColor;
 
@@ -91,7 +85,7 @@ vec3 calcPointLight(int index, vec3 N, vec3 V, vec3 worldPos, vec3 albedo, float
 void main()
 {
     vec4 texColor = texture(samplerColor, inUV, inLodBias);
-    vec3 albedo = texColor.rgb * object.color.rgb;
+    vec3 albedo = texColor.rgb * inColor.rgb;
 
     vec3 N = normalize(inNormal);
     vec3 V = normalize(inViewVec);

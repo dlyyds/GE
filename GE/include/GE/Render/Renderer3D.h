@@ -5,12 +5,12 @@
  * 提供基于 Blinn-Phong 光照模型的 3D 网格绘制接口，
  * 使用 BeginScene / DrawMesh / EndScene 三段式 API。
  *
- * 每个 DrawMesh 提交一个 draw call；EndScene 绘制前会按
- * 排序键（管线 → 纹理 → 深度）排序，使同材质 mesh 连续排列以减少
- * 管线/纹理切换。
- * ObjectUBO 使用 Dynamic Uniform Buffer：同材质的多个 mesh 共享一个
- * descriptor set，draw 间仅更新动态偏移，减少 descriptor set 分配/绑定开销。
- * 顶点数据使用 Mesh 自身的 GPU 缓冲，UBO 从当前帧 BufferPool 动态分配。
+ * 相同 mesh + 相同材质的多个实例会合并为单个 vkCmdDrawIndexedInstanced
+ * （阶段3 instancing）；per-instance 数据（model + color）存入 SSBO，
+ * 用 gl_InstanceIndex 索引。EndScene 绘制前会按排序键（材质 → mesh → 深度）
+ * 排序，使可合批的实例连续。
+ * ObjectUBO 按材质共享（仅 lodBias），model/color 已迁入 InstanceData SSBO。
+ * 顶点数据使用 Mesh 自身的 GPU 缓冲，UBO/SSBO 从当前帧 BufferPool 动态分配。
  *
  * 使用方式：
  * @code
@@ -24,6 +24,7 @@
 #pragma once
 
 #include "Core/Base.h"
+#include "Render/BufferPool.h"
 #include "Render/Material.h"
 #include "Render/Mesh.h"
 
@@ -47,7 +48,8 @@ class VulkanShaderModule;
  * 着色器资源：
  *   Set 0, Binding 0: FrameUBO（投影、视图、相机位置、光照参数）
  *   Set 1, Binding 0: samplerColor（主纹理）
- *   Set 2, Binding 0: ObjectUBO（模型矩阵、lodBias）
+ *   Set 2, Binding 0: ObjectUBO（lodBias，按材质共享）
+ *   Set 2, Binding 1: InstanceData（SSBO，model + color，按实例）
  */
 class Renderer3D {
 public:
@@ -55,25 +57,30 @@ public:
     static constexpr size_t MAX_POINT_LIGHTS = 8;
 
     // ========================================================================
-    // 排序键布局（阶段1：按材质排序 + 状态分组）
+    // 排序键布局（阶段1：按材质排序；阶段3：加入 mesh 分组以便 instancing）
     // ========================================================================
     //
     // 64 位排序键，高优先级字段放在高位：
-    //   [ 8bit pipeline_id ][ 24bit material_hash ][ 32bit depth ]
-    // - 高位按管线分组 → 最少的管线切换
-    // - 中位按材质分组 → 减少管线/纹理切换（为同材质合批打基础）
+    //   [ 20bit material_hash ][ 12bit mesh_hash ][ 32bit depth ]
+    // - 高位按材质分组 → 减少管线/纹理切换
+    // - 中位按 mesh 分组 → 同材质内同 mesh 实例连续，便于 instancing 合批
     // - 低位按深度排序 → 不透明物体从前往后（early-z 优化）
     //
-    // 注：当前仅一套管线状态，pipeline_id 恒为 0，主要收益来自材质分组。
+    // 注：原 8bit pipeline_id 恒为 0 已去掉；mesh 哈希仅用于排序，合批分组
+    //     用 mesh 指针相等判断，哈希碰撞不会导致错误合批。
 
-    /// 管线 id 在排序键中的起始位（最高 8 位）
-    static constexpr int    PIPELINE_ID_SHIFT   = 56;
     /// 材质哈希在排序键中的起始位
-    static constexpr int    MATERIAL_HASH_SHIFT  = 32;
-    /// 材质哈希占 24 位
-    static constexpr int    MATERIAL_HASH_BITS   = 24;
+    static constexpr int      MATERIAL_HASH_SHIFT = 44;
+    /// 材质哈希占 20 位
+    static constexpr int      MATERIAL_HASH_BITS  = 20;
     /// 材质哈希掩码
-    static constexpr uint64_t MATERIAL_HASH_MASK = (1ull << MATERIAL_HASH_BITS) - 1;
+    static constexpr uint64_t MATERIAL_HASH_MASK  = (1ull << MATERIAL_HASH_BITS) - 1;
+    /// mesh 哈希在排序键中的起始位
+    static constexpr int      MESH_HASH_SHIFT     = 32;
+    /// mesh 哈希占 12 位（仅用于排序，不足以保证唯一，合批分组依赖指针相等）
+    static constexpr int      MESH_HASH_BITS      = 12;
+    /// mesh 哈希掩码
+    static constexpr uint64_t MESH_HASH_MASK      = (1ull << MESH_HASH_BITS) - 1;
 
     /**
      * @brief 单个点光源参数。
@@ -181,14 +188,20 @@ private:
     };
     static_assert(sizeof(FrameUBO) % 16 == 0, "FrameUBO 必须 16 字节对齐");
 
-    /// 对象级 UBO（每个网格一个）
+    /// 对象级 UBO（阶段3 后按材质共享，只保留标量参数；model/color 迁入 SSBO）
     struct ObjectUBO {
-        glm::mat4 model;             ///< 模型矩阵
         float     lodBias;           ///< 纹理 LOD 偏置
         glm::vec3 _pad;              ///< 填充到 16 字节对齐
-        glm::vec4 color;             ///< 叠加颜色（tint），与纹理颜色相乘
     };
     static_assert(sizeof(ObjectUBO) % 16 == 0, "ObjectUBO 必须 16 字节对齐");
+
+    /// per-instance 数据（阶段3，存入 SSBO，std430 布局）
+    /// 必须与 GLSL InstanceData 块一致：mat4(64B) + vec4(16B) = 80B
+    struct InstanceData {
+        glm::mat4 model;             ///< 模型矩阵（列主序）
+        glm::vec4 color;             ///< 叠加颜色（tint），与纹理颜色相乘
+    };
+    static_assert(sizeof(InstanceData) == 80, "InstanceData 必须与 std430 布局一致");
 
     /// 一个待绘制的网格实例
     struct MeshInstance {
@@ -199,6 +212,15 @@ private:
         uint64_t  sortKey;     ///< 排序键（EndScene 绘制前按此排序）
     };
 
+    /// 阶段3：一个 instancing 绘制批次（相同 mesh + 相同材质）
+    struct RenderBatch {
+        Mesh            *mesh;          ///< 网格资源
+        Material        *material;      ///< 材质
+        uint32_t         firstInstance; ///< 该批次在全局实例缓冲中的起始实例索引
+        uint32_t         instanceCount; ///< 实例数量
+        BufferAllocation objectUbo;     ///< 该材质共享的 ObjectUBO（lodBias）
+    };
+
     // ========================================================================
     // 内部工具方法
     // ========================================================================
@@ -206,13 +228,14 @@ private:
     /**
      * @brief 计算某个网格实例的排序键。
      *
-     * 由当前视图矩阵、变换矩阵和材质计算：
-     * 管线 id（恒 0）+ 材质哈希 + view 空间深度。
+     * 由当前视图矩阵、变换矩阵、材质和网格计算：
+     * 材质哈希 + mesh 哈希 + view 空间深度。
      *
      * @param material 材质（可为 nullptr，nullptr 时材质哈希为 0）
+     * @param mesh     网格（用于排序分组，使同材质同 mesh 的实例连续）
      * @param transform 模型变换矩阵
      */
-    uint64_t ComputeSortKey(const Material *material, const glm::mat4 &transform) const;
+    uint64_t ComputeSortKey(const Material *material, const Mesh *mesh, const glm::mat4 &transform) const;
 
     /**
      * @brief 解析材质对应的有效纹理。

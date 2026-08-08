@@ -481,7 +481,11 @@ inline void read_shader_resource<ShaderResourceType::BufferStorage>(const spirv_
         shader_resource.name   = resource.name;
 
         read_resource_size(compiler, resource, shader_resource, variant);
-        read_resource_array_size(compiler, resource, shader_resource, variant);
+        // 存储缓冲（SSBO）始终是"单个 buffer 描述符"，块内成员（含 runtime array）
+        // 不增加描述符数量，因此 descriptorCount 恒为 1。
+        // read_resource_array_size 会把 runtime array（None）读成 array_size=0，
+        // 导致 descriptor set layout 创建非法，故此处强制置 1。
+        shader_resource.array_size = 1;
         read_resource_decoration<spv::DecorationNonReadable>(compiler, resource, shader_resource, variant);
         read_resource_decoration<spv::DecorationNonWritable>(compiler, resource, shader_resource, variant);
         read_resource_decoration<spv::DecorationDescriptorSet>(compiler, resource, shader_resource, variant);

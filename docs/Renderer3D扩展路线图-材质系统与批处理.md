@@ -128,6 +128,12 @@ void DrawMesh(const glm::mat4& transform, Mesh* mesh, Material* material);
 
 ## 阶段 2：Dynamic UBO + 同材质合批
 
+> **状态：✅ 已完成**（2026-08-08）
+> - 构造时 `m_VertShader->set_resource_mode("ObjectUBO", Dynamic)`，先用现有反射/DescriptorSetLayout 基础设施把 set 2 binding 0 建为 `eUniformBufferDynamic`（无需改底层）
+> - `EndScene` 按有效纹理分组，每组分配一块连续 ObjectUBO 内存，偏移对齐 `minUniformBufferOffsetAlignment`，一次性上传
+> - 绘制时绑定组缓冲 + 动态偏移；同组 descriptor set 复用，draw 间仅更新动态偏移
+> - 验证：RenderDoc 抓帧应看到同材质 draw 之间 descriptor set handle 相同、仅 dynamic offset 变化
+
 ### 目标
 将 per-object 数据（模型矩阵、颜色等）从独立 UBO 改为 Dynamic Uniform Buffer，使得**同材质的多个 mesh 共享同一个 descriptor set**，draw call 之间仅更新 dynamic offset——大幅减少 descriptor set 分配/绑定开销。
 

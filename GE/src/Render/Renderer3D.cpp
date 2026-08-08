@@ -44,7 +44,15 @@ Renderer3D::Renderer3D() {
         ShaderSource("assets/shaders/glsl/mesh.frag.spv"),
         "main", ShaderVariant{});
 
-    // ── 2. 请求 PipelineLayout（通过反射自动构建） ─────────────────────
+    // ── 2. 将 ObjectUBO 标记为 Dynamic（阶段2：同材质合批） ────────────
+    //    必须在请求 PipelineLayout 之前设置：反射出的 DescriptorSetLayout
+    //    会据此把 set 2 binding 0 创建为 eUniformBufferDynamic，使同材质
+    //    的多个 mesh 共享同一 descriptor set，draw 间仅更新动态偏移。
+    //    ObjectUBO 在顶点/片元着色器中都有声明，此处设置顶点着色器即可，
+    //    PipelineLayout 合并同名资源时保留先出现资源的 mode。
+    m_VertShader->set_resource_mode("ObjectUBO", ShaderResourceMode::Dynamic);
+
+    // ── 3. 请求 PipelineLayout（通过反射自动构建） ─────────────────────
     m_PipelineLayout = &cache.RequestPipelineLayout(
         {m_VertShader, m_FragShader});
     m_PipelineLayout->SetDebugName("Mesh3D_PipelineLayout");
@@ -192,22 +200,56 @@ void Renderer3D::EndScene() {
         vk::BufferUsageFlagBits::eUniformBuffer, sizeof(FrameUBO));
     frameUboAlloc.update(frameUBO);
 
-    // ── 2. 为每个网格分配 Object UBO ──────────────────────────────────
-    //    每个 UBO 单独从 BufferPool 分配，确保偏移满足
-    //    minUniformBufferOffsetAlignment 对齐要求
-    std::vector<BufferAllocation> objectUboAllocs;
-    objectUboAllocs.reserve(m_Meshes.size());
-    for (const auto &instance : m_Meshes) {
-        ObjectUBO ubo{};
-        ubo.model = instance.transform;
-        ubo.lodBias = 0.0f;
-        ubo._pad = glm::vec3(0.0f);
-        ubo.color = instance.color;
+    // ── 2. ObjectUBO 改为 Dynamic：按材质分组分配连续 UBO 块 ──────────
+    //    set 2 binding 0 已标记为 eUniformBufferDynamic，因此同材质
+    //    （同有效纹理）的 mesh 共享同一个 DescriptorSet，draw 间仅更新
+    //    动态偏移，大幅减少 descriptor set 分配/绑定开销。
+    //
+    //    同一材质组内所有 mesh 的 ObjectUBO 写入一块连续内存，每个 mesh
+    //    的偏移对齐到 minUniformBufferOffsetAlignment，一次性上传。
+    auto &device = Renderer::GetVulkanContext().GetDevice();
+    vk::DeviceSize uboAlign = device.GetGpu().GetProperties()
+                                  .limits.minUniformBufferOffsetAlignment;
+    vk::DeviceSize alignedUboSize = ((sizeof(ObjectUBO) + uboAlign - 1) / uboAlign) * uboAlign;
 
-        BufferAllocation alloc = frame.AllocateBuffer(
-            vk::BufferUsageFlagBits::eUniformBuffer, sizeof(ObjectUBO));
-        alloc.update(ubo);
-        objectUboAllocs.push_back(std::move(alloc));
+    // 记录每个 mesh 绘制时绑定的组缓冲 + 动态偏移
+    struct ObjectUboBinding {
+        BufferAllocation alloc;        ///< 所属材质组的 UBO 分配（组内共享）
+        vk::DeviceSize   dynamicOffset; ///< 该 mesh 在组缓冲内的动态偏移
+    };
+    std::vector<ObjectUboBinding> objectUboBindings;
+    objectUboBindings.reserve(m_Meshes.size());
+
+    // 分组遍历：阶段1 排序已保证同材质 mesh 连续，识别组边界即可
+    for (size_t i = 0; i < m_Meshes.size();) {
+        Texture *groupTex = GetEffectiveTexture(m_Meshes[i].material);
+
+        // 找到当前组的结束位置（有效纹理变化处）
+        size_t groupStart = i;
+        while (i < m_Meshes.size()
+               && GetEffectiveTexture(m_Meshes[i].material) == groupTex) {
+            ++i;
+        }
+        size_t groupCount = i - groupStart;
+
+        // 为组内所有 mesh 分配一块连续 UBO 内存
+        BufferAllocation groupAlloc = frame.AllocateBuffer(
+            vk::BufferUsageFlagBits::eUniformBuffer,
+            groupCount * alignedUboSize);
+
+        // 写入组内每个 mesh 的 ObjectUBO（偏移按对齐后大小递增）
+        for (size_t k = 0; k < groupCount; ++k) {
+            const auto &instance = m_Meshes[groupStart + k];
+            ObjectUBO ubo{};
+            ubo.model = instance.transform;
+            ubo.lodBias = 0.0f;
+            ubo._pad = glm::vec3(0.0f);
+            ubo.color = instance.color;
+
+            groupAlloc.update(ubo, static_cast<uint32_t>(k * alignedUboSize));
+            objectUboBindings.push_back(
+                ObjectUboBinding{groupAlloc, k * alignedUboSize});
+        }
     }
 
     // ── 3. 开始动态渲染 ───────────────────────────────────────────────
@@ -331,12 +373,13 @@ void Renderer3D::EndScene() {
     vk::DeviceSize vertexOffset = 0;
     for (size_t i = 0; i < m_Meshes.size(); ++i) {
         const auto &instance = m_Meshes[i];
-        auto &uboAlloc = objectUboAllocs[i];
+        const auto &ubo = objectUboBindings[i];
 
-        // 绑定 Object UBO（set 2, binding 0）
-        // 每个 UBO 单独分配，offset 天然满足 minUniformBufferOffsetAlignment
-        cmd.BindBuffer(uboAlloc.get_buffer(), uboAlloc.get_offset(),
-                       uboAlloc.get_size(), 2, 0);
+        // 绑定 Object UBO（set 2, binding 0，动态）
+        // 传入组缓冲 + 该 mesh 的动态偏移；descriptor set 在组内复用，
+        // bindDescriptorSets 每次传递新的动态偏移，draw 间不重复分配
+        cmd.BindBuffer(ubo.alloc.get_buffer(), ubo.dynamicOffset,
+                       alignedUboSize, 2, 0);
 
         // 绑定纹理（set 1, binding 0）
         // 从 material 的 Albedo 槽位取纹理，无材质或无纹理时使用

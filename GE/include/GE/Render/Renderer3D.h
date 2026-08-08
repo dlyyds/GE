@@ -7,7 +7,9 @@
  *
  * 每个 DrawMesh 提交一个 draw call；EndScene 绘制前会按
  * 排序键（管线 → 纹理 → 深度）排序，使同材质 mesh 连续排列以减少
- * 管线/纹理切换（真正的合批在后续阶段实现）。
+ * 管线/纹理切换。
+ * ObjectUBO 使用 Dynamic Uniform Buffer：同材质的多个 mesh 共享一个
+ * descriptor set，draw 间仅更新动态偏移，减少 descriptor set 分配/绑定开销。
  * 顶点数据使用 Mesh 自身的 GPU 缓冲，UBO 从当前帧 BufferPool 动态分配。
  *
  * 使用方式：

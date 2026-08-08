@@ -28,6 +28,8 @@
 #include "Render/VulkanBase/PhysicalDevice.h"
 #include "Core/Log.h"
 
+#include <vulkan/vulkan_hash.hpp> // 提供 vk::* 类型的 std::hash 特化
+
 namespace GE {
 namespace {
 
@@ -46,12 +48,12 @@ inline void hash_combine(size_t &seed, const T &v) {
 size_t hash_write_descriptor_set(const vk::WriteDescriptorSet &write) {
     size_t seed = 0;
 
-    // Cast 到 C 类型再哈希（vk::* 包装类型无 std::hash 特化）
-    hash_combine(seed, static_cast<VkDescriptorSet>(write.dstSet));
+    // vulkan_hash.hpp 为 vk::* 类型提供 std::hash 特化，可直接哈希
+    hash_combine(seed, write.dstSet);
     hash_combine(seed, write.dstBinding);
     hash_combine(seed, write.dstArrayElement);
     hash_combine(seed, write.descriptorCount);
-    hash_combine(seed, static_cast<uint32_t>(write.descriptorType));
+    hash_combine(seed, write.descriptorType);
 
     // 按 descriptor 类型哈希其指向的 pBufferInfo / pImageInfo
     auto desc_type = write.descriptorType;
@@ -61,7 +63,7 @@ size_t hash_write_descriptor_set(const vk::WriteDescriptorSet &write) {
         desc_type == vk::DescriptorType::eUniformBufferDynamic ||
         desc_type == vk::DescriptorType::eStorageBufferDynamic) {
         for (uint32_t i = 0; i < write.descriptorCount; i++) {
-            hash_combine(seed, static_cast<VkBuffer>(write.pBufferInfo[i].buffer));
+            hash_combine(seed, write.pBufferInfo[i].buffer);
             hash_combine(seed, write.pBufferInfo[i].offset);
             hash_combine(seed, write.pBufferInfo[i].range);
         }
@@ -71,9 +73,9 @@ size_t hash_write_descriptor_set(const vk::WriteDescriptorSet &write) {
                desc_type == vk::DescriptorType::eStorageImage ||
                desc_type == vk::DescriptorType::eInputAttachment) {
         for (uint32_t i = 0; i < write.descriptorCount; i++) {
-            hash_combine(seed, static_cast<VkSampler>(write.pImageInfo[i].sampler));
-            hash_combine(seed, static_cast<VkImageView>(write.pImageInfo[i].imageView));
-            hash_combine(seed, static_cast<uint32_t>(write.pImageInfo[i].imageLayout));
+            hash_combine(seed, write.pImageInfo[i].sampler);
+            hash_combine(seed, write.pImageInfo[i].imageView);
+            hash_combine(seed, write.pImageInfo[i].imageLayout);
         }
     }
 

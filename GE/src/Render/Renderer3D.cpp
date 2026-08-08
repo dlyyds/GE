@@ -239,7 +239,12 @@ void Renderer3D::EndScene() {
             vk::BufferUsageFlagBits::eUniformBuffer,
             groupCount * alignedUboSize);
 
-        // 写入组内每个 mesh 的 ObjectUBO（偏移按对齐后大小递增）
+        // 写入组内每个 mesh 的 ObjectUBO（偏移按对齐后大小递增）。
+        // 动态偏移必须是该 mesh 数据在底层 VkBuffer 中的绝对偏移：
+        // BufferPool 采用 MultipleAllocationsPerBuffer，多个材质组共享同一
+        // VkBuffer，Dynamic UBO 的 descriptor 绑定 buffer offset 0，
+        // 若只用组内相对偏移，会读到其他组的数据（颜色/模型混乱）。
+        vk::DeviceSize groupBase = groupAlloc.get_offset();
         for (size_t k = 0; k < groupCount; ++k) {
             const auto &instance = m_Meshes[groupStart + k];
             ObjectUBO ubo{};
@@ -248,9 +253,10 @@ void Renderer3D::EndScene() {
             ubo._pad = glm::vec3(0.0f);
             ubo.color = instance.color;
 
+            vk::DeviceSize absOffset = groupBase + k * alignedUboSize;
             groupAlloc.update(ubo, static_cast<uint32_t>(k * alignedUboSize));
             objectUboBindings.push_back(
-                ObjectUboBinding{groupAlloc, k * alignedUboSize});
+                ObjectUboBinding{groupAlloc, absOffset});
         }
     }
 

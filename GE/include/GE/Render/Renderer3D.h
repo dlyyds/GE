@@ -59,21 +59,21 @@ public:
     // ========================================================================
     //
     // 64 位排序键，高优先级字段放在高位：
-    //   [ 8bit pipeline_id ][ 24bit texture_hash ][ 32bit depth ]
+    //   [ 8bit pipeline_id ][ 24bit material_hash ][ 32bit depth ]
     // - 高位按管线分组 → 最少的管线切换
-    // - 中位按纹理分组 → 减少纹理绑定切换（为同材质合批打基础）
+    // - 中位按材质分组 → 减少管线/纹理切换（为同材质合批打基础）
     // - 低位按深度排序 → 不透明物体从前往后（early-z 优化）
     //
-    // 注：当前仅一套管线状态，pipeline_id 恒为 0，主要收益来自纹理分组。
+    // 注：当前仅一套管线状态，pipeline_id 恒为 0，主要收益来自材质分组。
 
     /// 管线 id 在排序键中的起始位（最高 8 位）
     static constexpr int    PIPELINE_ID_SHIFT   = 56;
-    /// 纹理哈希在排序键中的起始位
-    static constexpr int    TEXTURE_HASH_SHIFT  = 32;
-    /// 纹理哈希占 24 位
-    static constexpr int    TEXTURE_HASH_BITS   = 24;
-    /// 纹理哈希掩码
-    static constexpr uint64_t TEXTURE_HASH_MASK = (1ull << TEXTURE_HASH_BITS) - 1;
+    /// 材质哈希在排序键中的起始位
+    static constexpr int    MATERIAL_HASH_SHIFT  = 32;
+    /// 材质哈希占 24 位
+    static constexpr int    MATERIAL_HASH_BITS   = 24;
+    /// 材质哈希掩码
+    static constexpr uint64_t MATERIAL_HASH_MASK = (1ull << MATERIAL_HASH_BITS) - 1;
 
     /**
      * @brief 单个点光源参数。
@@ -206,10 +206,13 @@ private:
     /**
      * @brief 计算某个网格实例的排序键。
      *
-     * 由当前视图矩阵、变换矩阵和有效纹理计算：
-     * 管线 id（恒 0）+ 纹理哈希 + view 空间深度。
+     * 由当前视图矩阵、变换矩阵和材质计算：
+     * 管线 id（恒 0）+ 材质哈希 + view 空间深度。
+     *
+     * @param material 材质（可为 nullptr，nullptr 时材质哈希为 0）
+     * @param transform 模型变换矩阵
      */
-    uint64_t ComputeSortKey(Texture *texture, const glm::mat4 &transform) const;
+    uint64_t ComputeSortKey(const Material *material, const glm::mat4 &transform) const;
 
     /**
      * @brief 解析材质对应的有效纹理。

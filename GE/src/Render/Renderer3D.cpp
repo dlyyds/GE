@@ -114,8 +114,8 @@ void Renderer3D::DrawMesh(const glm::mat4 &transform,
         return;
     }
 
-    // 计算排序键（管线 → 纹理 → view 空间深度），用于 EndScene 前的状态分组排序
-    uint64_t sortKey = ComputeSortKey(GetEffectiveTexture(material), transform);
+    // 计算排序键（管线 → 材质 → view 空间深度），用于 EndScene 前的状态分组排序
+    uint64_t sortKey = ComputeSortKey(material, transform);
 
     m_Meshes.push_back({transform, mesh, material, color, sortKey});
 }
@@ -130,14 +130,16 @@ Texture *Renderer3D::GetEffectiveTexture(const Material *material) const {
     return tex ? tex : m_DefaultWhiteTexture.get();
 }
 
-uint64_t Renderer3D::ComputeSortKey(Texture *texture, const glm::mat4 &transform) const {
+uint64_t Renderer3D::ComputeSortKey(const Material *material, const glm::mat4 &transform) const {
     // 管线 id：当前仅一套管线状态，恒为 0（后续阶段从管线 hash 获取）
     uint64_t pipelineId = 0;
 
-    // 纹理分组：纹理指针哈希折叠到 24 位，减少纹理绑定切换
-    uint64_t texHash = 0;
-    if (texture) {
-        texHash = std::hash<const void *>{}(texture) & TEXTURE_HASH_MASK;
+    // 材质分组：材质指针哈希折叠到 24 位，减少管线/纹理切换。
+    // 材质完整决定渲染状态（纹理组合、着色器类型、混合等），比纹理更精确。
+    // nullptr 材质统一视为 0，使其彼此相邻。
+    uint64_t matHash = 0;
+    if (material) {
+        matHash = std::hash<const void *>{}(material) & MATERIAL_HASH_MASK;
     }
 
     // 深度：取模型变换的平移分量转换到 view 空间，取反得到正值（越大越远）。
@@ -147,7 +149,7 @@ uint64_t Renderer3D::ComputeSortKey(Texture *texture, const glm::mat4 &transform
     uint32_t depthBits = std::bit_cast<uint32_t>(-viewPos.z);
 
     return (pipelineId << PIPELINE_ID_SHIFT)
-         | (texHash << TEXTURE_HASH_SHIFT)
+         | (matHash << MATERIAL_HASH_SHIFT)
          | static_cast<uint64_t>(depthBits);
 }
 
@@ -220,14 +222,14 @@ void Renderer3D::EndScene() {
     std::vector<ObjectUboBinding> objectUboBindings;
     objectUboBindings.reserve(m_Meshes.size());
 
-    // 分组遍历：阶段1 排序已保证同材质 mesh 连续，识别组边界即可
+    // 分组遍历：阶段1 排序已保证同材质 mesh 连续，识别组边界即可。
+    // 以材质指针为分组键（与排序键中位一致），材质完整决定渲染状态。
     for (size_t i = 0; i < m_Meshes.size();) {
-        Texture *groupTex = GetEffectiveTexture(m_Meshes[i].material);
+        const Material *groupMat = m_Meshes[i].material;
 
-        // 找到当前组的结束位置（有效纹理变化处）
+        // 找到当前组的结束位置（材质变化处）
         size_t groupStart = i;
-        while (i < m_Meshes.size()
-               && GetEffectiveTexture(m_Meshes[i].material) == groupTex) {
+        while (i < m_Meshes.size() && m_Meshes[i].material == groupMat) {
             ++i;
         }
         size_t groupCount = i - groupStart;
@@ -408,12 +410,11 @@ void Renderer3D::EndScene() {
     }
     Renderer::Get().AddStats3D(static_cast<uint32_t>(m_Meshes.size()), triangles);
 
-    // 统计排序后的批次数（按有效纹理指针分组，反映同材质连续排列的程度，
-    // 用于观察状态分组优化收益：批次数越少 → 纹理切换越少）
+    // 统计排序后的批次数（按材质指针分组，与状态分组一致），
+    // 用于观察状态分组优化收益：批次数越少 → 管线/纹理切换越少）
     uint32_t batches = 1;
     for (size_t i = 1; i < m_Meshes.size(); ++i) {
-        if (GetEffectiveTexture(m_Meshes[i].material)
-                != GetEffectiveTexture(m_Meshes[i - 1].material)) {
+        if (m_Meshes[i].material != m_Meshes[i - 1].material) {
             ++batches;
         }
     }

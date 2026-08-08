@@ -69,7 +69,7 @@ public:
     bool empty() const;
 
     /** @brief 获取底层 VulkanBuffer */
-    VulkanBuffer &get_buffer();
+    VulkanBuffer &get_buffer() const;
 
     /** @brief 获取子分配偏移 */
     vk::DeviceSize get_offset() const;
@@ -233,7 +233,7 @@ inline bool BufferAllocation::empty() const {
     return m_Size == 0 || m_Buffer == nullptr;
 }
 
-inline VulkanBuffer &BufferAllocation::get_buffer() {
+inline VulkanBuffer &BufferAllocation::get_buffer() const {
     assert(m_Buffer && "Invalid buffer pointer");
     return *m_Buffer;
 }

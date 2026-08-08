@@ -126,7 +126,7 @@ Texture *Renderer3D::GetEffectiveTexture(const Material *material) const {
     return tex ? tex : m_DefaultWhiteTexture.get();
 }
 
-SortKey Renderer3D::ComputeSortKey(const Material *material, const Mesh *mesh, const glm::mat4 &transform) const {
+Renderer3D::SortKey Renderer3D::ComputeSortKey(const Material *material, const Mesh *mesh, const glm::mat4 &transform) const {
     // pipeline：当前仅一套管线，恒为 0（阶段4 引入多管线后填入真实 id）
     SortKey key;
     key.pipelineId = 0;

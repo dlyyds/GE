@@ -135,7 +135,7 @@ uint64_t Renderer3D::ComputeSortKey(Texture *texture, const glm::mat4 &transform
     // 深度：取模型变换的平移分量转换到 view 空间，取反得到正值（越大越远）。
     // 正浮点数的 IEEE 位模式随值单调递增，故可直接按位作为排序键，
     // 升序排列即实现不透明物体从前往后（early-z 优化）。
-    glm::vec4 viewPos = m_View * glm::vec4(transform[3], 1.0f);
+    glm::vec4 viewPos = m_View * transform[3];
     uint32_t depthBits = std::bit_cast<uint32_t>(-viewPos.z);
 
     return (pipelineId << PIPELINE_ID_SHIFT)

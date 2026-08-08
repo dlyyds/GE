@@ -54,22 +54,22 @@ size_t hash_write_descriptor_set(const vk::WriteDescriptorSet &write) {
     hash_combine(seed, static_cast<uint32_t>(write.descriptorType));
 
     // 按 descriptor 类型哈希其指向的 pBufferInfo / pImageInfo
-    auto desc_type = static_cast<uint32_t>(write.descriptorType);
+    auto desc_type = write.descriptorType;
 
-    if (desc_type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER ||
-        desc_type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER ||
-        desc_type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC ||
-        desc_type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC) {
+    if (desc_type == vk::DescriptorType::eUniformBuffer ||
+        desc_type == vk::DescriptorType::eStorageBuffer ||
+        desc_type == vk::DescriptorType::eUniformBufferDynamic ||
+        desc_type == vk::DescriptorType::eStorageBufferDynamic) {
         for (uint32_t i = 0; i < write.descriptorCount; i++) {
             hash_combine(seed, static_cast<VkBuffer>(write.pBufferInfo[i].buffer));
             hash_combine(seed, write.pBufferInfo[i].offset);
             hash_combine(seed, write.pBufferInfo[i].range);
         }
-    } else if (desc_type == VK_DESCRIPTOR_TYPE_SAMPLER ||
-               desc_type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER ||
-               desc_type == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE ||
-               desc_type == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE ||
-               desc_type == VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT) {
+    } else if (desc_type == vk::DescriptorType::eSampler ||
+               desc_type == vk::DescriptorType::eCombinedImageSampler ||
+               desc_type == vk::DescriptorType::eSampledImage ||
+               desc_type == vk::DescriptorType::eStorageImage ||
+               desc_type == vk::DescriptorType::eInputAttachment) {
         for (uint32_t i = 0; i < write.descriptorCount; i++) {
             hash_combine(seed, static_cast<VkSampler>(write.pImageInfo[i].sampler));
             hash_combine(seed, static_cast<VkImageView>(write.pImageInfo[i].imageView));

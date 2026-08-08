@@ -198,15 +198,15 @@ const std::vector<vk::DescriptorBindingFlagsEXT> &VulkanDescriptorSetLayout::Get
     return m_BindingFlags;
 }
 
-std::unique_ptr<vk::DescriptorSetLayoutBinding> VulkanDescriptorSetLayout::GetLayoutBinding(uint32_t binding_index) const {
+const vk::DescriptorSetLayoutBinding *VulkanDescriptorSetLayout::GetLayoutBinding(uint32_t binding_index) const {
     auto it = m_BindingsLookup.find(binding_index);
     if (it == m_BindingsLookup.end()) {
         return nullptr;
     }
-    return std::make_unique<vk::DescriptorSetLayoutBinding>(it->second);
+    return &it->second;
 }
 
-std::unique_ptr<vk::DescriptorSetLayoutBinding> VulkanDescriptorSetLayout::GetLayoutBinding(const std::string &name) const {
+const vk::DescriptorSetLayoutBinding *VulkanDescriptorSetLayout::GetLayoutBinding(const std::string &name) const {
     auto it = m_ResourcesLookup.find(name);
     if (it == m_ResourcesLookup.end()) {
         return nullptr;

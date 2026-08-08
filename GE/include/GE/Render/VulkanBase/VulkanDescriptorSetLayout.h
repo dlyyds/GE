@@ -74,9 +74,9 @@ public:
 
     const std::vector<vk::DescriptorSetLayoutBinding> &GetBindings() const;
 
-    std::unique_ptr<vk::DescriptorSetLayoutBinding> GetLayoutBinding(uint32_t binding_index) const;
+    const vk::DescriptorSetLayoutBinding *GetLayoutBinding(uint32_t binding_index) const;
 
-    std::unique_ptr<vk::DescriptorSetLayoutBinding> GetLayoutBinding(const std::string &name) const;
+    const vk::DescriptorSetLayoutBinding *GetLayoutBinding(const std::string &name) const;
 
     const std::vector<vk::DescriptorBindingFlagsEXT> &GetBindingFlags() const;
 

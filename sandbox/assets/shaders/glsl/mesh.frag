@@ -29,11 +29,10 @@ layout (set = 0, binding = 0, std140) uniform FrameUBO
 } frame;
 
 layout (location = 0) in vec2 inUV;
-layout (location = 1) in float inLodBias;
-layout (location = 2) in vec3 inWorldPos;
-layout (location = 3) in vec3 inNormal;
-layout (location = 4) in vec3 inViewVec;
-layout (location = 5) in flat vec4 inColor;    // per-instance tint，由顶点着色器传入
+layout (location = 1) in vec3 inWorldPos;
+layout (location = 2) in vec3 inNormal;
+layout (location = 3) in vec3 inViewVec;
+layout (location = 4) in flat vec4 inColor;    // per-instance tint，由顶点着色器传入
 
 layout (location = 0) out vec4 outFragColor;
 
@@ -84,7 +83,7 @@ vec3 calcPointLight(int index, vec3 N, vec3 V, vec3 worldPos, vec3 albedo, float
 
 void main()
 {
-    vec4 texColor = texture(samplerColor, inUV, inLodBias);
+    vec4 texColor = texture(samplerColor, inUV, 0.0);
     vec3 albedo = texColor.rgb * inColor.rgb;
 
     vec3 N = normalize(inNormal);

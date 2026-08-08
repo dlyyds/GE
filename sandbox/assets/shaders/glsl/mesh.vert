@@ -35,33 +35,24 @@ layout (set = 0, binding = 0, std140) uniform FrameUBO
     vec4 ambient;
 } frame;
 
-// ObjectUBO 只保留按材质共享的标量参数（阶段3：model/color 已迁入 InstanceData SSBO）
-layout (set = 2, binding = 0, std140) uniform ObjectUBO
-{
-    float lodBias;
-    vec3 _pad;
-} object;
-
 // 阶段3（方案B）：per-instance 数据（model + color）存入 SSBO，
 // 用 gl_InstanceIndex 索引。std430 布局：mat4 = 64B，vec4 = 16B，每实例 80B，
 // 与 C++ 端 Renderer3D::InstanceData 结构体布局一致。
-layout (set = 2, binding = 1, std430) readonly buffer InstanceData
+layout (set = 2, binding = 0, std430) readonly buffer InstanceData
 {
     mat4 model;
     vec4 color;
 } instances[];
 
 layout (location = 0) out vec2 outUV;
-layout (location = 1) out float outLodBias;
-layout (location = 2) out vec3 outWorldPos;
-layout (location = 3) out vec3 outNormal;
-layout (location = 4) out vec3 outViewVec;
-layout (location = 5) out flat vec4 outColor;   // per-instance tint，flat 不插值
+layout (location = 1) out vec3 outWorldPos;
+layout (location = 2) out vec3 outNormal;
+layout (location = 3) out vec3 outViewVec;
+layout (location = 4) out flat vec4 outColor;   // per-instance tint，flat 不插值
 
 void main()
 {
     outUV = inUV;
-    outLodBias = object.lodBias;
     outColor = instances[gl_InstanceIndex].color;
 
     mat4 model = instances[gl_InstanceIndex].model;

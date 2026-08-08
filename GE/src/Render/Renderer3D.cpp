@@ -45,9 +45,9 @@ Renderer3D::Renderer3D() {
         "main", ShaderVariant{});
 
     // ── 3. 请求 PipelineLayout（通过反射自动构建） ─────────────────────
-    //    注：阶段2 曾将 ObjectUBO 设为 Dynamic 以降低 descriptor set 数量，
-    //    阶段3 把 per-instance 数据（model/color）迁入 InstanceData SSBO 后，
-    //    ObjectUBO 仅按材质共享 lodBias，改回普通 uniform buffer（每材质组一个）。
+    //    注：阶段2 曾用 Dynamic ObjectUBO 存 per-instance 数据以降低
+    //    descriptor set 数量；阶段3 已把 model/color 迁入 InstanceData SSBO，
+    //    ObjectUBO 随之整个移除，set 2 仅保留 InstanceData SSBO。
     m_PipelineLayout = &cache.RequestPipelineLayout(
         {m_VertShader, m_FragShader});
     m_PipelineLayout->SetDebugName("Mesh3D_PipelineLayout");
@@ -203,20 +203,14 @@ void Renderer3D::EndScene() {
     //    排序键已保证同材质同 mesh 的实例连续。单趟扫描把 (mesh, material)
     //    指针相等且连续的实例归为一个 RenderBatch，并把每个实例的 (model,
     //    color) 收集进 instances 数组，最终一次性上传到全局 storage buffer。
-    //    ObjectUBO 按材质共享（仅 lodBias），材质变化时分配一个普通 UBO。
     std::vector<InstanceData> instances;
     instances.reserve(m_Meshes.size());
 
     std::vector<RenderBatch> batches;
     batches.reserve(m_Meshes.size());
 
-    const Material *currentMat = nullptr;
-    BufferAllocation currentObjectUbo;  // 当前材质的共享 ObjectUBO（lodBias）
-
     for (size_t i = 0; i < m_Meshes.size();) {
         const auto &first = m_Meshes[i];
-        // 注意：RenderBatch.material 为非 const 指针（沿用 MeshInstance 风格），
-        // 此处用非 const 引用赋值，避免丢弃 const 限定导致编译错误。
         Material *mat = first.material;
         Mesh     *mesh = first.mesh;
 
@@ -228,17 +222,6 @@ void Renderer3D::EndScene() {
             ++i;
         }
 
-        // 材质变化：为该材质分配共享 ObjectUBO（lodBias）
-        if (mat != currentMat) {
-            currentMat = mat;
-            currentObjectUbo = frame.AllocateBuffer(
-                vk::BufferUsageFlagBits::eUniformBuffer, sizeof(ObjectUBO));
-            ObjectUBO ubo{};
-            ubo.lodBias = 0.0f;
-            ubo._pad = glm::vec3(0.0f);
-            currentObjectUbo.update(ubo);
-        }
-
         // 收集本批次实例的 per-instance 数据
         uint32_t firstInstance = static_cast<uint32_t>(instances.size());
         for (size_t k = runStart; k < i; ++k) {
@@ -248,8 +231,7 @@ void Renderer3D::EndScene() {
 
         batches.push_back(RenderBatch{
             mesh, mat, firstInstance,
-            static_cast<uint32_t>(i - runStart),
-            currentObjectUbo});
+            static_cast<uint32_t>(i - runStart)});
     }
 
     // 分配全局实例 SSBO 并一次性上传（所有批次共享）
@@ -388,13 +370,9 @@ void Renderer3D::EndScene() {
                           1, 0);
         }
 
-        // 绑定 ObjectUBO（set 2, binding 0，普通 uniform，按材质共享）
-        cmd.BindBuffer(batch.objectUbo.get_buffer(), batch.objectUbo.get_offset(),
-                       batch.objectUbo.get_size(), 2, 0);
-
-        // 绑定全局实例 SSBO（set 2, binding 1）——所有批次共享同一缓冲
+        // 绑定全局实例 SSBO（set 2, binding 0）——所有批次共享同一缓冲
         cmd.BindBuffer(instanceBuffer.get_buffer(), instanceBuffer.get_offset(),
-                       instanceBuffer.get_size(), 2, 1);
+                       instanceBuffer.get_size(), 2, 0);
 
         // 绑定顶点缓冲 + 索引缓冲
         cmd.BindVertexBuffers(0,

@@ -109,9 +109,9 @@ void Renderer3D::DrawMesh(const glm::mat4 &transform,
         return;
     }
 
-    // 计算排序键（材质 → mesh → view 空间深度），用于 EndScene 前分组排序，
-    // 使同材质同 mesh 的实例连续，便于 instancing 合批
-    uint64_t sortKey = ComputeSortKey(material, mesh, transform);
+    // 计算排序键（pipeline → 材质 → mesh → view 空间深度），用于 EndScene
+    // 前分组排序，使同材质同 mesh 的实例连续，便于 instancing 合批
+    SortKey sortKey = ComputeSortKey(material, mesh, transform);
 
     m_Meshes.push_back({transform, mesh, material, color, sortKey});
 }
@@ -126,28 +126,29 @@ Texture *Renderer3D::GetEffectiveTexture(const Material *material) const {
     return tex ? tex : m_DefaultWhiteTexture.get();
 }
 
-uint64_t Renderer3D::ComputeSortKey(const Material *material, const Mesh *mesh, const glm::mat4 &transform) const {
-    // 材质分组：材质指针哈希折叠到 20 位，减少管线/纹理切换。
-    // 材质完整决定渲染状态（纹理组合、着色器类型、混合等），比纹理更精确。
+SortKey Renderer3D::ComputeSortKey(const Material *material, const Mesh *mesh, const glm::mat4 &transform) const {
+    // pipeline：当前仅一套管线，恒为 0（阶段4 引入多管线后填入真实 id）
+    SortKey key;
+    key.pipelineId = 0;
+
+    // 材质分组：用材质指针值（进程内唯一）作分组 id，使同材质实例连续，
+    // 减少管线/纹理切换。材质完整决定渲染状态（纹理组合、着色器类型、混合等）。
     // nullptr 材质统一视为 0，使其彼此相邻。
-    uint64_t matHash = 0;
     if (material) {
-        matHash = std::hash<const void *>{}(material) & MATERIAL_HASH_MASK;
+        key.materialId = reinterpret_cast<uintptr_t>(material);
     }
 
-    // mesh 分组：指针哈希折叠到 12 位，使同材质内同 mesh 实例连续便于合批。
-    // 仅用于排序，合批分组用指针相等判断，哈希碰撞不会导致错误合批。
-    uint64_t meshHash = std::hash<const void *>{}(mesh) & MESH_HASH_MASK;
+    // mesh 分组：用 mesh 指针值作分组 id，使同材质内同 mesh 实例连续便于合批。
+    // 仅用于排序，合批分组用指针相等判断。
+    key.meshId = reinterpret_cast<uintptr_t>(mesh);
 
     // 深度：取模型变换的平移分量转换到 view 空间，取反得到正值（越大越远）。
     // 正浮点数的 IEEE 位模式随值单调递增，故可直接按位作为排序键，
     // 升序排列即实现不透明物体从前往后（early-z 优化）。
     glm::vec4 viewPos = m_View * transform[3];
-    uint32_t depthBits = std::bit_cast<uint32_t>(-viewPos.z);
+    key.depthBits = std::bit_cast<uint32_t>(-viewPos.z);
 
-    return (matHash << MATERIAL_HASH_SHIFT)
-         | (meshHash << MESH_HASH_SHIFT)
-         | static_cast<uint64_t>(depthBits);
+    return key;
 }
 
 void Renderer3D::EndScene() {

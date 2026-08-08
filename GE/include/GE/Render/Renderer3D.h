@@ -54,30 +54,35 @@ public:
     static constexpr size_t MAX_POINT_LIGHTS = 8;
 
     // ========================================================================
-    // 排序键布局（阶段1：按材质排序；阶段3：加入 mesh 分组以便 instancing）
+    // 排序键（阶段1：按材质排序；阶段3：加入 mesh 分组以便 instancing）
     // ========================================================================
     //
-    // 64 位排序键，高优先级字段放在高位：
-    //   [ 20bit material_hash ][ 12bit mesh_hash ][ 32bit depth ]
-    // - 高位按材质分组 → 减少管线/纹理切换
-    // - 中位按 mesh 分组 → 同材质内同 mesh 实例连续，便于 instancing 合批
-    // - 低位按深度排序 → 不透明物体从前往后（early-z 优化）
+    // 用 struct 而非位打包整数，彻底消除位预算限制：
+    //   pipeline → material → mesh → depth
+    // - pipeline 优先级最高：管线切换最贵（当前仅一套恒 0，阶段4 引入
+    //   多管线后填入真实 id）
+    // - material：按材质分组 → 减少管线/纹理切换
+    // - mesh：同材质内同 mesh 实例连续，便于 instancing 合批
+    // - depth：不透明物体从前往后（early-z 优化）
     //
-    // 注：原 8bit pipeline_id 恒为 0 已去掉；mesh 哈希仅用于排序，合批分组
-    //     用 mesh 指针相等判断，哈希碰撞不会导致错误合批。
+    // material/mesh 用完整指针值（进程内唯一），无需折叠、无碰撞；
+    // 合批分组仍以指针相等判断。
 
-    /// 材质哈希在排序键中的起始位
-    static constexpr int      MATERIAL_HASH_SHIFT = 44;
-    /// 材质哈希占 20 位
-    static constexpr int      MATERIAL_HASH_BITS  = 20;
-    /// 材质哈希掩码
-    static constexpr uint64_t MATERIAL_HASH_MASK  = (1ull << MATERIAL_HASH_BITS) - 1;
-    /// mesh 哈希在排序键中的起始位
-    static constexpr int      MESH_HASH_SHIFT     = 32;
-    /// mesh 哈希占 12 位（仅用于排序，不足以保证唯一，合批分组依赖指针相等）
-    static constexpr int      MESH_HASH_BITS      = 12;
-    /// mesh 哈希掩码
-    static constexpr uint64_t MESH_HASH_MASK      = (1ull << MESH_HASH_BITS) - 1;
+    /// 排序键：按 pipeline → material → mesh → depth 顺序比较。
+    struct SortKey {
+        uint8_t  pipelineId = 0;  ///< 管线 id（阶段4 引入多管线后使用）
+        uint64_t materialId = 0;  ///< 材质指针值（分组用）
+        uint64_t meshId     = 0;  ///< mesh 指针值（分组用）
+        uint32_t depthBits  = 0;  ///< view 空间深度（正浮点 IEEE 位模式）
+
+        /// 按优先级从高到低比较，供 std::sort 使用。
+        bool operator<(const SortKey &o) const {
+            if (pipelineId != o.pipelineId) return pipelineId < o.pipelineId;
+            if (materialId != o.materialId) return materialId < o.materialId;
+            if (meshId != o.meshId) return meshId < o.meshId;
+            return depthBits < o.depthBits;
+        }
+    };
 
     /**
      * @brief 单个点光源参数。
@@ -199,7 +204,7 @@ private:
         Mesh     *mesh;        ///< 网格资源
         Material *material;    ///< 材质（可为 nullptr，nullptr 时使用白色 fallback）
         glm::vec4 color;       ///< 叠加颜色
-        uint64_t  sortKey;     ///< 排序键（EndScene 绘制前按此排序）
+        SortKey   sortKey;     ///< 排序键（EndScene 绘制前按此排序）
     };
 
     /// 阶段3：一个 instancing 绘制批次（相同 mesh + 相同材质）
@@ -218,13 +223,13 @@ private:
      * @brief 计算某个网格实例的排序键。
      *
      * 由当前视图矩阵、变换矩阵、材质和网格计算：
-     * 材质哈希 + mesh 哈希 + view 空间深度。
+     * pipeline（恒 0）→ 材质 → mesh → view 空间深度。
      *
-     * @param material 材质（可为 nullptr，nullptr 时材质哈希为 0）
+     * @param material 材质（可为 nullptr，nullptr 时材质 id 为 0）
      * @param mesh     网格（用于排序分组，使同材质同 mesh 的实例连续）
      * @param transform 模型变换矩阵
      */
-    uint64_t ComputeSortKey(const Material *material, const Mesh *mesh, const glm::mat4 &transform) const;
+    SortKey ComputeSortKey(const Material *material, const Mesh *mesh, const glm::mat4 &transform) const;
 
     /**
      * @brief 解析材质对应的有效纹理。

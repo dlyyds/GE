@@ -103,8 +103,8 @@ class VulkanDescriptorSet
 
     std::vector<vk::WriteDescriptorSet>  m_WriteDescriptorSets;
 
-    /// 已写入的 bindings → 写入内容的哈希值。
-    std::unordered_map<uint32_t, size_t> m_UpdatedBindings;
+    /// 已写入的 (binding, array element) → 写入内容的哈希值。
+    std::unordered_map<uint64_t, size_t> m_UpdatedBindings;
 };
 
 } // namespace GE

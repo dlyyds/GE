@@ -210,7 +210,10 @@ void VulkanDescriptorSet::Update(const std::vector<uint32_t> &bindings_to_update
     auto process_write_op = [&](const auto &write_op) {
         size_t op_hash = hash_write_descriptor_set(write_op);
 
-        auto update_pair_it = m_UpdatedBindings.find(write_op.dstBinding);
+        // 以 (binding, array element) 作为变更追踪键，精确到每个 element，
+        // 避免同一 binding 的多 element write 互相覆盖哈希值导致误判。
+        uint64_t update_key = (uint64_t(write_op.dstBinding) << 32) | write_op.dstArrayElement;
+        auto update_pair_it = m_UpdatedBindings.find(update_key);
         if (update_pair_it == m_UpdatedBindings.end() || update_pair_it->second != op_hash) {
             write_ops.push_back(write_op);
             write_op_hashes.push_back(op_hash);
@@ -238,7 +241,8 @@ void VulkanDescriptorSet::Update(const std::vector<uint32_t> &bindings_to_update
 
     // 记录已写入的 bindings 及其哈希值
     for (size_t i = 0; i < write_ops.size(); i++) {
-        m_UpdatedBindings[write_ops[i].dstBinding] = write_op_hashes[i];
+        uint64_t update_key = (uint64_t(write_ops[i].dstBinding) << 32) | write_ops[i].dstArrayElement;
+        m_UpdatedBindings[update_key] = write_op_hashes[i];
     }
 }
 

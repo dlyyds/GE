@@ -4,9 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-// 用 gl_InstanceIndex 动态索引 runtime array SSBO 需要此扩展
-#extension GL_EXT_nonuniform_qualifier : enable
-
 // 顶点属性 location 必须与 C++ 端 Vertex 结构体的内存顺序一致：
 // Position → Normal → TexCoord
 layout (location = 0) in vec3 inPos;
@@ -35,14 +32,20 @@ layout (set = 0, binding = 0, std140) uniform FrameUBO
     vec4 ambient;
 } frame;
 
-// 阶段3（方案B）：per-instance 数据（model + color）存入 SSBO，
-// 用 gl_InstanceIndex 索引。std430 布局：mat4 = 64B，vec4 = 16B，每实例 80B，
-// 与 C++ 端 Renderer3D::InstanceData 结构体布局一致。
-layout (set = 2, binding = 0, std430) readonly buffer InstanceData
+// 阶段3（方案B）：per-instance 数据（model + color）存入 SSBO，用 gl_InstanceIndex 索引。
+// 采用"块内最后一个 runtime array 成员"写法（而非变量本身是 runtime array），
+// 这样是单个 buffer 内的变长数组，不产生 RuntimeDescriptorArray 能力，
+// 无需启用 descriptor indexing 设备特性，兼容性更好。
+// std430 布局：mat4 = 64B，vec4 = 16B，每实例 80B，与 C++ 端 Renderer3D::InstanceData 一致。
+struct InstanceData
 {
     mat4 model;
     vec4 color;
-} instances[];
+};
+layout (set = 2, binding = 0, std430) readonly buffer InstanceBuffer
+{
+    InstanceData instances[];
+} instanceBuffer;
 
 layout (location = 0) out vec2 outUV;
 layout (location = 1) out vec3 outWorldPos;
@@ -53,9 +56,9 @@ layout (location = 4) out flat vec4 outColor;   // per-instance tint，flat 不�
 void main()
 {
     outUV = inUV;
-    outColor = instances[gl_InstanceIndex].color;
+    outColor = instanceBuffer.instances[gl_InstanceIndex].color;
 
-    mat4 model = instances[gl_InstanceIndex].model;
+    mat4 model = instanceBuffer.instances[gl_InstanceIndex].model;
     vec4 worldPos = model * vec4(inPos, 1.0);
     gl_Position = frame.projection * frame.view * worldPos;
 

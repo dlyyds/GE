@@ -54,8 +54,8 @@ Scene:
         Color: [1, 0.95, 0.85, 1.2]
     - Name: BluePointLight
       Transform:
-        Translation: [1.2091714, -2.35, -0.8876369]
-        Rotation: [0.0003051596, 3.1858136e-08, -0.00019747468]
+        Translation: [1.2417201, -2.35, -0.8415249]
+        Rotation: [-1.7275215e-05, -8.951932e-10, -9.460466e-05]
         Scale: [0.15, 0.15, 0.15]
       MeshRenderer:
         Color: [0.4, 0.5, 1, 1]
@@ -76,8 +76,8 @@ Scene:
         Offset: [0, 0, 0]
     - Name: RedPointLight
       Transform:
-        Translation: [-0.03429094, 2.1752746, -0.45303273]
-        Rotation: [0, -0, 0]
+        Translation: [-1.5125008, 1.5, 0.97587967]
+        Rotation: [0, 0, 0]
         Scale: [0.15, 0.15, 0.15]
       MeshRenderer:
         Color: [1, 0.4, 0.4, 1]
@@ -95,21 +95,23 @@ Scene:
         FixedAspectRatio: false
         Mode: Orbit
         Fov: 60
-        Aspect: 1.3769363
+        Aspect: 1.7777778
         Near: 0.1
         Far: 100
         Target: [0, 0, 0]
-        Theta: -79.349464
-        Phi: 8.639999
-        Distance: 30
-        Position: [-29.1486, 4.506767, 5.4816275]
+        Theta: 0
+        Phi: 0
+        Distance: 7
+        Position: [0, 0, 7]
         Yaw: 0
         Pitch: 0
     - Name: Cube
       Transform:
-        Translation: [0, 0, 0.54620206]
-        Rotation: [0, -0, 0]
+        Translation: [0, 0, 0]
+        Rotation: [0, 0, 0]
         Scale: [1, 1, 1]
       MeshRenderer:
         Color: [1, 1, 1, 1]
         Mesh: builtin:cube
+      Material:
+        AlbedoTexture: assets/textures/Checkerboard.png

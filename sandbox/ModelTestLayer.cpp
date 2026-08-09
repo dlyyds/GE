@@ -377,10 +377,12 @@ void ModelTestLayer::OnImGuiRender() {
                             : "(null, 使用平坦法线)");
 
             // 高光指数（写入材质 "shininess" 参数，Renderer3D 每帧读取）
+            // 对数刻度：滑块位置 0~8 对应 shininess = 2^位置（1~256）
             float shininess = matComp.MaterialPtr->GetFloat("shininess", 32.0f);
-            if (ImGui::SliderFloat("  Shininess (高光指数)", &shininess,
-                                   1.0f, 256.0f)) {
-                matComp.MaterialPtr->SetFloat("shininess", shininess);
+            float logShininess = std::log2(std::max(shininess, 1.0f));
+            if (ImGui::SliderFloat("  Shininess (高光指数, 对数刻度)", &logShininess,
+                                   0.0f, 8.0f)) {
+                matComp.MaterialPtr->SetFloat("shininess", std::pow(2.0f, logShininess));
             }
         }
     }

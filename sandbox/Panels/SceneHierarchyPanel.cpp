@@ -18,6 +18,7 @@
 #include "GE/Render/Mesh.h"
 
 #include <glm/gtc/type_ptr.hpp>
+#include <cmath>
 #include <cstring>
 
 namespace GE {
@@ -581,10 +582,14 @@ void SceneHierarchyPanel::DrawMaterialComponent(MaterialComponent &component) {
         ImGui::Separator();
 
         // ---- 标量参数 ----
-        // 高光指数（写入材质 "shininess" 参数，Renderer3D 每帧读取写入实例数据）
+        // 高光指数（写入材质 "shininess" 参数，Renderer3D 每帧读取）
+        // 用对数刻度：滑块位置 0~8 对应 shininess = 2^位置（1~256），
+        // 避免线性滑块在高指数区间因 pow() 高光塌缩到亚像素而"看似没反应"。
         float shininess = component.MaterialPtr->GetFloat("shininess", 32.0f);
-        if (ImGui::SliderFloat("Shininess (高光指数)", &shininess, 1.0f, 256.0f)) {
-            component.MaterialPtr->SetFloat("shininess", shininess);
+        float logShininess = std::log2(std::max(shininess, 1.0f));
+        if (ImGui::SliderFloat("Shininess (高光指数, 对数刻度)", &logShininess,
+                               0.0f, 8.0f)) {
+            component.MaterialPtr->SetFloat("shininess", std::pow(2.0f, logShininess));
         }
 
         ImGui::Separator();

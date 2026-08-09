@@ -250,8 +250,8 @@ void Renderer2D::EndScene() {
 
     // 配置管线状态（链式 API）
     vk::Format depthFmt = vk::Format::eUndefined;
-    if (m_UseDepth && renderTarget.HasDepth()) {
-        depthFmt = renderTarget.GetDepthFormat();
+    if (m_UseDepth && target.HasDepth()) {
+        depthFmt = target.GetDepthFormat();
     }
 
     ps.setRenderingFormats({colorFmt}, depthFmt)

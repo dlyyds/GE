@@ -12,6 +12,7 @@ class Renderer2D;
 class Renderer3D;
 class TextureManager;
 class MaterialManager;
+class MeshManager;
 
 /**
  * @brief 渲染统计（每帧由 BeginFrame 重置），2D / 3D 分开统计。
@@ -127,6 +128,9 @@ public:
     /// 访问材质管理器。
     static MaterialManager &GetMaterialManager();
 
+    /// 访问网格管理器。
+    static MeshManager &GetMeshManager();
+
     /// 获取本帧渲染统计（draw call / 三角形数量）。
     static const RendererStats &GetStats();
 
@@ -160,6 +164,9 @@ private:
 
     /// 全局材质管理器（按名称去重缓存）。
     std::unique_ptr<MaterialManager> m_MaterialManager;
+
+    /// 全局网格管理器（按路径去重缓存）。
+    std::unique_ptr<MeshManager> m_MeshManager;
 
     /// 窗口引用。
     Window &m_Window;

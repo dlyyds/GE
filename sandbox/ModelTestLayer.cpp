@@ -10,6 +10,7 @@
 #include "GE/Render/Renderer3D.h"
 #include "GE/Render/TextureManager.h"
 #include "GE/Render/MaterialManager.h"
+#include "GE/Render/MeshManager.h"
 #include "GE/Scene/Components.h"
 #include "GE/Utils/PlatformUtils.h"
 
@@ -29,10 +30,6 @@ ModelTestLayer::ModelTestLayer() : Layer("ModelTestLayer") {
 ModelTestLayer::~ModelTestLayer() = default;
 
 void ModelTestLayer::OnAttach() {
-    auto &ctx = Application::GetVulkanContext();
-    auto &device = ctx.GetDevice();
-    auto &cache = device.GetResourceCache();
-
     // 从全局纹理管理器加载棋盘纹理（自动去重）
     auto &texMgr = Renderer::GetTextureManager();
     m_Texture = texMgr.Load("assets/textures/Checkerboard.png",
@@ -63,14 +60,13 @@ void ModelTestLayer::OnAttach() {
     m_ModelMaterial = matMgr.Register(matKey, std::move(mat));
 
     {
-        // 创建立方体网格（内置）
-        m_CubeMesh = Mesh::CreateBuiltin(device, "cube");
-        GE_CORE_ASSERT(m_CubeMesh, "创建立方体网格失败");
+        // 从全局 MeshManager 获取内置网格（去重缓存，生命周期由引擎管理）
+        m_CubeMesh = Renderer::GetMeshManager().GetBuiltin("cube");
+        GE_CORE_ASSERT(m_CubeMesh, "获取立方体网格失败");
         m_CubeMesh->SetDebugName("ModelTest_Cube");
 
-        // 创建球体网格（光源可视化用）
-        m_SphereMesh = Mesh::CreateBuiltin(device, "sphere");
-        GE_CORE_ASSERT(m_SphereMesh, "创建球体网格失败");
+        m_SphereMesh = Renderer::GetMeshManager().GetBuiltin("sphere");
+        GE_CORE_ASSERT(m_SphereMesh, "获取球体网格失败");
         m_SphereMesh->SetDebugName("ModelTest_Sphere");
     }
 
@@ -79,7 +75,7 @@ void ModelTestLayer::OnAttach() {
     m_ModelEntity = m_Scene->CreateEntity("Cube");
 
     // 添加 3D 网格渲染组件
-    m_ModelEntity.AddComponent<MeshComponent>(m_CubeMesh.get());
+    m_ModelEntity.AddComponent<MeshComponent>(m_CubeMesh);
     // 添加材质组件（与网格解耦，独立管理）
     m_ModelEntity.AddComponent<MaterialComponent>(m_ModelMaterial);
 
@@ -101,7 +97,7 @@ void ModelTestLayer::OnAttach() {
         );
     // 给光源加一个可视化小球（球体，颜色和光源一致）
     m_RedLightEntity.AddComponent<MeshComponent>(
-        m_SphereMesh.get(),
+        m_SphereMesh,
         glm::vec4(1.0f, 0.4f, 0.4f, 1.0f)
         );
 
@@ -115,7 +111,7 @@ void ModelTestLayer::OnAttach() {
         );
     // 给光源加一个可视化小球（球体，颜色和光源一致）
     m_BlueLightEntity.AddComponent<MeshComponent>(
-        m_SphereMesh.get(),
+        m_SphereMesh,
         glm::vec4(0.4f, 0.5f, 1.0f, 1.0f)
         );
     m_BlueLightEntity.AddComponent<SphereColliderComponent>(1);
@@ -150,7 +146,7 @@ void ModelTestLayer::OnAttach() {
 
         // 给地板加一个网格组件用于可视化
         m_FloorEntity.AddComponent<MeshComponent>(
-            m_CubeMesh.get(),
+            m_CubeMesh,
             glm::vec4(0.5f, 0.5f, 0.5f, 1.0f)
             );
 
@@ -166,7 +162,7 @@ void ModelTestLayer::OnAttach() {
 
         // 给球体加一个网格组件用于可视化
         m_PhysicsBallEntity.AddComponent<MeshComponent>(
-            m_SphereMesh.get(),
+            m_SphereMesh,
             glm::vec4(0.2f, 0.6f, 1.0f, 1.0f)
             );
     }
@@ -185,7 +181,7 @@ void ModelTestLayer::OnAttach() {
     //                               0.0f,
     //                               static_cast<float>(z - GRID / 2) * SPACING};
     //             tc.Scale = {0.22f, 0.22f, 0.22f};
-    //             cube.AddComponent<MeshComponent>(m_CubeMesh.get());
+    //             cube.AddComponent<MeshComponent>(m_CubeMesh);
     //             cube.AddComponent<MaterialComponent>(m_ModelMaterial);
     //             m_InstancedCubes.push_back(cube);
     //         }
@@ -216,8 +212,8 @@ void ModelTestLayer::OnDetach() {
     m_ModelMaterial = nullptr; // 由全局 MaterialManager 管理生命周期
     m_Texture = nullptr; // 由全局 TextureManager 管理生命周期
     m_NormalTexture = nullptr; // 由全局 TextureManager 管理生命周期
-    m_CubeMesh.reset();
-    m_SphereMesh.reset();
+    m_CubeMesh = nullptr;   // 由全局 MeshManager 管理生命周期
+    m_SphereMesh = nullptr;
 }
 
 void ModelTestLayer::OnUpdate(Timestep &ts) {
@@ -766,8 +762,8 @@ void ModelTestLayer::SaveScene() {
         return;
     }
 
-    // 复用已有序列化器（若场景是加载产生，其 m_LoadedMeshes 持有当前场景
-    // 引用的网格资源；重建会销毁这些网格导致悬空指针，保存时访问崩溃）
+    // 复用已有序列化器（序列化器与场景总是同生同灭，其 m_Scene 必为当前场景；
+    // 网格/纹理/材质由全局管理器持有，序列化器自身不拥有资源，无需重建）
     if (!m_SceneSerializer) {
         m_SceneSerializer = std::make_unique<SceneSerializer>(m_Scene.get());
     }
@@ -780,10 +776,6 @@ void ModelTestLayer::LoadScene() {
     if (filepath.empty()) {
         return;
     }
-
-    auto &ctx = Application::GetVulkanContext();
-    auto &device = ctx.GetDevice();
-    auto &cache = device.GetResourceCache();
 
     // 先重置所有实体引用，避免悬空
     m_ModelEntity = {};
@@ -798,8 +790,8 @@ void ModelTestLayer::LoadScene() {
         m_Scene = std::make_unique<Scene>();
     }
 
-    // 创建新的序列化器（带设备，用于加载网格资源；纹理/材质使用全局管理器）
-    m_SceneSerializer = std::make_unique<SceneSerializer>(m_Scene.get(), &device);
+    // 创建新的序列化器（纹理/材质/网格由全局管理器加载）
+    m_SceneSerializer = std::make_unique<SceneSerializer>(m_Scene.get());
 
     if (!m_SceneSerializer->Deserialize(filepath)) {
         GE_CORE_WARN("加载场景失败: {0}", filepath);
@@ -829,10 +821,8 @@ void ModelTestLayer::NewScene() {
     // 创建新场景
     m_Scene = std::make_unique<Scene>();
 
-    // 创建新的序列化器（清空旧网格资源；纹理/材质由全局管理器管理）
-    auto &ctx = Application::GetVulkanContext();
-    auto &device = ctx.GetDevice();
-    m_SceneSerializer = std::make_unique<SceneSerializer>(m_Scene.get(), &device);
+    // 创建新的序列化器（纹理/材质/网格由全局管理器管理）
+    m_SceneSerializer = std::make_unique<SceneSerializer>(m_Scene.get());
 
     // 更新层级面板
     m_HierarchyPanel.SetContext(m_Scene.get());

@@ -35,14 +35,14 @@ public:
     void OnImGuiRender() override;
 
 private:
-    std::unique_ptr<Mesh>     m_CubeMesh;       ///< 立方体网格
-    std::unique_ptr<Mesh>     m_SphereMesh;     ///< 球体网格
+    Mesh *m_CubeMesh = nullptr;       ///< 立方体网格（由全局 MeshManager 持有）
+    Mesh *m_SphereMesh = nullptr;       ///< 球体网格（由全局 MeshManager 持有）
     Texture  *m_CheckerTexture = nullptr;       ///< 棋盘纹理（由全局 TextureManager 持有）
     Texture  *m_NormalTexture   = nullptr;      ///< 法线贴图（由全局 TextureManager 持有）
     Material *m_TexturedMaterial = nullptr;     ///< 带棋盘纹理 + 法线贴图的材质（由全局 MaterialManager 持有）
 
     std::unique_ptr<Scene> m_Scene;                              ///< 场景
-    std::unique_ptr<SceneSerializer> m_SceneSerializer;          ///< 场景序列化器（持有加载的网格资源）
+    std::unique_ptr<SceneSerializer> m_SceneSerializer;          ///< 场景序列化器（纹理/材质/网格由全局管理器持有）
     Entity m_CameraEntity;                                       ///< 相机实体
     SceneHierarchyPanel m_HierarchyPanel;                        ///< 场景层级面板（ImGui）
 

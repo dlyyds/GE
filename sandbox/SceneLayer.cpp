@@ -9,6 +9,7 @@
 #include "GE/Render/Renderer3D.h"
 #include "GE/Render/TextureManager.h"
 #include "GE/Render/MaterialManager.h"
+#include "GE/Render/MeshManager.h"
 #include "GE/Scene/Components.h"
 #include "GE/Utils/PlatformUtils.h"
 
@@ -24,9 +25,6 @@ SceneLayer::SceneLayer() : Layer("SceneLayer") {
 SceneLayer::~SceneLayer() = default;
 
 void SceneLayer::OnAttach() {
-    auto &ctx = Application::GetVulkanContext();
-    auto &device = ctx.GetDevice();
-
     // ── 1. 加载纹理（全局 TextureManager 去重持有） ─────────────────────
     auto &texMgr = Renderer::GetTextureManager();
     m_CheckerTexture = texMgr.Load("assets/textures/Checkerboard.png",
@@ -48,9 +46,9 @@ void SceneLayer::OnAttach() {
     mat->SetDebugName("SceneLayer_CubeMat");
     m_TexturedMaterial = matMgr.Register("SceneLayer_CubeMat", std::move(mat));
 
-    // ── 3. 内置网格 ────────────────────────────────────────────────────
-    m_CubeMesh = Mesh::CreateBuiltin(device, "cube");
-    m_SphereMesh = Mesh::CreateBuiltin(device, "sphere");
+    // ── 3. 内置网格（全局 MeshManager 去重持有） ────────────────────────
+    m_CubeMesh = Renderer::GetMeshManager().GetBuiltin("cube");
+    m_SphereMesh = Renderer::GetMeshManager().GetBuiltin("sphere");
 
     // ── 4. 创建场景与实体 ──────────────────────────────────────────────
     m_Scene = std::make_unique<Scene>();
@@ -76,18 +74,18 @@ void SceneLayer::OnAttach() {
 
     // 带纹理材质立方体
     auto cube1 = m_Scene->CreateEntity("TexturedCube");
-    cube1.AddComponent<MeshComponent>(m_CubeMesh.get());
+    cube1.AddComponent<MeshComponent>(m_CubeMesh);
     cube1.AddComponent<MaterialComponent>(m_TexturedMaterial);
 
     // 纯色立方体（用 MeshComponent 的 color 做 tint，不绑定材质）
     auto cube2 = m_Scene->CreateEntity("ColoredCube");
     cube2.GetComponent<TransformComponent>().Translation = {1.5f, 0.0f, 0.0f};
-    cube2.AddComponent<MeshComponent>(m_CubeMesh.get(), glm::vec4(0.2f, 0.6f, 1.0f, 1.0f));
+    cube2.AddComponent<MeshComponent>(m_CubeMesh, glm::vec4(0.2f, 0.6f, 1.0f, 1.0f));
 
     // 球体（复用带法线贴图的材质）
     auto sphere = m_Scene->CreateEntity("Sphere");
     sphere.GetComponent<TransformComponent>().Translation = {-1.5f, 0.0f, 0.0f};
-    sphere.AddComponent<MeshComponent>(m_SphereMesh.get());
+    sphere.AddComponent<MeshComponent>(m_SphereMesh);
     sphere.AddComponent<MaterialComponent>(m_TexturedMaterial);
 
     // 点光源
@@ -109,8 +107,8 @@ void SceneLayer::OnDetach() {
     m_TexturedMaterial = nullptr; // 由全局 MaterialManager 管理生命周期
     m_CheckerTexture = nullptr;   // 由全局 TextureManager 管理生命周期
     m_NormalTexture = nullptr;    // 由全局 TextureManager 管理生命周期
-    m_CubeMesh.reset();
-    m_SphereMesh.reset();
+    m_CubeMesh = nullptr;         // 由全局 MeshManager 管理生命周期
+    m_SphereMesh = nullptr;
 }
 
 void SceneLayer::OnUpdate(Timestep &ts) {
@@ -213,8 +211,8 @@ void SceneLayer::SaveScene() {
         return;
     }
 
-    // 复用已有序列化器（若场景是加载产生，其 m_LoadedMeshes 持有当前场景
-    // 引用的网格资源；重建会销毁这些网格导致悬空指针，保存时访问崩溃）
+    // 复用已有序列化器（序列化器与场景总是同生同灭，其 m_Scene 必为当前场景；
+    // 网格/纹理/材质由全局管理器持有，序列化器自身不拥有资源，无需重建）
     if (!m_SceneSerializer) {
         m_SceneSerializer = std::make_unique<SceneSerializer>(m_Scene.get());
     }
@@ -227,9 +225,6 @@ void SceneLayer::LoadScene() {
         return;
     }
 
-    auto &ctx = Application::GetVulkanContext();
-    auto &device = ctx.GetDevice();
-
     // 先重置实体引用，避免悬空
     m_CameraEntity = {};
 
@@ -238,8 +233,8 @@ void SceneLayer::LoadScene() {
         m_Scene = std::make_unique<Scene>();
     }
 
-    // 创建带设备的序列化器（用于加载网格资源；纹理/材质使用全局管理器）
-    m_SceneSerializer = std::make_unique<SceneSerializer>(m_Scene.get(), &device);
+    // 创建序列化器（纹理/材质/网格由全局管理器加载，无需 device）
+    m_SceneSerializer = std::make_unique<SceneSerializer>(m_Scene.get());
 
     if (!m_SceneSerializer->Deserialize(filepath)) {
         GE_CORE_WARN("SceneLayer: 加载场景失败: {0}", filepath);
@@ -262,9 +257,7 @@ void SceneLayer::NewScene() {
     m_Scene = std::make_unique<Scene>();
 
     // 创建新的序列化器
-    auto &ctx = Application::GetVulkanContext();
-    auto &device = ctx.GetDevice();
-    m_SceneSerializer = std::make_unique<SceneSerializer>(m_Scene.get(), &device);
+    m_SceneSerializer = std::make_unique<SceneSerializer>(m_Scene.get());
 
     // 更新层级面板
     m_HierarchyPanel.SetContext(m_Scene.get());

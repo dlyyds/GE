@@ -15,7 +15,7 @@
 #include "Render/Texture.h"
 #include "Render/Mesh.h"
 #include "Render/Renderer.h"
-#include "Render/VulkanBase/VulkanDevice.h"
+#include "Render/MeshManager.h"
 #include "Core/Log.h"
 #include "Render/MaterialManager.h"
 #include "Render/TextureManager.h"
@@ -226,58 +226,11 @@ glm::vec4 DeserializeVec4(const YAML::Node &node, const glm::vec4 &def = {0.0f, 
 // 构造 / 析构
 // ============================================================
 
-SceneSerializer::SceneSerializer(Scene *scene,
-                                 VulkanDevice *device)
-    : m_Scene(scene), m_Device(device) {
+SceneSerializer::SceneSerializer(Scene *scene)
+    : m_Scene(scene) {
 }
 
 SceneSerializer::~SceneSerializer() {
-    // unique_ptr 自动清理资源
-}
-
-// ============================================================
-// 资源加载辅助
-// ============================================================
-
-Mesh *SceneSerializer::GetOrLoadMesh(const std::string &filepath) {
-    if (filepath.empty()) {
-        return nullptr;
-    }
-
-    auto it = m_LoadedMeshes.find(filepath);
-    if (it != m_LoadedMeshes.end()) {
-        return it->second.get();
-    }
-
-    if (!m_Device) {
-        GE_CORE_WARN("SceneSerializer: 无法加载网格 {}（未提供 VulkanDevice）", filepath);
-        return nullptr;
-    }
-
-    std::unique_ptr<Mesh> mesh;
-
-    // 内置几何体（builtin:cube, builtin:sphere 等）
-    if (Mesh::IsBuiltinPath(filepath)) {
-        std::string type = Mesh::GetBuiltinType(filepath);
-        mesh = Mesh::CreateBuiltin(*m_Device, type);
-    } else {
-        mesh = Mesh::LoadFromFile(*m_Device, filepath);
-    }
-
-    if (!mesh) {
-        GE_CORE_WARN("SceneSerializer: 网格加载失败: {}", filepath);
-        return nullptr;
-    }
-
-    Mesh *raw = mesh.get();
-    m_LoadedMeshes[filepath] = std::move(mesh);
-    return raw;
-}
-
-void SceneSerializer::ClearLoadedResources() {
-    m_LoadedMeshes.clear();
-    // 纹理和材质由全局管理器（Renderer::GetTextureManager / GetMaterialManager）管理，
-    // 不在此方法不清理它们（生命周期随应用而非场景，多次反序列化不会导致纹理/渲染器
 }
 
 // ============================================================
@@ -513,7 +466,6 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
     // 清空当前场景中的所有实体（无论文件中是否有实体）
     auto &reg = m_Scene->Reg();
     reg.clear();
-    ClearLoadedResources();
 
     if (!entitiesNode || !entitiesNode.IsSequence()) {
         GE_CORE_WARN("SceneSerializer::Deserialize: 场景中没有 Entities 节点，将加载为空场景");
@@ -563,10 +515,10 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
 
             mc.Color = DeserializeVec4(meshNode["Color"], {1.0f, 1.0f, 1.0f, 1.0f});
 
-            // 网格路径
+            // 网格路径（通过全局 MeshManager 加载 / 去重，Serializer 不持有所有权）
             if (meshNode["Mesh"]) {
                 std::string meshPath = meshNode["Mesh"].as<std::string>("");
-                mc.MeshPtr = GetOrLoadMesh(meshPath);
+                mc.MeshPtr = Renderer::GetMeshManager().Load(meshPath);
             }
         }
 
@@ -695,8 +647,8 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
         entityCount++;
     }
 
-    GE_CORE_INFO("SceneSerializer: 场景已从 {} 加载（{} 个实体，{} 个网格）",
-                 filepath, entityCount, m_LoadedMeshes.size());
+    GE_CORE_INFO("SceneSerializer: 场景已从 {} 加载（{} 个实体）",
+                 filepath, entityCount);
 
     return true;
 }

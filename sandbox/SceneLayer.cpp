@@ -10,6 +10,7 @@
 #include "GE/Utils/PlatformUtils.h"
 
 #include "imgui.h"
+#include "Render/Renderer2D.h"
 #include "Render/Renderer3D.h"
 
 #include <glm/gtc/matrix_transform.hpp>
@@ -49,11 +50,17 @@ void SceneLayer::OnUpdate(Timestep &ts) {
     if (!m_Viewport) {
         m_Viewport = std::make_unique<SceneViewport>();
     }
-    // 首次调用 Create 创建离屏目标，之后用 OnResize 在尺寸变化时重建
+    // 首次调用 Create 创建离屏目标；之后尺寸变化时用 OnResize 重建。
+    // 重建会重新分配 GPU 图像 + 深度 + 采样器，开销大；拖拽视口时一帧一变，
+    // 若每帧重建会刷屏日志并浪费资源。故对重建限流（约 4 次/秒）。
     if (!m_Viewport->GetRenderTarget()) {
         m_Viewport->Create(Renderer::GetVulkanContext().GetDevice(), vpW, vpH);
     } else {
-        m_Viewport->OnResize(vpW, vpH);
+        m_ResizeCooldown += ts.GetSeconds();
+        if (m_ResizeCooldown >= 0.25f) {
+            m_Viewport->OnResize(vpW, vpH);
+            m_ResizeCooldown = 0.0f;
+        }
     }
     if (!m_Viewport->GetRenderTarget()) {
         return; // 目标尚未创建成功

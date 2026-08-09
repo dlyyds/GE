@@ -43,12 +43,23 @@ void ModelTestLayer::OnAttach() {
         m_Texture->SetDebugName("ModelTest_Checkerboard");
     }
 
+    // 加载法线贴图（法线贴图必须用 Unorm 格式，不能用 sRGB，否则数值被重映射）
+    m_NormalTexture = texMgr.Load("assets/textures/normal_stone.jpg",
+                                  vk::Format::eR8G8B8A8Unorm,
+                                  vk::Filter::eLinear,
+                                  vk::Filter::eLinear);
+    if (m_NormalTexture) {
+        m_NormalTexture->SetDebugName("ModelTest_Normal");
+    }
+
     // 从全局材质管理器获取/创建单 Albedo 材质（自动按纹理路径去重）
     auto &matMgr = Renderer::GetMaterialManager();
     m_ModelMaterial = matMgr.GetOrCreateFromAlbedo(
         "assets/textures/Checkerboard.png");
     if (m_ModelMaterial) {
         m_ModelMaterial->SetDebugName("ModelTest_CubeMat");
+        // 绑定法线贴图到 Normal 槽位（Renderer3D 在 set1/binding1 采样）
+        m_ModelMaterial->SetTexture(Material::Normal, m_NormalTexture);
     }
 
     {
@@ -163,23 +174,23 @@ void ModelTestLayer::OnAttach() {
     // ── 阶段3 instancing 演示：5x5 网格立方体，共享同材质 + 同 mesh ──
     //    相同 (mesh, material) 的实例会被 Renderer3D 合并为单个
     //    vkCmdDrawIndexedInstanced，用于验证 GPU instancing 生效。
-    {
-        constexpr int  GRID = 5;
-        constexpr float SPACING = 0.55f;
-        for (int x = 0; x < GRID; ++x) {
-            for (int z = 0; z < GRID; ++z) {
-                Entity cube = m_Scene->CreateEntity("InstancedCube");
-                auto &tc = cube.GetComponent<TransformComponent>();
-                tc.Translation = {static_cast<float>(x - GRID / 2) * SPACING,
-                                  0.0f,
-                                  static_cast<float>(z - GRID / 2) * SPACING};
-                tc.Scale = {0.22f, 0.22f, 0.22f};
-                cube.AddComponent<MeshComponent>(m_CubeMesh.get());
-                cube.AddComponent<MaterialComponent>(m_ModelMaterial);
-                m_InstancedCubes.push_back(cube);
-            }
-        }
-    }
+    // {
+    //     constexpr int  GRID = 5;
+    //     constexpr float SPACING = 0.55f;
+    //     for (int x = 0; x < GRID; ++x) {
+    //         for (int z = 0; z < GRID; ++z) {
+    //             Entity cube = m_Scene->CreateEntity("InstancedCube");
+    //             auto &tc = cube.GetComponent<TransformComponent>();
+    //             tc.Translation = {static_cast<float>(x - GRID / 2) * SPACING,
+    //                               0.0f,
+    //                               static_cast<float>(z - GRID / 2) * SPACING};
+    //             tc.Scale = {0.22f, 0.22f, 0.22f};
+    //             cube.AddComponent<MeshComponent>(m_CubeMesh.get());
+    //             cube.AddComponent<MaterialComponent>(m_ModelMaterial);
+    //             m_InstancedCubes.push_back(cube);
+    //         }
+    //     }
+    // }
 
     // 添加相机鼠标控制脚本
     RefreshCameraScript();
@@ -202,8 +213,9 @@ void ModelTestLayer::OnDetach() {
     m_InstancedCubes.clear();
     m_HierarchyPanel.SetContext(nullptr);
     m_Scene.reset();
-    m_ModelMaterial = nullptr;  // 由全局 MaterialManager 管理生命周期
-    m_Texture = nullptr;       // 由全局 TextureManager 管理生命周期
+    m_ModelMaterial = nullptr; // 由全局 MaterialManager 管理生命周期
+    m_Texture = nullptr; // 由全局 TextureManager 管理生命周期
+    m_NormalTexture = nullptr; // 由全局 TextureManager 管理生命周期
     m_CubeMesh.reset();
     m_SphereMesh.reset();
 }
@@ -356,8 +368,13 @@ void ModelTestLayer::OnImGuiRender() {
                         : "(null)");
         if (matComp.MaterialPtr) {
             ImGui::Text("  Albedo：%s",
-                matComp.MaterialPtr->HasTexture(Material::Albedo)
-                    ? "Checkerboard.png" : "(null)");
+                        matComp.MaterialPtr->HasTexture(Material::Albedo)
+                            ? "Checkerboard.png"
+                            : "(null)");
+            ImGui::Text("  Normal：%s",
+                        matComp.MaterialPtr->HasTexture(Material::Normal)
+                            ? "normal.png"
+                            : "(null, 使用平坦法线)");
         }
     }
 

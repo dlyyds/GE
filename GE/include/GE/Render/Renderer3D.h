@@ -238,6 +238,14 @@ private:
      */
     Texture *GetEffectiveTexture(const Material *material) const;
 
+    /**
+     * @brief 解析材质对应的有效法线贴图。
+     *
+     * 优先取材质 Normal 槽位纹理，无材质或无纹理时回退到默认
+     * "平坦法线"纹理（RGB=(128,128,255)，映射回 (0,0,1)，无扰动）。
+     */
+    Texture *GetEffectiveNormalTexture(const Material *material) const;
+
     // ========================================================================
     // 成员
     // ========================================================================
@@ -251,8 +259,11 @@ private:
     /// Pipeline layout（由全局资源缓存管理，不拥有）
     VulkanPipelineLayout *m_PipelineLayout = nullptr;
 
-    /// 默认 1x1 白色纹理（无纹理时的 fallback）
-    std::unique_ptr<Texture> m_DefaultWhiteTexture;
+    /// 默认 1x1 白色纹理（无纹理时的 fallback，由全局 TextureManager 持有，不拥有）
+    Texture *m_DefaultWhiteTexture = nullptr;
+
+    /// 默认 1x1 "平坦法线"纹理（无法线贴图时的 fallback，RGB=(128,128,255)）
+    std::unique_ptr<Texture> m_DefaultNormalTexture;
 
     /// 当前帧视图矩阵
     glm::mat4 m_View{1.0f};

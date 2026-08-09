@@ -165,8 +165,8 @@ private:
     /// 是否启用深度测试（3D 模式开启，2D 模式关闭）
     bool                  m_UseDepth = false;
 
-    /// 默认 1x1 白色纹理（无纹理时的 fallback，避免未定义采样行为）
-    std::unique_ptr<Texture> m_DefaultWhiteTexture;
+    /// 默认 1x1 白色纹理（无纹理时的 fallback，由全局 TextureManager 持有，不拥有）
+    Texture *m_DefaultWhiteTexture = nullptr;
 
     /// 批处理队列：纹理指针 → 该纹理的所有精灵顶点
     std::unordered_map<Texture *, std::vector<SpriteVertex>> m_Batches;

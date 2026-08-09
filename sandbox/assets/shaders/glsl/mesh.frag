@@ -8,6 +8,7 @@
 #define MAX_POINT_LIGHTS 8
 
 layout (set = 1, binding = 0) uniform sampler2D samplerColor;
+layout (set = 1, binding = 1) uniform sampler2D samplerNormal;   // 法线贴图（切线空间）
 
 layout (set = 0, binding = 0, std140) uniform FrameUBO
 {
@@ -33,6 +34,8 @@ layout (location = 1) in vec3 inWorldPos;
 layout (location = 2) in vec3 inNormal;
 layout (location = 3) in vec3 inViewVec;
 layout (location = 4) in flat vec4 inColor;    // per-instance tint，由顶点着色器传入
+layout (location = 5) in vec3 inTangent;       // 世界空间切线
+layout (location = 6) in vec3 inBitangent;     // 世界空间副切线
 
 layout (location = 0) out vec4 outFragColor;
 
@@ -86,7 +89,15 @@ void main()
     vec4 texColor = texture(samplerColor, inUV, 0.0);
     vec3 albedo = texColor.rgb * inColor.rgb;
 
-    vec3 N = normalize(inNormal);
+    // —— 法线贴图：从切线空间采样并变换到世界空间 ——
+    // 采样值 [0,1] 映射到 [-1,1]；用 TBN 矩阵（切线/副切线/法线）变换。
+    // 无法线贴图时绑定默认"平坦法线"纹理 (0.5,0.5,1.0)，映射回 (0,0,1)，
+    // TBN * (0,0,1) = 几何法线，效果等同未使用法线贴图。
+    vec3 tangentNormal = texture(samplerNormal, inUV, 0.0).rgb * 2.0 - 1.0;
+    vec3 T = normalize(inTangent);
+    vec3 B = normalize(inBitangent);
+    vec3 N = normalize(mat3(T, B, normalize(inNormal)) * tangentNormal);
+
     vec3 V = normalize(inViewVec);
     float shininess = 32.0;
 

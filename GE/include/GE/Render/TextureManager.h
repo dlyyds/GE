@@ -22,6 +22,8 @@
 
 #include "Render/Texture.h"
 
+#include <glm/glm.hpp>
+
 #include <string>
 #include <unordered_map>
 #include <memory>
@@ -88,6 +90,25 @@ public:
      * @brief 检查纹理是否已加载。
      */
     bool Has(const std::string &filepath) const;
+
+    /**
+     * @brief 获取（或创建并缓存）一个纯色纹理。
+     *
+     * 按颜色去重缓存，同一颜色只创建一次。颜色分量会被量化到 8bit
+     * （[0,1] → [0,255]），因此两个仅在低精度上不同的颜色会命中同一缓存。
+     *
+     * @param color      纯色 RGBA（分量 [0,1]）
+     * @param format     纹理格式（默认 eR8G8B8A8Unorm）
+     * @param mag_filter 放大过滤器（默认 eLinear）
+     * @param min_filter 缩小过滤器（默认 eLinear）
+     * @return 1x1 纯色纹理指针
+     *
+     * @note 返回的纹理由管理器持有，调用方不要 delete。
+     */
+    Texture *GetSolidColor(const glm::vec4 &color,
+                           vk::Format format = vk::Format::eR8G8B8A8Unorm,
+                           vk::Filter mag_filter = vk::Filter::eLinear,
+                           vk::Filter min_filter = vk::Filter::eLinear);
 
     /**
      * @brief 手动注册一个纹理到管理器中。

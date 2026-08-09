@@ -11,6 +11,7 @@
 #include "Core/Log.h"
 #include "Render/Texture.h"
 #include "Render/Renderer.h"
+#include "Render/TextureManager.h"
 #include "Render/VulkanBase/VulkanCommandBuffer.h"
 #include "Render/VulkanBase/VulkanPipelineLayout.h"
 #include "Render/VulkanBase/VulkanRenderContext.h"
@@ -52,16 +53,28 @@ Renderer3D::Renderer3D() {
         {m_VertShader, m_FragShader});
     m_PipelineLayout->SetDebugName("Mesh3D_PipelineLayout");
 
-    // ── 3. 创建默认 1x1 白色纹理（无纹理时的 fallback） ────────────────
-    uint32_t whitePixel = 0xFFFFFFFF; // RGBA8: (255, 255, 255, 255)
-    m_DefaultWhiteTexture = Texture::LoadFromMemory(
-        device, cache, &whitePixel, 1, 1,
+    // ── 3. 默认 1x1 白色纹理（无纹理时的 fallback），从全局纹理管理器获取 ──
+    //    纹理由 TextureManager 去重缓存并持有，这里仅保存非拥有指针。
+    m_DefaultWhiteTexture =
+        Renderer::GetTextureManager().GetSolidColor(
+            glm::vec4(1.0f), vk::Format::eR8G8B8A8Unorm,
+            vk::Filter::eLinear, vk::Filter::eLinear);
+    if (!m_DefaultWhiteTexture) {
+        GE_CORE_ERROR("Renderer3D: 获取默认白色纹理失败！");
+    }
+
+    // ── 4. 创建默认 1x1 "平坦法线"纹理（无法线贴图时的 fallback） ──────
+    //    RGB = (128, 128, 255)：采样后映射回 (0,0,1)，即几何法线本身，
+    //    使未绑定法线贴图的材质表现得如同未使用法线贴图。
+    uint32_t flatNormalPixel = 0xFFFF8080; // RGBA8: (128, 128, 255, 255)
+    m_DefaultNormalTexture = Texture::LoadFromMemory(
+        device, cache, &flatNormalPixel, 1, 1,
         vk::Format::eR8G8B8A8Unorm,
         vk::Filter::eLinear, vk::Filter::eLinear);
-    if (m_DefaultWhiteTexture) {
-        m_DefaultWhiteTexture->SetDebugName("DefaultWhiteTexture");
+    if (m_DefaultNormalTexture) {
+        m_DefaultNormalTexture->SetDebugName("DefaultNormalTexture");
     } else {
-        GE_CORE_ERROR("Renderer3D: 创建默认白色纹理失败！");
+        GE_CORE_ERROR("Renderer3D: 创建默认平坦法线纹理失败！");
     }
 
     GE_CORE_INFO("Renderer3D initialized");
@@ -70,8 +83,9 @@ Renderer3D::Renderer3D() {
 Renderer3D::~Renderer3D() {
     GE_CORE_INFO("Renderer3D Shutdown");
 
-    // 释放默认白色纹理
-    m_DefaultWhiteTexture.reset();
+    // 释放默认纹理
+    // 注：m_DefaultWhiteTexture 由全局 TextureManager 持有，不属于本渲染器，无需释放
+    m_DefaultNormalTexture.reset();
 
     // 着色器和 pipeline layout 由全局资源缓存管理，不需要手动释放
     m_VertShader = nullptr;
@@ -123,7 +137,13 @@ void Renderer3D::DrawMesh(const glm::mat4 &transform,
 Texture *Renderer3D::GetEffectiveTexture(const Material *material) const {
     // 优先取材质 Albedo 槽位纹理，无材质或无纹理时回退到默认白色纹理
     Texture *tex = (material ? material->GetTexture(Material::Albedo) : nullptr);
-    return tex ? tex : m_DefaultWhiteTexture.get();
+    return tex ? tex : m_DefaultWhiteTexture;
+}
+
+Texture *Renderer3D::GetEffectiveNormalTexture(const Material *material) const {
+    // 优先取材质 Normal 槽位纹理，无材质或无纹理时回退到默认平坦法线纹理
+    Texture *tex = (material ? material->GetTexture(Material::Normal) : nullptr);
+    return tex ? tex : m_DefaultNormalTexture.get();
 }
 
 Renderer3D::SortKey Renderer3D::ComputeSortKey(const Material *material, const Mesh *mesh, const glm::mat4 &transform) const {
@@ -213,7 +233,7 @@ void Renderer3D::EndScene() {
     for (size_t i = 0; i < m_Meshes.size();) {
         const auto &first = m_Meshes[i];
         Material *mat = first.material;
-        Mesh     *mesh = first.mesh;
+        Mesh *mesh = first.mesh;
 
         // 找同 (mesh, material) 的连续区间
         size_t runStart = i;
@@ -325,32 +345,32 @@ void Renderer3D::EndScene() {
 
     // —— 4d. 光栅化 + 深度/模板（默认值，同时作为动态状态初始值）——
     ps.setInputAssembly(vk::PrimitiveTopology::eTriangleList)
-      .setCullMode(vk::CullModeFlagBits::eBack)
-      .setFrontFace(vk::FrontFace::eCounterClockwise)
-      .setDepthTestEnable(VK_TRUE)
-      .setDepthWriteEnable(VK_TRUE)
-      .setDepthCompareOp(vk::CompareOp::eLess);
+        .setCullMode(vk::CullModeFlagBits::eBack)
+        .setFrontFace(vk::FrontFace::eCounterClockwise)
+        .setDepthTestEnable(VK_TRUE)
+        .setDepthWriteEnable(VK_TRUE)
+        .setDepthCompareOp(vk::CompareOp::eLess);
 
     // —— 4e. 启用动态状态（这些状态运行时可通过 vkCmdSet* 改变）——
     ps.enableDynamicState(vk::DynamicState::eViewport)
-      .enableDynamicState(vk::DynamicState::eScissor)
-      .enableDynamicState(vk::DynamicState::eCullMode)
-      .enableDynamicState(vk::DynamicState::eFrontFace)
-      .enableDynamicState(vk::DynamicState::ePrimitiveTopology)
-      .enableDynamicState(vk::DynamicState::eDepthTestEnable)
-      .enableDynamicState(vk::DynamicState::eDepthWriteEnable)
-      .enableDynamicState(vk::DynamicState::eDepthCompareOp);
+        .enableDynamicState(vk::DynamicState::eScissor)
+        .enableDynamicState(vk::DynamicState::eCullMode)
+        .enableDynamicState(vk::DynamicState::eFrontFace)
+        .enableDynamicState(vk::DynamicState::ePrimitiveTopology)
+        .enableDynamicState(vk::DynamicState::eDepthTestEnable)
+        .enableDynamicState(vk::DynamicState::eDepthWriteEnable)
+        .enableDynamicState(vk::DynamicState::eDepthCompareOp);
 
     // —— 4f. 视口 + 剪刀矩形（动态状态，直接写入 command buffer）——
     vk::Viewport vp;
-    vp.width    = static_cast<float>(extent.width);
-    vp.height   = static_cast<float>(extent.height);
+    vp.width = static_cast<float>(extent.width);
+    vp.height = static_cast<float>(extent.height);
     vp.minDepth = 0.0f;
     vp.maxDepth = 1.0f;
     cmd.SetViewport(0, {vp});
 
     vk::Rect2D scissor;
-    scissor.extent.width  = extent.width;
+    scissor.extent.width = extent.width;
     scissor.extent.height = extent.height;
     cmd.SetScissor(0, {scissor});
 
@@ -361,14 +381,22 @@ void Renderer3D::EndScene() {
     // ── 6. 逐批次 instanced 绘制 ─────────────────────────────────────
     vk::DeviceSize vertexOffset = 0;
     for (const auto &batch : batches) {
-        // 绑定纹理（set 1, binding 0）
-        // 从 material 的 Albedo 槽位取纹理，无材质或无纹理时使用
-        // 默认 1x1 白色纹理，避免未定义行为
+        // 绑定纹理（set 1, binding 0 = Albedo，binding 1 = Normal）
+        // 从 material 对应槽位取纹理，无材质或无纹理时使用默认纹理 fallback
         Texture *tex = GetEffectiveTexture(batch.material);
         if (tex) {
             cmd.BindImage(tex->GetImageView(),
                           tex->GetSampler(),
                           1, 0);
+        }
+
+        // 法线贴图（set 1, binding 1）：无材质或无纹理时使用默认"平坦法线"
+        // 纹理，其映射回 (0,0,1) 不改变光照，保证材质无需法线贴图也能正常渲染
+        Texture *normalTex = GetEffectiveNormalTexture(batch.material);
+        if (normalTex) {
+            cmd.BindImage(normalTex->GetImageView(),
+                          normalTex->GetSampler(),
+                          1, 1);
         }
 
         // 绑定全局实例 SSBO（set 2, binding 0）——所有批次共享同一缓冲

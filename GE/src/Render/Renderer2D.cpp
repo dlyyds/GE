@@ -7,6 +7,7 @@
 
 #include "Core/Log.h"
 #include "Render/Renderer.h"
+#include "Render/TextureManager.h"
 #include "Render/VulkanBase/VulkanCommandBuffer.h"
 #include "Render/VulkanBase/VulkanPipelineLayout.h"
 #include "Render/VulkanBase/VulkanRenderContext.h"
@@ -47,16 +48,14 @@ Renderer2D::Renderer2D() {
         {m_VertShader, m_FragShader});
     m_PipelineLayout->SetDebugName("Sprite2D_PipelineLayout");
 
-    // ── 3. 创建默认 1x1 白色纹理（无纹理时的 fallback） ────────────────
-    uint32_t whitePixel = 0xFFFFFFFF; // RGBA8: (255, 255, 255, 255)
-    m_DefaultWhiteTexture = Texture::LoadFromMemory(
-        device, cache, &whitePixel, 1, 1,
-        vk::Format::eR8G8B8A8Unorm,
-        vk::Filter::eLinear, vk::Filter::eLinear);
-    if (m_DefaultWhiteTexture) {
-        m_DefaultWhiteTexture->SetDebugName("Renderer2D_DefaultWhite");
-    } else {
-        GE_CORE_ERROR("Renderer2D: 创建默认白色纹理失败！");
+    // ── 3. 默认 1x1 白色纹理（无纹理时的 fallback），从全局纹理管理器获取 ──
+    //    纹理由 TextureManager 去重缓存并持有，这里仅保存非拥有指针。
+    m_DefaultWhiteTexture =
+        Renderer::GetTextureManager().GetSolidColor(
+            glm::vec4(1.0f), vk::Format::eR8G8B8A8Unorm,
+            vk::Filter::eLinear, vk::Filter::eLinear);
+    if (!m_DefaultWhiteTexture) {
+        GE_CORE_ERROR("Renderer2D: 获取默认白色纹理失败！");
     }
 
     GE_CORE_INFO("Renderer2D initialized");
@@ -65,8 +64,7 @@ Renderer2D::Renderer2D() {
 Renderer2D::~Renderer2D() {
     GE_CORE_INFO("Renderer2D Shutdown");
 
-    // 释放默认白色纹理
-    m_DefaultWhiteTexture.reset();
+    // 注：默认白色纹理由全局 TextureManager 持有，不属于本渲染器，无需释放
 
     // 着色器和 pipeline layout 由全局资源缓存管理，不需要手动释放
     m_VertShader = nullptr;
@@ -251,15 +249,15 @@ void Renderer2D::EndScene() {
     }
 
     ps.setRenderingFormats({colorFmt}, depthFmt)
-      .setInputAssembly(vk::PrimitiveTopology::eTriangleList)
-      .setColorBlendAttachments({blendState})
-      .setCullMode(vk::CullModeFlagBits::eNone)
-      .setFrontFace(vk::FrontFace::eCounterClockwise)
-      .setDepthTestEnable(m_UseDepth ? VK_TRUE : VK_FALSE)
-      .setDepthWriteEnable(m_UseDepth ? VK_TRUE : VK_FALSE)
-      .enableDynamicState(vk::DynamicState::eCullMode)
-      .enableDynamicState(vk::DynamicState::eFrontFace)
-      .enableDynamicState(vk::DynamicState::ePrimitiveTopology);
+        .setInputAssembly(vk::PrimitiveTopology::eTriangleList)
+        .setColorBlendAttachments({blendState})
+        .setCullMode(vk::CullModeFlagBits::eNone)
+        .setFrontFace(vk::FrontFace::eCounterClockwise)
+        .setDepthTestEnable(m_UseDepth ? VK_TRUE : VK_FALSE)
+        .setDepthWriteEnable(m_UseDepth ? VK_TRUE : VK_FALSE)
+        .enableDynamicState(vk::DynamicState::eCullMode)
+        .enableDynamicState(vk::DynamicState::eFrontFace)
+        .enableDynamicState(vk::DynamicState::ePrimitiveTopology);
 
     // 顶点输入：从顶点着色器反射自动生成
     ps.setVertexInputFromShader(*m_VertShader);
@@ -294,7 +292,7 @@ void Renderer2D::EndScene() {
     // ── 8. 按纹理批次绘制 ─────────────────────────────────────────────
     // 每批次一个 draw call，同纹理的所有精灵合并绘制
     // 无纹理时使用默认 1x1 白色纹理，避免未定义采样行为
-    Texture *fallback = m_DefaultWhiteTexture.get();
+    Texture *fallback = m_DefaultWhiteTexture;
     for (const auto &batch : batchInfos) {
         Texture *tex = batch.texture ? batch.texture : fallback;
         if (tex) {
@@ -332,9 +330,9 @@ void Renderer2D::AppendQuad(Texture *texture,
 
     static constexpr Corner corners[4] = {
         {{-1.0f, -1.0f, 0.0f}, {0.0f, 0.0f}}, // 0: 左下
-        {{ 1.0f, -1.0f, 0.0f}, {1.0f, 0.0f}}, // 1: 右下
-        {{ 1.0f,  1.0f, 0.0f}, {1.0f, 1.0f}}, // 2: 右上
-        {{-1.0f,  1.0f, 0.0f}, {0.0f, 1.0f}}, // 3: 左上
+        {{1.0f, -1.0f, 0.0f}, {1.0f, 0.0f}}, // 1: 右下
+        {{1.0f, 1.0f, 0.0f}, {1.0f, 1.0f}}, // 2: 右上
+        {{-1.0f, 1.0f, 0.0f}, {0.0f, 1.0f}}, // 3: 左上
     };
 
     // 先把 4 个角都算出世界坐标（含 z）

@@ -38,6 +38,7 @@ private:
     std::unique_ptr<Mesh>     m_CubeMesh;     ///< 立方体网格
     std::unique_ptr<Mesh>     m_SphereMesh;   ///< 球体网格（光源可视化用）
     Texture  *m_Texture      = nullptr;       ///< 棋盘纹理（由全局 TextureManager 持有）
+    Texture  *m_NormalTexture = nullptr;      ///< 法线贴图纹理（由全局 TextureManager 持有）
     Material *m_ModelMaterial = nullptr;      ///< 模型材质（由全局 MaterialManager 持有）
     std::unique_ptr<Scene> m_Scene; ///< 场景
     std::unique_ptr<SceneSerializer> m_SceneSerializer; ///< 场景序列化器（持有加载的网格资源）

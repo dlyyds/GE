@@ -29,17 +29,26 @@
 namespace GE {
 
 /**
- * @brief 顶点数据结构：位置 + 法线 + 纹理坐标。
+ * @brief 顶点数据结构：位置 + 法线 + 纹理坐标 + 切线。
+ *
+ * 内存布局必须与顶点着色器的输入 location 顺序一致（由着色器反射紧密打包）：
+ *   location 0: Position (vec3, 12B)
+ *   location 1: Normal   (vec3, 12B)
+ *   location 2: TexCoord (vec2,  8B)
+ *   location 3: Tangent  (vec4, 16B) —— xyz=切线方向，w=手性符号(+1/-1)
+ * 总大小 48B。
  */
 struct Vertex {
     glm::vec3 Position{0.0f};   ///< 位置
     glm::vec3 Normal{0.0f};     ///< 法线
     glm::vec2 TexCoord{0.0f};   ///< 纹理坐标
+    glm::vec4 Tangent{0.0f, 0.0f, 0.0f, 1.0f}; ///< 切线(xyz) + 手性符号(w)
 
     bool operator==(const Vertex &other) const {
         return Position == other.Position
             && Normal == other.Normal
-            && TexCoord == other.TexCoord;
+            && TexCoord == other.TexCoord
+            && Tangent == other.Tangent;
     }
 };
 
@@ -58,8 +67,13 @@ struct hash<GE::Vertex> {
         size_t h6 = hash<float>()(v.Normal.z);
         size_t h7 = hash<float>()(v.TexCoord.x);
         size_t h8 = hash<float>()(v.TexCoord.y);
+        size_t h9 = hash<float>()(v.Tangent.x);
+        size_t h10 = hash<float>()(v.Tangent.y);
+        size_t h11 = hash<float>()(v.Tangent.z);
+        size_t h12 = hash<float>()(v.Tangent.w);
         // 简易组合哈希
-        return h1 ^ (h2 << 1) ^ (h3 << 2) ^ (h4 << 3) ^ (h5 << 4) ^ (h6 << 5) ^ (h7 << 6) ^ (h8 << 7);
+        return h1 ^ (h2 << 1) ^ (h3 << 2) ^ (h4 << 3) ^ (h5 << 4) ^ (h6 << 5) ^ (h7 << 6) ^ (h8 << 7)
+             ^ (h9 << 8) ^ (h10 << 9) ^ (h11 << 10) ^ (h12 << 11);
     }
 };
 } // namespace std

@@ -46,7 +46,7 @@ class VulkanShaderModule;
  * 着色器资源：
  *   Set 0, Binding 0: FrameUBO（投影、视图、相机位置、光照参数）
  *   Set 1, Binding 0: samplerColor（主纹理）
- *   Set 2, Binding 0: InstanceData（SSBO，model + color，按实例）
+ *   Set 2, Binding 0: InstanceData（SSBO，model + color + shininess，按实例）
  */
 class Renderer3D {
 public:
@@ -191,12 +191,17 @@ private:
     static_assert(sizeof(FrameUBO) % 16 == 0, "FrameUBO 必须 16 字节对齐");
 
     /// per-instance 数据（阶段3，存入 SSBO，std430 布局）
-    /// 必须与 GLSL InstanceData 块一致：mat4(64B) + vec4(16B) = 80B
+    /// 必须与 GLSL InstanceData 块一致：mat4(64B) + vec4(16B) + float(4B)，
+    /// 因 std430 中 mat4 按 16B 对齐，每实例实际 96B。
+    /// 注意：glm::mat4 对齐为 4B，故需显式 padding[3] 补齐到 96B，
+    /// 否则数组元素跨度（stride）与 GLSL 不一致，后续实例会读错数据。
     struct InstanceData {
         glm::mat4 model;             ///< 模型矩阵（列主序）
         glm::vec4 color;             ///< 叠加颜色（tint），与纹理颜色相乘
+        float     shininess;         ///< 材质高光指数（同材质同值，取自材质 "shininess" 参数）
+        float     padding[3];        ///< 补齐到 96B（std430 的 mat4 16B 对齐）
     };
-    static_assert(sizeof(InstanceData) == 80, "InstanceData 必须与 std430 布局一致");
+    static_assert(sizeof(InstanceData) == 96, "InstanceData 必须与 std430 布局一致");
 
     /// 一个待绘制的网格实例
     struct MeshInstance {

@@ -580,6 +580,15 @@ void SceneHierarchyPanel::DrawMaterialComponent(MaterialComponent &component) {
 
         ImGui::Separator();
 
+        // ---- 标量参数 ----
+        // 高光指数（写入材质 "shininess" 参数，Renderer3D 每帧读取写入实例数据）
+        float shininess = component.MaterialPtr->GetFloat("shininess", 32.0f);
+        if (ImGui::SliderFloat("Shininess (高光指数)", &shininess, 1.0f, 256.0f)) {
+            component.MaterialPtr->SetFloat("shininess", shininess);
+        }
+
+        ImGui::Separator();
+
         // ---- 渲染状态 ----
         ImGui::Checkbox("Alpha Test", &component.MaterialPtr->alphaTest);
         ImGui::Checkbox("Double Sided", &component.MaterialPtr->doubleSided);

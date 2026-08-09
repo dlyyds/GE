@@ -375,6 +375,13 @@ void ModelTestLayer::OnImGuiRender() {
                         matComp.MaterialPtr->HasTexture(Material::Normal)
                             ? "normal.png"
                             : "(null, 使用平坦法线)");
+
+            // 高光指数（写入材质 "shininess" 参数，Renderer3D 每帧读取）
+            float shininess = matComp.MaterialPtr->GetFloat("shininess", 32.0f);
+            if (ImGui::SliderFloat("  Shininess (高光指数)", &shininess,
+                                   1.0f, 256.0f)) {
+                matComp.MaterialPtr->SetFloat("shininess", shininess);
+            }
         }
     }
 

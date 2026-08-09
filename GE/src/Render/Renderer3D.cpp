@@ -244,10 +244,12 @@ void Renderer3D::EndScene() {
         }
 
         // 收集本批次实例的 per-instance 数据
+        // 同批次的实例共享同一材质，shininess 取自材质参数（缺省 32.0）
+        float shininess = mat ? mat->GetFloat("shininess", 32.0f) : 32.0f;
         uint32_t firstInstance = static_cast<uint32_t>(instances.size());
         for (size_t k = runStart; k < i; ++k) {
             const auto &inst = m_Meshes[k];
-            instances.push_back(InstanceData{inst.transform, inst.color});
+            instances.push_back(InstanceData{inst.transform, inst.color, shininess});
         }
 
         batches.push_back(RenderBatch{

@@ -36,6 +36,7 @@ layout (location = 3) in vec3 inViewVec;
 layout (location = 4) in flat vec4 inColor;    // per-instance tint，由顶点着色器传入
 layout (location = 5) in vec3 inTangent;       // 世界空间切线
 layout (location = 6) in vec3 inBitangent;     // 世界空间副切线
+layout (location = 7) in flat float inShininess; // 材质高光指数（由顶点着色器传入）
 
 layout (location = 0) out vec4 outFragColor;
 
@@ -99,7 +100,7 @@ void main()
     vec3 N = normalize(mat3(T, B, normalize(inNormal)) * tangentNormal);
 
     vec3 V = normalize(inViewVec);
-    float shininess = 32.0;
+    float shininess = inShininess;
 
     // 环境光
     vec3 ambientColor = frame.ambient.rgb * frame.ambient.w;

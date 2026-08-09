@@ -1,9 +1,6 @@
 #pragma once
 
 #include "GE/GE.h"
-#include "GE/Render/Material.h"
-#include "GE/Render/Texture.h"
-#include "GE/Render/Mesh.h"
 #include "GE/Scene/Scene.h"
 #include "GE/Scene/Entity.h"
 #include "GE/Scene/SceneSerializer.h"
@@ -15,9 +12,10 @@
 namespace GE {
 
 /// 场景序列化测试层。
-/// 创建一个带相机、光照、多个 3D 实体（含带材质的模型）的场景，
+/// 启动时从文件加载默认场景（assets/scenes/test.scene），
 /// 通过 ImGui 面板进行 保存 / 加载 / 新建 操作，
 /// 配合 SceneHierarchyPanel 编辑实体与组件，用于验证场景序列化与反序列化。
+/// 网格/纹理/材质由全局管理器加载持有，场景本身不拥有资源。
 class SceneLayer : public Layer {
 public:
     SceneLayer();
@@ -35,12 +33,6 @@ public:
     void OnImGuiRender() override;
 
 private:
-    Mesh *m_CubeMesh = nullptr;       ///< 立方体网格（由全局 MeshManager 持有）
-    Mesh *m_SphereMesh = nullptr;       ///< 球体网格（由全局 MeshManager 持有）
-    Texture  *m_CheckerTexture = nullptr;       ///< 棋盘纹理（由全局 TextureManager 持有）
-    Texture  *m_NormalTexture   = nullptr;      ///< 法线贴图（由全局 TextureManager 持有）
-    Material *m_TexturedMaterial = nullptr;     ///< 带棋盘纹理 + 法线贴图的材质（由全局 MaterialManager 持有）
-
     std::unique_ptr<Scene> m_Scene;                              ///< 场景
     std::unique_ptr<SceneSerializer> m_SceneSerializer;          ///< 场景序列化器（纹理/材质/网格由全局管理器持有）
     Entity m_CameraEntity;                                       ///< 相机实体

@@ -1,90 +1,5 @@
 Scene:
   Entities:
-    - Name: PhysicsBall
-      Transform:
-        Translation: [0, 5, 0]
-        Rotation: [0, 0, 0]
-        Scale: [0.5, 0.5, 0.5]
-      MeshRenderer:
-        Color: [0.2, 0.6, 1, 1]
-        Mesh: builtin:sphere
-      RigidBody:
-        Type: Kinematic
-        Mass: 1
-        Friction: 0.6
-        Restitution: 0.3
-        LinearDamping: 0.05
-        AngularDamping: 0.05
-        IsSensor: false
-      SphereCollider:
-        Radius: 1
-        Offset: [0, 0, 0]
-    - Name: PhysicsFloor
-      Transform:
-        Translation: [0, -3, 0]
-        Rotation: [0, 0, 0]
-        Scale: [10, 0.5, 10]
-      MeshRenderer:
-        Color: [0.5, 0.5, 0.5, 1]
-        Mesh: builtin:cube
-      RigidBody:
-        Type: Static
-        Mass: 1
-        Friction: 0.6
-        Restitution: 0
-        LinearDamping: 0.05
-        AngularDamping: 0.05
-        IsSensor: false
-      BoxCollider:
-        HalfExtents: [1, 1, 1]
-        Offset: [0, 0, 0]
-    - Name: AmbientLight
-      Transform:
-        Translation: [0, 0, 0]
-        Rotation: [0, 0, 0]
-        Scale: [1, 1, 1]
-      AmbientLight:
-        Color: [0.3, 0.3, 0.35, 1]
-    - Name: DirectionalLight
-      Transform:
-        Translation: [0, 0, 0]
-        Rotation: [-0.7853982, 0.5235988, 0]
-        Scale: [1, 1, 1]
-      DirectionalLight:
-        Color: [1, 0.95, 0.85, 1.2]
-    - Name: BluePointLight
-      Transform:
-        Translation: [1.2091714, -2.35, -0.8876369]
-        Rotation: [0.0003051596, 3.1858136e-08, -0.00019747468]
-        Scale: [0.15, 0.15, 0.15]
-      MeshRenderer:
-        Color: [0.4, 0.5, 1, 1]
-        Mesh: builtin:sphere
-      PointLight:
-        Color: [0.2, 0.3, 1, 1.5]
-        RadiusInv: 0.4
-      RigidBody:
-        Type: Dynamic
-        Mass: 1
-        Friction: 0.6
-        Restitution: 0.3
-        LinearDamping: 0.05
-        AngularDamping: 0.05
-        IsSensor: false
-      SphereCollider:
-        Radius: 1
-        Offset: [0, 0, 0]
-    - Name: RedPointLight
-      Transform:
-        Translation: [-0.03429094, 2.1752746, -0.45303273]
-        Rotation: [0, -0, 0]
-        Scale: [0.15, 0.15, 0.15]
-      MeshRenderer:
-        Color: [1, 0.4, 0.4, 1]
-        Mesh: builtin:sphere
-      PointLight:
-        Color: [1, 0.2, 0.2, 1.5]
-        RadiusInv: 0.4
     - Name: MainCamera
       Transform:
         Translation: [0, 0, 0]
@@ -95,21 +10,71 @@ Scene:
         FixedAspectRatio: false
         Mode: Orbit
         Fov: 60
-        Aspect: 1.3769363
+        Aspect: 1.7777778
         Near: 0.1
         Far: 100
         Target: [0, 0, 0]
-        Theta: -79.349464
-        Phi: 8.639999
-        Distance: 30
-        Position: [-29.1486, 4.506767, 5.4816275]
+        Theta: 0
+        Phi: 0
+        Distance: 10
+        Position: [0, 0, 10]
         Yaw: 0
         Pitch: 0
-    - Name: Cube
+    - Name: DirectionalLight
       Transform:
-        Translation: [0, 0, 0.54620206]
-        Rotation: [0, -0, 0]
+        Translation: [0, -0.4, 0]
+        Rotation: [-0.7853982, 0.5235988, 0]
+        Scale: [1, 1, 1]
+      DirectionalLight:
+        Color: [1, 0.95, 0.85, 1.2]
+    - Name: AmbientLight
+      Transform:
+        Translation: [0, 0, 0]
+        Rotation: [0, 0, 0]
+        Scale: [1, 1, 1]
+      AmbientLight:
+        Color: [0.3, 0.3, 0.35, 1]
+    - Name: TexturedCube
+      Transform:
+        Translation: [0, 3.6, 0]
+        Rotation: [0, 0, 0]
         Scale: [1, 1, 1]
       MeshRenderer:
         Color: [1, 1, 1, 1]
         Mesh: builtin:cube
+      Material:
+        AlbedoTexture: assets/textures/Checkerboard.png
+        NormalTexture: assets/textures/normal_stone.jpg
+        FloatParams:
+          shininess: 64
+          specularStrength: 0.6
+    - Name: ColoredCube
+      Transform:
+        Translation: [1.5, 0, 0]
+        Rotation: [0, 0, 0]
+        Scale: [1, 1, 1]
+      MeshRenderer:
+        Color: [0.2, 0.6, 1, 1]
+        Mesh: builtin:cube
+    - Name: Sphere
+      Transform:
+        Translation: [-1.5, 2.2, 0]
+        Rotation: [0, 0, 0]
+        Scale: [1, 1, 1]
+      MeshRenderer:
+        Color: [1, 1, 1, 1]
+        Mesh: builtin:sphere
+      Material:
+        AlbedoTexture: assets/textures/Checkerboard.png
+        NormalTexture: assets/textures/normal_stone.jpg
+        FloatParams:
+          shininess: 64
+          specularStrength: 0.6
+    - Name: PointLight
+      Transform:
+        Translation: [2, 2, 2]
+        Rotation: [0, 0, 0]
+        Scale: [1, 1, 1]
+      PointLight:
+        Color: [1, 0.2, 0.2, 1.5]
+        RadiusInv: 0.4

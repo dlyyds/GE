@@ -5,11 +5,6 @@
 #include "SceneLayer.h"
 
 #include "GE/Core/Application.h"
-#include "GE/Render/Renderer.h"
-#include "GE/Render/Renderer3D.h"
-#include "GE/Render/TextureManager.h"
-#include "GE/Render/MaterialManager.h"
-#include "GE/Render/MeshManager.h"
 #include "GE/Scene/Components.h"
 #include "GE/Utils/PlatformUtils.h"
 
@@ -25,76 +20,18 @@ SceneLayer::SceneLayer() : Layer("SceneLayer") {
 SceneLayer::~SceneLayer() = default;
 
 void SceneLayer::OnAttach() {
-    // ── 1. 加载纹理（全局 TextureManager 去重持有） ─────────────────────
-    auto &texMgr = Renderer::GetTextureManager();
-    m_CheckerTexture = texMgr.Load("assets/textures/Checkerboard.png",
-                                   vk::Format::eR8G8B8A8Srgb,
-                                   vk::Filter::eNearest,
-                                   vk::Filter::eNearest);
-    m_NormalTexture = texMgr.Load("assets/textures/normal_stone.jpg",
-                                  vk::Format::eR8G8B8A8Unorm,
-                                  vk::Filter::eLinear,
-                                  vk::Filter::eLinear);
+    constexpr const char *kDefaultScene = "assets/scenes/test.scene";
 
-    // ── 2. 注册带纹理的材质（含标量参数） ──────────────────────────────
-    auto &matMgr = Renderer::GetMaterialManager();
-    auto mat = std::make_unique<Material>();
-    mat->SetTexture(Material::Albedo, m_CheckerTexture);
-    mat->SetTexture(Material::Normal, m_NormalTexture);
-    mat->SetFloat("shininess", 64.0f);
-    mat->SetFloat("specularStrength", 0.6f);
-    mat->SetDebugName("SceneLayer_CubeMat");
-    m_TexturedMaterial = matMgr.Register("SceneLayer_CubeMat", std::move(mat));
-
-    // ── 3. 内置网格（全局 MeshManager 去重持有） ────────────────────────
-    m_CubeMesh = Renderer::GetMeshManager().GetBuiltin("cube");
-    m_SphereMesh = Renderer::GetMeshManager().GetBuiltin("sphere");
-
-    // ── 4. 创建场景与实体 ──────────────────────────────────────────────
+    // 创建场景并从文件加载（网格/纹理/材质由全局管理器加载持有）
     m_Scene = std::make_unique<Scene>();
+    m_SceneSerializer = std::make_unique<SceneSerializer>(m_Scene.get());
 
-    // 相机
-    m_CameraEntity = m_Scene->CreateEntity("MainCamera");
-    auto &cameraComp = m_CameraEntity.AddComponent<CameraComponent>();
-    cameraComp.CameraInstance.SetPerspective(60.0f, 16.0f / 9.0f, 0.1f, 100.0f);
-    cameraComp.CameraInstance.SetMode(Camera::Mode::Orbit);
-    cameraComp.CameraInstance.SetOrbit(0.0f, 0.0f, 5.0f); // 距离目标 5 个单位
-    cameraComp.CameraInstance.SetTarget({0.0f, 0.0f, 0.0f});
+    if (!m_SceneSerializer->Deserialize(kDefaultScene)) {
+        GE_CORE_WARN("SceneLayer: 启动加载默认场景失败: {0}", kDefaultScene);
+    }
 
-    // 方向光
-    auto dirLight = m_Scene->CreateEntity("DirectionalLight");
-    dirLight.GetComponent<TransformComponent>().Rotation =
-        glm::vec3(glm::radians(-45.0f), glm::radians(30.0f), 0.0f);
-    dirLight.AddComponent<DirectionalLightComponent>(
-        glm::vec4(1.0f, 0.95f, 0.85f, 1.2f));
-
-    // 环境光
-    auto ambient = m_Scene->CreateEntity("AmbientLight");
-    ambient.AddComponent<AmbientLightComponent>(glm::vec4(0.3f, 0.3f, 0.35f, 1.0f));
-
-    // 带纹理材质立方体
-    auto cube1 = m_Scene->CreateEntity("TexturedCube");
-    cube1.AddComponent<MeshComponent>(m_CubeMesh);
-    cube1.AddComponent<MaterialComponent>(m_TexturedMaterial);
-
-    // 纯色立方体（用 MeshComponent 的 color 做 tint，不绑定材质）
-    auto cube2 = m_Scene->CreateEntity("ColoredCube");
-    cube2.GetComponent<TransformComponent>().Translation = {1.5f, 0.0f, 0.0f};
-    cube2.AddComponent<MeshComponent>(m_CubeMesh, glm::vec4(0.2f, 0.6f, 1.0f, 1.0f));
-
-    // 球体（复用带法线贴图的材质）
-    auto sphere = m_Scene->CreateEntity("Sphere");
-    sphere.GetComponent<TransformComponent>().Translation = {-1.5f, 0.0f, 0.0f};
-    sphere.AddComponent<MeshComponent>(m_SphereMesh);
-    sphere.AddComponent<MaterialComponent>(m_TexturedMaterial);
-
-    // 点光源
-    auto pointLight = m_Scene->CreateEntity("PointLight");
-    pointLight.GetComponent<TransformComponent>().Translation = {2.0f, 2.0f, 2.0f};
-    pointLight.AddComponent<PointLightComponent>(
-        glm::vec4(1.0f, 0.2f, 0.2f, 1.5f), // 红色，强度 1.5
-        0.4f                              // 半径倒数
-        );
+    // 重新绑定相机实体
+    RebindCameraEntity();
 
     // 设置场景层级面板上下文
     m_HierarchyPanel.SetContext(m_Scene.get());
@@ -104,11 +41,6 @@ void SceneLayer::OnDetach() {
     m_CameraEntity = {};
     m_HierarchyPanel.SetContext(nullptr);
     m_Scene.reset();
-    m_TexturedMaterial = nullptr; // 由全局 MaterialManager 管理生命周期
-    m_CheckerTexture = nullptr;   // 由全局 TextureManager 管理生命周期
-    m_NormalTexture = nullptr;    // 由全局 TextureManager 管理生命周期
-    m_CubeMesh = nullptr;         // 由全局 MeshManager 管理生命周期
-    m_SphereMesh = nullptr;
 }
 
 void SceneLayer::OnUpdate(Timestep &ts) {

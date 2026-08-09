@@ -1,0 +1,117 @@
+Scene:
+  Entities:
+    - Name: Cube
+      Transform:
+        Translation: [0, 0, 0]
+        Rotation: [0, 0, 0]
+        Scale: [1, 1, 1]
+      MeshRenderer:
+        Color: [1, 1, 1, 1]
+        Mesh: builtin:cube
+      Material:
+        AlbedoTexture: assets/textures/Checkerboard.png
+    - Name: MainCamera
+      Transform:
+        Translation: [0, 0, 0]
+        Rotation: [0, 0, 0]
+        Scale: [1, 1, 1]
+      Camera:
+        Primary: true
+        FixedAspectRatio: false
+        Mode: Orbit
+        Fov: 60
+        Aspect: 1.7777778
+        Near: 0.1
+        Far: 100
+        Target: [0, 0, 0]
+        Theta: -2.4900734
+        Phi: 10.98005
+        Distance: 12
+        Position: [-0.5118115, 2.2856061, 11.769199]
+        Yaw: 0
+        Pitch: 0
+    - Name: RedPointLight
+      Transform:
+        Translation: [-1.5125008, 1.5, 0.97587967]
+        Rotation: [0, 0, 0]
+        Scale: [0.15, 0.15, 0.15]
+      MeshRenderer:
+        Color: [1, 0.4, 0.4, 1]
+        Mesh: builtin:sphere
+      PointLight:
+        Color: [1, 0.2, 0.2, 1.5]
+        RadiusInv: 0.4
+    - Name: BluePointLight
+      Transform:
+        Translation: [1.2417201, -2.35, -0.8415235]
+        Rotation: [-1.7275215e-05, -8.951932e-10, -9.460466e-05]
+        Scale: [0.15, 0.15, 0.15]
+      MeshRenderer:
+        Color: [0.4, 0.5, 1, 1]
+        Mesh: builtin:sphere
+      PointLight:
+        Color: [0.2, 0.3, 1, 1.5]
+        RadiusInv: 0.4
+      RigidBody:
+        Type: Dynamic
+        Mass: 1
+        Friction: 0.6
+        Restitution: 0.3
+        LinearDamping: 0.05
+        AngularDamping: 0.05
+        IsSensor: false
+      SphereCollider:
+        Radius: 1
+        Offset: [0, 0, 0]
+    - Name: DirectionalLight
+      Transform:
+        Translation: [0, 0, 0]
+        Rotation: [-0.7853982, 0.5235988, 0]
+        Scale: [1, 1, 1]
+      DirectionalLight:
+        Color: [1, 0.95, 0.85, 1.2]
+    - Name: AmbientLight
+      Transform:
+        Translation: [0, 0, 0]
+        Rotation: [0, 0, 0]
+        Scale: [1, 1, 1]
+      AmbientLight:
+        Color: [0.3, 0.3, 0.35, 1]
+    - Name: PhysicsFloor
+      Transform:
+        Translation: [0, -3, 0]
+        Rotation: [0, 0, 0]
+        Scale: [10, 0.5, 10]
+      MeshRenderer:
+        Color: [0.5, 0.5, 0.5, 1]
+        Mesh: builtin:cube
+      RigidBody:
+        Type: Static
+        Mass: 1
+        Friction: 0.6
+        Restitution: 0
+        LinearDamping: 0.05
+        AngularDamping: 0.05
+        IsSensor: false
+      BoxCollider:
+        HalfExtents: [1, 1, 1]
+        Offset: [0, 0, 0]
+    - Name: PhysicsBall
+      Transform:
+        Translation: [0, 5, 0]
+        Rotation: [0, 0, 0]
+        Scale: [0.5, 0.5, 0.5]
+      MeshRenderer:
+        Color: [0.2, 0.6, 1, 1]
+        Mesh: builtin:sphere
+      RigidBody:
+        Type: Kinematic
+        Mass: 1
+        Friction: 0.6
+        Restitution: 0.3
+        LinearDamping: 0.05
+        AngularDamping: 0.05
+        IsSensor: false
+      SphereCollider:
+        Radius: 1
+        Offset: [0, 0, 0]

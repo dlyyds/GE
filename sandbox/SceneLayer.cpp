@@ -64,8 +64,9 @@ void SceneLayer::OnUpdate(Timestep &ts) {
     // 同步场景视口尺寸
     m_Scene->OnViewportResize(vpW, vpH);
 
-    // 把本帧 3D 场景渲染进离屏视口目标
+    // 把本帧 3D 场景（网格 + 精灵）渲染进离屏视口目标
     Renderer::Get3DRenderer().SetRenderTarget(m_Viewport->GetRenderTarget());
+    Renderer::Get2DRenderer().SetRenderTarget(m_Viewport->GetRenderTarget());
 
     // 场景中没有相机实体时，使用默认视角清屏
     if (!m_CameraEntity) {
@@ -76,6 +77,7 @@ void SceneLayer::OnUpdate(Timestep &ts) {
         glm::vec4 clearColor{0.1f, 0.1f, 0.15f, 1.0f};
         m_Scene->OnUpdate3D(ts, view, projection, cameraPos, clearColor);
         Renderer::Get3DRenderer().SetRenderTarget(nullptr);
+        Renderer::Get2DRenderer().SetRenderTarget(nullptr);
         return;
     }
 
@@ -97,6 +99,7 @@ void SceneLayer::OnUpdate(Timestep &ts) {
 
     // 复位为 swapchain 目标（默认）
     Renderer::Get3DRenderer().SetRenderTarget(nullptr);
+    Renderer::Get2DRenderer().SetRenderTarget(nullptr);
 }
 
 void SceneLayer::OnEvent(Event &event) {

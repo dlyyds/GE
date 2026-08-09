@@ -13,6 +13,7 @@ namespace GE {
 
 class VulkanPipelineLayout;
 class VulkanShaderModule;
+class RenderTarget;
 
 /**
  * @file Renderer2D.h
@@ -116,6 +117,17 @@ public:
      */
     void EndScene();
 
+    /**
+     * @brief 设置本次 EndScene 的渲染目标。
+     *
+     * 传 nullptr（默认）时渲染到当前帧的 swapchain 目标；传非空时渲染到
+     * 指定的离屏目标（如与 3D 一起渲染进 ImGui 视口窗口）。
+     * 每次 BeginScene 前设置，EndScene 后建议复位为 nullptr。
+     *
+     * @param target 渲染目标指针（不持有所有权），nullptr = 渲染到 swapchain
+     */
+    void SetRenderTarget(RenderTarget *target) { m_RenderTargetOverride = target; }
+
 private:
     /// 单个精灵的 4 个顶点
     struct SpriteVertex {
@@ -173,6 +185,9 @@ private:
 
     /// 是否在 BeginScene / EndScene 之间
     bool m_InScene = false;
+
+    /// 渲染目标覆盖（nullptr 时渲染到 swapchain）。由 SetRenderTarget 设置。
+    RenderTarget *m_RenderTargetOverride = nullptr;
 };
 
 } // namespace GE

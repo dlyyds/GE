@@ -285,10 +285,15 @@ void Renderer3D::EndScene() {
         const auto &desc = renderTarget.GetDesc();
         // 颜色附件：清除
         vk::ImageView colorView = renderTarget.GetColorResolveView().GetHandle();
+        // 附件布局与图像实际布局一致：离屏颜色图固定 GENERAL，否则验证层报
+        // VUID-vkCmdBeginRendering-pRenderingInfo-09592。正常 swapchain 用默认。
         renderInfo.AddColorAttachment(colorView,
                                       vk::AttachmentLoadOp::eClear,
                                       vk::AttachmentStoreOp::eStore,
-                                      clearValue);
+                                      clearValue,
+                                      renderTarget.HasOffscreenColor()
+                                          ? vk::ImageLayout::eGeneral
+                                          : vk::ImageLayout::eColorAttachmentOptimal);
 
         // 深度附件（如果有）：清除
         if (desc.enableDepth) {

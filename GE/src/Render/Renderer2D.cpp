@@ -143,9 +143,12 @@ void Renderer2D::EndScene() {
 
     auto &cmd = Renderer::GetFrameCmd();
     auto vkCmd = cmd.GetHandle();
-    auto &swapchain = Renderer::GetSwapchain();
-    auto extent = swapchain.GetExtent();
     auto &frame = Renderer::GetRenderContext().GetActiveFrame();
+
+    // 有效渲染目标：优先使用外部指定的目标（离屏），否则使用当前帧的 swapchain 目标
+    auto &target = m_RenderTargetOverride ? *m_RenderTargetOverride
+                                          : frame.GetRenderTarget();
+    auto extent = target.GetExtent();
 
     // ── 1. 从帧资源池分配顶点 buffer ──────────────────────────────────
     BufferAllocation vertexAlloc = frame.AllocateBuffer(
@@ -196,22 +199,27 @@ void Renderer2D::EndScene() {
     clearValue.color = std::array<float, 4>{
         m_ClearColor.r, m_ClearColor.g, m_ClearColor.b, m_ClearColor.a};
 
-    auto &renderTarget = frame.GetRenderTarget();
+    // 附件布局与图像实际布局一致：离屏颜色图固定 GENERAL，否则验证层报
+    // VUID-vkCmdBeginRendering-pRenderingInfo-09592。正常 swapchain 用默认。
+    vk::ImageLayout colorLayout = target.HasOffscreenColor()
+                                      ? vk::ImageLayout::eGeneral
+                                      : vk::ImageLayout::eColorAttachmentOptimal;
 
     VulkanRenderingInfo renderInfo;
     renderInfo.SetRenderArea(0, 0, extent.width, extent.height);
-    renderInfo.AddColorAttachment(Renderer::GetFrameImageView().GetHandle(),
+    renderInfo.AddColorAttachment(target.GetColorView().GetHandle(),
                                   shouldClear
                                       ? vk::AttachmentLoadOp::eClear
                                       : vk::AttachmentLoadOp::eLoad,
                                   vk::AttachmentStoreOp::eStore,
-                                  clearValue);
+                                  clearValue,
+                                  colorLayout);
 
     // 3D 模式下附加深度缓冲（load = 加载已有深度，保证 3D 场景里的遮挡正确）
-    if (m_UseDepth && renderTarget.HasDepth()) {
+    if (m_UseDepth && target.HasDepth()) {
         vk::ClearDepthStencilValue clearDS{1.0f, 0};
         renderInfo.SetDepthAttachment(
-            renderTarget.GetDepthView().GetHandle(),
+            target.GetDepthView().GetHandle(),
             vk::AttachmentLoadOp::eLoad,
             vk::AttachmentStoreOp::eStore,
             clearDS);
@@ -223,7 +231,7 @@ void Renderer2D::EndScene() {
     cmd.BindPipelineLayout(*m_PipelineLayout);
 
     auto &ps = cmd.GetPipelineState();
-    auto colorFmt = swapchain.GetFormat();
+    auto colorFmt = target.GetColorFormat();
 
     // 混合附件：启用 alpha 混合（预乘 alpha 模式）
     // 着色器输出已预乘 alpha（rgb *= alpha），所以源因子用 eOne

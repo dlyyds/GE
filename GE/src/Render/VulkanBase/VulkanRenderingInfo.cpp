@@ -39,11 +39,18 @@ VulkanRenderingInfo VulkanRenderingInfo::FromRenderTarget(const RenderTarget &rt
         vk::ImageView colorView = rt.HasSwapchainView()
                                       ? rt.GetSwapchainView().GetHandle()
                                       : rt.GetColorResolveView().GetHandle();
+        // 附件布局必须与图像实际布局一致：离屏颜色图固定 GENERAL，否则验证层报
+        // VUID-vkCmdBeginRendering-pRenderingInfo-09592。正常 swapchain 用
+        // COLOR_ATTACHMENT_OPTIMAL。
+        vk::ImageLayout colorLayout = rt.HasOffscreenColor()
+                                          ? vk::ImageLayout::eGeneral
+                                          : vk::ImageLayout::eColorAttachmentOptimal;
         info.AddColorAttachment(
             colorView,
             desc.colorLoadOp,
             desc.colorStoreOp,
-            desc.colorClearValue);
+            desc.colorClearValue,
+            colorLayout);
     }
 
     // --- 深度/模板附件 ---

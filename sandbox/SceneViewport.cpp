@@ -47,6 +47,10 @@ void SceneViewport::Create(VulkanDevice &device, uint32_t width, uint32_t height
 
 void SceneViewport::Destroy() {
     if (m_DescriptorSet != VK_NULL_HANDLE) {
+        // 该描述符集可能仍被上一帧的 command buffer 采样（绘制视口图）。
+        // 直接释放会触发 VUID-vkFreeDescriptorSets-pDescriptorSets-00309，
+        // 需先等 GPU 空闲再释放。
+        Renderer::WaitIdle();
         ImGui_ImplVulkan_RemoveTexture(m_DescriptorSet);
         m_DescriptorSet = VK_NULL_HANDLE;
     }

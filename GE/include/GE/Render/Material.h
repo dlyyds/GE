@@ -148,6 +148,15 @@ public:
         return m_FloatParams.find(name) != m_FloatParams.end();
     }
 
+    /**
+     * @brief 获取所有浮点参数（只读引用）。
+     *
+     * 供序列化等需要遍历全部标量参数的场景使用，避免逐一硬编码参数名。
+     */
+    const std::unordered_map<std::string, float> &GetFloatParams() const {
+        return m_FloatParams;
+    }
+
     // ========================================================================
     // 材质类型
     // ========================================================================

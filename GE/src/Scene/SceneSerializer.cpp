@@ -26,6 +26,8 @@
 #include <fstream>
 #include <sstream>
 #include <filesystem>
+#include <algorithm>
+#include <vector>
 
 namespace GE {
 
@@ -35,39 +37,139 @@ namespace {
 // 材质辅助
 // ============================================================
 
+/// 材质纹理槽位名（与 Material::TextureSlot 顺序一一对应）
+const char *kTextureSlotNames[] = {"Albedo", "Normal", "Emissive"};
+
+/// 材质纹理槽位名 → 槽位枚举（用于反序列化）
+Material::TextureSlot TextureSlotFromName(const std::string &name) {
+    if (name == "Normal") return Material::Normal;
+    if (name == "Emissive") return Material::Emissive;
+    return Material::Albedo;
+}
+
 /**
- * @brief 获取或创建一个"单 Albedo 纹理"材质（按纹理路径命名 + 去重）。
+ * @brief 将材质写入 YAML 节点（纹理槽位 + 浮点参数）。
  *
- * 以纹理路径加前缀 "albedo:" 作为材质名称，已存在则直接返回，
- * 否则加载纹理并手动创建/注册材质。
- *
- * @param texPath  Albedo 纹理文件路径
- * @return 材质指针，纹理加载失败返回 nullptr
+ * 纹理以文件路径写入；浮点参数以 name → value 的 map 写入 FloatParams 节点。
  */
-Material *GetOrCreateAlbedoMaterial(const std::string &texPath) {
-    if (texPath.empty()) {
-        return nullptr;
+void SerializeMaterialNode(YAML::Node &matNode, Material *mat) {
+    if (!mat) {
+        return;
     }
 
+    // 纹理槽位（仅写有纹理且带文件路径的槽位）
+    for (int s = 0; s < Material::Count; ++s) {
+        auto slot = static_cast<Material::TextureSlot>(s);
+        Texture *tex = mat->GetTexture(slot);
+        if (tex && !tex->GetFilePath().empty()) {
+            matNode[std::string(kTextureSlotNames[s]) + "Texture"] =
+                tex->GetFilePath();
+        }
+    }
+
+    // 浮点参数（如 shininess、specularStrength）
+    const auto &params = mat->GetFloatParams();
+    if (!params.empty()) {
+        YAML::Node fp = matNode["FloatParams"];
+        for (const auto &kv : params) {
+            fp[kv.first] = kv.second;
+        }
+    }
+}
+
+/**
+ * @brief 根据材质节点内容生成唯一 key（用于材质去重）。
+ *
+ * 由所有纹理路径 + 排序后的浮点参数拼接而成，保证：
+ * 内容相同的材质复用同一实例，内容不同则各自独立。
+ */
+std::string BuildMaterialKey(const YAML::Node &matNode) {
+    std::string key;
+
+    // 纹理槽位（按槽位顺序）
+    for (auto name : kTextureSlotNames) {
+        std::string texKey = std::string(name) + "Texture";
+        if (matNode[texKey]) {
+            key += std::string(name) + ":" + matNode[texKey].as<std::string>() + ";";
+        }
+    }
+
+    // 浮点参数（按名称排序，保证 key 确定性）
+    if (matNode["FloatParams"]) {
+        std::vector<std::string> names;
+        for (const auto &it : matNode["FloatParams"]) {
+            names.push_back(it.first.as<std::string>());
+        }
+        std::sort(names.begin(), names.end());
+        for (const auto &n : names) {
+            key += n + "=" + matNode["FloatParams"][n].as<std::string>() + ";";
+        }
+    }
+
+    return key;
+}
+
+/**
+ * @brief 从材质 YAML 节点获取或创建一个材质（按内容去重）。
+ *
+ * 加载各纹理槽位并设置全部浮点参数，注册到全局 MaterialManager。
+ * 内容相同的材质（key 相同）直接复用已有实例。
+ *
+ * @param matNode 材质节点（含 AlbedoTexture / NormalTexture / EmissiveTexture
+ *                及可选的 FloatParams）
+ * @return 材质指针，纹理加载失败可能为部分纹理缺失的材质
+ */
+Material *GetOrCreateMaterial(const YAML::Node &matNode) {
     auto &matMgr = Renderer::GetMaterialManager();
-    const std::string key = "albedo:" + texPath;
+    const std::string key = "scene:" + BuildMaterialKey(matNode);
 
     // 已存在则直接返回
     if (Material *existing = matMgr.Get(key)) {
         return existing;
     }
 
-    // 加载纹理并创建材质
-    Texture *albedo = Renderer::GetTextureManager().Load(texPath);
-    if (!albedo) {
-        GE_CORE_WARN("SceneSerializer: 创建材质失败，纹理加载失败: {0}", texPath);
-        return nullptr;
+    auto mat = std::make_unique<Material>();
+    mat->SetDebugName(key);
+
+    // 纹理槽位
+    for (auto name : kTextureSlotNames) {
+        std::string texKey = std::string(name) + "Texture";
+        if (matNode[texKey]) {
+            std::string path = matNode[texKey].as<std::string>("");
+            Texture *tex = Renderer::GetTextureManager().Load(path);
+            if (tex) {
+                mat->SetTexture(TextureSlotFromName(name), tex);
+            } else {
+                GE_CORE_WARN("SceneSerializer: 材质纹理加载失败: {0}", path);
+            }
+        }
     }
 
-    auto mat = std::make_unique<Material>();
-    mat->SetTexture(Material::Albedo, albedo);
-    mat->SetDebugName(key);
+    // 浮点参数
+    if (matNode["FloatParams"]) {
+        for (const auto &it : matNode["FloatParams"]) {
+            mat->SetFloat(it.first.as<std::string>(), it.second.as<float>());
+        }
+    }
+
     return matMgr.Register(key, std::move(mat));
+}
+
+/**
+ * @brief 获取或创建一个"单 Albedo 纹理"材质。
+ *
+ * 兼容旧版本场景格式（MeshRenderer.Texture 字段），内部复用按内容去重的逻辑。
+ *
+ * @param texPath Albedo 纹理文件路径
+ * @return 材质指针，纹理加载失败返回 nullptr
+ */
+Material *GetOrCreateAlbedoMaterial(const std::string &texPath) {
+    if (texPath.empty()) {
+        return nullptr;
+    }
+    YAML::Node node;
+    node["AlbedoTexture"] = texPath;
+    return GetOrCreateMaterial(node);
 }
 
 // ============================================================
@@ -268,14 +370,8 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
         if (entity.HasComponent<MaterialComponent>()) {
             const auto &matc = entity.GetComponent<MaterialComponent>();
             YAML::Node matNode = entityNode["Material"];
-
-            // Albedo 纹理路径
-            if (matc.MaterialPtr && matc.MaterialPtr->HasTexture(Material::Albedo)) {
-                Texture *albedo = matc.MaterialPtr->GetTexture(Material::Albedo);
-                if (albedo && !albedo->GetFilePath().empty()) {
-                    matNode["AlbedoTexture"] = albedo->GetFilePath();
-                }
-            }
+            // 完整序列化材质：纹理槽位（Albedo/Normal/Emissive）+ 浮点参数
+            SerializeMaterialNode(matNode, matc.MaterialPtr);
         }
 
         // ---- CameraComponent ----
@@ -505,12 +601,8 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
         if (entityNode["Material"]) {
             YAML::Node matNode = entityNode["Material"];
 
-            // Albedo 纹理路径
-            Material *mat = nullptr;
-            if (matNode["AlbedoTexture"]) {
-                std::string texPath = matNode["AlbedoTexture"].as<std::string>("");
-                mat = GetOrCreateAlbedoMaterial(texPath);
-            }
+            // 完整反序列化材质：纹理槽位（Albedo/Normal/Emissive）+ 浮点参数
+            Material *mat = GetOrCreateMaterial(matNode);
 
             // 即使材质为空也添加组件（表示显式声明了材质组件）
             entity.AddComponent<MaterialComponent>(mat);

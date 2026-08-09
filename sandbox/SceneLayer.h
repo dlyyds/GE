@@ -41,6 +41,9 @@ private:
     /// 保存场景到文件（弹出文件对话框）
     void SaveScene();
 
+    /// 从文件加载场景（不清空当前场景句柄，会重建场景并重新绑定相机）
+    bool LoadSceneFromFile(std::string_view filepath);
+
     /// 从文件加载场景（弹出文件对话框，会清空当前场景）
     void LoadScene();
 

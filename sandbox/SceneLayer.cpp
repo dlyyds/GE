@@ -22,19 +22,10 @@ SceneLayer::~SceneLayer() = default;
 void SceneLayer::OnAttach() {
     constexpr const char *kDefaultScene = "assets/scenes/test.scene";
 
-    // 创建场景并从文件加载（网格/纹理/材质由全局管理器加载持有）
-    m_Scene = std::make_unique<Scene>();
-    m_SceneSerializer = std::make_unique<SceneSerializer>(m_Scene.get());
-
-    if (!m_SceneSerializer->Deserialize(kDefaultScene)) {
+    // 从文件加载默认场景（网格/纹理/材质由全局管理器加载持有）
+    if (!LoadSceneFromFile(kDefaultScene)) {
         GE_CORE_WARN("SceneLayer: 启动加载默认场景失败: {0}", kDefaultScene);
     }
-
-    // 重新绑定相机实体
-    RebindCameraEntity();
-
-    // 设置场景层级面板上下文
-    m_HierarchyPanel.SetContext(m_Scene.get());
 }
 
 void SceneLayer::OnDetach() {
@@ -151,12 +142,7 @@ void SceneLayer::SaveScene() {
     m_SceneSerializer->Serialize(filepath);
 }
 
-void SceneLayer::LoadScene() {
-    std::string filepath = FileDialogs::OpenFile("GE Scene (*.scene)\0*.scene\0All Files (*.*)\0*.*\0");
-    if (filepath.empty()) {
-        return;
-    }
-
+bool SceneLayer::LoadSceneFromFile(std::string_view filepath) {
     // 先重置实体引用，避免悬空
     m_CameraEntity = {};
 
@@ -169,8 +155,7 @@ void SceneLayer::LoadScene() {
     m_SceneSerializer = std::make_unique<SceneSerializer>(m_Scene.get());
 
     if (!m_SceneSerializer->Deserialize(filepath)) {
-        GE_CORE_WARN("SceneLayer: 加载场景失败: {0}", filepath);
-        return;
+        return false;
     }
 
     // 更新层级面板上下文
@@ -179,6 +164,18 @@ void SceneLayer::LoadScene() {
 
     // 尝试重新绑定相机实体
     RebindCameraEntity();
+    return true;
+}
+
+void SceneLayer::LoadScene() {
+    std::string filepath = FileDialogs::OpenFile("GE Scene (*.scene)\0*.scene\0All Files (*.*)\0*.*\0");
+    if (filepath.empty()) {
+        return;
+    }
+
+    if (!LoadSceneFromFile(filepath)) {
+        GE_CORE_WARN("SceneLayer: 加载场景失败: {0}", filepath);
+    }
 }
 
 void SceneLayer::NewScene() {

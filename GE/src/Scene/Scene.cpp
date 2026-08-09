@@ -45,6 +45,25 @@ void Scene::DestroyEntity(Entity entity) {
     m_Registry.destroy(static_cast<entt::entity>(entity));
 }
 
+Entity Scene::GetPrimaryCameraEntity() {
+    // 优先返回标注为主相机（Primary=true）的实体
+    auto view = m_Registry.view<CameraComponent>();
+    for (auto entityHandle : view) {
+        const auto &cc = view.get<CameraComponent>(entityHandle);
+        if (cc.Primary) {
+            return Entity(entityHandle, this);
+        }
+    }
+
+    // 没有主相机，则返回第一个带 CameraComponent 的实体
+    for (auto entityHandle : view) {
+        return Entity(entityHandle, this);
+    }
+
+    // 场景中没有相机
+    return {};
+}
+
 
 void Scene::OnUpdate(Timestep ts,
                      const glm::mat4 &viewProjection,

@@ -194,32 +194,8 @@ void SceneLayer::NewScene() {
 }
 
 void SceneLayer::RebindCameraEntity() {
-    if (!m_Scene) {
-        m_CameraEntity = {};
-        return;
-    }
-
-    // 遍历场景，查找带有 CameraComponent 且 Primary=true 的实体
-    auto &reg = m_Scene->Reg();
-    auto view = reg.view<CameraComponent>();
-
-    for (auto entityHandle : view) {
-        Entity entity(entityHandle, m_Scene.get());
-        const auto &cc = entity.GetComponent<CameraComponent>();
-        if (cc.Primary) {
-            m_CameraEntity = entity;
-            return;
-        }
-    }
-
-    // 没找到主相机，就取第一个有 CameraComponent 的
-    for (auto entityHandle : view) {
-        m_CameraEntity = Entity(entityHandle, m_Scene.get());
-        return;
-    }
-
-    // 没有相机
-    m_CameraEntity = {};
+    // 交由场景查找主相机（Primary=true，否则取第一个相机实体）
+    m_CameraEntity = m_Scene ? m_Scene->GetPrimaryCameraEntity() : Entity{};
 }
 
 } // namespace GE

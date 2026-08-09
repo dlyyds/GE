@@ -69,6 +69,15 @@ public:
     /** @brief 获取物理世界指针（可能为 nullptr，如果物理系统未启用） */
     [[nodiscard]] Physics::PhysicsWorld *GetPhysicsWorld() const { return m_PhysicsWorld.get(); }
 
+    /**
+     * @brief 获取主相机实体。
+     *
+     * 优先返回 CameraComponent.Primary == true 的第一个实体；
+     * 若没有主相机，则返回第一个带 CameraComponent 的实体；
+     * 场景中没有相机时返回空 Entity。
+     */
+    Entity GetPrimaryCameraEntity();
+
 private:
     /// 将输入事件分发给所有 ScriptComponent
     void DispatchInputEventToScripts(Event &e);

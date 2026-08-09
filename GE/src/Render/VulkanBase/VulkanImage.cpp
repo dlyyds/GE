@@ -274,6 +274,11 @@ void TransitionLayout(vk::CommandBuffer cmd, vk::Image image,
 	     vk::PipelineStageFlagBits2::eTopOfPipe, vk::AccessFlagBits2::eNone,
 	     vk::PipelineStageFlagBits2::eColorAttachmentOutput, vk::AccessFlagBits2::eColorAttachmentWrite},
 
+	    // Undefined → General:  新离屏颜色图，通用布局（既当颜色附件渲染、也可被采样）
+	    {vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral,
+	     vk::PipelineStageFlagBits2::eTopOfPipe, vk::AccessFlagBits2::eNone,
+	     vk::PipelineStageFlagBits2::eAllCommands, vk::AccessFlagBits2::eMemoryRead | vk::AccessFlagBits2::eMemoryWrite},
+
 	    // ColorAttachment → PresentSrc:  渲染完成，准备呈现
 	    {vk::ImageLayout::eColorAttachmentOptimal, vk::ImageLayout::ePresentSrcKHR,
 	     vk::PipelineStageFlagBits2::eColorAttachmentOutput, vk::AccessFlagBits2::eColorAttachmentWrite,

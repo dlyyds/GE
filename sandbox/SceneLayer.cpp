@@ -213,8 +213,11 @@ void SceneLayer::SaveScene() {
         return;
     }
 
-    // 保存不需要 VulkanDevice，只需持有场景指针
-    m_SceneSerializer = std::make_unique<SceneSerializer>(m_Scene.get());
+    // 复用已有序列化器（若场景是加载产生，其 m_LoadedMeshes 持有当前场景
+    // 引用的网格资源；重建会销毁这些网格导致悬空指针，保存时访问崩溃）
+    if (!m_SceneSerializer) {
+        m_SceneSerializer = std::make_unique<SceneSerializer>(m_Scene.get());
+    }
     m_SceneSerializer->Serialize(filepath);
 }
 

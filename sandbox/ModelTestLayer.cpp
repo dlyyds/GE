@@ -766,13 +766,9 @@ void ModelTestLayer::SaveScene() {
         return;
     }
 
-    // 如果没有序列化器就创建一个（保存不需要 VulkanDevice）
+    // 复用已有序列化器（若场景是加载产生，其 m_LoadedMeshes 持有当前场景
+    // 引用的网格资源；重建会销毁这些网格导致悬空指针，保存时访问崩溃）
     if (!m_SceneSerializer) {
-        m_SceneSerializer = std::make_unique<SceneSerializer>(m_Scene.get());
-    } else {
-        // 更新场景指针（防止场景被替换过）
-        // 注意：SceneSerializer 没有提供 SetScene 方法，这里直接重建
-        // 但会丢失已加载的资源。保存操作不影响资源，所以重建也没关系
         m_SceneSerializer = std::make_unique<SceneSerializer>(m_Scene.get());
     }
 

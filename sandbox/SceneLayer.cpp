@@ -86,6 +86,9 @@ void SceneLayer::OnImGuiRender() {
     // 场景层级 + 属性面板
     m_HierarchyPanel.OnImGuiRender();
 
+    // 资源面板（纹理 / 材质 / 网格）
+    m_ResourcePanel.OnImGuiRender();
+
     ImGui::Begin("SceneLayer");
     ImGui::Text("场景序列化测试（Scene + SceneSerializer + Renderer3D）");
     ImGui::Separator();

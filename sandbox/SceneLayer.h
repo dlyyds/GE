@@ -6,6 +6,7 @@
 #include "GE/Scene/SceneSerializer.h"
 
 #include "Panels/SceneHierarchyPanel.h"
+#include "Panels/ResourcePanel.h"
 
 #include <memory>
 
@@ -37,6 +38,7 @@ private:
     std::unique_ptr<SceneSerializer> m_SceneSerializer;          ///< 场景序列化器（纹理/材质/网格由全局管理器持有）
     Entity m_CameraEntity;                                       ///< 相机实体
     SceneHierarchyPanel m_HierarchyPanel;                        ///< 场景层级面板（ImGui）
+    ResourcePanel m_ResourcePanel;                               ///< 资源面板（ImGui）
 
     /// 保存场景到文件（弹出文件对话框）
     void SaveScene();

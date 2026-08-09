@@ -64,8 +64,6 @@ Renderer2D::Renderer2D() {
 Renderer2D::~Renderer2D() {
     GE_CORE_INFO("Renderer2D Shutdown");
 
-    // 注：默认白色纹理由全局 TextureManager 持有，不属于本渲染器，无需释放
-
     // 着色器和 pipeline layout 由全局资源缓存管理，不需要手动释放
     m_VertShader = nullptr;
     m_FragShader = nullptr;

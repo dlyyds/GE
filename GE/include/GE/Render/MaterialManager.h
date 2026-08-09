@@ -4,24 +4,23 @@
  *
  * 统一管理所有材质资源的创建与生命周期：
  * - 按名称去重存储，同名称材质共享一个实例
- * - 支持从纹理路径快速创建单 Albedo 材质
  * - 支持手动注册自定义材质
  * - 生命周期与 Renderer 一致（由 Renderer 持有）
  *
  * 使用方式：
  * @code
  *   auto& matMgr = Renderer::GetMaterialManager();
- *   // 创建单 Albedo 材质（按纹理路径命名，自动去重）
- *   Material* mat = matMgr.GetOrCreateFromAlbedo("assets/textures/foo.png");
- *   // 获取命名材质
- *   Material* mat2 = matMgr.Get("MyCustomMaterial");
+ *   // 注册命名材质
+ *   auto mat = std::make_unique<Material>();
+ *   Material* raw = matMgr.Register("MyMaterial", std::move(mat));
+ *   // 获取已注册材质
+ *   Material* mat2 = matMgr.Get("MyMaterial");
  * @endcode
  */
 
 #pragma once
 
 #include "Render/Material.h"
-#include "Render/TextureManager.h"
 
 #include <string>
 #include <unordered_map>
@@ -34,16 +33,10 @@ namespace GE {
  * @brief 全局材质管理器。
  *
  * 按名称去重缓存，持有材质资源的所有权。
- * 依赖 TextureManager 来加载纹理。
  */
 class MaterialManager {
 public:
-    /**
-     * @brief 构造材质管理器。
-     *
-     * @param textureMgr  纹理管理器引用（用于加载纹理）
-     */
-    explicit MaterialManager(TextureManager &textureMgr);
+    MaterialManager() = default;
 
     ~MaterialManager();
 
@@ -68,17 +61,6 @@ public:
      * @brief 检查是否存在指定名称的材质。
      */
     bool Has(const std::string &name) const;
-
-    /**
-     * @brief 获取或创建一个"单 Albedo 纹理"材质。
-     *
-     * 以纹理路径作为材质名称（内部加前缀 "albedo:"），
-     * 如果已存在则直接返回，不存在则创建新材质并绑定 Albedo 槽位。
-     *
-     * @param albedoPath  Albedo 纹理文件路径
-     * @return 材质指针，加载失败返回 nullptr
-     */
-    Material *GetOrCreateFromAlbedo(const std::string &albedoPath);
 
     /**
      * @brief 手动注册一个材质到管理器中。
@@ -116,8 +98,6 @@ public:
     std::vector<std::string> GetAllNames() const;
 
 private:
-    TextureManager *m_TextureMgr = nullptr;  ///< 纹理管理器（不拥有）
-
     /// 材质缓存：名称 -> material
     std::unordered_map<std::string, std::unique_ptr<Material>> m_Materials;
 };

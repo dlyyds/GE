@@ -52,15 +52,15 @@ void ModelTestLayer::OnAttach() {
         m_NormalTexture->SetDebugName("ModelTest_Normal");
     }
 
-    // 从全局材质管理器获取/创建单 Albedo 材质（自动按纹理路径去重）
+    // 创建模型材质并注册到管理器
     auto &matMgr = Renderer::GetMaterialManager();
-    m_ModelMaterial = matMgr.GetOrCreateFromAlbedo(
-        "assets/textures/Checkerboard.png");
-    if (m_ModelMaterial) {
-        m_ModelMaterial->SetDebugName("ModelTest_CubeMat");
-        // 绑定法线贴图到 Normal 槽位（Renderer3D 在 set1/binding1 采样）
-        m_ModelMaterial->SetTexture(Material::Normal, m_NormalTexture);
-    }
+    const std::string matKey = "ModelTest_CubeMat";
+    auto mat = std::make_unique<Material>();
+    mat->SetTexture(Material::Albedo, m_Texture);
+    // 绑定法线贴图到 Normal 槽位（Renderer3D 在 set1/binding1 采样）
+    mat->SetTexture(Material::Normal, m_NormalTexture);
+    mat->SetDebugName(matKey);
+    m_ModelMaterial = matMgr.Register(matKey, std::move(mat));
 
     {
         // 创建立方体网格（内置）

@@ -39,7 +39,7 @@ Renderer::Renderer(Window &window)
     auto &device    = m_VulkanContext->GetDevice();
     auto &resCache  = device.GetResourceCache();
     m_TextureManager = std::make_unique<TextureManager>(device, resCache);
-    m_MaterialManager = std::make_unique<MaterialManager>(*m_TextureManager);
+    m_MaterialManager = std::make_unique<MaterialManager>();
 
     // 5. 初始化 2D 精灵渲染器
     m_2DRenderer = std::make_unique<Renderer2D>();

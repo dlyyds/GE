@@ -32,6 +32,45 @@ namespace GE {
 namespace {
 
 // ============================================================
+// 材质辅助
+// ============================================================
+
+/**
+ * @brief 获取或创建一个"单 Albedo 纹理"材质（按纹理路径命名 + 去重）。
+ *
+ * 以纹理路径加前缀 "albedo:" 作为材质名称，已存在则直接返回，
+ * 否则加载纹理并手动创建/注册材质。
+ *
+ * @param texPath  Albedo 纹理文件路径
+ * @return 材质指针，纹理加载失败返回 nullptr
+ */
+Material *GetOrCreateAlbedoMaterial(const std::string &texPath) {
+    if (texPath.empty()) {
+        return nullptr;
+    }
+
+    auto &matMgr = Renderer::GetMaterialManager();
+    const std::string key = "albedo:" + texPath;
+
+    // 已存在则直接返回
+    if (Material *existing = matMgr.Get(key)) {
+        return existing;
+    }
+
+    // 加载纹理并创建材质
+    Texture *albedo = Renderer::GetTextureManager().Load(texPath);
+    if (!albedo) {
+        GE_CORE_WARN("SceneSerializer: 创建材质失败，纹理加载失败: {0}", texPath);
+        return nullptr;
+    }
+
+    auto mat = std::make_unique<Material>();
+    mat->SetTexture(Material::Albedo, albedo);
+    mat->SetDebugName(key);
+    return matMgr.Register(key, std::move(mat));
+}
+
+// ============================================================
 // YAML 转换辅助函数（glm 向量 → YAML Node）
 // ============================================================
 
@@ -455,8 +494,7 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
             // → 自动创建 MaterialComponent 并绑定 Albedo 纹理
             if (meshNode["Texture"]) {
                 std::string texPath = meshNode["Texture"].as<std::string>("");
-                Material *mat = Renderer::GetMaterialManager()
-                    .GetOrCreateFromAlbedo(texPath);
+                Material *mat = GetOrCreateAlbedoMaterial(texPath);
                 if (mat) {
                     entity.AddComponent<MaterialComponent>(mat);
                 }
@@ -471,8 +509,7 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
             Material *mat = nullptr;
             if (matNode["AlbedoTexture"]) {
                 std::string texPath = matNode["AlbedoTexture"].as<std::string>("");
-                mat = Renderer::GetMaterialManager()
-                    .GetOrCreateFromAlbedo(texPath);
+                mat = GetOrCreateAlbedoMaterial(texPath);
             }
 
             // 即使材质为空也添加组件（表示显式声明了材质组件）

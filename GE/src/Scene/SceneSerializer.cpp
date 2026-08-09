@@ -155,23 +155,6 @@ Material *GetOrCreateMaterial(const YAML::Node &matNode) {
     return matMgr.Register(key, std::move(mat));
 }
 
-/**
- * @brief 获取或创建一个"单 Albedo 纹理"材质。
- *
- * 兼容旧版本场景格式（MeshRenderer.Texture 字段），内部复用按内容去重的逻辑。
- *
- * @param texPath Albedo 纹理文件路径
- * @return 材质指针，纹理加载失败返回 nullptr
- */
-Material *GetOrCreateAlbedoMaterial(const std::string &texPath) {
-    if (texPath.empty()) {
-        return nullptr;
-    }
-    YAML::Node node;
-    node["AlbedoTexture"] = texPath;
-    return GetOrCreateMaterial(node);
-}
-
 // ============================================================
 // YAML 转换辅助函数（glm 向量 → YAML Node）
 // ============================================================
@@ -584,16 +567,6 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
             if (meshNode["Mesh"]) {
                 std::string meshPath = meshNode["Mesh"].as<std::string>("");
                 mc.MeshPtr = GetOrLoadMesh(meshPath);
-            }
-
-            // 兼容旧版本格式：MeshRenderer 节点内的 Texture 字段
-            // → 自动创建 MaterialComponent 并绑定 Albedo 纹理
-            if (meshNode["Texture"]) {
-                std::string texPath = meshNode["Texture"].as<std::string>("");
-                Material *mat = GetOrCreateAlbedoMaterial(texPath);
-                if (mat) {
-                    entity.AddComponent<MaterialComponent>(mat);
-                }
             }
         }
 

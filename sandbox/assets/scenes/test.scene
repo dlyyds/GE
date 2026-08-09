@@ -10,11 +10,11 @@ Scene:
         RadiusInv: 0.4
     - Name: Sphere
       Transform:
-        Translation: [-1.5, 1.8, 0]
-        Rotation: [0, 0.008726646, 0]
+        Translation: [-1.5, 2.2, 0]
+        Rotation: [0, 0, 0]
         Scale: [1, 1, 1]
       MeshRenderer:
-        Color: [1, 0.99607843, 1, 1]
+        Color: [1, 1, 1, 1]
         Mesh: builtin:sphere
       Material:
         AlbedoTexture: assets/textures/Checkerboard.png
@@ -74,7 +74,7 @@ Scene:
         Target: [0, 0, 0]
         Theta: 0
         Phi: 0
-        Distance: 11
-        Position: [0, 0, 11]
+        Distance: 10
+        Position: [0, 0, 10]
         Yaw: 0
         Pitch: 0

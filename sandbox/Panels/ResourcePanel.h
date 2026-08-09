@@ -1,5 +1,7 @@
 #pragma once
 
+#include "imgui.h"
+
 namespace GE {
 
 /// 资源面板 —— 用 ImGui 展示全局加载的 纹理 / 材质 / 网格 资源。
@@ -27,6 +29,10 @@ private:
 
     /// 绘制网格资源列表
     void DrawMeshSection();
+
+private:
+    /// 停靠目标 DockSpace ID（根上下文取 "MainDockspace"，首帧初始化一次）
+    ImGuiID m_DockSpaceID = 0;
 };
 
 } // namespace GE

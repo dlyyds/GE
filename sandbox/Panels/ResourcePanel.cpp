@@ -32,6 +32,12 @@ const char *FormatToString(vk::Format format) {
 } // namespace
 
 void ResourcePanel::OnImGuiRender() {
+    // 根上下文取一次停靠目标 ID（与 DockSpaceLayer 中 GetID("MainDockspace") 一致）
+    if (m_DockSpaceID == 0) {
+        m_DockSpaceID = ImGui::GetID("MainDockspace");
+    }
+
+    ImGui::SetNextWindowDockID(m_DockSpaceID, ImGuiCond_FirstUseEver);
     ImGui::Begin("Resource");
 
     // 三段可折叠资源列表

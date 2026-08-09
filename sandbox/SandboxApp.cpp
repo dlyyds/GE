@@ -10,6 +10,7 @@
 #include "TextureLayer.h"
 #include "ModelTestLayer.h"
 #include "SceneLayer.h"
+#include "DockSpaceLayer.h"
 
 namespace GE {
 class Sandbox : public Application {
@@ -22,6 +23,8 @@ public:
         //PushLayer(std::make_shared<TriangleLayer>());
         //PushLayer(std::make_shared<TextureLayer>());
         //PushLayer(std::make_shared<ModelTestLayer>());
+        // DockSpaceLayer 须最先渲染，才能让后续窗口停靠进它创建的 DockSpace
+        PushLayer(std::make_shared<DockSpaceLayer>());
         PushLayer(std::make_shared<SceneLayer>());
     }
 

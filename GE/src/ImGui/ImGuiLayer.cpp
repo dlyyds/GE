@@ -170,6 +170,8 @@ void ImGuiLayer::End() {
 
 void ImGuiLayer::OnImGuiRender() {
     // ── 渲染统计面板 ──────────────────────────────────────────────────
+    // 停靠进主 DockSpace（根上下文取 "MainDockspace"，与 DockSpaceLayer 一致）
+    ImGui::SetNextWindowDockID(ImGui::GetID("MainDockspace"), ImGuiCond_FirstUseEver);
     if (ImGui::Begin("渲染统计")) {
         const auto &stats = Renderer::GetStats();
         const auto &app = Application::Get();

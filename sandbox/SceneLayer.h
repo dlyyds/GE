@@ -9,6 +9,8 @@
 #include "Panels/ResourcePanel.h"
 #include "SceneViewport.h"
 
+#include "imgui.h"
+
 #include <memory>
 
 namespace GE {
@@ -48,6 +50,9 @@ private:
 
     /// 离屏目标重建限流计时器（避免拖拽视口时每帧重建 GPU 资源）
     float m_ResizeCooldown = 0.0f;
+
+    /// 停靠目标 DockSpace ID（根上下文取 "MainDockspace"）
+    ImGuiID m_DockSpaceID = 0;
 
     /// 保存场景到文件（弹出文件对话框）
     void SaveScene();

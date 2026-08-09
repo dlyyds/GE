@@ -8,6 +8,8 @@
 
 #include "GE/Debug/Assert.h"
 
+#include "imgui.h"
+
 namespace GE {
 
 /// 场景层级面板 —— 用 ImGui 展示场景实体树和选中实体的组件属性。
@@ -95,6 +97,9 @@ private:
 private:
     Scene *m_Context = nullptr;     ///< 关联的场景（非拥有）
     Entity m_SelectionContext;      ///< 当前选中的实体
+
+    /// 停靠目标 DockSpace ID（根上下文取 "MainDockspace"，首帧初始化一次）
+    ImGuiID m_DockSpaceID = 0;
 };
 
 } // namespace GE

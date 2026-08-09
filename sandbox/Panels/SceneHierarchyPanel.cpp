@@ -45,6 +45,12 @@ void SceneHierarchyPanel::OnImGuiRender() {
         return;
     }
 
+    // 根上下文取一次停靠目标 ID（与 DockSpaceLayer 中 GetID("MainDockspace") 一致）
+    if (m_DockSpaceID == 0) {
+        m_DockSpaceID = ImGui::GetID("MainDockspace");
+    }
+
+    ImGui::SetNextWindowDockID(m_DockSpaceID, ImGuiCond_FirstUseEver);
     ImGui::Begin("Scene Hierarchy");
 
     // 遍历所有实体（entt::entity 视图），逐个绘制节点
@@ -67,6 +73,7 @@ void SceneHierarchyPanel::OnImGuiRender() {
     ImGui::End();
 
     // 属性面板
+    ImGui::SetNextWindowDockID(m_DockSpaceID, ImGuiCond_FirstUseEver);
     ImGui::Begin("Properties");
     if (m_SelectionContext) {
         DrawComponents(m_SelectionContext);

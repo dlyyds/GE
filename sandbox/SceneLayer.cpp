@@ -123,6 +123,11 @@ void SceneLayer::OnEvent(Event &event) {
 }
 
 void SceneLayer::OnImGuiRender() {
+    // 根上下文取一次停靠目标 ID（与 DockSpaceLayer 中 GetID("MainDockspace") 一致）
+    if (m_DockSpaceID == 0) {
+        m_DockSpaceID = ImGui::GetID("MainDockspace");
+    }
+
     // 场景层级 + 属性面板
     m_HierarchyPanel.OnImGuiRender();
 
@@ -131,6 +136,7 @@ void SceneLayer::OnImGuiRender() {
 
     // ---- 场景视口窗口（显示离屏渲染的 3D 场景）----
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+    ImGui::SetNextWindowDockID(m_DockSpaceID, ImGuiCond_FirstUseEver);
     ImGui::Begin("Scene");
     {
         // 记录视口尺寸（供下帧 OnUpdate 离屏渲染使用）
@@ -145,6 +151,7 @@ void SceneLayer::OnImGuiRender() {
     ImGui::End();
     ImGui::PopStyleVar();
 
+    ImGui::SetNextWindowDockID(m_DockSpaceID, ImGuiCond_FirstUseEver);
     ImGui::Begin("SceneLayer");
     ImGui::Text("场景序列化测试（Scene + SceneSerializer + Renderer3D）");
     ImGui::Separator();

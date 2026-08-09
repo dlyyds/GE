@@ -32,8 +32,11 @@ VulkanRenderingInfo VulkanRenderingInfo::FromRenderTarget(const RenderTarget &rt
             desc.colorLoadOp,
             desc.colorStoreOp);
     } else {
-        // 非 MSAA：直接写入 swapchain（或离屏纹理）
-        vk::ImageView colorView = rt.GetSwapchainView().GetHandle()
+        // 非 MSAA：直接写入 swapchain（或离屏纹理）。
+        // 注意不能用 rt.GetSwapchainView().GetHandle() 作条件判断——离屏时
+        // swapchainView 为 nullptr，GetSwapchainView() 解引用空指针会崩溃。
+        // 用 HasSwapchainView() 先判断（不解引用），空则回退到离屏颜色附件。
+        vk::ImageView colorView = rt.HasSwapchainView()
                                       ? rt.GetSwapchainView().GetHandle()
                                       : rt.GetColorResolveView().GetHandle();
         info.AddColorAttachment(

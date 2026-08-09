@@ -202,9 +202,12 @@ private:
     static_assert(sizeof(InstanceData) == 80, "InstanceData 必须与 std430 布局一致");
 
     /// 每材质 UBO（std140 布局，set 1 binding 2，按批次绑定）
-    /// 存放材质标量参数。当前仅 shininess（存于 params.x），yzw 预留扩展。
+    /// 存放材质标量参数：
+    ///   params.x = shininess（高光指数，决定高光斑形态/大小）
+    ///   params.y = specularStrength（镜面强度，独立控制高光亮暗）
+    ///   params.zw 预留后续材质参数扩展。
     struct MaterialUBO {
-        glm::vec4 params;            ///< x = shininess，yzw 预留
+        glm::vec4 params;            ///< x = shininess，y = specularStrength
     };
     static_assert(sizeof(MaterialUBO) == 16, "MaterialUBO 必须 16 字节对齐");
 

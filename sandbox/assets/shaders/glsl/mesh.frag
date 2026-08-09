@@ -11,7 +11,9 @@ layout (set = 1, binding = 0) uniform sampler2D samplerColor;
 layout (set = 1, binding = 1) uniform sampler2D samplerNormal;   // 法线贴图（切线空间）
 
 // 每材质 UB（按批次绑定）：存放材质标量参数。
-// 当前仅 shininess（存于 params.x），yzw 预留供后续材质参数扩展。
+//   params.x = shininess（高光指数，决定高光斑形态/大小）
+//   params.y = specularStrength（镜面强度，独立控制高光亮暗）
+//   params.zw 预留供后续材质参数扩展。
 layout (set = 1, binding = 2, std140) uniform MaterialUBO
 {
     vec4 params;
@@ -47,7 +49,8 @@ layout (location = 6) in vec3 inBitangent;     // 世界空间副切线
 layout (location = 0) out vec4 outFragColor;
 
 /// 计算方向光贡献
-vec3 calcDirectionalLight(vec3 N, vec3 V, vec3 albedo, float shininess)
+/// @param specularStrength 镜面强度系数（独立控制高光亮暗，与 shininess 形态解耦）
+vec3 calcDirectionalLight(vec3 N, vec3 V, vec3 albedo, float shininess, float specularStrength)
 {
     vec3 L = normalize(-frame.dirLightDirection.xyz);
     vec3 lightColor = frame.dirLightColor.rgb * frame.dirLightColor.w;
@@ -59,14 +62,15 @@ vec3 calcDirectionalLight(vec3 N, vec3 V, vec3 albedo, float shininess)
     // 镜面反射（Blinn-Phong）
     vec3 H = normalize(L + V);
     float spec = pow(max(dot(N, H), 0.0), shininess);
-    vec3 specular = spec * lightColor * 0.5;
+    vec3 specular = spec * lightColor * specularStrength;
 
     return diffuse * albedo + specular;
 }
 
 /// 计算单个点光源贡献（带距离衰减）
 /// @param index 点光源在数组中的索引
-vec3 calcPointLight(int index, vec3 N, vec3 V, vec3 worldPos, vec3 albedo, float shininess)
+/// @param specularStrength 镜面强度系数（独立控制高光亮暗，与 shininess 形态解耦）
+vec3 calcPointLight(int index, vec3 N, vec3 V, vec3 worldPos, vec3 albedo, float shininess, float specularStrength)
 {
     vec3 lightPos  = frame.pointLightPositions[index].xyz;
     vec3 lightColor = frame.pointLightColors[index].rgb * frame.pointLightColors[index].a;
@@ -86,7 +90,7 @@ vec3 calcPointLight(int index, vec3 N, vec3 V, vec3 worldPos, vec3 albedo, float
     // 镜面反射
     vec3 H = normalize(L + V);
     float spec = pow(max(dot(N, H), 0.0), shininess);
-    vec3 specular = spec * lightColor * 0.5;
+    vec3 specular = spec * lightColor * specularStrength;
 
     return (diffuse * albedo + specular) * attenuation;
 }
@@ -107,17 +111,18 @@ void main()
 
     vec3 V = normalize(inViewVec);
     float shininess = material.params.x;
+    float specularStrength = material.params.y;
 
     // 环境光
     vec3 ambientColor = frame.ambient.rgb * frame.ambient.w;
     vec3 result = ambientColor * albedo;
 
     // 方向光
-    result += calcDirectionalLight(N, V, albedo, shininess);
+    result += calcDirectionalLight(N, V, albedo, shininess, specularStrength);
 
     // 点光源：循环累加所有点光源的贡献
     for (int i = 0; i < int(frame.pointLightCount.x); i++) {
-        result += calcPointLight(i, N, V, inWorldPos, albedo, shininess);
+        result += calcPointLight(i, N, V, inWorldPos, albedo, shininess, specularStrength);
     }
 
     outFragColor = vec4(result, 1.0);

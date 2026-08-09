@@ -592,6 +592,14 @@ void SceneHierarchyPanel::DrawMaterialComponent(MaterialComponent &component) {
             component.MaterialPtr->SetFloat("shininess", std::pow(2.0f, logShininess));
         }
 
+        // 镜面强度系数（写入材质 "specularStrength" 参数，独立控制高光亮暗，
+        // 与 shininess 的高光形态解耦）
+        float specularStrength = component.MaterialPtr->GetFloat("specularStrength", 0.5f);
+        if (ImGui::SliderFloat("Specular Strength (镜面强度)", &specularStrength,
+                               0.0f, 2.0f)) {
+            component.MaterialPtr->SetFloat("specularStrength", specularStrength);
+        }
+
         ImGui::Separator();
 
         // ---- 渲染状态 ----

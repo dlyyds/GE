@@ -401,12 +401,15 @@ void Renderer3D::EndScene() {
                           1, 1);
         }
 
-        // 绑定材质 UBO（set 1, binding 2）：存材质标量参数（如 shininess）。
+        // 绑定材质 UBO（set 1, binding 2）：存材质标量参数（shininess、specularStrength）。
         // 按批次写入，同批次的实例共享同一材质，故值恒定，无需 per-instance。
         MaterialUBO materialUBO{};
         materialUBO.params.x = batch.material
             ? batch.material->GetFloat("shininess", 32.0f)
             : 32.0f;
+        materialUBO.params.y = batch.material
+            ? batch.material->GetFloat("specularStrength", 0.5f)
+            : 0.5f;
         BufferAllocation materialUboAlloc = frame.AllocateBuffer(
             vk::BufferUsageFlagBits::eUniformBuffer, sizeof(MaterialUBO));
         materialUboAlloc.update(materialUBO);

@@ -49,9 +49,6 @@ private:
 
     /// 新建空场景（清空当前场景内容）
     void NewScene();
-
-    /// 场景中查找主相机（Primary=true）并绑定到 m_CameraEntity
-    void RebindCameraEntity();
 };
 
 } // namespace GE

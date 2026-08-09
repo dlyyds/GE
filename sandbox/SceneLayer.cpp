@@ -154,7 +154,7 @@ bool SceneLayer::LoadSceneFromFile(std::string_view filepath) {
     // 创建序列化器（纹理/材质/网格由全局管理器加载，无需 device）
     m_SceneSerializer = std::make_unique<SceneSerializer>(m_Scene.get());
 
-    if (!m_SceneSerializer->Deserialize(filepath)) {
+    if (!m_SceneSerializer->Deserialize(filepath.data())) {
         return false;
     }
 
@@ -162,8 +162,8 @@ bool SceneLayer::LoadSceneFromFile(std::string_view filepath) {
     m_HierarchyPanel.SetContext(m_Scene.get());
     m_HierarchyPanel.SetSelectedEntity({});
 
-    // 尝试重新绑定相机实体
-    RebindCameraEntity();
+    // 重新绑定主相机实体（Primary=true，否则取第一个相机实体）
+    m_CameraEntity = m_Scene->GetPrimaryCameraEntity();
     return true;
 }
 
@@ -191,11 +191,6 @@ void SceneLayer::NewScene() {
     // 更新层级面板
     m_HierarchyPanel.SetContext(m_Scene.get());
     m_HierarchyPanel.SetSelectedEntity({});
-}
-
-void SceneLayer::RebindCameraEntity() {
-    // 交由场景查找主相机（Primary=true，否则取第一个相机实体）
-    m_CameraEntity = m_Scene ? m_Scene->GetPrimaryCameraEntity() : Entity{};
 }
 
 } // namespace GE

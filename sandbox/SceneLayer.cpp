@@ -10,6 +10,7 @@
 #include "GE/Utils/PlatformUtils.h"
 
 #include "imgui.h"
+#include "Render/Renderer3D.h"
 
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -32,7 +33,7 @@ void SceneLayer::OnAttach() {
 void SceneLayer::OnDetach() {
     m_CameraEntity = {};
     m_HierarchyPanel.SetContext(nullptr);
-    m_Viewport.reset();   // 释放离屏渲染目标（GPU 资源）
+    m_Viewport.reset(); // 释放离屏渲染目标（GPU 资源）
     m_Scene.reset();
 }
 
@@ -48,9 +49,14 @@ void SceneLayer::OnUpdate(Timestep &ts) {
     if (!m_Viewport) {
         m_Viewport = std::make_unique<SceneViewport>();
     }
-    m_Viewport->OnResize(vpW, vpH);
+    // 首次调用 Create 创建离屏目标，之后用 OnResize 在尺寸变化时重建
     if (!m_Viewport->GetRenderTarget()) {
-        return;   // 目标尚未创建成功
+        m_Viewport->Create(Renderer::GetVulkanContext().GetDevice(), vpW, vpH);
+    } else {
+        m_Viewport->OnResize(vpW, vpH);
+    }
+    if (!m_Viewport->GetRenderTarget()) {
+        return; // 目标尚未创建成功
     }
 
     float aspect = static_cast<float>(vpW) / static_cast<float>(vpH);

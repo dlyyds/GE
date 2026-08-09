@@ -192,10 +192,13 @@ void Renderer3D::EndScene() {
 
     auto &cmd = Renderer::GetFrameCmd();
     auto vkCmd = cmd.GetHandle();
-    auto &swapchain = Renderer::GetSwapchain();
-    auto extent = swapchain.GetExtent();
     auto &frame = Renderer::GetRenderContext().GetActiveFrame();
-    auto &renderTarget = frame.GetRenderTarget();
+
+    // 有效渲染目标：优先使用外部指定的目标（离屏），否则使用当前帧的 swapchain 目标。
+    // 视口/渲染区域/颜色格式/颜色附件均取自该目标，便于把场景渲染进离屏纹理。
+    auto &renderTarget = m_RenderTargetOverride ? *m_RenderTargetOverride
+                                                : frame.GetRenderTarget();
+    auto extent = renderTarget.GetExtent();
 
     // ── 1. 分配 Frame UBO（所有网格共享） ─────────────────────────────
     FrameUBO frameUBO{};
@@ -281,7 +284,7 @@ void Renderer3D::EndScene() {
 
         const auto &desc = renderTarget.GetDesc();
         // 颜色附件：清除
-        vk::ImageView colorView = renderTarget.GetSwapchainView().GetHandle();
+        vk::ImageView colorView = renderTarget.GetColorResolveView().GetHandle();
         renderInfo.AddColorAttachment(colorView,
                                       vk::AttachmentLoadOp::eClear,
                                       vk::AttachmentStoreOp::eStore,
@@ -325,7 +328,7 @@ void Renderer3D::EndScene() {
     cmd.BindPipelineLayout(*m_PipelineLayout);
 
     auto &ps = cmd.GetPipelineState();
-    auto colorFmt = swapchain.GetFormat();
+    auto colorFmt = renderTarget.GetColorFormat();
 
     // —— 4a. 附件格式 ——
     vk::Format depthFmt = vk::Format::eUndefined;

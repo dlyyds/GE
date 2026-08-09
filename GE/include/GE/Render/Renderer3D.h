@@ -38,6 +38,7 @@ namespace GE {
 
 class VulkanPipelineLayout;
 class VulkanShaderModule;
+class RenderTarget;
 
 /**
  * @brief 3D 网格渲染器。
@@ -129,6 +130,17 @@ public:
 
     /// 设置光照参数。
     void SetLightParams(const LightParams &params) { m_LightParams = params; }
+
+    /**
+     * @brief 设置本次 EndScene 的渲染目标。
+     *
+     * 传 nullptr（默认）时渲染到当前帧的 swapchain 目标；传非空时渲染到
+     * 指定的离屏目标（如把 3D 场景渲染进 ImGui 视口窗口）。
+     * 每次 BeginScene 前设置，EndScene 后建议复位为 nullptr。
+     *
+     * @param target 渲染目标指针（不持有所有权），nullptr = 渲染到 swapchain
+     */
+    void SetRenderTarget(RenderTarget *target) { m_RenderTargetOverride = target; }
 
     // ========================================================================
     // 场景接口
@@ -289,6 +301,9 @@ private:
 
     /// 清屏颜色（r < 0 表示不清屏）
     glm::vec4 m_ClearColor{-1.0f};
+
+    /// 渲染目标覆盖（nullptr 时渲染到 swapchain）。由 SetRenderTarget 设置。
+    RenderTarget *m_RenderTargetOverride = nullptr;
 
     /// 光照参数
     LightParams m_LightParams{};

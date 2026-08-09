@@ -47,6 +47,12 @@ struct RenderTargetDesc {
     vk::Format colorFormat = vk::Format::eUndefined;  ///< 颜色格式（默认从 swapchain 推断）
     vk::ClearValue colorClearValue{};             ///< 颜色清除值
 
+    // --- 离屏模式 ---
+    // 置为 true 时，RenderTarget 自己创建内部颜色图（可被采样），不绑定 swapchain 图，
+    // 用作离屏渲染（如把 3D 场景渲染进 ImGui 视口窗口）。此时构造函数的
+    // swapchainView 传 nullptr。
+    bool enableOffscreen = false;                 ///< 是否使用离屏颜色附件
+
     // --- MSAA ---
     vk::SampleCountFlagBits sampleCount = vk::SampleCountFlagBits::e1;  ///< 采样数（1 = 无 MSAA）
     bool enableMSAA = false;                      ///< 是否启用 MSAA
@@ -101,10 +107,12 @@ public:
     // --- 构造函数 ---
 
     /**
-     * @brief 创建 RenderTarget（绑定到 swapchain image view）。
+     * @brief 创建 RenderTarget。
      * @param device        Vulkan 设备
      * @param desc          渲染目标配置
-     * @param swapchainView 交换链当前帧的 VulkanImageView（取得所有权）
+     * @param swapchainView 交换链当前帧的 VulkanImageView（取得所有权）。
+     *                      离屏模式（desc.enableOffscreen == true）时传 nullptr，
+     *                      颜色附件由内部创建。
      */
     RenderTarget(VulkanDevice &device,
                  const RenderTargetDesc &desc,
@@ -122,6 +130,7 @@ public:
     [[nodiscard]] vk::Format   GetDepthFormat() const { return m_Desc.depthFormat; }
     [[nodiscard]] bool         HasMSAA() const { return m_Desc.enableMSAA && m_Desc.sampleCount != vk::SampleCountFlagBits::e1; }
     [[nodiscard]] bool         HasDepth() const { return m_Desc.enableDepth; }
+    [[nodiscard]] bool         HasOffscreenColor() const { return m_Desc.enableOffscreen; }
     [[nodiscard]] bool         HasStencil() const { return m_Desc.enableStencil; }
     [[nodiscard]] vk::SampleCountFlagBits GetSampleCount() const { return m_Desc.sampleCount; }
     [[nodiscard]] const RenderTargetDesc &GetDesc() const { return m_Desc; }
@@ -130,8 +139,10 @@ public:
     [[nodiscard]] bool HasSwapchainView() const { return m_SwapchainView != nullptr; }
     [[nodiscard]] VulkanImageView &GetSwapchainView() { return *m_SwapchainView; }
     [[nodiscard]] const VulkanImageView &GetSwapchainView() const { return *m_SwapchainView; }
-    [[nodiscard]] VulkanImageView &GetColorResolveView();   ///< MSAA 时返回多采样缓冲的 view，非 MSAA 时返回 swapchainView
+    [[nodiscard]] VulkanImageView &GetColorResolveView();   ///< MSAA 时返回多采样缓冲的 view，离屏时返回私有颜色 view，否则返回 swapchainView
     [[nodiscard]] const VulkanImageView &GetColorResolveView() const;
+    [[nodiscard]] VulkanImageView &GetColorView();   ///< 返回颜色附件 view（离屏时返回私有离屏颜色 view，否则返回 swapchainView）
+    [[nodiscard]] const VulkanImageView &GetColorView() const;
     [[nodiscard]] VulkanImageView &GetDepthView();
     [[nodiscard]] const VulkanImageView &GetDepthView() const;
 
@@ -147,6 +158,8 @@ private:
 
     /// 创建 MSAA 颜色缓冲
     void CreateMSAAColorBuffer();
+    /// 创建离屏颜色缓冲（enableOffscreen 时调用）
+    void CreateOffscreenColorBuffer();
     /// 创建深度/模板缓冲
     void CreateDepthBuffer();
 
@@ -161,6 +174,10 @@ private:
 
     // Swapchain 颜色附件（拥有所有权）
     std::unique_ptr<VulkanImageView> m_SwapchainView;
+
+    // 离屏颜色缓冲（enableOffscreen 时内部创建，可被采样）
+    std::unique_ptr<VulkanImage>     m_ColorImage;
+    std::unique_ptr<VulkanImageView> m_ColorView;
 
     // MSAA 多采样颜色缓冲（内部创建）
     std::unique_ptr<VulkanImage>     m_MSAAColorImage;

@@ -7,6 +7,7 @@
 
 #include "Panels/SceneHierarchyPanel.h"
 #include "Panels/ResourcePanel.h"
+#include "SceneViewport.h"
 
 #include <memory>
 
@@ -39,6 +40,11 @@ private:
     Entity m_CameraEntity;                                       ///< 相机实体
     SceneHierarchyPanel m_HierarchyPanel;                        ///< 场景层级面板（ImGui）
     ResourcePanel m_ResourcePanel;                               ///< 资源面板（ImGui）
+
+    /// 场景视口（离屏渲染目标 + ImGui 图片），场景渲染进它再贴到窗口
+    std::unique_ptr<SceneViewport> m_Viewport;
+    /// 视口窗口尺寸（上一帧由 OnImGuiRender 记录，供 OnUpdate 离屏渲染使用）
+    glm::vec2 m_ViewportSize{0.0f, 0.0f};
 
     /// 保存场景到文件（弹出文件对话框）
     void SaveScene();

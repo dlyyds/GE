@@ -31,6 +31,8 @@ RenderTarget::RenderTarget(RenderTarget &&other) noexcept
     : m_Device(other.m_Device),
       m_Desc(other.m_Desc),
       m_SwapchainView(std::move(other.m_SwapchainView)),
+      m_ColorImage(std::move(other.m_ColorImage)),
+      m_ColorView(std::move(other.m_ColorView)),
       m_MSAAColorImage(std::move(other.m_MSAAColorImage)),
       m_MSAAColorView(std::move(other.m_MSAAColorView)),
       m_DepthImage(std::move(other.m_DepthImage)),
@@ -47,12 +49,32 @@ VulkanImageView &RenderTarget::GetColorResolveView() {
     if (HasMSAA() && m_MSAAColorView != nullptr) {
         return *m_MSAAColorView;
     }
+    if (HasOffscreenColor()) {
+        return *m_ColorView;
+    }
     return *m_SwapchainView;
 }
 
 const VulkanImageView &RenderTarget::GetColorResolveView() const {
     if (HasMSAA() && m_MSAAColorView != nullptr) {
         return *m_MSAAColorView;
+    }
+    if (HasOffscreenColor()) {
+        return *m_ColorView;
+    }
+    return *m_SwapchainView;
+}
+
+VulkanImageView &RenderTarget::GetColorView() {
+    if (HasOffscreenColor()) {
+        return *m_ColorView;
+    }
+    return *m_SwapchainView;
+}
+
+const VulkanImageView &RenderTarget::GetColorView() const {
+    if (HasOffscreenColor()) {
+        return *m_ColorView;
     }
     return *m_SwapchainView;
 }
@@ -72,6 +94,11 @@ const VulkanImageView &RenderTarget::GetDepthView() const {
 // ============================================================================
 
 void RenderTarget::CreateResources() {
+    // --- 离屏颜色缓冲 ---
+    if (m_Desc.enableOffscreen) {
+        CreateOffscreenColorBuffer();
+    }
+
     // --- MSAA 颜色缓冲 ---
     if (m_Desc.enableMSAA && m_Desc.sampleCount != vk::SampleCountFlagBits::e1) {
         CreateMSAAColorBuffer();
@@ -90,6 +117,8 @@ void RenderTarget::DestroyResources() {
     m_DepthImage.reset();
     m_MSAAColorView.reset();
     m_MSAAColorImage.reset();
+    m_ColorView.reset();
+    m_ColorImage.reset();
     m_SwapchainView.reset();
 }
 
@@ -116,6 +145,42 @@ void RenderTarget::CreateMSAAColorBuffer() {
         *m_MSAAColorImage,
         vk::ImageViewType::e2D,
         m_Desc.colorFormat);
+}
+
+// ============================================================================
+// 离屏颜色缓冲
+// ============================================================================
+
+void RenderTarget::CreateOffscreenColorBuffer() {
+    GE_CORE_ASSERT(m_Desc.colorFormat != vk::Format::eUndefined,
+                   "离屏颜色缓冲需要指定 colorFormat");
+
+    // 颜色图需可被渲染（eColorAttachment）且可被采样（eSampled，供 ImGui 显示）。
+    vk::ImageUsageFlags usage = vk::ImageUsageFlagBits::eColorAttachment
+                              | vk::ImageUsageFlagBits::eSampled;
+
+    m_ColorImage = std::make_unique<VulkanImage>(
+        m_Device,
+        VulkanImageBuilder(m_Desc.extent.width, m_Desc.extent.height)
+            .with_format(m_Desc.colorFormat)
+            .with_usage(usage));
+
+    m_ColorView = std::make_unique<VulkanImageView>(
+        *m_ColorImage,
+        vk::ImageViewType::e2D,
+        m_Desc.colorFormat);
+
+    // 布局转换：UNDEFINED → GENERAL，并长期保持 GENERAL。
+    // GENERAL 布局既可作为颜色附件渲染，也可被 ImGui 采样，
+    // 从而省去每帧在 ColorAttachmentOptimal / ShaderReadOnlyOptimal 之间的切换。
+    auto &uploadCmd = m_Device.RequestCommandBuffer(vk::CommandBufferLevel::ePrimary, true);
+    image_utils::TransitionLayout(uploadCmd.GetHandle(), m_ColorImage->GetHandle(),
+                                  vk::ImageLayout::eUndefined,
+                                  vk::ImageLayout::eGeneral);
+    uploadCmd.End();
+
+    auto &graphicsQueue = m_Device.GetQueueByFlags(vk::QueueFlagBits::eGraphics, 0);
+    m_Device.FlushCommandBuffer(uploadCmd, graphicsQueue.GetHandle());
 }
 
 // ============================================================================

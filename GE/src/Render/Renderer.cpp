@@ -9,6 +9,8 @@
 #include "Core/Log.h"
 #include "Debug/Assert.h"
 #include "Render/VulkanBase/VulkanImage.h"
+#include "Render/VulkanBase/VulkanRenderingInfo.h"
+#include "Render/VulkanBase/VulkanRenderFrame.h"
 
 #include "tracy/Tracy.hpp"
 
@@ -95,6 +97,28 @@ VulkanCommandBuffer &Renderer::BeginFrame() {
         image_utils::TransitionLayout(m_ActiveFrameCmd->GetHandle(), img.GetHandle(),
                                       vk::ImageLayout::eUndefined,
                                       vk::ImageLayout::eColorAttachmentOptimal);
+    }
+
+    // 4. 清屏到暗色背景（动态渲染）。
+    //    场景现已离屏渲染（不再直接写 swapchain），这里为 ImGui 先清一个
+    //    干净底色，避免残留/未定义内容。其它仍直接渲染到 swapchain 的层会覆盖它。
+    {
+        auto &frame     = m_RenderContext->GetActiveFrame();
+        auto &swapchain = m_RenderContext->GetSwapchain();
+        auto extent     = swapchain.GetExtent();
+
+        vk::ClearValue clearValue;
+        clearValue.color = std::array<float, 4>{0.1f, 0.1f, 0.15f, 1.0f};
+
+        VulkanRenderingInfo renderInfo;
+        renderInfo.SetRenderArea(0, 0, extent.width, extent.height);
+        renderInfo.AddColorAttachment(
+            frame.GetRenderTarget().GetSwapchainView().GetHandle(),
+            vk::AttachmentLoadOp::eClear,
+            vk::AttachmentStoreOp::eStore,
+            clearValue);
+        renderInfo.Begin(m_ActiveFrameCmd->GetHandle());
+        VulkanRenderingInfo::End(m_ActiveFrameCmd->GetHandle());
     }
 
     return *m_ActiveFrameCmd;

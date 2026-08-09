@@ -4,6 +4,8 @@
 
 #include "DockSpaceLayer.h"
 
+#include "SceneLayer.h"
+
 #include "imgui.h"
 #include "imgui_internal.h" // DockBuilder 系列 API
 
@@ -85,6 +87,23 @@ void DockSpaceLayer::OnImGuiRender() {
     // 菜单栏
     if (ImGui::BeginMenuBar()) {
         if (ImGui::BeginMenu("文件")) {
+            // 仅当场景层已绑定时才启用场景操作
+            if (ImGui::MenuItem("新建场景")) {
+                if (m_SceneLayer) {
+                    m_SceneLayer->NewScene();
+                }
+            }
+            if (ImGui::MenuItem("打开场景...")) {
+                if (m_SceneLayer) {
+                    m_SceneLayer->LoadScene();
+                }
+            }
+            if (ImGui::MenuItem("保存场景...")) {
+                if (m_SceneLayer) {
+                    m_SceneLayer->SaveScene();
+                }
+            }
+            ImGui::Separator();
             if (ImGui::MenuItem("重置布局")) {
                 // 清掉旧停靠节点，下一帧重建默认布局
                 ImGui::DockBuilderRemoveNode(dockspace_id);

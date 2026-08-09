@@ -4,6 +4,8 @@
 
 namespace GE {
 
+class SceneLayer;
+
 /// 全屏 DockSpace 宿主层：在每帧 ImGui 渲染时第一个执行，创建主停靠区并建立默认布局。
 ///
 /// 所有编辑器窗口（Scene / SceneLayer / Scene Hierarchy / Properties / Resource / 渲染统计）
@@ -27,7 +29,13 @@ public:
 
     void OnImGuiRender() override;
 
+    /// 绑定场景层，用于在顶部「文件」菜单中触发 保存 / 加载 / 新建 场景操作
+    void SetSceneLayer(SceneLayer *scene_layer) { m_SceneLayer = scene_layer; }
+
 private:
+    /// 场景层句柄（由 SandboxApp 在创建两层后绑定）
+    SceneLayer *m_SceneLayer = nullptr;
+
     /// 是否需要在下一帧重新建立默认布局（首帧或用户点击"重置布局"后为 true）
     bool m_FirstFrame = true;
 };

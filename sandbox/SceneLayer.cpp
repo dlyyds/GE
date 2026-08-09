@@ -115,8 +115,10 @@ void SceneLayer::OnEvent(Event &event) {
         m_Scene->OnEvent(event);
     }
 
-    // 将事件转发给相机（处理鼠标移动、滚轮、按键等交互）
-    if (m_CameraEntity && !event.Handled) {
+    // 将事件转发给相机（处理鼠标移动、滚轮、按键等交互）。
+    // 仅当鼠标悬停在 Scene 视口窗口内时才转发，避免在操作
+    // Hierarchy/Properties 等面板时误触发相机视角。
+    if (m_CameraEntity && !event.Handled && m_SceneWindowHovered) {
         auto &cameraComp = m_CameraEntity.GetComponent<CameraComponent>();
         cameraComp.CameraInstance.OnEvent(event);
     }
@@ -139,6 +141,9 @@ void SceneLayer::OnImGuiRender() {
     ImGui::SetNextWindowDockID(m_DockSpaceID, ImGuiCond_FirstUseEver);
     ImGui::Begin("Scene");
     {
+        // 记录鼠标是否悬停在 Scene 窗口内（供下帧 OnEvent 判断是否把输入给相机）
+        m_SceneWindowHovered = ImGui::IsWindowHovered();
+
         // 记录视口尺寸（供下帧 OnUpdate 离屏渲染使用）
         ImVec2 avail = ImGui::GetContentRegionAvail();
         m_ViewportSize = {avail.x, avail.y};
@@ -156,22 +161,7 @@ void SceneLayer::OnImGuiRender() {
     ImGui::Text("场景序列化测试（Scene + SceneSerializer + Renderer3D）");
     ImGui::Separator();
 
-    // ---- 场景文件控制 ----
-    {
-        ImGui::Text("场景文件");
-        if (ImGui::Button("保存场景...")) {
-            SaveScene();
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("加载场景...")) {
-            LoadScene();
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("新建场景")) {
-            NewScene();
-        }
-        ImGui::Separator();
-    }
+    // 场景的 保存 / 加载 / 新建 已移到顶部菜单「文件」中
 
     // ---- 场景统计信息 ----
     if (m_Scene) {

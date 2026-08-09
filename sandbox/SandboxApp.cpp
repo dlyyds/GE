@@ -24,8 +24,12 @@ public:
         //PushLayer(std::make_shared<TextureLayer>());
         //PushLayer(std::make_shared<ModelTestLayer>());
         // DockSpaceLayer 须最先渲染，才能让后续窗口停靠进它创建的 DockSpace
-        PushLayer(std::make_shared<DockSpaceLayer>());
-        PushLayer(std::make_shared<SceneLayer>());
+        auto dock_space = std::make_shared<DockSpaceLayer>();
+        auto scene_layer = std::make_shared<SceneLayer>();
+        // 让顶部「文件」菜单里的场景操作绑定到场景层
+        dock_space->SetSceneLayer(scene_layer.get());
+        PushLayer(dock_space);
+        PushLayer(scene_layer);
     }
 
     ~Sandbox() override = default;

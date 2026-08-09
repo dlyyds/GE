@@ -36,6 +36,15 @@ public:
 
     void OnImGuiRender() override;
 
+    /// 保存场景到文件（弹出文件对话框），供顶部菜单调用
+    void SaveScene();
+
+    /// 从文件加载场景（弹出文件对话框，会清空当前场景），供顶部菜单调用
+    void LoadScene();
+
+    /// 新建空场景（清空当前场景内容），供顶部菜单调用
+    void NewScene();
+
 private:
     std::unique_ptr<Scene> m_Scene;                              ///< 场景
     std::unique_ptr<SceneSerializer> m_SceneSerializer;          ///< 场景序列化器（纹理/材质/网格由全局管理器持有）
@@ -54,17 +63,11 @@ private:
     /// 停靠目标 DockSpace ID（根上下文取 "MainDockspace"）
     ImGuiID m_DockSpaceID = 0;
 
-    /// 保存场景到文件（弹出文件对话框）
-    void SaveScene();
+    /// 鼠标是否悬停在 Scene 视口窗口内（上一帧 OnImGuiRender 记录，供 OnEvent 判断）
+    bool m_SceneWindowHovered = false;
 
     /// 从文件加载场景（不清空当前场景句柄，会重建场景并重新绑定相机）
     bool LoadSceneFromFile(std::string_view filepath);
-
-    /// 从文件加载场景（弹出文件对话框，会清空当前场景）
-    void LoadScene();
-
-    /// 新建空场景（清空当前场景内容）
-    void NewScene();
 };
 
 } // namespace GE

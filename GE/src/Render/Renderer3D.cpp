@@ -243,13 +243,13 @@ void Renderer3D::EndScene() {
             ++i;
         }
 
-        // 收集本批次实例的 per-instance 数据
-        // 同批次的实例共享同一材质，shininess 取自材质参数（缺省 32.0）
-        float shininess = mat ? mat->GetFloat("shininess", 32.0f) : 32.0f;
+        // 收集本批次实例的 per-instance 数据（model + color）
+        // 材质标量参数（如 shininess）已迁入 per-material UBO，
+        // 在绘制循环中按批次绑定，不在此冗余写入实例数据。
         uint32_t firstInstance = static_cast<uint32_t>(instances.size());
         for (size_t k = runStart; k < i; ++k) {
             const auto &inst = m_Meshes[k];
-            instances.push_back(InstanceData{inst.transform, inst.color, shininess});
+            instances.push_back(InstanceData{inst.transform, inst.color});
         }
 
         batches.push_back(RenderBatch{
@@ -400,6 +400,18 @@ void Renderer3D::EndScene() {
                           normalTex->GetSampler(),
                           1, 1);
         }
+
+        // 绑定材质 UBO（set 1, binding 2）：存材质标量参数（如 shininess）。
+        // 按批次写入，同批次的实例共享同一材质，故值恒定，无需 per-instance。
+        MaterialUBO materialUBO{};
+        materialUBO.params.x = batch.material
+            ? batch.material->GetFloat("shininess", 32.0f)
+            : 32.0f;
+        BufferAllocation materialUboAlloc = frame.AllocateBuffer(
+            vk::BufferUsageFlagBits::eUniformBuffer, sizeof(MaterialUBO));
+        materialUboAlloc.update(materialUBO);
+        cmd.BindBuffer(materialUboAlloc.get_buffer(), materialUboAlloc.get_offset(),
+                       materialUboAlloc.get_size(), 1, 2);
 
         // 绑定全局实例 SSBO（set 2, binding 0）——所有批次共享同一缓冲
         cmd.BindBuffer(instanceBuffer.get_buffer(), instanceBuffer.get_offset(),

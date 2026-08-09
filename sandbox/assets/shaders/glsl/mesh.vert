@@ -33,11 +33,13 @@ layout (set = 0, binding = 0, std140) uniform FrameUBO
     vec4 ambient;
 } frame;
 
+// 每个实例的数据：model（模型矩阵）+ color（叠加 tint）。
+// 材质标量参数（如 shininess）已移到片元着色器的 per-material UBO（set 1 binding 2），
+// 不再在实例数据中重复存储。
 struct InstanceData
 {
     mat4 model;
     vec4 color;
-    float shininess;
 };
 layout (set = 2, binding = 0, std430) readonly buffer InstanceBuffer
 {
@@ -52,13 +54,11 @@ layout (location = 4) out flat vec4 outColor;// per-instance tint，flat 不插�
 // 法线贴图：世界空间切线 (T) 与副切线 (B)，片元着色器据此重建 TBN 矩阵
 layout (location = 5) out vec3 outTangent;
 layout (location = 6) out vec3 outBitangent;
-layout (location = 7) out flat float outShininess;// 材质高光指数（per-instance，flat 不插值）
 
 void main()
 {
     outUV = inUV;
     outColor = instanceBuffer.instances[gl_InstanceIndex].color;
-    outShininess = instanceBuffer.instances[gl_InstanceIndex].shininess;
 
     mat4 model = instanceBuffer.instances[gl_InstanceIndex].model;
     vec4 worldPos = model * vec4(inPos, 1.0);

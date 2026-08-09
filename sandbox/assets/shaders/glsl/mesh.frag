@@ -10,6 +10,13 @@
 layout (set = 1, binding = 0) uniform sampler2D samplerColor;
 layout (set = 1, binding = 1) uniform sampler2D samplerNormal;   // 法线贴图（切线空间）
 
+// 每材质 UB（按批次绑定）：存放材质标量参数。
+// 当前仅 shininess（存于 params.x），yzw 预留供后续材质参数扩展。
+layout (set = 1, binding = 2, std140) uniform MaterialUBO
+{
+    vec4 params;
+} material;
+
 layout (set = 0, binding = 0, std140) uniform FrameUBO
 {
     mat4 projection;
@@ -36,7 +43,6 @@ layout (location = 3) in vec3 inViewVec;
 layout (location = 4) in flat vec4 inColor;    // per-instance tint，由顶点着色器传入
 layout (location = 5) in vec3 inTangent;       // 世界空间切线
 layout (location = 6) in vec3 inBitangent;     // 世界空间副切线
-layout (location = 7) in flat float inShininess; // 材质高光指数（由顶点着色器传入）
 
 layout (location = 0) out vec4 outFragColor;
 
@@ -100,7 +106,7 @@ void main()
     vec3 N = normalize(mat3(T, B, normalize(inNormal)) * tangentNormal);
 
     vec3 V = normalize(inViewVec);
-    float shininess = inShininess;
+    float shininess = material.params.x;
 
     // 环境光
     vec3 ambientColor = frame.ambient.rgb * frame.ambient.w;

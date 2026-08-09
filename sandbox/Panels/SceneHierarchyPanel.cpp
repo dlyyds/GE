@@ -436,6 +436,8 @@ void SceneHierarchyPanel::DrawMeshComponent(MeshComponent &component) {
     // 显示网格信息（只读）
     ImGui::Text("Mesh: %s", component.MeshPtr ? "(assigned)" : "(null)");
     if (component.MeshPtr) {
+        // 文件路径（内置几何体为 builtin:xxx 前缀）
+        ImGui::Text("  Path: %s", component.MeshPtr->GetFilePath().c_str());
         ImGui::Text("  Vertices: %u", component.MeshPtr->GetVertexCount());
         ImGui::Text("  Indices:  %u", component.MeshPtr->GetIndexCount());
     }

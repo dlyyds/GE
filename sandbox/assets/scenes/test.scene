@@ -1,0 +1,80 @@
+Scene:
+  Entities:
+    - Name: PointLight
+      Transform:
+        Translation: [2, 2, 2]
+        Rotation: [0, 0, 0]
+        Scale: [1, 1, 1]
+      PointLight:
+        Color: [1, 0.2, 0.2, 1.5]
+        RadiusInv: 0.4
+    - Name: Sphere
+      Transform:
+        Translation: [-1.5, 1.8, 0]
+        Rotation: [0, 0.008726646, 0]
+        Scale: [1, 1, 1]
+      MeshRenderer:
+        Color: [1, 0.99607843, 1, 1]
+        Mesh: builtin:sphere
+      Material:
+        AlbedoTexture: assets/textures/Checkerboard.png
+        NormalTexture: assets/textures/normal_stone.jpg
+        FloatParams:
+          shininess: 64
+          specularStrength: 0.6
+    - Name: ColoredCube
+      Transform:
+        Translation: [1.5, 0, 0]
+        Rotation: [0, 0, 0]
+        Scale: [1, 1, 1]
+      MeshRenderer:
+        Color: [0.2, 0.6, 1, 1]
+        Mesh: builtin:cube
+    - Name: TexturedCube
+      Transform:
+        Translation: [0, 0, 0]
+        Rotation: [0, 0, 0]
+        Scale: [1, 1, 1]
+      MeshRenderer:
+        Color: [1, 1, 1, 1]
+        Mesh: builtin:cube
+      Material:
+        AlbedoTexture: assets/textures/Checkerboard.png
+        NormalTexture: assets/textures/normal_stone.jpg
+        FloatParams:
+          shininess: 64
+          specularStrength: 0.6
+    - Name: AmbientLight
+      Transform:
+        Translation: [0, 0, 0]
+        Rotation: [0, 0, 0]
+        Scale: [1, 1, 1]
+      AmbientLight:
+        Color: [0.3, 0.3, 0.35, 1]
+    - Name: DirectionalLight
+      Transform:
+        Translation: [0, 0, 0]
+        Rotation: [-0.7853982, 0.5235988, 0]
+        Scale: [1, 1, 1]
+      DirectionalLight:
+        Color: [1, 0.95, 0.85, 1.2]
+    - Name: MainCamera
+      Transform:
+        Translation: [0, 0, 0]
+        Rotation: [0, 0, 0]
+        Scale: [1, 1, 1]
+      Camera:
+        Primary: true
+        FixedAspectRatio: false
+        Mode: Orbit
+        Fov: 60
+        Aspect: 1.7777778
+        Near: 0.1
+        Far: 100
+        Target: [0, 0, 0]
+        Theta: 0
+        Phi: 0
+        Distance: 11
+        Position: [0, 0, 11]
+        Yaw: 0
+        Pitch: 0

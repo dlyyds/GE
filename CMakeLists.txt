@@ -159,27 +159,17 @@ else ()
 endif ()
 
 
-#Sandbox EXE
+#Sandbox EXE（最小冒烟测试应用）
 # ==============================================
 
 set(Sandbox_SRC
         ${CMAKE_SOURCE_DIR}/sandbox/SandboxApp.cpp
-        ${CMAKE_SOURCE_DIR}/sandbox/SceneLayer.cpp
-        ${CMAKE_SOURCE_DIR}/sandbox/SceneViewport.cpp
-        ${CMAKE_SOURCE_DIR}/sandbox/DockSpaceLayer.cpp
-        ${CMAKE_SOURCE_DIR}/sandbox/HierarchyLayer.cpp
-        ${CMAKE_SOURCE_DIR}/sandbox/ResourceLayer.cpp
-        ${CMAKE_SOURCE_DIR}/sandbox/Panels/SceneHierarchyPanel.cpp
-        ${CMAKE_SOURCE_DIR}/sandbox/Panels/ResourcePanel.cpp
 )
 
 add_executable(${Sandbox_NAME} ${Sandbox_SRC})
 target_include_directories(${Sandbox_NAME} PRIVATE
         ${CMAKE_SOURCE_DIR}/GE/include
         ${CMAKE_SOURCE_DIR}/sandbox
-)
-target_compile_definitions(${Sandbox_NAME} PRIVATE
-
 )
 
 
@@ -188,17 +178,25 @@ target_link_libraries(${Sandbox_NAME} PRIVATE ${GE_NAME})
 add_subdirectory(sandbox/assets/shaders/glsl)
 
 
-#Editor
-#file(GLOB Editor_SRC
-#        ${CMAKE_SOURCE_DIR}/GE_Editor/src/*.cpp
-#        ${CMAKE_SOURCE_DIR}/GE_Editor/src/Panels/*.cpp
-#)
-#
-#
-#add_executable(${Editor_NAME} ${Editor_SRC})
-#target_include_directories(${Editor_NAME} PRIVATE
-#        ${CMAKE_SOURCE_DIR}/GE/include
-#        ${CMAKE_SOURCE_DIR}/GE/third_party/glm
-#        ${CMAKE_SOURCE_DIR}/GE/third_party/imgui
-#)
-#target_link_libraries(${Editor_NAME} PRIVATE ${GE_NAME})
+#GE_Editor EXE（独立编辑器可执行）
+# ==============================================
+
+set(Editor_SRC
+        ${CMAKE_SOURCE_DIR}/GE_Editor/src/EditorApp.cpp
+        ${CMAKE_SOURCE_DIR}/GE_Editor/src/SceneLayer.cpp
+        ${CMAKE_SOURCE_DIR}/GE_Editor/src/SceneViewport.cpp
+        ${CMAKE_SOURCE_DIR}/GE_Editor/src/DockSpaceLayer.cpp
+        ${CMAKE_SOURCE_DIR}/GE_Editor/src/HierarchyLayer.cpp
+        ${CMAKE_SOURCE_DIR}/GE_Editor/src/ResourceLayer.cpp
+        ${CMAKE_SOURCE_DIR}/GE_Editor/src/Panels/SceneHierarchyPanel.cpp
+        ${CMAKE_SOURCE_DIR}/GE_Editor/src/Panels/ResourcePanel.cpp
+)
+
+add_executable(${Editor_NAME} ${Editor_SRC})
+target_include_directories(${Editor_NAME} PRIVATE
+        ${CMAKE_SOURCE_DIR}/GE/include
+        ${CMAKE_SOURCE_DIR}/GE_Editor/src
+)
+
+
+target_link_libraries(${Editor_NAME} PRIVATE ${GE_NAME})

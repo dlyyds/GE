@@ -1,34 +1,14 @@
 #include <GE.h>
 #include <GE/Core/EntryPoint.h>
 
-
-#include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtc/type_ptr.hpp>
-
-
-#include "SceneLayer.h"
-#include "HierarchyLayer.h"
-#include "ResourceLayer.h"
-#include "DockSpaceLayer.h"
-
 namespace GE {
+/// 最小沙盒应用：仅运行引擎主循环（ImGui），作为引擎冒烟测试。
+/// 编辑器功能已拆分到独立的 GE_Editor 可执行。
 class Sandbox : public Application {
 public:
     explicit Sandbox(ApplicationCommandLineArgs args) : Application("Sandbox", args) {
         GE_PROFILE_FUNCTION();
-        // DockSpaceLayer 须最先渲染，才能让后续窗口停靠进它创建的 DockSpace
-        auto dock_space = std::make_shared<DockSpaceLayer>();
-        // 共享场景上下文：场景层与面板层共同持有，新建/加载场景时自动同步
-        auto scene_ctx = std::make_shared<EditorContext>();
-        auto scene_layer = std::make_shared<SceneLayer>(scene_ctx);
-        auto hierarchy_layer = std::make_shared<HierarchyLayer>(scene_ctx);
-        auto resource_layer = std::make_shared<ResourceLayer>();
-        // 让顶部「文件」菜单里的场景操作绑定到场景层
-        dock_space->SetSceneLayer(scene_layer.get());
-        PushLayer(dock_space);
-        PushLayer(scene_layer);
-        PushLayer(hierarchy_layer);
-        PushLayer(resource_layer);
+        // 不推任何自定义 Layer，仅使用引擎默认的 ImGuiLayer
     }
 
     ~Sandbox() override = default;
@@ -36,5 +16,4 @@ public:
 
 Application *CreateApplication(const ApplicationCommandLineArgs args) { return new Sandbox(args); }
 
-
-}
+} // namespace GE

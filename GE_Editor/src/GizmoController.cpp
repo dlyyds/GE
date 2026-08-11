@@ -31,7 +31,7 @@ void GizmoController::Render(const Camera &camera, const glm::vec2 &viewportPos,
     // 若不重设 draw list，则 IsHoveringWindow() 命中失败导致 gizmo 拖不动。
     // 这里把 draw list 绑定到当前 Scene 窗口（本函数正是在其 Begin/End 内被调用），
     // 使 _OwnerName 为 "Scene"，鼠标悬停命中与拖拽正常。
-    ImGuizmo::SetDrawList(ImGui::GetWindowDrawList());
+    ImGuizmo::SetDrawlist(ImGui::GetWindowDrawList());
 
     // ---- 快捷键切换操作模式（W/E/R）----
     if (ImGui::IsKeyPressed(ImGuiKey_W)) m_Operation = ImGuizmo::TRANSLATE;

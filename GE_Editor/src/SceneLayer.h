@@ -70,6 +70,9 @@ private:
 
     /// 从文件加载场景（会重建场景并重新绑定相机）
     bool LoadSceneFromFile(std::string_view filepath);
+
+    /// 从代码程序化构建默认场景（编译期开关 GE_EDITOR_BUILD_SCENE_FROM_CODE 控制）
+    void BuildDefaultSceneFromCode();
 };
 
 } // namespace GE

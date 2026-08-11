@@ -7,6 +7,10 @@
 
 #include "GE/Core/Application.h"
 #include "GE/Render/Renderer.h"
+#include "GE/Render/MeshManager.h"
+#include "GE/Render/TextureManager.h"
+#include "GE/Render/MaterialManager.h"
+#include "GE/Render/Material.h"
 #include "GE/Scene/Components.h"
 #include "GE/Scene/SceneSerializer.h"
 #include "GE/Utils/PlatformUtils.h"
@@ -18,6 +22,10 @@
 
 #include "GizmoController.h"
 
+// 编译期开关：true = 启动时从代码程序化构建默认场景；false = 从 .scene 文件加载。
+// 无需代码路径时，编辑器默认从文件加载（false）。
+#define GE_EDITOR_BUILD_SCENE_FROM_CODE 1
+
 #include <glm/gtc/matrix_transform.hpp>
 
 namespace GE {
@@ -28,12 +36,74 @@ SceneLayer::SceneLayer(std::shared_ptr<EditorContext> context) : Layer("SceneLay
 SceneLayer::~SceneLayer() = default;
 
 void SceneLayer::OnAttach() {
+#if GE_EDITOR_BUILD_SCENE_FROM_CODE
+    // 从代码程序化构建默认场景（网格/纹理/材质由全局管理器持有）
+    BuildDefaultSceneFromCode();
+#else
     constexpr const char *kDefaultScene = "assets/scenes/2.scene";
 
     // 从文件加载默认场景（网格/纹理/材质由全局管理器加载持有）
     if (!LoadSceneFromFile(kDefaultScene)) {
         GE_CORE_WARN("SceneLayer: 启动加载默认场景失败: {0}", kDefaultScene);
     }
+#endif
+}
+
+// 从代码程序化构建一个默认场景：相机 + 方向光 + 环境光 + 若干立方体。
+// 网格/纹理/材质均由全局管理器加载持有，场景组件仅持非拥有指针。
+void SceneLayer::BuildDefaultSceneFromCode() {
+    // 先重置实体引用，避免悬空
+    m_Context->CameraEntity = {};
+    m_Context->Scene = std::make_unique<Scene>();
+
+    auto &meshMgr = Renderer::GetMeshManager();
+    auto &texMgr  = Renderer::GetTextureManager();
+    auto &matMgr  = Renderer::GetMaterialManager();
+
+    // 三个基础材质：各自用纯色 Albedo 纹理区分颜色（注册到全局 MaterialManager）
+    const char *matNames[3] = {"Editor_Red", "Editor_Green", "Editor_Blue"};
+    const glm::vec4 colors[3] = {
+        glm::vec4(0.8f, 0.2f, 0.2f, 1.0f),
+        glm::vec4(0.2f, 0.8f, 0.2f, 1.0f),
+        glm::vec4(0.2f, 0.4f, 0.9f, 1.0f),
+    };
+    Material *mats[3];
+    for (int i = 0; i < 3; ++i) {
+        auto mat = std::make_unique<Material>();
+        mat->SetTexture(Material::Albedo, texMgr.GetSolidColor(colors[i]));
+        mats[i] = matMgr.Register(matNames[i], std::move(mat));
+    }
+
+    // 相机实体（Orbit 模式，绕场景中心观测）
+    auto camera = m_Context->Scene->CreateEntity("Camera");
+    auto &cc = camera.AddComponent<CameraComponent>();
+    cc.Primary = true;
+    cc.CameraInstance.SetMode(Camera::Mode::Orbit);
+    cc.CameraInstance.SetTarget(glm::vec3(0.0f, 0.5f, 0.0f));
+    cc.CameraInstance.SetOrbit(0.0f, 25.0f, 8.0f);
+    m_Context->CameraEntity = camera;
+
+    // 方向光实体（-60° 绕 X 轴：从上前方照下）
+    auto dirLight = m_Context->Scene->CreateEntity("DirectionalLight");
+    dirLight.GetComponent<TransformComponent>().Rotation =
+        glm::vec3(glm::radians(-60.0f), 0.0f, 0.0f);
+    dirLight.AddComponent<DirectionalLightComponent>(glm::vec4(1.0f, 1.0f, 1.0f, 1.0f));
+
+    // 环境光实体
+    auto ambLight = m_Context->Scene->CreateEntity("AmbientLight");
+    ambLight.AddComponent<AmbientLightComponent>(glm::vec4(0.15f, 0.15f, 0.15f, 1.0f));
+
+    // 三个立方体，横向排列
+    auto makeCube = [&](const char *name, const glm::vec3 &pos, Material *mat) {
+        Entity e = m_Context->Scene->CreateEntity(name);
+        e.GetComponent<TransformComponent>().Translation = pos;
+        e.AddComponent<MeshComponent>(meshMgr.GetBuiltin("cube"));
+        e.AddComponent<MaterialComponent>(mat);
+        return e;
+    };
+    makeCube("Cube_Red",   {-1.5f, 0.5f, 0.0f}, mats[0]);
+    makeCube("Cube_Green", { 0.0f, 0.5f, 0.0f}, mats[1]);
+    makeCube("Cube_Blue",  { 1.5f, 0.5f, 0.0f}, mats[2]);
 }
 
 void SceneLayer::OnDetach() {

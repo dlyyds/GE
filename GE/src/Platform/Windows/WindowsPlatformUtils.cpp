@@ -1,6 +1,8 @@
 #include "pch.h"
 #include "Utils/PlatformUtils.h"
 
+// commdlg.h 依赖 Windows 类型（CALLBACK/HWND 等），必须先包含 windows.h。
+#include <Windows.h>
 #include <commdlg.h>
 
 #include "Core/Application.h"

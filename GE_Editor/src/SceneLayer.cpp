@@ -12,8 +12,11 @@
 #include "GE/Utils/PlatformUtils.h"
 
 #include "imgui.h"
+#include "ImGuizmo.h"
 #include "Render/Renderer2D.h"
 #include "Render/Renderer3D.h"
+
+#include "GizmoController.h"
 
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -117,9 +120,10 @@ void SceneLayer::OnEvent(Event &event) {
     }
 
     // 将事件转发给相机（处理鼠标移动、滚轮、按键等交互）。
-    // 仅当鼠标悬停在 Scene 视口窗口内时才转发，避免在操作
-    // Hierarchy/Properties 等面板时误触发相机视角。
-    if (m_Context->CameraEntity && !event.Handled && m_SceneWindowHovered) {
+    // 仅当鼠标悬停在 Scene 视口窗口内、且光标不在 gizmo 上时才转发，
+    // 避免拖拽 gizmo 时相机视角一起跟着转，或误触发相机视角。
+    const bool gizmoActive = (m_Gizmo && ImGuizmo::IsOver());
+    if (m_Context->CameraEntity && !event.Handled && !gizmoActive && m_SceneWindowHovered) {
         auto &cameraComp = m_Context->CameraEntity.GetComponent<CameraComponent>();
         cameraComp.CameraInstance.OnEvent(event);
     }
@@ -146,6 +150,12 @@ void SceneLayer::OnImGuiRender() {
         // 显示离屏渲染结果
         if (m_Viewport && m_Viewport->GetImGuiDescriptorSet() != VK_NULL_HANDLE) {
             ImGui::Image(m_Viewport->GetImGuiDescriptorSet(), avail);
+        }
+
+        // 在 Scene 窗口绘制范围内叠加变换 gizmo（ImGuizmo 须在此窗口内调用）
+        if (m_Gizmo && m_Context->CameraEntity) {
+            auto &cameraComp = m_Context->CameraEntity.GetComponent<CameraComponent>();
+            m_Gizmo->Render(cameraComp.CameraInstance, ImGui::GetWindowPos(), m_ViewportSize);
         }
     }
     ImGui::End();
@@ -174,6 +184,10 @@ void SceneLayer::OnImGuiRender() {
 // ============================================================
 // 场景文件操作：保存 / 加载 / 新建
 // ============================================================
+
+void SceneLayer::SetGizmoController(std::unique_ptr<GizmoController> gizmo) {
+    m_Gizmo = std::move(gizmo);
+}
 
 void SceneLayer::SaveScene() {
     if (!m_Context->Scene) {

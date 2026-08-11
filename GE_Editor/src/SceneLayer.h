@@ -13,6 +13,8 @@
 
 namespace GE {
 
+class GizmoController; // 前向声明，避免在头文件引入实现
+
 /// 场景层 —— 只负责场景渲染（离屏视口 + 相机）与 文件操作（保存/加载/新建）。
 ///
 /// 场景状态（Scene / 序列化器 / 相机实体）放在共享的 EditorContext 中，
@@ -43,8 +45,14 @@ public:
     /// 新建空场景（清空当前场景内容），供顶部菜单调用
     void NewScene();
 
+    /// 绑定 gizmo 控制器（在 Scene 视口内渲染变换 gizmo）
+    void SetGizmoController(std::unique_ptr<GizmoController> gizmo);
+
 private:
     std::shared_ptr<EditorContext> m_Context;  ///< 共享场景上下文
+
+    /// 变换 gizmo 控制器（在 Scene 窗口内叠加，由本层回调其 Render）
+    std::unique_ptr<GizmoController> m_Gizmo;
 
     /// 场景视口（离屏渲染目标 + ImGui 图片），场景渲染进它再贴到窗口
     std::unique_ptr<SceneViewport> m_Viewport;

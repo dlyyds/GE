@@ -5,6 +5,7 @@
 #include "HierarchyLayer.h"
 #include "ResourceLayer.h"
 #include "DockSpaceLayer.h"
+#include "GizmoController.h"
 
 namespace GE {
 class EditorApp : public Application {
@@ -20,6 +21,8 @@ public:
         auto resource_layer = std::make_shared<ResourceLayer>();
         // 让顶部「文件」菜单里的场景操作绑定到场景层
         dock_space->SetSceneLayer(scene_layer.get());
+        // 在场景视口上叠加 ImGuizmo 变换 gizmo（由 SceneLayer 在 Scene 窗口内回调）
+        scene_layer->SetGizmoController(std::make_unique<GizmoController>(scene_ctx, hierarchy_layer.get()));
         PushLayer(dock_space);
         PushLayer(scene_layer);
         PushLayer(hierarchy_layer);

@@ -29,6 +29,9 @@ public:
 
     void OnImGuiRender() override;
 
+    /// 获取当前选中的实体（由面板维护，供 GizmoController 读取）
+    [[nodiscard]] Entity GetSelectedEntity() const { return m_Panel.GetSelectedEntity(); }
+
 private:
     std::shared_ptr<EditorContext> m_Context;  ///< 共享场景上下文
     SceneHierarchyPanel m_Panel;               ///< 场景层级面板（ImGui）

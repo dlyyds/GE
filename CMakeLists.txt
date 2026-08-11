@@ -35,9 +35,12 @@ add_subdirectory(GE/third_party/yaml-cpp)
 add_subdirectory(GE/third_party/imgui)
 add_subdirectory(GE/third_party/ImGuizmo)
 
-# Tracy 性能分析
-set(TRACY_ENABLE OFF CACHE BOOL "Enable Tracy profiling" FORCE)
+
 add_subdirectory(GE/third_party/tracy)
+
+# GE 层 Profiler 开关（控制 GE_PROFILE_* 宏，独立于 Tracy 的 TRACY_ENABLE）
+# ON 时向编译定义传入 GE_PROFILE_ENABLE=1，OFF 时传入 =0。
+set(GE_PROFILE_ENABLE ON CACHE BOOL "Enable GE_PROFILE_* profiling macros")
 
 find_package(Vulkan REQUIRED)
 
@@ -104,6 +107,7 @@ target_compile_definitions(${GE_NAME} PUBLIC
         VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1
         VULKAN_HPP_NO_STRUCT_CONSTRUCTORS
         VMA_DYNAMIC_VULKAN_FUNCTIONS=1
+        GE_PROFILE_ENABLE=$<IF:$<BOOL:${GE_PROFILE_ENABLE}>,1,0>
 )
 
 

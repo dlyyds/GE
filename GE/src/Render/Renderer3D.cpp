@@ -80,7 +80,10 @@ Renderer3D::Renderer3D() {
     // ── 5. 创建默认 1x1 黑色纹理（无自发光贴图时的 fallback） ──────────
     //    RGB = (0, 0, 0)：采样后加色为 0，不改变光照结果，即物体不发光，
     //    使未绑定自发光贴图的材质表现得如同未使用自发光。
-    uint32_t blackPixel = 0x000000FF; // RGBA8: (0, 0, 0, 255)
+    // 像素字面量按 0xAABBGGRR 小端约定书写：0xFF000000 = (0, 0, 0, 255) 黑色不透明。
+    // 注意：切勿写成 0x000000FF，那会解析成 (255,0,0,0) 红色透明，导致无自发光
+    // 贴图时物体发出红光（shader 仅采样 .rgb，alpha 被忽略）。
+    uint32_t blackPixel = 0xFF000000; // RGBA8: (0, 0, 0, 255)
     m_DefaultEmissiveTexture = Texture::LoadFromMemory(
         device, cache, &blackPixel, 1, 1,
         vk::Format::eR8G8B8A8Unorm,

@@ -59,6 +59,9 @@ static void BuildDefaultLayout(ImGuiID dockspace_id, const ImVec2 &size) {
     ImGui::DockBuilderDockWindow("SceneLayer", dock_bottom);
     ImGui::DockBuilderDockWindow("Resource", dock_right);
     ImGui::DockBuilderDockWindow("渲染统计", dock_right);
+    // 自发光测试层：视口与主 Scene 并列停靠，控制面板停在右列
+    ImGui::DockBuilderDockWindow("Sandbox", dock_main);
+    ImGui::DockBuilderDockWindow("Sandbox Controls", dock_right);
 
     ImGui::DockBuilderFinish(dockspace_id);
 }

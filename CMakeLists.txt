@@ -193,6 +193,7 @@ set(Editor_SRC
         ${CMAKE_SOURCE_DIR}/GE_Editor/src/HierarchyLayer.cpp
         ${CMAKE_SOURCE_DIR}/GE_Editor/src/GizmoController.cpp
         ${CMAKE_SOURCE_DIR}/GE_Editor/src/ResourceLayer.cpp
+        ${CMAKE_SOURCE_DIR}/GE_Editor/src/SandboxLayer.cpp
         ${CMAKE_SOURCE_DIR}/GE_Editor/src/Panels/SceneHierarchyPanel.cpp
         ${CMAKE_SOURCE_DIR}/GE_Editor/src/Panels/ResourcePanel.cpp
 )

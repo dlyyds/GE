@@ -5,6 +5,7 @@
 #include "HierarchyLayer.h"
 #include "ResourceLayer.h"
 #include "DockSpaceLayer.h"
+#include "SandboxLayer.h"
 #include "GizmoController.h"
 
 namespace GE {
@@ -19,6 +20,8 @@ public:
         auto scene_layer = std::make_shared<SceneLayer>(scene_ctx);
         auto hierarchy_layer = std::make_shared<HierarchyLayer>(scene_ctx);
         auto resource_layer = std::make_shared<ResourceLayer>();
+        // 自发光（Emissive）冒烟测试层：独立场景 + 独立视口，与主编辑场景互不干扰
+        auto sandbox_layer = std::make_shared<SandboxLayer>();
         // 让顶部「文件」菜单里的场景操作绑定到场景层
         dock_space->SetSceneLayer(scene_layer.get());
         // 在场景视口上叠加 ImGuizmo 变换 gizmo（由 SceneLayer 在 Scene 窗口内回调）
@@ -27,6 +30,7 @@ public:
         PushLayer(scene_layer);
         PushLayer(hierarchy_layer);
         PushLayer(resource_layer);
+        PushLayer(sandbox_layer);
     }
 
     ~EditorApp() override = default;

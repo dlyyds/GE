@@ -69,10 +69,16 @@ void GizmoController::Render(const Camera &camera, const glm::vec2 &viewportPos,
     float snapValues[3] = {m_SnapTranslation, m_SnapRotation, m_SnapScale};
     float *snap = m_UseSnap ? snapValues : nullptr;
 
-    // 传入渲染同一套 view/proj（proj 已做 Vulkan Y 翻转），保证 gizmo 与场景对齐
+    // ImGuizmo 按 OpenGL 惯例解析投影（NDC Y 向上，见 ImGuizmo.cpp worldToPos 的
+    // trans.y = 1.f - trans.y）。引擎渲染用的 proj 已做 Vulkan Y 翻转（Camera::GetProj
+    // 的 proj[1][1] *= -1），直接传入会让 gizmo 垂直镜像、拖拽跟随错位。
+    // 故这里把 [1][1] 再翻转一次，还原成 OpenGL 投影再交给 ImGuizmo，使其与渲染对齐。
+    glm::mat4 proj = camera.GetProj();
+    proj[1][1] *= -1.0f;
+
     bool changed = ImGuizmo::Manipulate(
         glm::value_ptr(camera.GetView()),
-        glm::value_ptr(camera.GetProj()),
+        glm::value_ptr(proj),
         m_Operation, m_Mode,
         glm::value_ptr(transform),
         snap);

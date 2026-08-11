@@ -8,7 +8,7 @@ class Sandbox : public Application {
 public:
     explicit Sandbox(ApplicationCommandLineArgs args) : Application("Sandbox", args) {
         GE_PROFILE_FUNCTION();
-        // 不推任何自定义 Layer，仅使用引擎默认的 ImGuiLayer
+        // 不推任何自定义 Layer，仅使用引擎默认的 ImGuiLayer？
     }
 
     ~Sandbox() override = default;

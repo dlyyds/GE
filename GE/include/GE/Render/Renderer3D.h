@@ -46,7 +46,7 @@ class RenderTarget;
  * 支持深度测试、背面剔除、Blinn-Phong 光照（方向光 + 点光源 + 环境光）。
  * 着色器资源：
  *   Set 0, Binding 0: FrameUBO（投影、视图、相机位置、光照参数）
- *   Set 1, Binding 0/1: samplerColor（主纹理）/ samplerNormal（法线贴图）
+ *   Set 1, Binding 0/1/3: samplerColor（主纹理）/ samplerNormal（法线贴图）/ samplerEmissive（自发光贴图）
  *   Set 1, Binding 2: MaterialUBO（材质标量参数，如 shininess，按批次绑定）
  *   Set 2, Binding 0: InstanceData（SSBO，model + color，按实例）
  */
@@ -217,9 +217,10 @@ private:
     /// 存放材质标量参数：
     ///   params.x = shininess（高光指数，决定高光斑形态/大小）
     ///   params.y = specularStrength（镜面强度，独立控制高光亮暗）
-    ///   params.zw 预留后续材质参数扩展。
+    ///   params.z = emissiveStrength（自发光强度，缩放自发光贴图颜色）
+    ///   params.w 预留后续材质参数扩展。
     struct MaterialUBO {
-        glm::vec4 params;            ///< x = shininess，y = specularStrength
+        glm::vec4 params;            ///< x = shininess，y = specularStrength，z = emissiveStrength
     };
     static_assert(sizeof(MaterialUBO) == 16, "MaterialUBO 必须 16 字节对齐");
 
@@ -271,6 +272,14 @@ private:
      */
     Texture *GetEffectiveNormalTexture(const Material *material) const;
 
+    /**
+     * @brief 解析材质对应的有效自发光贴图。
+     *
+     * 优先取材质 Emissive 槽位纹理，无材质或无纹理时回退到默认
+     * 黑色纹理（RGB=(0,0,0)，即物体不发光）。
+     */
+    Texture *GetEffectiveEmissiveTexture(const Material *material) const;
+
     // ========================================================================
     // 成员
     // ========================================================================
@@ -289,6 +298,9 @@ private:
 
     /// 默认 1x1 "平坦法线"纹理（无法线贴图时的 fallback，RGB=(128,128,255)）
     std::unique_ptr<Texture> m_DefaultNormalTexture;
+
+    /// 默认 1x1 黑色纹理（无自发光贴图时的 fallback，RGB=(0,0,0)，使物体不发光）
+    std::unique_ptr<Texture> m_DefaultEmissiveTexture;
 
     /// 当前帧视图矩阵
     glm::mat4 m_View{1.0f};

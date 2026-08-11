@@ -77,6 +77,20 @@ Renderer3D::Renderer3D() {
         GE_CORE_ERROR("Renderer3D: 创建默认平坦法线纹理失败！");
     }
 
+    // ── 5. 创建默认 1x1 黑色纹理（无自发光贴图时的 fallback） ──────────
+    //    RGB = (0, 0, 0)：采样后加色为 0，不改变光照结果，即物体不发光，
+    //    使未绑定自发光贴图的材质表现得如同未使用自发光。
+    uint32_t blackPixel = 0x000000FF; // RGBA8: (0, 0, 0, 255)
+    m_DefaultEmissiveTexture = Texture::LoadFromMemory(
+        device, cache, &blackPixel, 1, 1,
+        vk::Format::eR8G8B8A8Unorm,
+        vk::Filter::eLinear, vk::Filter::eLinear);
+    if (m_DefaultEmissiveTexture) {
+        m_DefaultEmissiveTexture->SetDebugName("DefaultEmissiveTexture");
+    } else {
+        GE_CORE_ERROR("Renderer3D: 创建默认黑色自发光纹理失败！");
+    }
+
     GE_CORE_INFO("Renderer3D initialized");
 }
 
@@ -86,6 +100,7 @@ Renderer3D::~Renderer3D() {
     // 释放默认纹理
     // 注：m_DefaultWhiteTexture 由全局 TextureManager 持有，不属于本渲染器，无需释放
     m_DefaultNormalTexture.reset();
+    m_DefaultEmissiveTexture.reset();
 
     // 着色器和 pipeline layout 由全局资源缓存管理，不需要手动释放
     m_VertShader = nullptr;
@@ -144,6 +159,13 @@ Texture *Renderer3D::GetEffectiveNormalTexture(const Material *material) const {
     // 优先取材质 Normal 槽位纹理，无材质或无纹理时回退到默认平坦法线纹理
     Texture *tex = (material ? material->GetTexture(Material::Normal) : nullptr);
     return tex ? tex : m_DefaultNormalTexture.get();
+}
+
+Texture *Renderer3D::GetEffectiveEmissiveTexture(const Material *material) const {
+    // 优先取材质 Emissive 槽位纹理，无材质或无纹理时回退到默认黑色纹理
+    // （RGB=(0,0,0)，物体不发光）
+    Texture *tex = (material ? material->GetTexture(Material::Emissive) : nullptr);
+    return tex ? tex : m_DefaultEmissiveTexture.get();
 }
 
 Renderer3D::SortKey Renderer3D::ComputeSortKey(const Material *material, const Mesh *mesh, const glm::mat4 &transform) const {
@@ -409,8 +431,18 @@ void Renderer3D::EndScene() {
                           1, 1);
         }
 
-        // 绑定材质 UBO（set 1, binding 2）：存材质标量参数（shininess、specularStrength）。
-        // 按批次写入，同批次的实例共享同一材质，故值恒定，无需 per-instance。
+        // 自发光贴图（set 1, binding 3）：无材质或无纹理时使用默认黑色纹理，
+        // 其颜色为 (0,0,0)，加色为 0，保证材质无需自发光贴图也能正常渲染
+        Texture *emissiveTex = GetEffectiveEmissiveTexture(batch.material);
+        if (emissiveTex) {
+            cmd.BindImage(emissiveTex->GetImageView(),
+                          emissiveTex->GetSampler(),
+                          1, 3);
+        }
+
+        // 绑定材质 UBO（set 1, binding 2）：存材质标量参数（shininess、
+        // specularStrength、emissiveStrength）。按批次写入，同批次的实例
+        // 共享同一材质，故值恒定，无需 per-instance。
         MaterialUBO materialUBO{};
         materialUBO.params.x = batch.material
             ? batch.material->GetFloat("shininess", 32.0f)
@@ -418,6 +450,9 @@ void Renderer3D::EndScene() {
         materialUBO.params.y = batch.material
             ? batch.material->GetFloat("specularStrength", 0.5f)
             : 0.5f;
+        materialUBO.params.z = batch.material
+            ? batch.material->GetFloat("emissiveStrength", 0.0f)
+            : 0.0f;
         BufferAllocation materialUboAlloc = frame.AllocateBuffer(
             vk::BufferUsageFlagBits::eUniformBuffer, sizeof(MaterialUBO));
         materialUboAlloc.update(materialUBO);

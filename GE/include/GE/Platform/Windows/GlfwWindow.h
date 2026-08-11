@@ -60,6 +60,8 @@ public:
 
     Extent Resize(const Extent &new_extent) override;
 
+    void SetMaximized(bool maximized) override;
+
     [[nodiscard]] float GetDpiFactor() const override;
 
     [[nodiscard]] float GetContentScaleFactor() const override;

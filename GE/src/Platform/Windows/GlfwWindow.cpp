@@ -200,6 +200,14 @@ Extent GlfwWindow::Resize(const Extent &new_extent) {
     return {GetWidth(), GetHeight()};
 }
 
+void GlfwWindow::SetMaximized(bool maximized) {
+    if (maximized) {
+        glfwMaximizeWindow(m_Window);
+    } else {
+        glfwRestoreWindow(m_Window);
+    }
+}
+
 float GlfwWindow::GetDpiFactor() const {
     auto *monitor = glfwGetWindowMonitor(m_Window);
     if (!monitor) {

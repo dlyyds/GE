@@ -98,6 +98,9 @@ public:
     /// 尝试调整窗口大小，返回实际尺寸
     virtual Extent Resize(const Extent &new_extent) = 0;
 
+    /// 设置窗口最大化状态（true 最大化，false 恢复）
+    virtual void SetMaximized(bool maximized) = 0;
+
     [[nodiscard]] virtual void *GetNativeWindow() const = 0;
 
     [[nodiscard]] virtual void *GetGlfwWindow() const = 0;

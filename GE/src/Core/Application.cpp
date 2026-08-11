@@ -37,6 +37,8 @@ Application::Application(const std::string &name, ApplicationCommandLineArgs arg
     // m_ImGuiLayer->BlockEvents(true);
     PushOverlay(m_ImGuiLayer);
 
+    m_Window->SetMaximized(true);
+
 }
 
 Application::~Application() {

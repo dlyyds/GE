@@ -9,11 +9,13 @@
 
 layout (set = 1, binding = 0) uniform sampler2D samplerColor;
 layout (set = 1, binding = 1) uniform sampler2D samplerNormal;   // 法线贴图（切线空间）
+layout (set = 1, binding = 3) uniform sampler2D samplerEmissive; // 自发光贴图
 
 // 每材质 UB（按批次绑定）：存放材质标量参数。
 //   params.x = shininess（高光指数，决定高光斑形态/大小）
 //   params.y = specularStrength（镜面强度，独立控制高光亮暗）
-//   params.zw 预留供后续材质参数扩展。
+//   params.z = emissiveStrength（自发光强度，缩放自发光贴图颜色）
+//   params.w 预留供后续材质参数扩展。
 layout (set = 1, binding = 2, std140) uniform MaterialUBO
 {
     vec4 params;
@@ -124,6 +126,12 @@ void main()
     for (int i = 0; i < int(frame.pointLightCount.x); i++) {
         result += calcPointLight(i, N, V, inWorldPos, albedo, shininess, specularStrength);
     }
+
+    // 自发光：直接加色，不受光照影响。
+    // 采样自发光贴图颜色，乘强度参数。无自发光贴图时绑定默认黑色纹理，
+    // 采样为 0，不改变结果（物体不发光）。
+    vec3 emissive = texture(samplerEmissive, inUV, 0.0).rgb * material.params.z;
+    result += emissive;
 
     outFragColor = vec4(result, 1.0);
 }

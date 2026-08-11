@@ -170,6 +170,8 @@ set(Sandbox_SRC
         ${CMAKE_SOURCE_DIR}/sandbox/SceneLayer.cpp
         ${CMAKE_SOURCE_DIR}/sandbox/SceneViewport.cpp
         ${CMAKE_SOURCE_DIR}/sandbox/DockSpaceLayer.cpp
+        ${CMAKE_SOURCE_DIR}/sandbox/HierarchyLayer.cpp
+        ${CMAKE_SOURCE_DIR}/sandbox/ResourceLayer.cpp
         ${CMAKE_SOURCE_DIR}/sandbox/Panels/SceneHierarchyPanel.cpp
         ${CMAKE_SOURCE_DIR}/sandbox/Panels/ResourcePanel.cpp
 )

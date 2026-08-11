@@ -1,5 +1,6 @@
 //
-// 场景序列化测试层：创建带相机/光照/实体的场景，验证 .scene 文件的保存与加载
+// 场景层实现：只负责场景渲染（离屏视口 + 相机）与文件操作（保存/加载/新建）。
+// 面板（层级/资源）已拆分为独立 Layer，共享 EditorContext。
 //
 
 #include "SceneLayer.h"
@@ -7,6 +8,7 @@
 #include "GE/Core/Application.h"
 #include "GE/Render/Renderer.h"
 #include "GE/Scene/Components.h"
+#include "GE/Scene/SceneSerializer.h"
 #include "GE/Utils/PlatformUtils.h"
 
 #include "imgui.h"
@@ -17,13 +19,13 @@
 
 namespace GE {
 
-SceneLayer::SceneLayer() : Layer("SceneLayer") {
+SceneLayer::SceneLayer(std::shared_ptr<EditorContext> context) : Layer("SceneLayer"), m_Context(std::move(context)) {
 }
 
 SceneLayer::~SceneLayer() = default;
 
 void SceneLayer::OnAttach() {
-    constexpr const char *kDefaultScene = "assets/scenes/test.scene";
+    constexpr const char *kDefaultScene = "assets/scenes/2.scene";
 
     // 从文件加载默认场景（网格/纹理/材质由全局管理器加载持有）
     if (!LoadSceneFromFile(kDefaultScene)) {
@@ -32,10 +34,9 @@ void SceneLayer::OnAttach() {
 }
 
 void SceneLayer::OnDetach() {
-    m_CameraEntity = {};
-    m_HierarchyPanel.SetContext(nullptr);
+    m_Context->CameraEntity = {};
     m_Viewport.reset(); // 释放离屏渲染目标（GPU 资源）
-    m_Scene.reset();
+    m_Context->Scene.reset();
 }
 
 void SceneLayer::OnUpdate(Timestep &ts) {
@@ -69,27 +70,27 @@ void SceneLayer::OnUpdate(Timestep &ts) {
     float aspect = static_cast<float>(vpW) / static_cast<float>(vpH);
 
     // 同步场景视口尺寸
-    m_Scene->OnViewportResize(vpW, vpH);
+    m_Context->Scene->OnViewportResize(vpW, vpH);
 
     // 把本帧 3D 场景（网格 + 精灵）渲染进离屏视口目标
     Renderer::Get3DRenderer().SetRenderTarget(m_Viewport->GetRenderTarget());
     Renderer::Get2DRenderer().SetRenderTarget(m_Viewport->GetRenderTarget());
 
     // 场景中没有相机实体时，使用默认视角清屏
-    if (!m_CameraEntity) {
+    if (!m_Context->CameraEntity) {
         glm::mat4 view(1.0f);
         glm::mat4 projection = glm::perspective(glm::radians(60.0f), aspect, 0.1f, 100.0f);
         projection[1][1] *= -1.0f; // Vulkan Y 翻转
         glm::vec3 cameraPos{0.0f, 0.0f, 3.0f};
         glm::vec4 clearColor{0.1f, 0.1f, 0.15f, 1.0f};
-        m_Scene->OnUpdate3D(ts, view, projection, cameraPos, clearColor);
+        m_Context->Scene->OnUpdate3D(ts, view, projection, cameraPos, clearColor);
         Renderer::Get3DRenderer().SetRenderTarget(nullptr);
         Renderer::Get2DRenderer().SetRenderTarget(nullptr);
         return;
     }
 
     // 从相机组件获取视图与投影矩阵
-    auto &cameraComp = m_CameraEntity.GetComponent<CameraComponent>();
+    auto &cameraComp = m_Context->CameraEntity.GetComponent<CameraComponent>();
     auto &camera = cameraComp.CameraInstance;
 
     // 同步宽高比（使用视口窗口比例）
@@ -102,7 +103,7 @@ void SceneLayer::OnUpdate(Timestep &ts) {
     glm::vec3 cameraPos = camera.GetPosition();
     glm::vec4 clearColor{0.1f, 0.1f, 0.15f, 1.0f};
 
-    m_Scene->OnUpdate3D(ts, view, projection, cameraPos, clearColor);
+    m_Context->Scene->OnUpdate3D(ts, view, projection, cameraPos, clearColor);
 
     // 复位为 swapchain 目标（默认）
     Renderer::Get3DRenderer().SetRenderTarget(nullptr);
@@ -111,15 +112,15 @@ void SceneLayer::OnUpdate(Timestep &ts) {
 
 void SceneLayer::OnEvent(Event &event) {
     // 将事件转发给场景（系统级处理 + ScriptComponent 事件回调）
-    if (m_Scene && !event.Handled) {
-        m_Scene->OnEvent(event);
+    if (m_Context->Scene && !event.Handled) {
+        m_Context->Scene->OnEvent(event);
     }
 
     // 将事件转发给相机（处理鼠标移动、滚轮、按键等交互）。
     // 仅当鼠标悬停在 Scene 视口窗口内时才转发，避免在操作
     // Hierarchy/Properties 等面板时误触发相机视角。
-    if (m_CameraEntity && !event.Handled && m_SceneWindowHovered) {
-        auto &cameraComp = m_CameraEntity.GetComponent<CameraComponent>();
+    if (m_Context->CameraEntity && !event.Handled && m_SceneWindowHovered) {
+        auto &cameraComp = m_Context->CameraEntity.GetComponent<CameraComponent>();
         cameraComp.CameraInstance.OnEvent(event);
     }
 }
@@ -129,12 +130,6 @@ void SceneLayer::OnImGuiRender() {
     if (m_DockSpaceID == 0) {
         m_DockSpaceID = ImGui::GetID("MainDockspace");
     }
-
-    // 场景层级 + 属性面板
-    m_HierarchyPanel.OnImGuiRender();
-
-    // 资源面板（纹理 / 材质 / 网格）
-    m_ResourcePanel.OnImGuiRender();
 
     // ---- 场景视口窗口（显示离屏渲染的 3D 场景）----
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
@@ -158,15 +153,15 @@ void SceneLayer::OnImGuiRender() {
 
     ImGui::SetNextWindowDockID(m_DockSpaceID, ImGuiCond_FirstUseEver);
     ImGui::Begin("SceneLayer");
-    ImGui::Text("场景序列化测试（Scene + SceneSerializer + Renderer3D）");
+    ImGui::Text("场景（Scene + SceneSerializer + Renderer3D）");
     ImGui::Separator();
 
     // 场景的 保存 / 加载 / 新建 已移到顶部菜单「文件」中
 
     // ---- 场景统计信息 ----
-    if (m_Scene) {
-        auto meshView = m_Scene->Reg().view<MeshComponent>();
-        auto lightView = m_Scene->Reg().view<PointLightComponent>();
+    if (m_Context->Scene) {
+        auto meshView = m_Context->Scene->Reg().view<MeshComponent>();
+        auto lightView = m_Context->Scene->Reg().view<PointLightComponent>();
         ImGui::Text("3D 实体数：%zu", meshView.size());
         ImGui::Text("点光源数：%zu", lightView.size());
         ImGui::Text("FPS：%.1f", Application::Get().GetFPS());
@@ -181,7 +176,7 @@ void SceneLayer::OnImGuiRender() {
 // ============================================================
 
 void SceneLayer::SaveScene() {
-    if (!m_Scene) {
+    if (!m_Context->Scene) {
         return;
     }
 
@@ -192,34 +187,30 @@ void SceneLayer::SaveScene() {
 
     // 复用已有序列化器（序列化器与场景总是同生同灭，其 m_Scene 必为当前场景；
     // 网格/纹理/材质由全局管理器持有，序列化器自身不拥有资源，无需重建）
-    if (!m_SceneSerializer) {
-        m_SceneSerializer = std::make_unique<SceneSerializer>(m_Scene.get());
+    if (!m_Context->Serializer) {
+        m_Context->Serializer = std::make_unique<SceneSerializer>(m_Context->Scene.get());
     }
-    m_SceneSerializer->Serialize(filepath);
+    m_Context->Serializer->Serialize(filepath);
 }
 
 bool SceneLayer::LoadSceneFromFile(std::string_view filepath) {
     // 先重置实体引用，避免悬空
-    m_CameraEntity = {};
+    m_Context->CameraEntity = {};
 
     // 如果场景不存在，先创建
-    if (!m_Scene) {
-        m_Scene = std::make_unique<Scene>();
+    if (!m_Context->Scene) {
+        m_Context->Scene = std::make_unique<Scene>();
     }
 
     // 创建序列化器（纹理/材质/网格由全局管理器加载，无需 device）
-    m_SceneSerializer = std::make_unique<SceneSerializer>(m_Scene.get());
+    m_Context->Serializer = std::make_unique<SceneSerializer>(m_Context->Scene.get());
 
-    if (!m_SceneSerializer->Deserialize(filepath.data())) {
+    if (!m_Context->Serializer->Deserialize(filepath.data())) {
         return false;
     }
 
-    // 更新层级面板上下文
-    m_HierarchyPanel.SetContext(m_Scene.get());
-    m_HierarchyPanel.SetSelectedEntity({});
-
     // 重新绑定主相机实体（Primary=true，否则取第一个相机实体）
-    m_CameraEntity = m_Scene->GetPrimaryCameraEntity();
+    m_Context->CameraEntity = m_Context->Scene->GetPrimaryCameraEntity();
     return true;
 }
 
@@ -236,17 +227,13 @@ void SceneLayer::LoadScene() {
 
 void SceneLayer::NewScene() {
     // 重置实体引用
-    m_CameraEntity = {};
+    m_Context->CameraEntity = {};
 
     // 创建新场景
-    m_Scene = std::make_unique<Scene>();
+    m_Context->Scene = std::make_unique<Scene>();
 
     // 创建新的序列化器
-    m_SceneSerializer = std::make_unique<SceneSerializer>(m_Scene.get());
-
-    // 更新层级面板
-    m_HierarchyPanel.SetContext(m_Scene.get());
-    m_HierarchyPanel.SetSelectedEntity({});
+    m_Context->Serializer = std::make_unique<SceneSerializer>(m_Context->Scene.get());
 }
 
 } // namespace GE

@@ -115,11 +115,12 @@ void SceneLayer::OnUpdate(Timestep &ts) {
 
 void SceneLayer::OnEvent(Event &event) {
     if (m_Context->Scene) {
-        // 仅当鼠标悬停在 Scene 视口内时才让输入事件进入场景（影响脚本 + 相机）；
-        // 窗口尺寸变化等非输入事件始终会转发给场景。
+        // 仅当鼠标悬停在 Scene 视口内时才让输入事件进入场景（影响脚本 + 相机）。
+        // Scene 只处理输入事件；视口尺寸由本层每帧用真实值（面板内容区）提供。
         const bool inViewport = m_SceneWindowHovered;
         // 相机额外要求未在拖 gizmo，避免拖 gizmo 时相机跟着转。
-        const bool cameraActive = inViewport && !(m_Gizmo && ImGuizmo::IsOver());
+        const bool cameraActive = true;
+        //const bool cameraActive = inViewport && !(m_Gizmo && ImGuizmo::IsOver());
         m_Context->Scene->SetProcessInput(inViewport);
         m_Context->Scene->SetProcessCameraInput(cameraActive);
 

@@ -64,11 +64,6 @@ public:
      */
     void OnEvent(Event &e);
 
-    /// 输入事件是否进入场景处理（分发给脚本 + 主相机）。
-    /// 由编辑器依据「鼠标是否悬停在 Scene 视口内」设置；非输入事件
-    /// （如窗口尺寸变化）始终处理，不受此开关影响。
-    void SetProcessInput(bool enabled) { m_ProcessInput = enabled; }
-
     /// 是否将输入事件路由给主相机（鼠标/键盘控制相机视角）。
     /// 由编辑器依据「视口是否悬停、是否在拖 gizmo」等 UI 状态设置；
     /// 实际的相机输入路由在 Scene 内部完成。
@@ -100,9 +95,6 @@ private:
 
     /// 物理世界（每个 Scene 一个实例）
     std::unique_ptr<Physics::PhysicsWorld> m_PhysicsWorld;
-
-    /// 输入事件是否进入场景处理（由编辑器设置）
-    bool m_ProcessInput = false;
 
     /// 是否将输入路由给主相机（由编辑器设置）
     bool m_ProcessCameraInput = false;

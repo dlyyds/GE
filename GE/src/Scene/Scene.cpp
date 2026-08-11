@@ -281,11 +281,11 @@ void Scene::OnUpdate3D(Timestep ts,
 
 
 void Scene::OnEvent(Event &e) {
-    // ── 输入事件：仅当编辑器允许时才处理（视口悬停时）。
-    //    先分发给所有 ScriptComponent，未被消费的再交给主相机控制视角。──
+    // ── 输入事件：先分发给所有 ScriptComponent，未被消费的再交给主相机控制视角。──
     // 注意：不再在此监听窗口 resize —— 视口真实尺寸（ImGui Scene 面板内容区）
     //       由 SceneLayer 每帧通过 OnViewportResize 提供，系统窗口尺寸与视口不同。
-    if (e.IsInCategory(EventCategoryInput) && m_ProcessInput) {
+    // 悬停门控由 SceneLayer 在转发前处理，Scene 自身不感知编辑器 UI 悬停状态。
+    if (e.IsInCategory(EventCategoryInput)) {
         DispatchInputEventToScripts(e);
         if (m_ProcessCameraInput && !e.Handled) {
             DispatchInputEventToCamera(e);

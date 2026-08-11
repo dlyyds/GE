@@ -1,6 +1,7 @@
 #pragma once
 
 #include "GE/Render/Camera.h"
+#include "imgui.h" // ImGuizmo.h 需要先包含 imgui.h 才能识别 ImVec2/ImDrawList 等类型
 #include "ImGuizmo.h"
 
 #include "EditorContext.h"

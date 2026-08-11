@@ -2,7 +2,6 @@
 
 #include "GE/Scene/Scene.h"
 #include "GE/Scene/Entity.h"
-#include "GE/Scene/SceneSerializer.h"
 
 #include <memory>
 
@@ -15,7 +14,6 @@ namespace GE {
 /// shared_ptr 自动感知到新场景，避免裸指针悬空。
 struct EditorContext {
     std::unique_ptr<Scene> Scene;                 ///< 当前编辑的场景
-    std::unique_ptr<SceneSerializer> Serializer;  ///< 场景序列化器（与 Scene 同生同灭）
     Entity CameraEntity;                          ///< 场景主相机实体
 };
 

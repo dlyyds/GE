@@ -205,12 +205,10 @@ void SceneLayer::SaveScene() {
         return;
     }
 
-    // 复用已有序列化器（序列化器与场景总是同生同灭，其 m_Scene 必为当前场景；
-    // 网格/纹理/材质由全局管理器持有，序列化器自身不拥有资源，无需重建）
-    if (!m_Context->Serializer) {
-        m_Context->Serializer = std::make_unique<SceneSerializer>(m_Context->Scene.get());
-    }
-    m_Context->Serializer->Serialize(filepath);
+    // 序列化器无状态、操作完即弃，按需创建为局部变量即可；
+    // 网格/纹理/材质由全局管理器持有，序列化器自身不拥有资源
+    SceneSerializer serializer(m_Context->Scene.get());
+    serializer.Serialize(filepath);
 }
 
 bool SceneLayer::LoadSceneFromFile(std::string_view filepath) {
@@ -222,10 +220,10 @@ bool SceneLayer::LoadSceneFromFile(std::string_view filepath) {
         m_Context->Scene = std::make_unique<Scene>();
     }
 
-    // 创建序列化器（纹理/材质/网格由全局管理器加载，无需 device）
-    m_Context->Serializer = std::make_unique<SceneSerializer>(m_Context->Scene.get());
+    // 序列化器无状态、按需创建为局部变量（纹理/材质/网格由全局管理器加载，无需 device）
+    SceneSerializer serializer(m_Context->Scene.get());
 
-    if (!m_Context->Serializer->Deserialize(filepath.data())) {
+    if (!serializer.Deserialize(filepath.data())) {
         return false;
     }
 
@@ -249,11 +247,8 @@ void SceneLayer::NewScene() {
     // 重置实体引用
     m_Context->CameraEntity = {};
 
-    // 创建新场景
+    // 创建新场景（序列化器无状态，仅在保存/加载时按需创建局部变量）
     m_Context->Scene = std::make_unique<Scene>();
-
-    // 创建新的序列化器
-    m_Context->Serializer = std::make_unique<SceneSerializer>(m_Context->Scene.get());
 }
 
 } // namespace GE

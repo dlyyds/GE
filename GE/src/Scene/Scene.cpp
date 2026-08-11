@@ -92,7 +92,7 @@ void Scene::OnUpdate(Timestep ts,
             tc.GetTransform(),
             sc.SpriteTexture,
             sc.Color
-        );
+            );
     }
 
     r2d.EndScene();
@@ -167,15 +167,15 @@ void Scene::OnUpdate3D(Timestep ts,
         auto pointLightView = m_Registry.view<TransformComponent, PointLightComponent>();
         for (auto entity : pointLightView) {
             if (lightIndex >= Renderer3D::MAX_POINT_LIGHTS) {
-                break;  // 超过上限，忽略多余的点光源
+                break; // 超过上限，忽略多余的点光源
             }
 
             auto &tc = pointLightView.get<TransformComponent>(entity);
             auto &plc = pointLightView.get<PointLightComponent>(entity);
 
             auto &dst = lightParams.pointLights[lightIndex];
-            dst.position  = tc.Translation;
-            dst.color     = plc.Color;
+            dst.position = tc.Translation;
+            dst.color = plc.Color;
             dst.radiusInv = plc.RadiusInv;
 
             lightIndex++;
@@ -207,7 +207,7 @@ void Scene::OnUpdate3D(Timestep ts,
             mc.MeshPtr,
             mat,
             mc.Color
-        );
+            );
     }
 
     r3d.EndScene();
@@ -231,13 +231,14 @@ void Scene::OnUpdate3D(Timestep ts,
         for (auto entity : spriteView) {
             auto &tc = spriteView.get<TransformComponent>(entity);
             auto &sc = spriteView.get<SpriteRendererComponent>(entity);
-            if (sc.IsUI) continue;
+            if (sc.IsUI)
+                continue;
 
             r2d.DrawSprite(
                 tc.GetTransform(),
                 sc.SpriteTexture,
                 sc.Color
-            );
+                );
         }
         r2d.EndScene();
     }
@@ -252,7 +253,8 @@ void Scene::OnUpdate3D(Timestep ts,
     std::vector<UISprite> uiSprites;
     for (auto entity : spriteView) {
         auto &sc = spriteView.get<SpriteRendererComponent>(entity);
-        if (!sc.IsUI) continue;
+        if (!sc.IsUI)
+            continue;
         auto &tc = spriteView.get<TransformComponent>(entity);
         uiSprites.push_back({&tc, &sc, tc.Translation.z});
     }
@@ -273,7 +275,7 @@ void Scene::OnUpdate3D(Timestep ts,
                 sp.tc->GetTransform(),
                 sp.sc->SpriteTexture,
                 sp.sc->Color
-            );
+                );
         }
         r2d.EndScene();
     }
@@ -281,10 +283,10 @@ void Scene::OnUpdate3D(Timestep ts,
 
 
 void Scene::OnEvent(Event &e) {
-    // ── 输入事件：仅当编辑器允许时才处理（视口悬停时）。
-    //    先分发给所有 ScriptComponent，未被消费的再交给主相机控制视角。──
+    // ── 输入事件：先分发给所有 ScriptComponent，未被消费的再交给主相机控制视角。──
+    //    是否转发输入事件由外层 Layer 依据「视口是否悬停」决定，此处不再判断。
 
-    if (e.IsInCategory(EventCategoryInput) && m_ProcessInput) {
+    if (e.IsInCategory(EventCategoryInput)) {
         DispatchInputEventToScripts(e);
         if (m_ProcessCameraInput && !e.Handled) {
             DispatchInputEventToCamera(e);
@@ -303,7 +305,8 @@ void Scene::DispatchInputEventToCamera(Event &e) {
 
 void Scene::DispatchInputEventToScripts(Event &e) {
     auto view = m_Registry.view<ScriptComponent>();
-    if (view.empty()) return;
+    if (view.empty())
+        return;
 
     EventDispatcher dispatcher(e);
 
@@ -311,7 +314,8 @@ void Scene::DispatchInputEventToScripts(Event &e) {
     dispatcher.Dispatch<KeyPressedEvent>([&](KeyPressedEvent &ev) {
         for (auto handle : view) {
             auto &sc = view.get<ScriptComponent>(handle);
-            if (!sc.Enabled || !sc.OnKeyPressed) continue;
+            if (!sc.Enabled || !sc.OnKeyPressed)
+                continue;
             Entity entity{handle, this};
             if (sc.OnKeyPressed(entity, ev.GetKeyCode(), ev.GetRepeatCount())) {
                 ev.Handled = true;
@@ -320,13 +324,15 @@ void Scene::DispatchInputEventToScripts(Event &e) {
         }
         return false;
     });
-    if (e.Handled) return;
+    if (e.Handled)
+        return;
 
     // ---- 按键释放 ----
     dispatcher.Dispatch<KeyReleasedEvent>([&](KeyReleasedEvent &ev) {
         for (auto handle : view) {
             auto &sc = view.get<ScriptComponent>(handle);
-            if (!sc.Enabled || !sc.OnKeyReleased) continue;
+            if (!sc.Enabled || !sc.OnKeyReleased)
+                continue;
             Entity entity{handle, this};
             if (sc.OnKeyReleased(entity, ev.GetKeyCode(), 0)) {
                 ev.Handled = true;
@@ -335,13 +341,15 @@ void Scene::DispatchInputEventToScripts(Event &e) {
         }
         return false;
     });
-    if (e.Handled) return;
+    if (e.Handled)
+        return;
 
     // ---- 鼠标按下 ----
     dispatcher.Dispatch<MouseButtonPressedEvent>([&](MouseButtonPressedEvent &ev) {
         for (auto handle : view) {
             auto &sc = view.get<ScriptComponent>(handle);
-            if (!sc.Enabled || !sc.OnMouseButtonPressed) continue;
+            if (!sc.Enabled || !sc.OnMouseButtonPressed)
+                continue;
             Entity entity{handle, this};
             if (sc.OnMouseButtonPressed(entity, ev.GetMouseButton())) {
                 ev.Handled = true;
@@ -350,13 +358,15 @@ void Scene::DispatchInputEventToScripts(Event &e) {
         }
         return false;
     });
-    if (e.Handled) return;
+    if (e.Handled)
+        return;
 
     // ---- 鼠标释放 ----
     dispatcher.Dispatch<MouseButtonReleasedEvent>([&](MouseButtonReleasedEvent &ev) {
         for (auto handle : view) {
             auto &sc = view.get<ScriptComponent>(handle);
-            if (!sc.Enabled || !sc.OnMouseButtonReleased) continue;
+            if (!sc.Enabled || !sc.OnMouseButtonReleased)
+                continue;
             Entity entity{handle, this};
             if (sc.OnMouseButtonReleased(entity, ev.GetMouseButton())) {
                 ev.Handled = true;
@@ -365,25 +375,29 @@ void Scene::DispatchInputEventToScripts(Event &e) {
         }
         return false;
     });
-    if (e.Handled) return;
+    if (e.Handled)
+        return;
 
     // ---- 鼠标移动（不消费事件） ----
     dispatcher.Dispatch<MouseMovedEvent>([&](MouseMovedEvent &ev) {
         for (auto handle : view) {
             auto &sc = view.get<ScriptComponent>(handle);
-            if (!sc.Enabled || !sc.OnMouseMoved) continue;
+            if (!sc.Enabled || !sc.OnMouseMoved)
+                continue;
             Entity entity{handle, this};
             sc.OnMouseMoved(entity, ev.GetX(), ev.GetY());
         }
         return false;
     });
-    if (e.Handled) return;
+    if (e.Handled)
+        return;
 
     // ---- 鼠标滚轮（不消费事件） ----
     dispatcher.Dispatch<MouseScrolledEvent>([&](MouseScrolledEvent &ev) {
         for (auto handle : view) {
             auto &sc = view.get<ScriptComponent>(handle);
-            if (!sc.Enabled || !sc.OnMouseScrolled) continue;
+            if (!sc.Enabled || !sc.OnMouseScrolled)
+                continue;
             Entity entity{handle, this};
             sc.OnMouseScrolled(entity, ev.GetXOffset(), ev.GetYOffset());
         }
@@ -487,7 +501,8 @@ void Scene::OnRigidBodyDestroyed(entt::registry &registry, entt::entity entity) 
 void Scene::OnColliderDestroyed(entt::registry &registry, entt::entity entity) {
     // 碰撞体被移除时，如果实体还有 RigidBodyComponent 且已初始化，
     // 则重建刚体以反映新的碰撞形状
-    if (!m_PhysicsWorld) return;
+    if (!m_PhysicsWorld)
+        return;
 
     auto *rbc = registry.try_get<RigidBodyComponent>(entity);
     if (rbc && rbc->IsInitialized) {

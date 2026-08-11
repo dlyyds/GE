@@ -114,17 +114,18 @@ void SceneLayer::OnUpdate(Timestep &ts) {
 }
 
 void SceneLayer::OnEvent(Event &event) {
-    if (!m_Context->Scene) {
-        return;
-    }
+    if (m_Context->Scene) {
+        // 仅当鼠标悬停在 Scene 视口内时才让输入事件进入场景（影响脚本 + 相机）；
+        // 窗口尺寸变化等非输入事件始终会转发给场景。
+        const bool inViewport = m_SceneWindowHovered;
+        // 相机额外要求未在拖 gizmo，避免拖 gizmo 时相机跟着转。
+        const bool cameraActive = inViewport && !(m_Gizmo && ImGuizmo::IsOver());
+        m_Context->Scene->SetProcessInput(inViewport);
+        m_Context->Scene->SetProcessCameraInput(cameraActive);
 
-    // 相机额外要求未在拖 gizmo，避免拖 gizmo 时相机跟着转。
-    const bool cameraActive = m_SceneWindowHovered && !(m_Gizmo && ImGuizmo::IsOver());
-    m_Context->Scene->SetProcessCameraInput(cameraActive);
-
-    // 输入事件仅在鼠标悬停于 Scene 视口内时才转发给场景（脚本 + 相机）。
-    if (!event.Handled && m_SceneWindowHovered) {
-        m_Context->Scene->OnEvent(event);
+        if (!event.Handled) {
+            m_Context->Scene->OnEvent(event);
+        }
     }
 }
 

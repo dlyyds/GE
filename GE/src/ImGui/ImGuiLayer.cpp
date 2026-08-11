@@ -142,7 +142,6 @@ void ImGuiLayer::Begin() {
     ImGui_ImplVulkan_NewFrame();
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
-    ImGuizmo::BeginFrame();
 }
 
 void ImGuiLayer::End() {

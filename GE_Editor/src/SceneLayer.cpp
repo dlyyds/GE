@@ -114,18 +114,16 @@ void SceneLayer::OnUpdate(Timestep &ts) {
 }
 
 void SceneLayer::OnEvent(Event &event) {
-    // 将事件转发给场景（系统级处理 + ScriptComponent 事件回调）
-    if (m_Context->Scene && !event.Handled) {
-        m_Context->Scene->OnEvent(event);
-    }
+    if (m_Context->Scene) {
+        // 仅当鼠标悬停在 Scene 视口内、且光标不在 gizmo 上时才让相机接收输入，
+        // 避免拖 gizmo 时相机跟着转、或误触发相机视角。这里只告知 Scene 本次
+        // 是否允许相机输入，实际把事件路由给主相机的逻辑由 Scene 内部完成。
+        const bool cameraActive = m_SceneWindowHovered && !(m_Gizmo && ImGuizmo::IsOver());
+        m_Context->Scene->SetProcessCameraInput(cameraActive);
 
-    // 将事件转发给相机（处理鼠标移动、滚轮、按键等交互）。
-    // 仅当鼠标悬停在 Scene 视口窗口内、且光标不在 gizmo 上时才转发，
-    // 避免拖拽 gizmo 时相机视角一起跟着转，或误触发相机视角。
-    const bool gizmoActive = (m_Gizmo && ImGuizmo::IsOver());
-    if (m_Context->CameraEntity && !event.Handled && !gizmoActive && m_SceneWindowHovered) {
-        auto &cameraComp = m_Context->CameraEntity.GetComponent<CameraComponent>();
-        cameraComp.CameraInstance.OnEvent(event);
+        if (!event.Handled) {
+            m_Context->Scene->OnEvent(event);
+        }
     }
 }
 

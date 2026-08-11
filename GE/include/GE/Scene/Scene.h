@@ -64,6 +64,11 @@ public:
      */
     void OnEvent(Event &e);
 
+    /// 是否将输入事件路由给主相机（鼠标/键盘控制相机视角）。
+    /// 由编辑器依据「视口是否悬停、是否在拖 gizmo」等 UI 状态设置；
+    /// 实际的相机输入路由在 Scene 内部完成。
+    void SetProcessCameraInput(bool enabled) { m_ProcessCameraInput = enabled; }
+
     void OnViewportResize(uint32_t width, uint32_t height);
 
     /** @brief 获取物理世界指针（可能为 nullptr，如果物理系统未启用） */
@@ -81,11 +86,18 @@ public:
 private:
     /// 将输入事件分发给所有 ScriptComponent
     void DispatchInputEventToScripts(Event &e);
+
+    /// 将输入事件路由给主相机（控制相机视角）
+    void DispatchInputEventToCamera(Event &e);
+
     entt::registry m_Registry;
     uint32_t m_ViewportWidth = 0, m_ViewportHeight = 0;
 
     /// 物理世界（每个 Scene 一个实例）
     std::unique_ptr<Physics::PhysicsWorld> m_PhysicsWorld;
+
+    /// 是否将输入路由给主相机（由编辑器设置）
+    bool m_ProcessCameraInput = false;
 
     template <typename T>
     void OnComponentAdded(Entity entity, T &component);

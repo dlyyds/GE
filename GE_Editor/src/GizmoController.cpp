@@ -86,7 +86,8 @@ void GizmoController::Render(const Camera &camera, const glm::vec2 &viewportPos,
         glm::value_ptr(proj),
         m_Operation, m_Mode,
         glm::value_ptr(transform),
-        snap);
+        nullptr, // deltaMatrix：无需输出增量矩阵
+        snap);   // snap：吸附步长（第 7 参）
 
     if (changed && ImGuizmo::IsUsing()) {
         // 从 gizmo 更新后的矩阵拆回 平移/旋转(度)/缩放 写回组件

@@ -609,6 +609,14 @@ void SceneHierarchyPanel::DrawMaterialComponent(MaterialComponent &component) {
             component.MaterialPtr->SetFloat("specularStrength", specularStrength);
         }
 
+        // 自发光强度（写入材质 "emissiveStrength" 参数，缩放 Emissive 槽位纹理颜色；
+        // 未设置时默认 0，不发光，故必须通过这里调高才能看到自发光效果）
+        float emissiveStrength = component.MaterialPtr->GetFloat("emissiveStrength", 0.0f);
+        if (ImGui::SliderFloat("Emissive Strength (自发光强度)", &emissiveStrength,
+                               0.0f, 5.0f)) {
+            component.MaterialPtr->SetFloat("emissiveStrength", emissiveStrength);
+        }
+
         ImGui::Separator();
 
         // ---- 渲染状态 ----

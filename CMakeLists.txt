@@ -40,7 +40,8 @@ add_subdirectory(GE/third_party/tracy)
 
 # GE 层 Profiler 开关（控制 GE_PROFILE_* 宏，独立于 Tracy 的 TRACY_ENABLE）
 # ON 时向编译定义传入 GE_PROFILE_ENABLE=1，OFF 时传入 =0。
-set(GE_PROFILE_ENABLE ON CACHE BOOL "Enable GE_PROFILE_* profiling macros")
+# FORCE：改源码行的值即覆盖缓存，开关以源码行为准。
+set(GE_PROFILE_ENABLE OFF CACHE BOOL "Enable GE_PROFILE_* profiling macros" FORCE)
 
 find_package(Vulkan REQUIRED)
 

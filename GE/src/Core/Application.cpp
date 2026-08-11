@@ -9,7 +9,7 @@
 #include "Debug/Assert.h"
 #include "ImGui/ImGuiLayer.h"
 
-#include "tracy/Tracy.hpp"
+#include "Debug/Profiler.h"
 
 #include <Events/ApplicationEvent.h>
 
@@ -59,13 +59,13 @@ Application::~Application() {
 void Application::Run() {
 
     while (m_Running) {
-        ZoneScopedN("MainLoop");
+        GE_PROFILE_SCOPE("MainLoop");
         const auto time = static_cast<float>(glfwGetTime());
         Timestep timestep = time - m_LastFrameTime;
 
         // 帧率计算
         {
-            ZoneScopedN("FPSUpdate");
+            GE_PROFILE_SCOPE("FPSUpdate");
             m_FrameTimeAccumulator += timestep;
             m_FrameCount++;
 
@@ -82,21 +82,21 @@ void Application::Run() {
         m_LastFrameTime = time;
 
         if (!m_Minimized) {
-            ZoneScopedN("RenderFrame");
+            GE_PROFILE_SCOPE("RenderFrame");
 
             // 1. Begin frame — acquire + begin cmd + layout → ColorAttachment
             m_Renderer->BeginFrame();
 
             // 2. OnUpdate
             {
-                ZoneScopedN("OnUpdate");
+                GE_PROFILE_SCOPE("OnUpdate");
                 for (auto &layer : m_LayerStack)
                     layer->OnUpdate(timestep);
             }
 
             // 3. ImGui
             {
-                ZoneScopedN("ImGuiRender");
+                GE_PROFILE_SCOPE("ImGuiRender");
                 ImGuiLayer::Begin();
                 for (auto &layer : m_LayerStack)
                     layer->OnImGuiRender();
@@ -107,7 +107,7 @@ void Application::Run() {
             m_Renderer->EndFrame();
         }
         m_Window->OnUpdate();
-        FrameMark;
+        GE_PROFILE_FRAME_MARK();
     }
 
 }

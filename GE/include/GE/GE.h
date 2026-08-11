@@ -18,7 +18,7 @@
 // #include "Scene/Entity.h"
 
 //Debug
-#include "Debug/Instrumentor.h"
+#include "Debug/Profiler.h"
 #include "Debug/Assert.h"
 
 #include "Platform/Windows/GlfwWindow.h"

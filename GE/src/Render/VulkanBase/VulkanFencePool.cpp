@@ -17,7 +17,7 @@
 
 #include "Render/VulkanBase/VulkanFencePool.h"
 
-#include <tracy/Tracy.hpp>
+#include "Debug/Profiler.h"
 
 #include <stdexcept>
 
@@ -39,7 +39,7 @@ VulkanFencePool::~VulkanFencePool() {
 }
 
 vk::Fence VulkanFencePool::RequestFence() {
-    ZoneScoped;
+    GE_PROFILE_FUNCTION();
     // 优先返回池中已分配但当前未使用的 fence
     if (m_ActiveFenceCount < m_Fences.size()) {
         return m_Fences[m_ActiveFenceCount++];
@@ -56,7 +56,7 @@ vk::Fence VulkanFencePool::RequestFence() {
 }
 
 vk::Result VulkanFencePool::Wait(uint64_t timeout) const {
-    ZoneScoped;
+    GE_PROFILE_FUNCTION();
     if (m_ActiveFenceCount < 1 || m_Fences.empty()) {
         return vk::Result::eSuccess;
     }
@@ -65,7 +65,7 @@ vk::Result VulkanFencePool::Wait(uint64_t timeout) const {
 }
 
 vk::Result VulkanFencePool::Reset() {
-    ZoneScoped;
+    GE_PROFILE_FUNCTION();
     if (m_ActiveFenceCount < 1 || m_Fences.empty()) {
         return vk::Result::eSuccess;
     }

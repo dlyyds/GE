@@ -3,7 +3,7 @@
 #include "Core/GEWindow.h"
 #include "Core/Log.h"
 
-#include <tracy/Tracy.hpp>
+#include "Debug/Profiler.h"
 
 #include <cstring>
 #include <stdexcept>
@@ -106,7 +106,7 @@ void VulkanContext::ApplyDefaultExtensions() {
 }
 
 VulkanContext::VulkanContext(Window &window) {
-    ZoneScopedN("VulkanContextInit");
+    GE_PROFILE_SCOPE("VulkanContextInit");
     // 0. 填充引擎默认扩展（用户已添加的不覆盖）
     ApplyDefaultExtensions();
 
@@ -132,7 +132,7 @@ VulkanContext::VulkanContext(Window &window) {
 // ============================================================================
 
 std::unique_ptr<VulkanInstance> VulkanContext::CreateInstance() {
-    ZoneScoped;
+    GE_PROFILE_FUNCTION();
     // ---- 组装 Layers ----
     std::unordered_map<std::string, RequestMode> layers;
 
@@ -186,7 +186,7 @@ std::unique_ptr<VulkanInstance> VulkanContext::CreateInstance() {
 // ============================================================================
 
 std::unique_ptr<PhysicalDevice> VulkanContext::SelectPhysicalDevice() {
-    ZoneScoped;
+    GE_PROFILE_FUNCTION();
     auto gpus = m_Instance->GetHandle().enumeratePhysicalDevices();
     for (auto &gpu : gpus) {
         if (gpu.getProperties().apiVersion >= VK_API_VERSION_1_3) {
@@ -201,7 +201,7 @@ std::unique_ptr<PhysicalDevice> VulkanContext::SelectPhysicalDevice() {
 // ============================================================================
 
 std::unique_ptr<VulkanDevice> VulkanContext::CreateDevice() {
-    ZoneScoped;
+    GE_PROFILE_FUNCTION();
     // 组装 DebugUtils（启用 debug utils 扩展时用真实实现，否则用空实现）
     std::unique_ptr<DebugUtils> debug_utils;
     if (m_Instance->IsExtensionEnabled(VK_EXT_DEBUG_UTILS_EXTENSION_NAME)) {
@@ -233,7 +233,7 @@ std::unique_ptr<VulkanDevice> VulkanContext::CreateDevice() {
 // ============================================================================
 
 void VulkanContext::Destroy() {
-    ZoneScoped;
+    GE_PROFILE_FUNCTION();
     // 1. 销毁 Device（unique_ptr 析构触发 VulkanDevice 析构 → 销毁 VMA + Device）
     m_Device.reset();
 

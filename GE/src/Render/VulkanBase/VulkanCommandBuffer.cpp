@@ -28,7 +28,7 @@
 #include "Render/VulkanBase/VulkanSampler.h"
 
 #include <algorithm>
-#include <tracy/Tracy.hpp>
+#include "Debug/Profiler.h"
 
 #include <cassert>
 #include <cstring>
@@ -91,7 +91,7 @@ VulkanCommandBuffer::~VulkanCommandBuffer() {
 
 void VulkanCommandBuffer::Begin(vk::CommandBufferUsageFlags flags,
                                 VulkanCommandBuffer *primary_cmd_buf) {
-    ZoneScoped;
+    GE_PROFILE_FUNCTION();
 
     // 重置状态
     m_PipelineState = VulkanPipelineState{};
@@ -114,12 +114,12 @@ void VulkanCommandBuffer::Begin(vk::CommandBufferUsageFlags flags,
 }
 
 void VulkanCommandBuffer::End() {
-    ZoneScoped;
+    GE_PROFILE_FUNCTION();
     GetHandle().end();
 }
 
 void VulkanCommandBuffer::Reset() {
-    ZoneScoped;
+    GE_PROFILE_FUNCTION();
     m_PipelineState = VulkanPipelineState{};
     m_ResourceSets.clear();
     m_ResourceBindingDirty = false;
@@ -260,7 +260,7 @@ void VulkanCommandBuffer::PushConstants(const std::vector<uint8_t> &values) {
 
 void VulkanCommandBuffer::Draw(uint32_t vertex_count, uint32_t instance_count,
                                uint32_t first_vertex, uint32_t first_instance) {
-    ZoneScoped;
+    GE_PROFILE_FUNCTION();
     Flush(vk::PipelineBindPoint::eGraphics);
     GetHandle().draw(vertex_count, instance_count, first_vertex, first_instance);
 }
@@ -268,14 +268,14 @@ void VulkanCommandBuffer::Draw(uint32_t vertex_count, uint32_t instance_count,
 void VulkanCommandBuffer::DrawIndexed(uint32_t index_count, uint32_t instance_count,
                                       uint32_t first_index, int32_t vertex_offset,
                                       uint32_t first_instance) {
-    ZoneScoped;
+    GE_PROFILE_FUNCTION();
     Flush(vk::PipelineBindPoint::eGraphics);
     GetHandle().drawIndexed(index_count, instance_count, first_index, vertex_offset, first_instance);
 }
 
 void VulkanCommandBuffer::Dispatch(uint32_t group_count_x, uint32_t group_count_y,
                                    uint32_t group_count_z) {
-    ZoneScoped;
+    GE_PROFILE_FUNCTION();
     Flush(vk::PipelineBindPoint::eCompute);
     GetHandle().dispatch(group_count_x, group_count_y, group_count_z);
 }

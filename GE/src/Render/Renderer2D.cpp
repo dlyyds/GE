@@ -16,7 +16,7 @@
 #include "Render/VulkanBase/VulkanResourceCache.h"
 #include "Render/VulkanBase/VulkanShaderModule.h"
 
-#include "tracy/Tracy.hpp"
+#include "Debug/Profiler.h"
 
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -27,7 +27,7 @@ namespace GE {
 // ============================================================================
 
 Renderer2D::Renderer2D() {
-    ZoneScopedN("Renderer2D::Init");
+    GE_PROFILE_SCOPE("Renderer2D::Init");
 
     auto &device = Renderer::GetVulkanContext().GetDevice();
     auto &cache = device.GetResourceCache();
@@ -122,7 +122,7 @@ void Renderer2D::DrawSprite(const glm::mat4 &transform,
 }
 
 void Renderer2D::EndScene() {
-    ZoneScopedN("Renderer2D::EndScene");
+    GE_PROFILE_SCOPE("Renderer2D::EndScene");
 
     GE_CORE_ASSERT(m_InScene, "EndScene called without BeginScene!");
     m_InScene = false;

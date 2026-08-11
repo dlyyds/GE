@@ -23,7 +23,7 @@
 #include "Render/VulkanBase/VulkanRenderContext.h"
 #include "Render/VulkanBase/VulkanImage.h"
 
-#include <tracy/Tracy.hpp>
+#include "Debug/Profiler.h"
 
 #include <cassert>
 #include <stdexcept>
@@ -82,7 +82,7 @@ void VulkanRenderContext::InitializeSwapchain(vk::SurfaceKHR surface,
                                               vk::PresentModeKHR present_mode,
                                               const std::vector<vk::PresentModeKHR> &present_mode_priority_list,
                                               const std::vector<vk::SurfaceFormatKHR> &surface_format_priority_list) {
-    ZoneScoped;
+    GE_PROFILE_FUNCTION();
     if (surface) {
         vk::SurfaceCapabilitiesKHR surface_properties = m_Device.GetGpu().GetHandle().getSurfaceCapabilitiesKHR(surface);
 
@@ -118,7 +118,7 @@ VulkanCommandBuffer &VulkanRenderContext::Begin(CommandBufferResetMode reset_mod
 }
 
 void VulkanRenderContext::BeginFrame() {
-    ZoneScoped;
+    GE_PROFILE_FUNCTION();
 
     // 处理待切换的呈现模式（在 acquire 之前重建 swapchain，避免当前帧 command buffer 引用旧 image）
     if (m_Swapchain && m_PendingPresentMode.has_value()) {
@@ -182,7 +182,7 @@ void VulkanRenderContext::BeginFrame() {
 }
 
 void VulkanRenderContext::Present(vk::Semaphore semaphore) {
-    ZoneScoped;
+    GE_PROFILE_FUNCTION();
     assert(m_FrameActive && "帧未激活，请先调用 BeginFrame");
 
     if (m_Swapchain) {
@@ -275,7 +275,7 @@ bool VulkanRenderContext::HasSwapchain() {
 }
 
 bool VulkanRenderContext::HandleSurfaceChanges(bool force_update) {
-    ZoneScoped;
+    GE_PROFILE_FUNCTION();
     if (!m_Swapchain) {
         // 离屏渲染，无 swapchain
         return false;
@@ -309,7 +309,7 @@ bool VulkanRenderContext::HandleSurfaceChanges(bool force_update) {
 // ============================================================================
 
 void VulkanRenderContext::Prepare(size_t thread_count, bool enable_depth) {
-    ZoneScoped;
+    GE_PROFILE_FUNCTION();
     m_Device.GetHandle().waitIdle();
 
     if (m_Swapchain) {
@@ -344,7 +344,7 @@ void VulkanRenderContext::Prepare(size_t thread_count, bool enable_depth) {
 }
 
 void VulkanRenderContext::Recreate() {
-    ZoneScoped;
+    GE_PROFILE_FUNCTION();
     vk::Extent2D swapchain_extent = m_Swapchain->GetExtent();
     vk::Extent3D extent{swapchain_extent.width, swapchain_extent.height, 1};
 
@@ -378,7 +378,7 @@ void VulkanRenderContext::Recreate() {
 // ============================================================================
 
 void VulkanRenderContext::UpdateSwapchain(const vk::Extent2D &extent) {
-    ZoneScoped;
+    GE_PROFILE_FUNCTION();
     if (!m_Swapchain) {
         return;
     }
@@ -387,7 +387,7 @@ void VulkanRenderContext::UpdateSwapchain(const vk::Extent2D &extent) {
 }
 
 void VulkanRenderContext::UpdateSwapchain(uint32_t image_count) {
-    ZoneScoped;
+    GE_PROFILE_FUNCTION();
     if (!m_Swapchain) {
         return;
     }
@@ -400,7 +400,7 @@ void VulkanRenderContext::UpdateSwapchain(uint32_t image_count) {
 }
 
 void VulkanRenderContext::UpdateSwapchain(const std::set<vk::ImageUsageFlagBits> &image_usage_flags) {
-    ZoneScoped;
+    GE_PROFILE_FUNCTION();
     if (!m_Swapchain) {
         return;
     }
@@ -411,7 +411,7 @@ void VulkanRenderContext::UpdateSwapchain(const std::set<vk::ImageUsageFlagBits>
 }
 
 void VulkanRenderContext::UpdateSwapchain(const vk::Extent2D &extent, vk::SurfaceTransformFlagBitsKHR transform) {
-    ZoneScoped;
+    GE_PROFILE_FUNCTION();
     if (!m_Swapchain) {
         return;
     }
@@ -436,7 +436,7 @@ void VulkanRenderContext::UpdateSwapchain(const vk::Extent2D &extent, vk::Surfac
 // ============================================================================
 
 void VulkanRenderContext::UpdateSwapchain(vk::PresentModeKHR present_mode) {
-    ZoneScoped;
+    GE_PROFILE_FUNCTION();
     if (!m_Swapchain) {
         return;
     }
@@ -488,7 +488,7 @@ vk::Semaphore VulkanRenderContext::Submit(const VulkanQueue &queue,
                                           const std::vector<vk::CommandBuffer> &command_buffers,
                                           vk::Semaphore wait_semaphore,
                                           vk::PipelineStageFlags wait_pipeline_stage) {
-    ZoneScoped;
+    GE_PROFILE_FUNCTION();
     VulkanRenderFrame &frame = *m_Frames[m_ActiveFrameIndex];
 
     vk::Semaphore signal_semaphore = frame.GetSemaphorePool().RequestSemaphore("SignalSemaphore");
@@ -515,7 +515,7 @@ vk::Semaphore VulkanRenderContext::Submit(const VulkanQueue &queue,
 // ============================================================================
 
 void VulkanRenderContext::WaitFrame() {
-    ZoneScoped;
+    GE_PROFILE_FUNCTION();
     ResetFrame(GetActiveFrame());
 }
 
@@ -533,7 +533,7 @@ void VulkanRenderContext::ResetFrame(VulkanRenderFrame &frame) {
 // ============================================================================
 
 VulkanRenderContext::~VulkanRenderContext() {
-    ZoneScoped;
+    GE_PROFILE_FUNCTION();
     if (m_FrameActive) {
         m_FrameActive = false;
     }

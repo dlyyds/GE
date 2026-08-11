@@ -20,7 +20,7 @@
 #include "Render/VulkanBase/VulkanResourceCache.h"
 #include "Render/VulkanBase/VulkanShaderModule.h"
 
-#include "tracy/Tracy.hpp"
+#include "Debug/Profiler.h"
 
 namespace GE {
 
@@ -29,7 +29,7 @@ namespace GE {
 // ============================================================================
 
 Renderer3D::Renderer3D() {
-    ZoneScopedN("Renderer3D::Init");
+    GE_PROFILE_SCOPE("Renderer3D::Init");
 
     auto &device = Renderer::GetVulkanContext().GetDevice();
     auto &cache = device.GetResourceCache();
@@ -172,7 +172,7 @@ Renderer3D::SortKey Renderer3D::ComputeSortKey(const Material *material, const M
 }
 
 void Renderer3D::EndScene() {
-    ZoneScopedN("Renderer3D::EndScene");
+    GE_PROFILE_SCOPE("Renderer3D::EndScene");
 
     GE_CORE_ASSERT(m_InScene, "EndScene called without BeginScene!");
     m_InScene = false;

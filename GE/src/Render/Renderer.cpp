@@ -12,7 +12,7 @@
 #include "Render/VulkanBase/VulkanRenderingInfo.h"
 #include "Render/VulkanBase/VulkanRenderFrame.h"
 
-#include "tracy/Tracy.hpp"
+#include "Debug/Profiler.h"
 
 namespace GE {
 
@@ -78,7 +78,7 @@ void Renderer::WaitIdle() {
 }
 
 VulkanCommandBuffer &Renderer::BeginFrame() {
-    ZoneScopedN("Renderer::BeginFrame");
+    GE_PROFILE_SCOPE("Renderer::BeginFrame");
 
     // 0. 重置每帧渲染统计
     m_Stats = {};
@@ -91,7 +91,7 @@ VulkanCommandBuffer &Renderer::BeginFrame() {
 
     // 3. Transition to color attachment layout
     {
-        ZoneScopedN("TransitionToColor");
+        GE_PROFILE_SCOPE("TransitionToColor");
         auto &swapchain = m_RenderContext->GetSwapchain();
         auto &img = swapchain.GetImages()[m_RenderContext->GetActiveFrameIndex()];
         image_utils::TransitionLayout(m_ActiveFrameCmd->GetHandle(), img.GetHandle(),
@@ -125,13 +125,13 @@ VulkanCommandBuffer &Renderer::BeginFrame() {
 }
 
 void Renderer::EndFrame() {
-    ZoneScopedN("Renderer::EndFrame");
+    GE_PROFILE_SCOPE("Renderer::EndFrame");
 
     GE_CORE_ASSERT(m_ActiveFrameCmd, "No active frame command buffer!");
 
     // 1. Transition to present layout
     {
-        ZoneScopedN("TransitionToPresent");
+        GE_PROFILE_SCOPE("TransitionToPresent");
         auto &swapchain = m_RenderContext->GetSwapchain();
         auto &img = swapchain.GetImages()[m_RenderContext->GetActiveFrameIndex()];
         image_utils::TransitionLayout(m_ActiveFrameCmd->GetHandle(), img.GetHandle(),
@@ -144,7 +144,7 @@ void Renderer::EndFrame() {
 
     // 3. 提交 + 结束帧（present + 清理）
     {
-        ZoneScopedN("EndFrame");
+        GE_PROFILE_SCOPE("EndFrame");
         m_RenderContext->EndFrame(m_ActiveFrameCmd->GetHandle());
     }
 

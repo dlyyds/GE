@@ -175,8 +175,6 @@ target_include_directories(${Sandbox_NAME} PRIVATE
 
 target_link_libraries(${Sandbox_NAME} PRIVATE ${GE_NAME})
 
-add_subdirectory(sandbox/assets/shaders/glsl)
-
 
 #GE_Editor EXE（独立编辑器可执行）
 # ==============================================
@@ -200,3 +198,6 @@ target_include_directories(${Editor_NAME} PRIVATE
 
 
 target_link_libraries(${Editor_NAME} PRIVATE ${GE_NAME})
+
+#共享着色器（GLSL → SPIR-V），Sandbox 与 GE_Editor 均依赖
+add_subdirectory(assets/shaders/glsl)

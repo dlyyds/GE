@@ -17,7 +17,9 @@ if(GLSLC)
 
     if(SPV_OUTPUTS)
         add_custom_target(ShaderCompile ALL DEPENDS ${SPV_OUTPUTS})
+        # Sandbox 与 GE_Editor 均依赖编译出的着色器
         add_dependencies(${Sandbox_NAME} ShaderCompile)
+        add_dependencies(${Editor_NAME} ShaderCompile)
     endif()
 else()
     message(WARNING "glslc not found — shaders won't be auto-compiled")

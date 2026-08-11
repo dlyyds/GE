@@ -99,6 +99,7 @@ target_include_directories(${GE_NAME} PUBLIC
 )
 
 target_compile_definitions(${GE_NAME} PUBLIC
+        NOMINMAX
         GLFW_INCLUDE_NONE
         GE_DEBUG
         VK_USE_PLATFORM_WIN32_KHR

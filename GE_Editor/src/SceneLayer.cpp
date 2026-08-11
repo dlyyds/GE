@@ -155,7 +155,8 @@ void SceneLayer::OnImGuiRender() {
         // 在 Scene 窗口绘制范围内叠加变换 gizmo（ImGuizmo 须在此窗口内调用）
         if (m_Gizmo && m_Context->CameraEntity) {
             auto &cameraComp = m_Context->CameraEntity.GetComponent<CameraComponent>();
-            m_Gizmo->Render(cameraComp.CameraInstance, ImGui::GetWindowPos(), m_ViewportSize);
+            const ImVec2 winPos = ImGui::GetWindowPos();
+            m_Gizmo->Render(cameraComp.CameraInstance, glm::vec2(winPos.x, winPos.y), m_ViewportSize);
         }
     }
     ImGui::End();

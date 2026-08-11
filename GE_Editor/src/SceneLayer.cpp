@@ -152,11 +152,13 @@ void SceneLayer::OnImGuiRender() {
             ImGui::Image(m_Viewport->GetImGuiDescriptorSet(), avail);
         }
 
-        // 在 Scene 窗口绘制范围内叠加变换 gizmo（ImGuizmo 须在此窗口内调用）
+        // 在 Scene 窗口绘制范围内叠加变换 gizmo（ImGuizmo 须在此窗口内调用）。
+        // 用 GetItemRectMin() 取图像自身的屏幕左上角 —— 它精确落在 Scene 窗口
+        // 内容区（标题栏下方），若用 GetWindowPos() 会因标题栏偏移使 gizmo 偏高。
         if (m_Gizmo && m_Context->CameraEntity) {
             auto &cameraComp = m_Context->CameraEntity.GetComponent<CameraComponent>();
-            const ImVec2 winPos = ImGui::GetWindowPos();
-            m_Gizmo->Render(cameraComp.CameraInstance, glm::vec2(winPos.x, winPos.y), m_ViewportSize);
+            const ImVec2 imagePos = ImGui::GetItemRectMin();
+            m_Gizmo->Render(cameraComp.CameraInstance, glm::vec2(imagePos.x, imagePos.y), m_ViewportSize);
         }
     }
     ImGui::End();

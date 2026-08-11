@@ -6,9 +6,6 @@
 #include <glm/gtc/type_ptr.hpp>
 
 
-#include "TriangleLayer.h"
-#include "TextureLayer.h"
-#include "ModelTestLayer.h"
 #include "SceneLayer.h"
 #include "HierarchyLayer.h"
 #include "ResourceLayer.h"
@@ -19,12 +16,6 @@ class Sandbox : public Application {
 public:
     explicit Sandbox(ApplicationCommandLineArgs args) : Application("Sandbox", args) {
         GE_PROFILE_FUNCTION();
-        //PushLayer(std::make_shared<SandboxLayer>());
-        //PushLayer(std::make_shared<TextureSampleLayer>());
-        //PushLayer(std::make_shared<VulkanLayer>());
-        //PushLayer(std::make_shared<TriangleLayer>());
-        //PushLayer(std::make_shared<TextureLayer>());
-        //PushLayer(std::make_shared<ModelTestLayer>());
         // DockSpaceLayer 须最先渲染，才能让后续窗口停靠进它创建的 DockSpace
         auto dock_space = std::make_shared<DockSpaceLayer>();
         // 共享场景上下文：场景层与面板层共同持有，新建/加载场景时自动同步

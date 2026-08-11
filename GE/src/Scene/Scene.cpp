@@ -289,8 +289,9 @@ void Scene::OnEvent(Event &e) {
         return false;  // 不消费，事件继续向 Layer 上层传播
     });
 
-    // ── 输入事件：先分发给所有 ScriptComponent，未被消费的再交给主相机控制视角 ──
-    if (e.IsInCategory(EventCategoryInput)) {
+    // ── 输入事件：仅当编辑器允许时才处理（视口悬停时）。
+//    先分发给所有 ScriptComponent，未被消费的再交给主相机控制视角。──
+    if (e.IsInCategory(EventCategoryInput) && m_ProcessInput) {
         DispatchInputEventToScripts(e);
         if (m_ProcessCameraInput && !e.Handled) {
             DispatchInputEventToCamera(e);

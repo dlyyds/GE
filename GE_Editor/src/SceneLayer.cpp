@@ -50,8 +50,9 @@ void SceneLayer::OnAttach() {
 #endif
 }
 
-// 从代码程序化构建一个默认场景：相机 + 方向光 + 环境光 + 若干立方体。
-// 网格/纹理/材质均由全局管理器加载持有，场景组件仅持非拥有指针。
+// 从代码程序化构建一个仅用于 PBR 测试的默认场景：相机 + 方向光 + 环境光 +
+// PBR 金属度×粗糙度梯度球阵。网格/纹理/材质均由全局管理器加载持有，
+// 场景组件仅持非拥有指针。
 void SceneLayer::BuildDefaultSceneFromCode() {
     // 先重置实体引用，避免悬空
     m_Context->CameraEntity = {};
@@ -60,20 +61,6 @@ void SceneLayer::BuildDefaultSceneFromCode() {
     auto &meshMgr = Renderer::GetMeshManager();
     auto &texMgr = Renderer::GetTextureManager();
     auto &matMgr = Renderer::GetMaterialManager();
-
-    // 三个基础材质：各自用纯色 Albedo 纹理区分颜色（注册到全局 MaterialManager）
-    const char *matNames[3] = {"Editor_Red", "Editor_Green", "Editor_Blue"};
-    const glm::vec4 colors[3] = {
-        glm::vec4(0.8f, 0.2f, 0.2f, 1.0f),
-        glm::vec4(0.2f, 0.8f, 0.2f, 1.0f),
-        glm::vec4(0.2f, 0.4f, 0.9f, 1.0f),
-    };
-    Material *mats[3];
-    for (int i = 0; i < 3; ++i) {
-        auto mat = std::make_unique<Material>();
-        mat->SetTexture(Material::Albedo, texMgr.GetSolidColor(colors[i]));
-        mats[i] = matMgr.Register(matNames[i], std::move(mat));
-    }
 
     // 相机实体（Orbit 模式，绕场景中心观测）
     auto camera = m_Context->Scene->CreateEntity("Camera");
@@ -94,59 +81,11 @@ void SceneLayer::BuildDefaultSceneFromCode() {
     auto ambLight = m_Context->Scene->CreateEntity("AmbientLight");
     ambLight.AddComponent<AmbientLightComponent>(glm::vec4(0.15f, 0.15f, 0.15f, 1.0f));
 
-    // 三个立方体，横向排列
-    auto makeCube = [&](const char *name, const glm::vec3 &pos, Material *mat) {
-        Entity e = m_Context->Scene->CreateEntity(name);
-        e.GetComponent<TransformComponent>().Translation = pos;
-        e.AddComponent<MeshComponent>(meshMgr.GetBuiltin("cube"));
-        e.AddComponent<MaterialComponent>(mat);
-        return e;
-    };
-    makeCube("Cube_Red", {-1.5f, 0.5f, 0.0f}, mats[0]);
-    makeCube("Cube_Green", {0.0f, 0.5f, 0.0f}, mats[1]);
-    makeCube("Cube_Blue", {1.5f, 0.5f, 0.0f}, mats[2]);
-
-    // 大量点光源网格：验证点光源已迁入 SSBO 无编译期上限（此处 49 个 > 原 8 上限）。
-    // 在场景上方铺一层 7x7 点光源网格，颜色按位置渐变，便于观察多灯叠加效果。
-    // 点光源"灯泡"可视化用的白色材质（灯球呈中性白，与其光色区分）
-    auto whiteMat = std::make_unique<Material>();
-    whiteMat->SetTexture(Material::Albedo, texMgr.GetSolidColor(glm::vec4(1.0f)));
-    Material *matWhite = matMgr.Register("Editor_LightBulb", std::move(whiteMat));
-
-    auto makePointLight = [&](const char *name, const glm::vec3 &pos,
-                              const glm::vec3 &rgb, float radiusInv) {
-        Entity e = m_Context->Scene->CreateEntity(name);
-        auto &tc = e.GetComponent<TransformComponent>();
-        tc.Translation = pos;
-        e.AddComponent<PointLightComponent>(glm::vec4(rgb, 0.6f), radiusInv);
-
-        // 挂一个缩小的球体作为"灯泡"可视化，便于在场景中看到每个灯的位置与颜色
-        tc.Scale = {0.2f, 0.2f, 0.2f};
-        e.AddComponent<MeshComponent>(meshMgr.GetBuiltin("sphere"));
-        e.AddComponent<MaterialComponent>(matWhite);
-        return e;
-    };
-
-    const int gridN = 7;        // 网格边长（7x7 = 49 个灯）
-    const float extent = 4.0f;  // 网格范围半径
-    for (int ix = 0; ix < gridN; ++ix) {
-        for (int iz = 0; iz < gridN; ++iz) {
-            float x = -extent + extent * 2.0f * ix / (gridN - 1);
-            float z = -extent + extent * 2.0f * iz / (gridN - 1);
-            // 颜色按位置渐变（X 通道→红，Z 通道→绿，蓝固定），强度较低避免过曝
-            glm::vec3 rgb{
-                (ix + 1.0f) / gridN,
-                (iz + 1.0f) / gridN,
-                0.5f};
-            makePointLight("PointLight_Grid", {x, 1.6f, z}, rgb, 0.5f);
-        }
-    }
-
-    // ── PBR 演示：金属度 × 粗糙度 梯度球阵 ───────────────────────────────
+    // ── PBR 测试：金属度 × 粗糙度 梯度球阵 ───────────────────────────────
     // 用 PBR 管线（Material::Type::PBR）铺一张 metallic（列）× roughness（行）
     // 梯度球阵，直观展示金属-粗糙度工作流：金属度 0→1 从绝缘体渐变到全金属
-    // 镜面；粗糙度升高高光变柔。配合上方的点光源网格，可观察多灯 PBR 高光叠加。
-    // 无 MetallicRoughness 贴图，走标量 fallback（metallic/roughness 浮点参数）。
+    // 镜面；粗糙度升高高光变柔。无 MetallicRoughness 贴图，走标量 fallback
+    // （metallic/roughness 浮点参数）。
     const int   pMetallic = 5;      // 金属度列数
     const int   pRough    = 5;      // 粗糙度行数
     const float pSpacing  = 0.9f;   // 球心间距
@@ -160,7 +99,7 @@ void SceneLayer::BuildDefaultSceneFromCode() {
                                + "_R" + std::to_string(ri);
             auto mat = std::make_unique<Material>();
             mat->SetType(Material::Type::PBR);
-            // 暖橙 albedo，与红/绿/蓝立方体区分；金属度取该色为 F0
+            // 暖橙 albedo；金属度取该色为 F0
             mat->SetTexture(Material::Albedo,
                             texMgr.GetSolidColor(glm::vec4(0.9f, 0.5f, 0.3f, 1.0f)));
             mat->SetFloat("metallic", metallic);

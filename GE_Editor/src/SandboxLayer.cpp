@@ -9,12 +9,14 @@
 #include "GE/Scene/Components.h"
 
 #include "imgui.h"
+#include "Render/Renderer3D.h"
 
 #include <glm/gtc/matrix_transform.hpp>
 
 namespace GE {
 
-SandboxLayer::SandboxLayer() : Layer("SandboxLayer") {}
+SandboxLayer::SandboxLayer() : Layer("SandboxLayer") {
+}
 
 SandboxLayer::~SandboxLayer() = default;
 
@@ -27,13 +29,13 @@ void SandboxLayer::OnAttach() {
     m_Scene = std::make_unique<Scene>();
 
     auto &meshMgr = Renderer::GetMeshManager();
-    auto &texMgr  = Renderer::GetTextureManager();
-    auto &matMgr  = Renderer::GetMaterialManager();
+    auto &texMgr = Renderer::GetTextureManager();
+    auto &matMgr = Renderer::GetMaterialManager();
 
     // 纹理：白色反照率让自发光对比更明显；棋盘格作自发光贴图；暖橙作纯色发光
-    m_WhiteTex    = texMgr.GetSolidColor(glm::vec4(1.0f));
+    m_WhiteTex = texMgr.GetSolidColor(glm::vec4(1.0f));
     m_EmissiveTex = texMgr.Load("assets/textures/Checkerboard.png");
-    m_OrangeTex   = texMgr.GetSolidColor(glm::vec4(1.0f, 0.5f, 0.1f, 1.0f));
+    m_OrangeTex = texMgr.GetSolidColor(glm::vec4(1.0f, 0.5f, 0.1f, 1.0f));
 
     // 材质注册到全局 MaterialManager（生命周期随 Renderer），
     // MaterialComponent 仅持裸指针引用，材质必须比场景存活更久。
@@ -86,8 +88,8 @@ void SandboxLayer::OnAttach() {
         return e;
     };
     m_CubeEntities[0] = makeCube("Cube_NoEmissive", {-2.0f, 0.5f, 0.0f}, m_MatNoEmissive);
-    m_CubeEntities[1] = makeCube("Cube_Checker",    { 0.0f, 0.5f, 0.0f}, m_MatChecker);
-    m_CubeEntities[2] = makeCube("Cube_Orange",     { 2.0f, 0.5f, 0.0f}, m_MatOrange);
+    m_CubeEntities[1] = makeCube("Cube_Checker", {0.0f, 0.5f, 0.0f}, m_MatChecker);
+    m_CubeEntities[2] = makeCube("Cube_Orange", {2.0f, 0.5f, 0.0f}, m_MatOrange);
 }
 
 void SandboxLayer::OnDetach() {
@@ -156,7 +158,8 @@ void SandboxLayer::OnUpdate(Timestep &ts) {
     Renderer::Get3DRenderer().SetRenderTarget(nullptr);
 }
 
-void SandboxLayer::OnEvent(Event &) {}
+void SandboxLayer::OnEvent(Event &) {
+}
 
 // ============================================================
 // ImGui 渲染

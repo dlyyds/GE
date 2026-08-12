@@ -24,7 +24,7 @@
 
 // 编译期开关：true = 启动时从代码程序化构建默认场景；false = 从 .scene 文件加载。
 // 无需代码路径时，编辑器默认从文件加载（false）。
-#define GE_EDITOR_BUILD_SCENE_FROM_CODE 1
+#define GE_EDITOR_BUILD_SCENE_FROM_CODE 0
 
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -57,8 +57,8 @@ void SceneLayer::BuildDefaultSceneFromCode() {
     m_Context->Scene = std::make_unique<Scene>();
 
     auto &meshMgr = Renderer::GetMeshManager();
-    auto &texMgr  = Renderer::GetTextureManager();
-    auto &matMgr  = Renderer::GetMaterialManager();
+    auto &texMgr = Renderer::GetTextureManager();
+    auto &matMgr = Renderer::GetMaterialManager();
 
     // 三个基础材质：各自用纯色 Albedo 纹理区分颜色（注册到全局 MaterialManager）
     const char *matNames[3] = {"Editor_Red", "Editor_Green", "Editor_Blue"};
@@ -101,9 +101,9 @@ void SceneLayer::BuildDefaultSceneFromCode() {
         e.AddComponent<MaterialComponent>(mat);
         return e;
     };
-    makeCube("Cube_Red",   {-1.5f, 0.5f, 0.0f}, mats[0]);
-    makeCube("Cube_Green", { 0.0f, 0.5f, 0.0f}, mats[1]);
-    makeCube("Cube_Blue",  { 1.5f, 0.5f, 0.0f}, mats[2]);
+    makeCube("Cube_Red", {-1.5f, 0.5f, 0.0f}, mats[0]);
+    makeCube("Cube_Green", {0.0f, 0.5f, 0.0f}, mats[1]);
+    makeCube("Cube_Blue", {1.5f, 0.5f, 0.0f}, mats[2]);
 }
 
 void SceneLayer::OnDetach() {

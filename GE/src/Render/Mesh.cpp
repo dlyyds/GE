@@ -329,14 +329,17 @@ std::unique_ptr<Mesh> Mesh::CreateBuiltin(VulkanDevice &device, const std::strin
 
         for (int lat = 0; lat < latBands; ++lat) {
             for (int lon = 0; lon < lonBands; ++lon) {
+                // 注意：绕序必须与法线一致（CCW 朝外）。原实现 (first,second,first+1)
+                // 的叉积法线朝内，导致外侧被当作背面剔除、法线背离相机，
+                // 所有直接光照失效（只剩环境光）。这里交换 last two 顶点翻转绕序。
                 uint32_t first  = static_cast<uint32_t>(lat * (lonBands + 1) + lon);
                 uint32_t second = first + static_cast<uint32_t>(lonBands + 1);
                 indices.push_back(first);
-                indices.push_back(second);
                 indices.push_back(first + 1);
                 indices.push_back(second);
+                indices.push_back(second);
+                indices.push_back(first + 1);
                 indices.push_back(second + 1);
-                indices.push_back(first + 1);
             }
         }
     } else {

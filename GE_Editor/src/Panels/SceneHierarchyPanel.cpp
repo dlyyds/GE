@@ -16,6 +16,7 @@
 #include "GE/Render/TextureManager.h"
 #include "GE/Render/Renderer.h"
 #include "GE/Render/Mesh.h"
+#include "GE/Render/MeshManager.h"
 
 #include <glm/gtc/type_ptr.hpp>
 #include <cmath>
@@ -440,13 +441,65 @@ void SceneHierarchyPanel::DrawCameraComponent(CameraComponent &component) {
 void SceneHierarchyPanel::DrawMeshComponent(MeshComponent &component) {
     ImGui::ColorEdit4("Color", glm::value_ptr(component.Color));
 
-    // 显示网格信息（只读）
-    ImGui::Text("Mesh: %s", component.MeshPtr ? "(assigned)" : "(null)");
+    // ---- 网格选择下拉框 ----
+    // 列出内置几何体 + 所有已加载网格，选择即替换组件的 MeshPtr。
+    auto &meshMgr = Renderer::GetMeshManager();
+
+    // 内置几何体（选择时按需加载并缓存）
+    const char *builtins[] = {"cube", "sphere", "plane", "quad"};
+
+    // 当前网格的显示标识（GetFilePath 为 builtin:xxx 或模型文件路径）
+    std::string currentKey = "(null)";
     if (component.MeshPtr) {
-        // 文件路径（内置几何体为 builtin:xxx 前缀）
-        ImGui::Text("  Path: %s", component.MeshPtr->GetFilePath().c_str());
-        ImGui::Text("  Vertices: %u", component.MeshPtr->GetVertexCount());
-        ImGui::Text("  Indices:  %u", component.MeshPtr->GetIndexCount());
+        currentKey = component.MeshPtr->GetFilePath();
+    }
+
+    if (ImGui::BeginCombo("Mesh", currentKey.c_str())) {
+        // None 选项
+        if (ImGui::Selectable("(null)", component.MeshPtr == nullptr)) {
+            component.MeshPtr = nullptr;
+        }
+        if (component.MeshPtr == nullptr) {
+            ImGui::SetItemDefaultFocus();
+        }
+
+        // 内置几何体
+        for (const char *type : builtins) {
+            std::string key = "builtin:" + std::string(type);
+            bool isSelected = (component.MeshPtr &&
+                               component.MeshPtr->GetFilePath() == key);
+            if (ImGui::Selectable(key.c_str(), isSelected)) {
+                component.MeshPtr = meshMgr.GetBuiltin(type);
+            }
+            if (isSelected) {
+                ImGui::SetItemDefaultFocus();
+            }
+        }
+
+        // 已加载的文件模型（排除内置，避免列表重复）
+        for (const auto &key : meshMgr.GetAllKeys()) {
+            if (key.rfind("builtin:", 0) == 0) {
+                continue; // 已由上面的内置项覆盖
+            }
+            Mesh *mesh = meshMgr.Get(key);
+            bool isSelected = (mesh == component.MeshPtr);
+            if (ImGui::Selectable(key.c_str(), isSelected)) {
+                component.MeshPtr = mesh;
+            }
+            if (isSelected) {
+                ImGui::SetItemDefaultFocus();
+            }
+        }
+
+        ImGui::EndCombo();
+    }
+
+    // 网格信息（只读）
+    if (component.MeshPtr) {
+        ImGui::Separator();
+        ImGui::Text("Path: %s", component.MeshPtr->GetFilePath().c_str());
+        ImGui::Text("Vertices: %u", component.MeshPtr->GetVertexCount());
+        ImGui::Text("Indices:  %u", component.MeshPtr->GetIndexCount());
     }
 }
 

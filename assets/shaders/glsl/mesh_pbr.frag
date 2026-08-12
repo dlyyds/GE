@@ -186,41 +186,17 @@ void main()
     float roughness = mr.g * material.pbr.y;
 
 #if GE_PBR_DEBUG_SPECULAR
-    // ── 调试：真实 specular（F0=albedo×metallic）累加 ×50 放大 ──
-    //   亮→specular 在算但太暗(缺色调映射)；仍黑→specular 项本身为 0。
-    vec3 dbg = vec3(0.0);
-    {
-        vec3 Ld = normalize(-frame.dirLightDirection.xyz);
-        vec3 rd = frame.dirLightColor.rgb * frame.dirLightColor.w;
-        vec3 Hd = normalize(V + Ld);
-        float NdotLd = max(dot(N, Ld), 0.0);
-        float NdotVd = max(dot(N, V), 0.0);
-        vec3 F0d = mix(vec3(0.04), albedo, metallic);
-        vec3 Fd = fresnelSchlick(max(dot(Hd, V), 0.0), F0d);
-        float NDFd = distributionGGX(N, Hd, roughness);
-        float Gd = geometrySmith(N, V, Ld, roughness);
-        dbg += (NDFd * Gd * Fd) / max(4.0 * NdotVd * NdotLd, 0.001) * rd * NdotLd;
-
-        for (int i = 0; i < int(frame.lightCount.x); i++) {
-            vec3 Lp = lightBuffer.lights[i].position.xyz - inWorldPos;
-            float dist = length(Lp);
-            Lp = normalize(Lp);
-            float att = 1.0 / (1.0 + dist * dist
-                               * lightBuffer.lights[i].position.w
-                               * lightBuffer.lights[i].position.w);
-            vec3 rt = lightBuffer.lights[i].color.rgb
-                    * lightBuffer.lights[i].color.a * att;
-            vec3 Hp = normalize(V + Lp);
-            float NdotLp = max(dot(N, Lp), 0.0);
-            float NdotVp = max(dot(N, V), 0.0);
-            vec3 F0p = mix(vec3(0.04), albedo, metallic);
-            vec3 Fp = fresnelSchlick(max(dot(Hp, V), 0.0), F0p);
-            float NDFp = distributionGGX(N, Hp, roughness);
-            float Gp = geometrySmith(N, V, Lp, roughness);
-            dbg += (NDFp * Gp * Fp) / max(4.0 * NdotVp * NdotLp, 0.001) * rt * NdotLp;
-        }
+    // ── 调试：R = clamp(N·V,0,1)，G = clamp(N·灯0,0,1) ──
+    //   R 亮(前半球) → N 朝相机(正常)；R 全黑 → N 反了/朝内。
+    //   G 亮 → 该灯确实照到球；G 全黑 → 灯朝向/位置错。
+    float NdotV = max(dot(N, V), 0.0);
+    float NdotL0 = 0.0;
+    if (int(frame.lightCount.x) > 0) {
+        vec3 L0 = lightBuffer.lights[0].position.xyz - inWorldPos;
+        L0 = normalize(L0);
+        NdotL0 = max(dot(N, L0), 0.0);
     }
-    outFragColor = vec4(dbg * 50.0, 1.0);
+    outFragColor = vec4(NdotV, NdotL0, 0.0, 1.0);
     return;
 #endif
 

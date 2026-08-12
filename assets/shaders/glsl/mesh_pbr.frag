@@ -186,28 +186,18 @@ void main()
     float roughness = mr.g * material.pbr.y;
 
 #if GE_PBR_DEBUG_SPECULAR
-    // ── 调试：只输出镜面反射，但强制 roughness=0.5（把高光摊宽到能看见） ──
-    //   若出现大范围亮斑 → specular 正常，之前黑是因为高光太窄(亚像素)；
-    //   若仍纯黑 → specular 计算真有问题。
+    // ── 调试：输出中间量（方向光）定位 specular 哪一项为 0 ──
+    //   R = clamp(NDF,0,1) 法线分布；G = NdotL 光照点积；B = F 菲涅尔。
+    //   R 全黑 → NDF=0(roughness 问题)；G 全黑 → 光的朝向错；B 全黑 → F 异常。
     float dbgRough = 0.5;
-    vec3 dbg = vec3(0.0);
-    {
-        vec3 Ld = normalize(-frame.dirLightDirection.xyz);
-        vec3 rd = frame.dirLightColor.rgb * frame.dirLightColor.w;
-        dbg += calcSpecular(N, V, Ld, rd, dbgRough);
-        for (int i = 0; i < int(frame.lightCount.x); i++) {
-            vec3 Lp = lightBuffer.lights[i].position.xyz - inWorldPos;
-            float dist = length(Lp);
-            Lp = normalize(Lp);
-            float att = 1.0 / (1.0 + dist * dist
-                               * lightBuffer.lights[i].position.w
-                               * lightBuffer.lights[i].position.w);
-            vec3 rt = lightBuffer.lights[i].color.rgb
-                    * lightBuffer.lights[i].color.a * att;
-            dbg += calcSpecular(N, V, Lp, rt, dbgRough);
-        }
-    }
-    outFragColor = vec4(dbg, 1.0);
+    vec3 Ld = normalize(-frame.dirLightDirection.xyz);
+    vec3 Hd = normalize(V + Ld);
+    float NDF = distributionGGX(N, Hd, dbgRough);
+    float NdotL = max(dot(N, Ld), 0.0);
+    float F = fresnelSchlick(max(dot(Hd, V), 0.0), vec3(0.04)).r;
+    float Gg = geometrySmith(N, V, Ld, dbgRough);
+    outFragColor = vec4(clamp(NDF, 0.0, 1.0), NdotL, F, 1.0);
+    // outFragColor = vec4(vec3(Gg), 1.0); // 若要单看几何遮蔽，取消注释这行
     return;
 #endif
 

@@ -51,8 +51,7 @@ void SceneLayer::OnAttach() {
 }
 
 // 从代码程序化构建一个仅用于 PBR 测试的默认场景：相机 + 方向光 + 环境光 +
-// PBR 金属度×粗糙度梯度球阵。网格/纹理/材质均由全局管理器加载持有，
-// 场景组件仅持非拥有指针。
+// 单个 PBR 金属球。网格/纹理/材质均由全局管理器加载持有，场景组件仅持非拥有指针。
 void SceneLayer::BuildDefaultSceneFromCode() {
     // 先重置实体引用，避免悬空
     m_Context->CameraEntity = {};
@@ -81,43 +80,25 @@ void SceneLayer::BuildDefaultSceneFromCode() {
     auto ambLight = m_Context->Scene->CreateEntity("AmbientLight");
     ambLight.AddComponent<AmbientLightComponent>(glm::vec4(0.15f, 0.15f, 0.15f, 1.0f));
 
-    // ── PBR 测试：金属度 × 粗糙度 梯度球阵 ───────────────────────────────
-    // 用 PBR 管线（Material::Type::PBR）铺一张 metallic（列）× roughness（行）
-    // 梯度球阵，直观展示金属-粗糙度工作流：金属度 0→1 从绝缘体渐变到全金属
-    // 镜面；粗糙度升高高光变柔。无 MetallicRoughness 贴图，走标量 fallback
-    // （metallic/roughness 浮点参数）。
-    const int   pMetallic = 5;      // 金属度列数
-    const int   pRough    = 5;      // 粗糙度行数
-    const float pSpacing  = 0.9f;   // 球心间距
-    const float pScale    = 0.35f;  // 球缩放（内置 sphere 半径 1.0 → 直径 0.7）
-    for (int mi = 0; mi < pMetallic; ++mi) {
-        for (int ri = 0; ri < pRough; ++ri) {
-            float metallic  = static_cast<float>(mi) / (pMetallic - 1);
-            float roughness = static_cast<float>(ri) / (pRough - 1);
+    // ── PBR 测试：单个金属球 ────────────────────────────────────────────
+    // 用 PBR 管线（Material::Type::PBR）放一个球，居中便于观察高光。
+    // 标签拦/Properties 面板可调 Metallic / Roughness 实时改观感。
+    // 无 MetallicRoughness 贴图，走标量 fallback（metallic/roughness 浮点参数）。
+    auto pbrMat = std::make_unique<Material>();
+    pbrMat->SetType(Material::Type::PBR);
+    // 暖橙 albedo；金属度取该色为 F0
+    pbrMat->SetTexture(Material::Albedo,
+                       texMgr.GetSolidColor(glm::vec4(0.9f, 0.5f, 0.3f, 1.0f)));
+    pbrMat->SetFloat("metallic", 0.5f);
+    pbrMat->SetFloat("roughness", 0.3f);
+    Material *matPBR = matMgr.Register("Editor_PBR_Metal", std::move(pbrMat));
 
-            std::string name = "PBR_Sphere_M" + std::to_string(mi)
-                               + "_R" + std::to_string(ri);
-            auto mat = std::make_unique<Material>();
-            mat->SetType(Material::Type::PBR);
-            // 暖橙 albedo；金属度取该色为 F0
-            mat->SetTexture(Material::Albedo,
-                            texMgr.GetSolidColor(glm::vec4(0.9f, 0.5f, 0.3f, 1.0f)));
-            mat->SetFloat("metallic", metallic);
-            mat->SetFloat("roughness", roughness);
-            Material *pbrMat = matMgr.Register(name, std::move(mat));
-
-            Entity e = m_Context->Scene->CreateEntity(name);
-            auto &tc = e.GetComponent<TransformComponent>();
-            tc.Translation = {
-                -pSpacing * (pMetallic - 1) / 2.0f + mi * pSpacing,
-                pScale,
-                2.5f + ri * pSpacing,
-            };
-            tc.Scale = {pScale, pScale, pScale};
-            e.AddComponent<MeshComponent>(meshMgr.GetBuiltin("sphere"));
-            e.AddComponent<MaterialComponent>(pbrMat);
-        }
-    }
+    Entity sphere = m_Context->Scene->CreateEntity("PBR_Sphere");
+    auto &tc = sphere.GetComponent<TransformComponent>();
+    tc.Translation = {0.0f, 0.5f, 0.0f};
+    tc.Scale       = {1.0f, 1.0f, 1.0f};
+    sphere.AddComponent<MeshComponent>(meshMgr.GetBuiltin("sphere"));
+    sphere.AddComponent<MaterialComponent>(matPBR);
 }
 
 void SceneLayer::OnDetach() {

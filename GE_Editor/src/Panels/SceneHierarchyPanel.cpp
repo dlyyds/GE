@@ -574,12 +574,15 @@ void SceneHierarchyPanel::DrawMaterialComponent(MaterialComponent &component) {
     }
 
     if (component.MaterialPtr) {
-        // ---- 材质类型显示 ----
-        const char *typeName = "Unknown";
-        switch (component.MaterialPtr->GetType()) {
-            case Material::Type::BlinnPhong: typeName = "Blinn-Phong"; break;
+        // ---- 材质类型（可切换：Blinn-Phong / PBR） ----
+        // 枚举值恰为 0/1，可直接作为下拉框索引。切换后由 Renderer3D 按类型
+        // 路由到对应管线（BlinnPhong=0 / PBR=1）。
+        const char *typeNames[] = {"Blinn-Phong", "PBR"};
+        int typeIdx = static_cast<int>(component.MaterialPtr->GetType());
+        if (ImGui::Combo("Type", &typeIdx, typeNames, 2)) {
+            component.MaterialPtr->SetType(
+                typeIdx == 1 ? Material::Type::PBR : Material::Type::BlinnPhong);
         }
-        ImGui::Text("Type: %s", typeName);
 
         ImGui::Separator();
 
@@ -587,30 +590,51 @@ void SceneHierarchyPanel::DrawMaterialComponent(MaterialComponent &component) {
         DrawTextureSlot("Albedo",   component.MaterialPtr, Material::Albedo);
         DrawTextureSlot("Normal",   component.MaterialPtr, Material::Normal);
         DrawTextureSlot("Emissive", component.MaterialPtr, Material::Emissive);
+        // PBR 专属：金属-粗糙度贴图（glTF 惯例：B=metallic, G=roughness）。
+        // 留空则走标量 metallic/roughness 回退。
+        if (component.MaterialPtr->GetType() == Material::Type::PBR) {
+            DrawTextureSlot("Metallic Roughness", component.MaterialPtr,
+                            Material::MetallicRoughness);
+        }
 
         ImGui::Separator();
 
-        // ---- 标量参数 ----
-        // 高光指数（写入材质 "shininess" 参数，Renderer3D 每帧读取）
-        // 用对数刻度：滑块位置 0~8 对应 shininess = 2^位置（1~256），
-        // 避免线性滑块在高指数区间因 pow() 高光塌缩到亚像素而"看似没反应"。
-        float shininess = component.MaterialPtr->GetFloat("shininess", 32.0f);
-        float logShininess = std::log2(std::max(shininess, 1.0f));
-        if (ImGui::SliderFloat("Shininess (高光指数, 对数刻度)", &logShininess,
-                               0.0f, 8.0f)) {
-            component.MaterialPtr->SetFloat("shininess", std::pow(2.0f, logShininess));
+        // ---- 标量参数（按材质类型分流） ----
+        if (component.MaterialPtr->GetType() == Material::Type::PBR) {
+            // 金属度（0=绝缘体 1=金属，写入 "metallic"，PBR 管线的 scalar 系数）
+            float metallic = component.MaterialPtr->GetFloat("metallic", 0.0f);
+            if (ImGui::SliderFloat("Metallic (金属度)", &metallic, 0.0f, 1.0f)) {
+                component.MaterialPtr->SetFloat("metallic", metallic);
+            }
+
+            // 粗糙度（0=镜面 1=漫，写入 "roughness"）
+            float roughness = component.MaterialPtr->GetFloat("roughness", 0.5f);
+            if (ImGui::SliderFloat("Roughness (粗糙度)", &roughness, 0.0f, 1.0f)) {
+                component.MaterialPtr->SetFloat("roughness", roughness);
+            }
+        } else {
+            // Blinn-Phong：高光指数（写入材质 "shininess" 参数，Renderer3D 每帧读取）
+            // 用对数刻度：滑块位置 0~8 对应 shininess = 2^位置（1~256），
+            // 避免线性滑块在高指数区间因 pow() 高光塌缩到亚像素而"看似没反应"。
+            float shininess = component.MaterialPtr->GetFloat("shininess", 32.0f);
+            float logShininess = std::log2(std::max(shininess, 1.0f));
+            if (ImGui::SliderFloat("Shininess (高光指数, 对数刻度)", &logShininess,
+                                   0.0f, 8.0f)) {
+                component.MaterialPtr->SetFloat("shininess", std::pow(2.0f, logShininess));
+            }
+
+            // 镜面强度系数（写入材质 "specularStrength" 参数，独立控制高光亮暗，
+            // 与 shininess 的高光形态解耦）
+            float specularStrength = component.MaterialPtr->GetFloat("specularStrength", 0.5f);
+            if (ImGui::SliderFloat("Specular Strength (镜面强度)", &specularStrength,
+                                   0.0f, 2.0f)) {
+                component.MaterialPtr->SetFloat("specularStrength", specularStrength);
+            }
         }
 
-        // 镜面强度系数（写入材质 "specularStrength" 参数，独立控制高光亮暗，
-        // 与 shininess 的高光形态解耦）
-        float specularStrength = component.MaterialPtr->GetFloat("specularStrength", 0.5f);
-        if (ImGui::SliderFloat("Specular Strength (镜面强度)", &specularStrength,
-                               0.0f, 2.0f)) {
-            component.MaterialPtr->SetFloat("specularStrength", specularStrength);
-        }
-
-        // 自发光强度（写入材质 "emissiveStrength" 参数，缩放 Emissive 槽位纹理颜色；
-        // 未设置时默认 0，不发光，故必须通过这里调高才能看到自发光效果）
+        // 自发光强度（两种类型共用；写入材质 "emissiveStrength" 参数，
+        // 缩放 Emissive 槽位纹理颜色；未设置时默认 0，不发光，故必须通过
+        // 这里调高才能看到自发光效果）
         float emissiveStrength = component.MaterialPtr->GetFloat("emissiveStrength", 0.0f);
         if (ImGui::SliderFloat("Emissive Strength (自发光强度)", &emissiveStrength,
                                0.0f, 5.0f)) {

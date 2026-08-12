@@ -38,12 +38,13 @@ namespace {
 // ============================================================
 
 /// 材质纹理槽位名（与 Material::TextureSlot 顺序一一对应）
-const char *kTextureSlotNames[] = {"Albedo", "Normal", "Emissive"};
+const char *kTextureSlotNames[] = {"Albedo", "Normal", "Emissive", "MetallicRoughness"};
 
 /// 材质纹理槽位名 → 槽位枚举（用于反序列化）
 Material::TextureSlot TextureSlotFromName(const std::string &name) {
     if (name == "Normal") return Material::Normal;
     if (name == "Emissive") return Material::Emissive;
+    if (name == "MetallicRoughness") return Material::MetallicRoughness;
     return Material::Albedo;
 }
 
@@ -56,6 +57,9 @@ void SerializeMaterialNode(YAML::Node &matNode, Material *mat) {
     if (!mat) {
         return;
     }
+
+    // 材质类型（BlinnPhong / PBR），决定渲染管线
+    matNode["Type"] = (mat->GetType() == Material::Type::PBR) ? "PBR" : "BlinnPhong";
 
     // 纹理槽位（仅写有纹理且带文件路径的槽位）
     for (int s = 0; s < Material::Count; ++s) {
@@ -85,6 +89,15 @@ void SerializeMaterialNode(YAML::Node &matNode, Material *mat) {
  */
 std::string BuildMaterialKey(const YAML::Node &matNode) {
     std::string key;
+
+    // 材质类型：不同管线的同内容材质不共享（PBR 与 Blinn-Phong 的标量语义不同）
+    key += "type:";
+    if (matNode["Type"]) {
+        key += matNode["Type"].as<std::string>();
+    } else {
+        key += "BlinnPhong"; // 旧场景无 Type 字段，默认 Blinn-Phong
+    }
+    key += ";";
 
     // 纹理槽位（按槽位顺序）
     for (auto name : kTextureSlotNames) {
@@ -130,6 +143,11 @@ Material *GetOrCreateMaterial(const YAML::Node &matNode) {
 
     auto mat = std::make_unique<Material>();
     mat->SetDebugName(key);
+
+    // 材质类型（默认 Blinn-Phong，兼容旧场景文件）
+    if (matNode["Type"] && matNode["Type"].as<std::string>() == "PBR") {
+        mat->SetType(Material::Type::PBR);
+    }
 
     // 纹理槽位
     for (auto name : kTextureSlotNames) {

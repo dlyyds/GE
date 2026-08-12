@@ -4,6 +4,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+// 调试开关：设 1 时主函数只输出镜面反射（不含漫反射/环境光）。
+// 观察：球面出现亮点 → specular 正常；全黑 → specular 异常（排查 BRDF）。
+// 排查完记得设回 0。
+#define GE_PBR_DEBUG_SPECULAR 1
+
 // —— PBR 片元着色器（Cook-Torrance 金属-粗糙度工作流）——
 // 与 mesh.frag 共存：同一套顶点数据 / FrameUBO / 点光源 SSBO / 纹理槽位，
 // 只替换光照函数为物理 BRDF。当前为直接光 PBR（方向光 + 点光源），
@@ -95,6 +100,18 @@ float geometrySmith(vec3 N, vec3 V, vec3 L, float roughness) {
          * geometrySchlickGGX(max(dot(N, L), 0.0), roughness);
 }
 
+// 仅镜面反射（调试用，与 calcDirectLight 的 specular 项一致）
+vec3 calcSpecular(vec3 N, vec3 V, vec3 L, vec3 radiance, float roughness) {
+    vec3 H = normalize(V + L);
+    float NdotL = max(dot(N, L), 0.0);
+    float NdotV = max(dot(N, V), 0.0);
+    vec3 F0 = vec3(0.04);
+    vec3 F  = fresnelSchlick(max(dot(H, V), 0.0), F0);
+    float NDF = distributionGGX(N, H, roughness);
+    float G   = geometrySmith(N, V, L, roughness);
+    return (NDF * G * F) / max(4.0 * NdotV * NdotL, 0.001) * radiance * NdotL;
+}
+
 // 单个光源对片元的辐射贡献（Cook-Torrance 反射方程）
 /// @param radiance 该光源在片元处的辐射率（含颜色与衰减）
 vec3 calcDirectLight(vec3 N, vec3 V, vec3 L, vec3 radiance,
@@ -167,6 +184,29 @@ void main()
     vec4 mr = texture(samplerMetallicRoughness, inUV, 0.0);
     float metallic  = mr.b * material.pbr.x;
     float roughness = mr.g * material.pbr.y;
+
+#if GE_PBR_DEBUG_SPECULAR
+    // ── 调试：只输出镜面反射累加 ──
+    vec3 dbg = vec3(0.0);
+    {
+        vec3 Ld = normalize(-frame.dirLightDirection.xyz);
+        vec3 rd = frame.dirLightColor.rgb * frame.dirLightColor.w;
+        dbg += calcSpecular(N, V, Ld, rd, roughness);
+        for (int i = 0; i < int(frame.lightCount.x); i++) {
+            vec3 Lp = lightBuffer.lights[i].position.xyz - inWorldPos;
+            float dist = length(Lp);
+            Lp = normalize(Lp);
+            float att = 1.0 / (1.0 + dist * dist
+                               * lightBuffer.lights[i].position.w
+                               * lightBuffer.lights[i].position.w);
+            vec3 rt = lightBuffer.lights[i].color.rgb
+                    * lightBuffer.lights[i].color.a * att;
+            dbg += calcSpecular(N, V, Lp, rt, roughness);
+        }
+    }
+    outFragColor = vec4(dbg, 1.0);
+    return;
+#endif
 
     // 环境光：P0 用常量近似（后续 P4 替换为 IBL）
     vec3 ambientColor = frame.ambient.rgb * frame.ambient.w;

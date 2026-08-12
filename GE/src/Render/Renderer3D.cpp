@@ -517,15 +517,17 @@ void Renderer3D::EndScene() {
                           1, 3);
         }
 
-        // 金属-粗糙度贴图（set 1, binding 4）：PBR 材质使用。无 MR 贴图时
-        // 绑定默认 (G=1,B=1) 纹理，回退到标量 metallic/roughness。
-        // 对 Blinn-Phong 批次同样绑定：其 set 1 布局无 binding 4，Flush 时
-        // 描述符更新会按布局过滤掉该绑定，无副作用，保持代码统一。
-        Texture *mrTex = GetEffectiveMetallicRoughnessTexture(batch.material);
-        if (mrTex) {
-            cmd.BindImage(mrTex->GetImageView(),
-                          mrTex->GetSampler(),
-                          1, 4);
+        // 金属-粗糙度贴图（set 1, binding 4）：仅 PBR 材质使用。无 MR 贴图时
+        // 绑定默认 (G=1, B=1) 纹理，回退到标量 metallic/roughness。
+        // Blinn-Phong 批次不绑定（其 set 1 布局无 binding 4，绑了也会被过滤，
+        // 这里显式判断更清晰，避免多余绑定）。
+        if (pipelineId == 1) {
+            Texture *mrTex = GetEffectiveMetallicRoughnessTexture(batch.material);
+            if (mrTex) {
+                cmd.BindImage(mrTex->GetImageView(),
+                              mrTex->GetSampler(),
+                              1, 4);
+            }
         }
 
         // 绑定材质 UBO（set 1, binding 2）：存材质标量参数。按批次写入，

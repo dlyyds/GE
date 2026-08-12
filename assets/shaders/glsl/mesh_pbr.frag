@@ -186,25 +186,9 @@ void main()
     float roughness = mr.g * material.pbr.y;
 
 #if GE_PBR_DEBUG_SPECULAR
-    // ── 调试：只输出镜面反射累加 ──
-    vec3 dbg = vec3(0.0);
-    {
-        vec3 Ld = normalize(-frame.dirLightDirection.xyz);
-        vec3 rd = frame.dirLightColor.rgb * frame.dirLightColor.w;
-        dbg += calcSpecular(N, V, Ld, rd, roughness);
-        for (int i = 0; i < int(frame.lightCount.x); i++) {
-            vec3 Lp = lightBuffer.lights[i].position.xyz - inWorldPos;
-            float dist = length(Lp);
-            Lp = normalize(Lp);
-            float att = 1.0 / (1.0 + dist * dist
-                               * lightBuffer.lights[i].position.w
-                               * lightBuffer.lights[i].position.w);
-            vec3 rt = lightBuffer.lights[i].color.rgb
-                    * lightBuffer.lights[i].color.a * att;
-            dbg += calcSpecular(N, V, Lp, rt, roughness);
-        }
-    }
-    outFragColor = vec4(dbg, 1.0);
+    // ── 调试：显示 metallic / roughness 读数（R=metallic, G=roughness） ──
+    //   R 偏白 → metallic≈1；G 暗(≈0.2) → roughness≈0.2 正常；G 全黑 → roughness=0。
+    outFragColor = vec4(metallic, roughness, 0.0, 1.0);
     return;
 #endif
 

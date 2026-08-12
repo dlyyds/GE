@@ -141,6 +141,44 @@ void SceneLayer::BuildDefaultSceneFromCode() {
             makePointLight("PointLight_Grid", {x, 1.6f, z}, rgb, 0.5f);
         }
     }
+
+    // ── PBR 演示：金属度 × 粗糙度 梯度球阵 ───────────────────────────────
+    // 用 PBR 管线（Material::Type::PBR）铺一张 metallic（列）× roughness（行）
+    // 梯度球阵，直观展示金属-粗糙度工作流：金属度 0→1 从绝缘体渐变到全金属
+    // 镜面；粗糙度升高高光变柔。配合上方的点光源网格，可观察多灯 PBR 高光叠加。
+    // 无 MetallicRoughness 贴图，走标量 fallback（metallic/roughness 浮点参数）。
+    const int   pMetallic = 5;      // 金属度列数
+    const int   pRough    = 5;      // 粗糙度行数
+    const float pSpacing  = 0.9f;   // 球心间距
+    const float pScale    = 0.35f;  // 球缩放（内置 sphere 半径 1.0 → 直径 0.7）
+    for (int mi = 0; mi < pMetallic; ++mi) {
+        for (int ri = 0; ri < pRough; ++ri) {
+            float metallic  = static_cast<float>(mi) / (pMetallic - 1);
+            float roughness = static_cast<float>(ri) / (pRough - 1);
+
+            std::string name = "PBR_Sphere_M" + std::to_string(mi)
+                               + "_R" + std::to_string(ri);
+            auto mat = std::make_unique<Material>();
+            mat->SetType(Material::Type::PBR);
+            // 暖橙 albedo，与红/绿/蓝立方体区分；金属度取该色为 F0
+            mat->SetTexture(Material::Albedo,
+                            texMgr.GetSolidColor(glm::vec4(0.9f, 0.5f, 0.3f, 1.0f)));
+            mat->SetFloat("metallic", metallic);
+            mat->SetFloat("roughness", roughness);
+            Material *pbrMat = matMgr.Register(name, std::move(mat));
+
+            Entity e = m_Context->Scene->CreateEntity(name);
+            auto &tc = e.GetComponent<TransformComponent>();
+            tc.Translation = {
+                -pSpacing * (pMetallic - 1) / 2.0f + mi * pSpacing,
+                pScale,
+                2.5f + ri * pSpacing,
+            };
+            tc.Scale = {pScale, pScale, pScale};
+            e.AddComponent<MeshComponent>(meshMgr.GetBuiltin("sphere"));
+            e.AddComponent<MaterialComponent>(pbrMat);
+        }
+    }
 }
 
 void SceneLayer::OnDetach() {

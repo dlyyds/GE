@@ -186,10 +186,9 @@ void main()
     float roughness = mr.g * material.pbr.y;
 
 #if GE_PBR_DEBUG_SPECULAR
-    // ── 调试：输出法线 N（可视化）判断是否 NaN ──
-    //   N*0.5+0.5 映射到 [0,1]：球面呈彩色渐变 → N 正常；
-    //   纯黑 → N 是 NaN（T/B 退化，球体可能缺切线数据）。
-    outFragColor = vec4(N * 0.5 + 0.5, 1.0);
+    // ── 调试：输出点光源数量 lightCount ──
+    //   灰≈0.8(33盏) → 灯已传入；纯黑 → lightCount=0（灯没进 SSBO/UBO）。
+    outFragColor = vec4(vec3(frame.lightCount.x / 40.0), 1.0);
     return;
 #endif
 

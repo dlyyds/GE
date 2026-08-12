@@ -70,11 +70,12 @@ void SceneLayer::BuildDefaultSceneFromCode() {
     cc.CameraInstance.SetOrbit(0.0f, 25.0f, 8.0f);
     m_Context->CameraEntity = camera;
 
-    // 方向光实体（-60° 绕 X 轴：从上前方照下）
+    // 方向光实体（-60° 绕 X 轴：从上前方照下）。强度提至 2.0，给金属提供
+    // 一个明显的锐利高光（金属无漫反射，靠高光与环境显形）。
     auto dirLight = m_Context->Scene->CreateEntity("DirectionalLight");
     dirLight.GetComponent<TransformComponent>().Rotation =
         glm::vec3(glm::radians(-60.0f), 0.0f, 0.0f);
-    dirLight.AddComponent<DirectionalLightComponent>(glm::vec4(1.0f, 1.0f, 1.0f, 1.0f));
+    dirLight.AddComponent<DirectionalLightComponent>(glm::vec4(1.0f, 1.0f, 1.0f, 2.0f));
 
     // 环境光实体
     auto ambLight = m_Context->Scene->CreateEntity("AmbientLight");
@@ -89,8 +90,10 @@ void SceneLayer::BuildDefaultSceneFromCode() {
     // 暖橙 albedo；金属度取该色为 F0
     pbrMat->SetTexture(Material::Albedo,
                        texMgr.GetSolidColor(glm::vec4(0.9f, 0.5f, 0.3f, 1.0f)));
-    pbrMat->SetFloat("metallic", 0.5f);
-    pbrMat->SetFloat("roughness", 0.3f);
+    // 纯金属（metallic=1，无漫反射）+ 低粗糙度（0.1，高光锐利），
+    // 让金属质感最明显；Properties 面板仍可实时调节。
+    pbrMat->SetFloat("metallic", 1.0f);
+    pbrMat->SetFloat("roughness", 0.1f);
     Material *matPBR = matMgr.Register("Editor_PBR_Metal", std::move(pbrMat));
 
     Entity sphere = m_Context->Scene->CreateEntity("PBR_Sphere");
@@ -99,6 +102,34 @@ void SceneLayer::BuildDefaultSceneFromCode() {
     tc.Scale       = {1.0f, 1.0f, 1.0f};
     sphere.AddComponent<MeshComponent>(meshMgr.GetBuiltin("sphere"));
     sphere.AddComponent<MaterialComponent>(matPBR);
+
+    // ── 环绕点光源：给金属提供多个可反射的锐利高光 ──────────────────────
+    // 金属无漫反射，仅靠反射光源/高光显形；光越多、越亮，金属感越强。
+    // 用几个不同方位/颜色的点光源环绕球体，观察金属反射出多彩高光点。
+    auto bulbMat = std::make_unique<Material>();
+    bulbMat->SetTexture(Material::Albedo,
+                        texMgr.GetSolidColor(glm::vec4(1.0f)));
+    Material *matBulb = matMgr.Register("Editor_LightBulb", std::move(bulbMat));
+
+    auto makePointLight = [&](const char *name, const glm::vec3 &pos,
+                              const glm::vec3 &rgb, float intensity) {
+        Entity e = m_Context->Scene->CreateEntity(name);
+        auto &ltc = e.GetComponent<TransformComponent>();
+        ltc.Translation = pos;
+        e.AddComponent<PointLightComponent>(glm::vec4(rgb, intensity), 0.3f);
+
+        // 挂一个小球可视化灯的位置/颜色
+        ltc.Scale = {0.15f, 0.15f, 0.15f};
+        e.AddComponent<MeshComponent>(meshMgr.GetBuiltin("sphere"));
+        e.AddComponent<MaterialComponent>(matBulb);
+        return e;
+    };
+
+    // 环绕金属球四周（半径约 3），不同方位与颜色，突出金属反射
+    makePointLight("PL_Key_White",   { 2.5f, 2.0f,  2.0f}, {1.0f, 1.0f, 1.0f}, 1.5f);
+    makePointLight("PL_Warm",        {-2.5f, 1.5f,  2.0f}, {1.0f, 0.4f, 0.2f}, 1.2f);
+    makePointLight("PL_Cool",        { 0.0f, 1.0f, -2.5f}, {0.3f, 0.6f, 1.0f}, 1.2f);
+    makePointLight("PL_Fill",        { 0.0f, 3.2f,  0.0f}, {0.8f, 0.8f, 0.9f}, 0.8f);
 }
 
 void SceneLayer::OnDetach() {

@@ -17,6 +17,7 @@
 #include "GE/Render/Renderer.h"
 #include "GE/Render/Mesh.h"
 #include "GE/Render/MeshManager.h"
+#include "GE/Utils/PlatformUtils.h"
 
 #include <glm/gtc/type_ptr.hpp>
 #include <cmath>
@@ -492,6 +493,29 @@ void SceneHierarchyPanel::DrawMeshComponent(MeshComponent &component) {
         }
 
         ImGui::EndCombo();
+    }
+
+    // ---- 加载模型文件（.obj）----
+    if (ImGui::Button("加载模型文件 (OBJ)...")) {
+        std::string path = FileDialogs::OpenFile(
+            "Wavefront OBJ (*.obj)\0*.obj\0All Files (*.*)\0*.*\0");
+        if (!path.empty()) {
+            Mesh *mesh = meshMgr.Load(path);
+            if (mesh) {
+                component.MeshPtr = mesh;
+            } else {
+                GE_CORE_WARN("SceneHierarchyPanel: 网格加载失败: {0}", path);
+                ImGui::OpenPopup("MeshLoadFailed");
+            }
+        }
+    }
+    // 加载失败提示
+    if (ImGui::BeginPopup("MeshLoadFailed")) {
+        ImGui::Text("网格加载失败（请确认是合法的 .obj 文件）");
+        if (ImGui::Button("OK")) {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
     }
 
     // 网格信息（只读）

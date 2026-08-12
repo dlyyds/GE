@@ -68,6 +68,10 @@ private:
     /// 鼠标是否悬停在 Scene 视口窗口内（上一帧 OnImGuiRender 记录，供 OnEvent 判断）
     bool m_SceneWindowHovered = false;
 
+    /// 在视口内按下且尚未释放的鼠标按键位掩码（bit = 1 << MouseCode）。
+    /// 用于把「拖出视口后松开」的释放事件仍回传相机，避免相机按键状态卡住。
+    uint32_t m_ViewportCapturedButtons = 0;
+
     /// 从文件加载场景（会重建场景并重新绑定相机）
     bool LoadSceneFromFile(std::string_view filepath);
 

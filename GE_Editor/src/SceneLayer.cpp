@@ -6,6 +6,7 @@
 #include "SceneLayer.h"
 
 #include "GE/Core/Application.h"
+#include "GE/Events/MouseEvent.h"
 #include "GE/Render/Renderer.h"
 #include "GE/Render/MeshManager.h"
 #include "GE/Render/TextureManager.h"
@@ -218,8 +219,31 @@ void SceneLayer::OnEvent(Event &event) {
         m_Context->Scene->SetProcessCameraInput(cameraActive);
 
         if (!event.Handled) {
+            // 记录在视口内按下的鼠标按键并跟踪释放：用于把「拖出视口后松开」的释放事件
+            // 仍回传给相机，避免相机内部按键状态（m_LeftDown）卡在按下态，导致之后在
+            // 视口内移动鼠标时相机持续旋转（此时鼠标其实已松开）。
+            bool releaseStartedInViewport = false;
+            EventDispatcher disp(event);
+            disp.Dispatch<MouseButtonPressedEvent>([&](MouseButtonPressedEvent &e) {
+                if (inViewport) {
+                    m_ViewportCapturedButtons |= (1u << e.GetMouseButton());
+                }
+                return false;
+            });
+            disp.Dispatch<MouseButtonReleasedEvent>([&](MouseButtonReleasedEvent &e) {
+                uint16_t bit = 1u << e.GetMouseButton();
+                releaseStartedInViewport = (m_ViewportCapturedButtons & bit) != 0;
+                m_ViewportCapturedButtons &= ~bit;
+                return false;
+            });
+
             // 未悬停时直接不转发输入事件给场景
             if (!inViewport && event.IsInCategory(EventCategoryInput)) {
+                // 例外：松开的是视口内按下的按键时，仍回传释放事件，让相机按键状态复位。
+                if (releaseStartedInViewport) {
+                    m_Context->Scene->SetProcessCameraInput(true);
+                    m_Context->Scene->OnEvent(event);
+                }
                 return;
             }
             m_Context->Scene->OnEvent(event);

@@ -108,11 +108,22 @@ void SceneLayer::BuildDefaultSceneFromCode() {
 
     // 大量点光源网格：验证点光源已迁入 SSBO 无编译期上限（此处 49 个 > 原 8 上限）。
     // 在场景上方铺一层 7x7 点光源网格，颜色按位置渐变，便于观察多灯叠加效果。
+    // 点光源"灯泡"可视化用的白色材质（灯球呈中性白，与其光色区分）
+    auto whiteMat = std::make_unique<Material>();
+    whiteMat->SetTexture(Material::Albedo, texMgr.GetSolidColor(glm::vec4(1.0f)));
+    Material *matWhite = matMgr.Register("Editor_LightBulb", std::move(whiteMat));
+
     auto makePointLight = [&](const char *name, const glm::vec3 &pos,
                               const glm::vec3 &rgb, float radiusInv) {
         Entity e = m_Context->Scene->CreateEntity(name);
-        e.GetComponent<TransformComponent>().Translation = pos;
+        auto &tc = e.GetComponent<TransformComponent>();
+        tc.Translation = pos;
         e.AddComponent<PointLightComponent>(glm::vec4(rgb, 0.6f), radiusInv);
+
+        // 挂一个缩小的球体作为"灯泡"可视化，便于在场景中看到每个灯的位置与颜色
+        tc.Scale = {0.2f, 0.2f, 0.2f};
+        e.AddComponent<MeshComponent>(meshMgr.GetBuiltin("sphere"));
+        e.AddComponent<MaterialComponent>(matWhite);
         return e;
     };
 

@@ -186,18 +186,10 @@ void main()
     float roughness = mr.g * material.pbr.y;
 
 #if GE_PBR_DEBUG_SPECULAR
-    // ── 调试：输出中间量（方向光）定位 specular 哪一项为 0 ──
-    //   R = clamp(NDF,0,1) 法线分布；G = NdotL 光照点积；B = F 菲涅尔。
-    //   R 全黑 → NDF=0(roughness 问题)；G 全黑 → 光的朝向错；B 全黑 → F 异常。
-    float dbgRough = 0.5;
-    vec3 Ld = normalize(-frame.dirLightDirection.xyz);
-    vec3 Hd = normalize(V + Ld);
-    float NDF = distributionGGX(N, Hd, dbgRough);
-    float NdotL = max(dot(N, Ld), 0.0);
-    float F = fresnelSchlick(max(dot(Hd, V), 0.0), vec3(0.04)).r;
-    float Gg = geometrySmith(N, V, Ld, dbgRough);
-    outFragColor = vec4(clamp(NDF, 0.0, 1.0), NdotL, F, 1.0);
-    // outFragColor = vec4(vec3(Gg), 1.0); // 若要单看几何遮蔽，取消注释这行
+    // ── 调试：输出法线 N（可视化）判断是否 NaN ──
+    //   N*0.5+0.5 映射到 [0,1]：球面呈彩色渐变 → N 正常；
+    //   纯黑 → N 是 NaN（T/B 退化，球体可能缺切线数据）。
+    outFragColor = vec4(N * 0.5 + 0.5, 1.0);
     return;
 #endif
 

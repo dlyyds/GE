@@ -6,22 +6,26 @@
 
 // —— PBR 片元着色器（Cook-Torrance 金属-粗糙度工作流）——
 // 与 mesh.frag 共存：同一套顶点数据 / FrameUBO / 点光源 SSBO / 纹理槽位，
-// 只替换光照函数为物理 BRDF。P0 仅做直接光（方向光 + 点光源），
+// 只替换光照函数为物理 BRDF。当前为直接光 PBR（方向光 + 点光源），
 // 环境光用常量近似；线性空间 / 色调映射（P3）与 IBL（P4）后续阶段接入。
 
 layout (set = 1, binding = 0) uniform sampler2D samplerColor;
 layout (set = 1, binding = 1) uniform sampler2D samplerNormal;   // 法线贴图（切线空间）
 layout (set = 1, binding = 3) uniform sampler2D samplerEmissive; // 自发光贴图
+// 金属-粗糙度贴图（glTF 惯例：B=metallic, G=roughness），PBR 材质使用
+layout (set = 1, binding = 4) uniform sampler2D samplerMetallicRoughness;
 
-// 每材质 UB（按批次绑定）：PBR 场景下参数语义：
-//   params.x = metallic（金属度，0=绝缘体 1=金属，P0 暂复用在 Blinn-Phong 的 shininess 槽位）
-//   params.y = roughness（粗糙度，0=镜面 1=漫，P0 暂复用在 specularStrength 槽位）
+// 每材质 UB（按批次绑定）：
+//   params.x = shininess（Blinn-Phong 高光指数，PBR 下未用）
+//   params.y = specularStrength（Blinn-Phong 镜面强度，PBR 下未用）
 //   params.z = emissiveStrength（自发光强度，与 Blinn-Phong 一致）
 //   params.w 预留。
-// 注：P2 将把这些语义迁入独立的 `pbr` vec4（std140），此处为 P0 过渡复用。
+//   pbr.x = metallic（金属度，0=绝缘体 1=金属）
+//   pbr.y = roughness（粗糙度，0=镜面 1=漫）
 layout (set = 1, binding = 2, std140) uniform MaterialUBO
 {
     vec4 params;
+    vec4 pbr;
 } material;
 
 layout (set = 0, binding = 0, std140) uniform FrameUBO
@@ -157,8 +161,12 @@ void main()
     vec3 N = normalize(mat3(T, B, normalize(inNormal)) * tangentNormal);
 
     vec3 V = normalize(inViewVec);
-    float metallic  = material.params.x;   // P0 过渡复用（Blinn-Phong 的 shininess 槽位）
-    float roughness = material.params.y;   // P0 过渡复用（Blinn-Phong 的 specularStrength 槽位）
+
+    // 金属-粗糙度：贴图 B/G 通道 × 标量系数。无 MR 贴图时绑定默认 (G=1,B=1)
+    // 纹理，两者乘以 1 即等于标量 pbr 系数原值（标量 fallback）。
+    vec4 mr = texture(samplerMetallicRoughness, inUV, 0.0);
+    float metallic  = mr.b * material.pbr.x;
+    float roughness = mr.g * material.pbr.y;
 
     // 环境光：P0 用常量近似（后续 P4 替换为 IBL）
     vec3 ambientColor = frame.ambient.rgb * frame.ambient.w;

@@ -45,13 +45,25 @@ Renderer3D::Renderer3D() {
         ShaderSource("assets/shaders/glsl/mesh.frag.spv"),
         "main", ShaderVariant{});
 
+    // PBR 片元着色器（Cook-Torrance）。与 Blinn-Phong 并行，由材质类型路由。
+    m_FragShaderPBR = &cache.RequestShaderModule(
+        vk::ShaderStageFlagBits::eFragment,
+        ShaderSource("assets/shaders/glsl/mesh_pbr.frag.spv"),
+        "main", ShaderVariant{});
+
     // ── 3. 请求 PipelineLayout（通过反射自动构建） ─────────────────────
     //    注：阶段2 曾用 Dynamic ObjectUBO 存 per-instance 数据以降低
     //    descriptor set 数量；阶段3 已把 model/color 迁入 InstanceData SSBO，
     //    ObjectUBO 随之整个移除，set 2 仅保留 InstanceData SSBO。
+    //    两套管线共享顶点着色器，仅片元着色器不同（Blinn-Phong / PBR），
+    //    描述符布局仅 set 1 因 PBR 多一个 MR 纹理 binding 而不同。
     m_PipelineLayout = &cache.RequestPipelineLayout(
         {m_VertShader, m_FragShader});
     m_PipelineLayout->SetDebugName("Mesh3D_PipelineLayout");
+
+    m_PipelineLayoutPBR = &cache.RequestPipelineLayout(
+        {m_VertShader, m_FragShaderPBR});
+    m_PipelineLayoutPBR->SetDebugName("Mesh3D_PipelineLayout_PBR");
 
     // ── 3. 默认 1x1 白色纹理（无纹理时的 fallback），从全局纹理管理器获取 ──
     //    纹理由 TextureManager 去重缓存并持有，这里仅保存非拥有指针。
@@ -94,6 +106,23 @@ Renderer3D::Renderer3D() {
         GE_CORE_ERROR("Renderer3D: 创建默认黑色自发光纹理失败！");
     }
 
+    // ── 6. 创建默认 1x1 金属-粗糙度纹理（无 MR 贴图时的 fallback） ──────
+    //    G = 1, B = 1：shader 里 metallic = mr.b * 系数、roughness = mr.g * 系数，
+    //    回退时两者都乘以 1，即等于标量 pbr 系数原值，使无 MR 贴图的材质
+    //    表现得如同只用标量 metallic/roughness。
+    //    R 通道 shader 不读，任意值均可。像素字面量按 0xAABBGGRR 小端约定：
+    //    0xFFFFFF00 = (R=0, G=255, B=255, A=255)。
+    uint32_t mrPixel = 0xFFFFFF00; // RGBA8: (0, 255, 255, 255)
+    m_DefaultMetallicRoughnessTexture = Texture::LoadFromMemory(
+        device, cache, &mrPixel, 1, 1,
+        vk::Format::eR8G8B8A8Unorm,
+        vk::Filter::eLinear, vk::Filter::eLinear);
+    if (m_DefaultMetallicRoughnessTexture) {
+        m_DefaultMetallicRoughnessTexture->SetDebugName("DefaultMetallicRoughnessTexture");
+    } else {
+        GE_CORE_ERROR("Renderer3D: 创建默认金属-粗糙度纹理失败！");
+    }
+
     GE_CORE_INFO("Renderer3D initialized");
 }
 
@@ -104,11 +133,14 @@ Renderer3D::~Renderer3D() {
     // 注：m_DefaultWhiteTexture 由全局 TextureManager 持有，不属于本渲染器，无需释放
     m_DefaultNormalTexture.reset();
     m_DefaultEmissiveTexture.reset();
+    m_DefaultMetallicRoughnessTexture.reset();
 
     // 着色器和 pipeline layout 由全局资源缓存管理，不需要手动释放
     m_VertShader = nullptr;
     m_FragShader = nullptr;
+    m_FragShaderPBR = nullptr;
     m_PipelineLayout = nullptr;
+    m_PipelineLayoutPBR = nullptr;
 }
 
 // ============================================================================
@@ -171,10 +203,26 @@ Texture *Renderer3D::GetEffectiveEmissiveTexture(const Material *material) const
     return tex ? tex : m_DefaultEmissiveTexture.get();
 }
 
+Texture *Renderer3D::GetEffectiveMetallicRoughnessTexture(const Material *material) const {
+    // 优先取材质 MetallicRoughness 槽位纹理，无材质或无纹理时回退到默认
+    // (G=1,B=1) 纹理，使 metallic/roughness 等于标量系数原值
+    Texture *tex = (material ? material->GetTexture(Material::MetallicRoughness) : nullptr);
+    return tex ? tex : m_DefaultMetallicRoughnessTexture.get();
+}
+
+uint8_t Renderer3D::GetPipelineId(const Material *material) const {
+    // PBR 材质路由到 PBR 管线（id=1），其余（BlinnPhong / nullptr）走默认管线（0）
+    if (material && material->GetType() == Material::Type::PBR) {
+        return 1;
+    }
+    return 0;
+}
+
 Renderer3D::SortKey Renderer3D::ComputeSortKey(const Material *material, const Mesh *mesh, const glm::mat4 &transform) const {
-    // pipeline：当前仅一套管线，恒为 0（阶段4 引入多管线后填入真实 id）
+    // pipeline：按材质类型路由（BlinnPhong=0 / PBR=1），使同类型连续，
+    // 减少管线切换（管线切换最贵）。
     SortKey key;
-    key.pipelineId = 0;
+    key.pipelineId = GetPipelineId(material);
 
     // 材质分组：用材质指针值（进程内唯一）作分组 id，使同材质实例连续，
     // 减少管线/纹理切换。材质完整决定渲染状态（纹理组合、着色器类型、混合等）。
@@ -429,7 +477,19 @@ void Renderer3D::EndScene() {
 
     // ── 6. 逐批次 instanced 绘制 ─────────────────────────────────────
     vk::DeviceSize vertexOffset = 0;
+
+    // 当前绑定的管线 id（初始为 Blinn-Phong，已在上方绑定 *m_PipelineLayout）。
+    // 排序键已按 pipelineId 分组，故同类型批次连续，切换频率最低。
+    uint8_t currentPipelineId = 0;
     for (const auto &batch : batches) {
+        // —— 管线路由：材质类型变化时切换管线布局（进而切换管线 / 片元着色器）——
+        uint8_t pipelineId = GetPipelineId(batch.material);
+        if (pipelineId != currentPipelineId) {
+            cmd.BindPipelineLayout(
+                pipelineId == 1 ? *m_PipelineLayoutPBR : *m_PipelineLayout);
+            currentPipelineId = pipelineId;
+        }
+
         // 绑定纹理（set 1, binding 0 = Albedo，binding 1 = Normal）
         // 从 material 对应槽位取纹理，无材质或无纹理时使用默认纹理 fallback
         Texture *tex = GetEffectiveTexture(batch.material);
@@ -457,9 +517,21 @@ void Renderer3D::EndScene() {
                           1, 3);
         }
 
-        // 绑定材质 UBO（set 1, binding 2）：存材质标量参数（shininess、
-        // specularStrength、emissiveStrength）。按批次写入，同批次的实例
-        // 共享同一材质，故值恒定，无需 per-instance。
+        // 金属-粗糙度贴图（set 1, binding 4）：PBR 材质使用。无 MR 贴图时
+        // 绑定默认 (G=1,B=1) 纹理，回退到标量 metallic/roughness。
+        // 对 Blinn-Phong 批次同样绑定：其 set 1 布局无 binding 4，Flush 时
+        // 描述符更新会按布局过滤掉该绑定，无副作用，保持代码统一。
+        Texture *mrTex = GetEffectiveMetallicRoughnessTexture(batch.material);
+        if (mrTex) {
+            cmd.BindImage(mrTex->GetImageView(),
+                          mrTex->GetSampler(),
+                          1, 4);
+        }
+
+        // 绑定材质 UBO（set 1, binding 2）：存材质标量参数。按批次写入，
+        // 同批次的实例共享同一材质，故值恒定，无需 per-instance。
+        //   params: shininess / specularStrength（Blinn-Phong）、emissiveStrength（共用）
+        //   pbr:    metallic / roughness（PBR）
         MaterialUBO materialUBO{};
         materialUBO.params.x = batch.material
             ? batch.material->GetFloat("shininess", 32.0f)
@@ -470,6 +542,12 @@ void Renderer3D::EndScene() {
         materialUBO.params.z = batch.material
             ? batch.material->GetFloat("emissiveStrength", 0.0f)
             : 0.0f;
+        materialUBO.pbr.x = batch.material
+            ? batch.material->GetFloat("metallic", 0.0f)
+            : 0.0f;
+        materialUBO.pbr.y = batch.material
+            ? batch.material->GetFloat("roughness", 0.5f)
+            : 0.5f;
         BufferAllocation materialUboAlloc = frame.AllocateBuffer(
             vk::BufferUsageFlagBits::eUniformBuffer, sizeof(MaterialUBO));
         materialUboAlloc.update(materialUBO);

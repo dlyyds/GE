@@ -47,11 +47,13 @@ private:
     Material *m_MatNoEmissive = nullptr;
     Material *m_MatChecker    = nullptr;
     Material *m_MatOrange     = nullptr;
+    Material *m_MatPBR        = nullptr;   ///< PBR 金属-粗糙度材质（金属球演示）
 
     // 测试场景实体句柄
     Entity m_CameraEntity;
     Entity m_AmbientEntity;
     Entity m_CubeEntities[3];
+    Entity m_SphereEntity;   ///< PBR 金属球（验证 PBR 管线）
 
     // 相机轨道角
     float m_Angle = 0.0f;
@@ -60,6 +62,8 @@ private:
     float m_Ambient              = 0.15f;
     float m_CheckerStrength      = 1.5f;
     bool  m_EnableCheckerEmissive = true;
+    float m_Metallic             = 0.0f;   ///< PBR 金属度（0=绝缘体 1=金属）
+    float m_Roughness            = 0.5f;   ///< PBR 粗糙度（0=镜面 1=漫）
 };
 
 } // namespace GE

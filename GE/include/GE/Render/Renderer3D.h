@@ -218,14 +218,16 @@ private:
 
     /// 每材质 UBO（std140 布局，set 1 binding 2，按批次绑定）
     /// 存放材质标量参数：
-    ///   params.x = shininess（高光指数，决定高光斑形态/大小）
-    ///   params.y = specularStrength（镜面强度，独立控制高光亮暗）
+    ///   params.x = shininess（高光指数，Blinn-Phong 使用）
+    ///   params.y = specularStrength（镜面强度，Blinn-Phong 使用）
     ///   params.z = emissiveStrength（自发光强度，缩放自发光贴图颜色）
     ///   params.w 预留后续材质参数扩展。
+    ///   pbr.x = metallic，pbr.y = roughness（PBR 材质使用）
     struct MaterialUBO {
         glm::vec4 params;            ///< x = shininess，y = specularStrength，z = emissiveStrength
+        glm::vec4 pbr;               ///< x = metallic，y = roughness（金属-粗糙度）
     };
-    static_assert(sizeof(MaterialUBO) == 16, "MaterialUBO 必须 16 字节对齐");
+    static_assert(sizeof(MaterialUBO) == 32, "MaterialUBO 必须 16 字节对齐");
 
     /// 一个待绘制的网格实例
     struct MeshInstance {
@@ -283,6 +285,22 @@ private:
      */
     Texture *GetEffectiveEmissiveTexture(const Material *material) const;
 
+    /**
+     * @brief 解析材质对应的有效金属-粗糙度贴图。
+     *
+     * 优先取材质 MetallicRoughness 槽位纹理，无材质或无纹理时回退到默认
+     * (G=1,B=1) 纹理，使 metallic/roughness 等于标量 pbr 系数原值。
+     */
+    Texture *GetEffectiveMetallicRoughnessTexture(const Material *material) const;
+
+    /**
+     * @brief 计算材质对应的管线 id。
+     *
+     * BlinnPhong → 0，PBR → 1。用于排序键分组与 EndScene 管线路由。
+     * nullptr 材质视为 BlinnPhong（0）。
+     */
+    uint8_t GetPipelineId(const Material *material) const;
+
     // ========================================================================
     // 成员
     // ========================================================================
@@ -290,11 +308,17 @@ private:
     /// 网格顶点着色器（由全局资源缓存管理，不拥有）
     VulkanShaderModule   *m_VertShader = nullptr;
 
-    /// 网格片元着色器（由全局资源缓存管理，不拥有）
+    /// 网格片元着色器（Blinn-Phong，由全局资源缓存管理，不拥有）
     VulkanShaderModule   *m_FragShader = nullptr;
 
-    /// Pipeline layout（由全局资源缓存管理，不拥有）
+    /// PBR 片元着色器（Cook-Torrance，由全局资源缓存管理，不拥有）
+    VulkanShaderModule   *m_FragShaderPBR = nullptr;
+
+    /// Blinn-Phong 管线布局（由全局资源缓存管理，不拥有）
     VulkanPipelineLayout *m_PipelineLayout = nullptr;
+
+    /// PBR 管线布局（由全局资源缓存管理，不拥有）
+    VulkanPipelineLayout *m_PipelineLayoutPBR = nullptr;
 
     /// 默认 1x1 白色纹理（无纹理时的 fallback，由全局 TextureManager 持有，不拥有）
     Texture *m_DefaultWhiteTexture = nullptr;
@@ -304,6 +328,10 @@ private:
 
     /// 默认 1x1 黑色纹理（无自发光贴图时的 fallback，RGB=(0,0,0)，使物体不发光）
     std::unique_ptr<Texture> m_DefaultEmissiveTexture;
+
+    /// 默认 1x1 金属-粗糙度纹理（无 MR 贴图时的 fallback，G=1,B=1，
+    /// 使 metallic/roughness 等于标量 pbr 系数原值）
+    std::unique_ptr<Texture> m_DefaultMetallicRoughnessTexture;
 
     /// 当前帧视图矩阵
     glm::mat4 m_View{1.0f};

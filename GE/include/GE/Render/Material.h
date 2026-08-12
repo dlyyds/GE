@@ -52,10 +52,13 @@ public:
         Albedo   = 0,   ///< 反照率（主颜色/漫反射）
         Normal   = 1,   ///< 法线贴图
         Emissive = 2,   ///< 自发光
-        // MetallicRoughness = 3,  // 后续 PBR 扩展
+        MetallicRoughness = 3,  ///< 金属-粗糙度贴图（glTF 惯例：B=metallic, G=roughness）
         // AmbientOcclusion   = 4,  // 环境光遮蔽
         Count
     };
+    // 注：TextureSlot 是数组索引，不等同于 shader binding。当前 set 1 的
+    // binding 分配为 0/1/2/3 = Albedo/Normal/MaterialUBO/Emissive，故
+    // MetallicRoughness 槽位绑定在 set 1 binding 4（见 Renderer3D::EndScene）。
 
     /**
      * @brief 材质着色器类型。
@@ -63,8 +66,8 @@ public:
      * 决定使用哪套着色器和管线。
      */
     enum class Type {
-        BlinnPhong,   ///< Blinn-Phong 光照模型（当前默认）
-        // PBR,        // 后续扩展
+        BlinnPhong,   ///< Blinn-Phong 光照模型（默认）
+        PBR,          ///< PBR 金属-粗糙度工作流（Cook-Torrance）
     };
 
     // ========================================================================

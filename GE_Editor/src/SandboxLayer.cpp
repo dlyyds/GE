@@ -58,6 +58,16 @@ void SandboxLayer::OnAttach() {
     orange->SetFloat("emissiveStrength", 1.0f);
     m_MatOrange = matMgr.Register("Sandbox_Orange", std::move(orange));
 
+    // 4. PBR 金属球（验证 PBR 管线：Cook-Torrance 直接光 BRDF）。
+    //    无 MetallicRoughness 贴图，走标量 fallback：metallic/roughness 由
+    //    材质浮点参数传入，面板实时调节。
+    auto pbr = std::make_unique<Material>();
+    pbr->SetType(Material::Type::PBR);
+    pbr->SetTexture(Material::Albedo, m_WhiteTex);
+    pbr->SetFloat("metallic", m_Metallic);
+    pbr->SetFloat("roughness", m_Roughness);
+    m_MatPBR = matMgr.Register("Sandbox_PBR_Metal", std::move(pbr));
+
     // ── 相机实体（Orbit 模式，绕目标点旋转） ────────────────────────────
     auto camera = m_Scene->CreateEntity("Camera");
     auto &cc = camera.AddComponent<CameraComponent>();
@@ -90,6 +100,12 @@ void SandboxLayer::OnAttach() {
     m_CubeEntities[0] = makeCube("Cube_NoEmissive", {-2.0f, 0.5f, 0.0f}, m_MatNoEmissive);
     m_CubeEntities[1] = makeCube("Cube_Checker", {0.0f, 0.5f, 0.0f}, m_MatChecker);
     m_CubeEntities[2] = makeCube("Cube_Orange", {2.0f, 0.5f, 0.0f}, m_MatOrange);
+
+    // PBR 金属球（最右侧，与自发光立方体区分）
+    m_SphereEntity = m_Scene->CreateEntity("PBR_Sphere");
+    m_SphereEntity.GetComponent<TransformComponent>().Translation = {4.5f, 0.5f, 0.0f};
+    m_SphereEntity.AddComponent<MeshComponent>(meshMgr.GetBuiltin("sphere"));
+    m_SphereEntity.AddComponent<MaterialComponent>(m_MatPBR);
 }
 
 void SandboxLayer::OnDetach() {
@@ -148,6 +164,10 @@ void SandboxLayer::OnUpdate(Timestep &ts) {
             ts.GetSeconds() * 0.5f;
     }
 
+    // PBR 金属球自转，便于观察高光随法线变化（金属高光 / 粗糙度柔化）
+    m_SphereEntity.GetComponent<TransformComponent>().Rotation.y +=
+        ts.GetSeconds() * 0.5f;
+
     // 把测试场景渲染进离屏视口，再交给场景系统驱动
     Renderer::Get3DRenderer().SetRenderTarget(m_Viewport->GetRenderTarget());
     m_Scene->OnUpdate3D(ts,
@@ -199,6 +219,11 @@ void SandboxLayer::OnImGuiRender() {
         ImGui::Separator();
         ImGui::Text("布局：左=无自发光(控制) | 中=棋盘格 | 右=纯色");
         ImGui::TextDisabled("把环境光调低，自发光物体仍发光，对比更明显");
+        ImGui::Separator();
+        ImGui::Text("PBR 金属球（最右，PBR 管线）");
+        ImGui::SliderFloat("金属度", &m_Metallic, 0.0f, 1.0f);
+        ImGui::SliderFloat("粗糙度", &m_Roughness, 0.0f, 1.0f);
+        ImGui::TextDisabled("金属度 0→1 从绝缘体渐变到全金属镜面；粗糙度高则高光越柔");
     }
     ImGui::End();
 
@@ -206,6 +231,10 @@ void SandboxLayer::OnImGuiRender() {
     m_MatChecker->SetFloat("emissiveStrength", m_CheckerStrength);
     m_MatChecker->SetTexture(Material::Emissive,
                              m_EnableCheckerEmissive ? m_EmissiveTex : nullptr);
+
+    // 把 PBR 面板参数实时写入金属球材质（下一帧生效）
+    m_MatPBR->SetFloat("metallic", m_Metallic);
+    m_MatPBR->SetFloat("roughness", m_Roughness);
 }
 
 } // namespace GE

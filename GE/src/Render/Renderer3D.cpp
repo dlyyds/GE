@@ -233,14 +233,9 @@ void Renderer3D::EndScene() {
     frameUBO.dirLightDirection = glm::vec4(m_LightParams.dirLightDirection, 0.0f);
     frameUBO.dirLightColor = m_LightParams.dirLightColor;
 
-    // 填充点光源数组（不超过上限）
-    size_t lightCount = std::min(m_LightParams.pointLightCount, MAX_POINT_LIGHTS);
-    for (size_t i = 0; i < lightCount; i++) {
-        const auto &pl = m_LightParams.pointLights[i];
-        frameUBO.pointLightPositions[i] = glm::vec4(pl.position, pl.radiusInv);
-        frameUBO.pointLightColors[i] = pl.color;
-    }
-    frameUBO.pointLightCount = glm::vec4(static_cast<float>(lightCount), 0.0f, 0.0f, 0.0f);
+    // 点光源数量（无编译期上限，本体在 SSBO 中按实际数量上传）
+    frameUBO.lightCount = glm::vec4(
+        static_cast<float>(m_LightParams.pointLights.size()), 0.0f, 0.0f, 0.0f);
 
     frameUBO.ambient = m_LightParams.ambient;
 
@@ -290,6 +285,21 @@ void Renderer3D::EndScene() {
         vk::BufferUsageFlagBits::eStorageBuffer,
         instances.size() * sizeof(InstanceData));
     instanceBuffer.update(instances);
+
+    // 点光源 SSBO（set 0, binding 1）——无上界动态数组，解除编译期数量上限。
+    // 从 LightParams 收集全部点光源，转为 GPU 布局（2 个 vec4）一次性上传。
+    // 无光源时分配 1 字节占位避免空缓冲；shader 循环 0 次不受影响。
+    std::vector<LightGPU> lights;
+    lights.reserve(m_LightParams.pointLights.size());
+    for (const auto &pl : m_LightParams.pointLights) {
+        lights.push_back(LightGPU{glm::vec4(pl.position, pl.radiusInv), pl.color});
+    }
+    BufferAllocation lightBuffer = frame.AllocateBuffer(
+        vk::BufferUsageFlagBits::eStorageBuffer,
+        lights.empty() ? 1 : lights.size() * sizeof(LightGPU));
+    if (!lights.empty()) {
+        lightBuffer.update(lights);
+    }
 
     // ── 3. 开始动态渲染 ───────────────────────────────────────────────
     //    使用 FromRenderTarget 自动构建颜色 + 深度附件
@@ -412,6 +422,10 @@ void Renderer3D::EndScene() {
     // ── 5. 绑定 Frame UBO（set 0, binding 0，所有网格共享） ───────────
     cmd.BindBuffer(frameUboAlloc.get_buffer(), frameUboAlloc.get_offset(),
                    frameUboAlloc.get_size(), 0, 0);
+
+    // 绑定点光源 SSBO（set 0, binding 1）——所有网格共享
+    cmd.BindBuffer(lightBuffer.get_buffer(), lightBuffer.get_offset(),
+                   lightBuffer.get_size(), 0, 1);
 
     // ── 6. 逐批次 instanced 绘制 ─────────────────────────────────────
     vk::DeviceSize vertexOffset = 0;

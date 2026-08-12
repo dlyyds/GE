@@ -261,7 +261,7 @@ struct CameraComponent {
  * RadiusInv 是光源影响半径的倒数，用于距离衰减计算：attenuation = 1 / (1 + d^2 * radiusInv^2)。
  *
  * 由 Scene 在渲染前收集所有点光源组件，传递给 Renderer3D 的 LightParams。
- * 点光源数量受 Renderer3D::MAX_POINT_LIGHTS 限制，超出部分会被忽略。
+ * 点光源数量无编译期上限（存入 SSBO 动态数组，按实际数量上传）。
  */
 struct PointLightComponent {
     glm::vec4 Color{1.0f, 1.0f, 1.0f, 1.0f}; ///< 光源颜色(rgb) + 强度(a)

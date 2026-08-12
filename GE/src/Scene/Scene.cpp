@@ -162,26 +162,19 @@ void Scene::OnUpdate3D(Timestep ts,
             }
         }
 
-        // ---- 点光源 ----
-        size_t lightIndex = 0;
+        // ---- 点光源（SSBO 无编译期上限，收集全部点光源）----
+        lightParams.pointLights.clear();
         auto pointLightView = m_Registry.view<TransformComponent, PointLightComponent>();
         for (auto entity : pointLightView) {
-            if (lightIndex >= Renderer3D::MAX_POINT_LIGHTS) {
-                break; // 超过上限，忽略多余的点光源
-            }
-
             auto &tc = pointLightView.get<TransformComponent>(entity);
             auto &plc = pointLightView.get<PointLightComponent>(entity);
 
-            auto &dst = lightParams.pointLights[lightIndex];
-            dst.position = tc.Translation;
-            dst.color = plc.Color;
-            dst.radiusInv = plc.RadiusInv;
-
-            lightIndex++;
+            Renderer3D::PointLight pl;
+            pl.position = tc.Translation;
+            pl.color = plc.Color;
+            pl.radiusInv = plc.RadiusInv;
+            lightParams.pointLights.push_back(pl);
         }
-
-        lightParams.pointLightCount = lightIndex;
     }
 
     r3d.BeginScene(view, projection, viewPos, clearColor);

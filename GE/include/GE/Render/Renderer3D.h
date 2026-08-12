@@ -52,9 +52,6 @@ class RenderTarget;
  */
 class Renderer3D {
 public:
-    /// 点光源最大数量，必须与 GLSL 中的 MAX_POINT_LIGHTS 保持一致
-    static constexpr size_t MAX_POINT_LIGHTS = 8;
-
     // ========================================================================
     // 排序键（阶段1：按材质排序；阶段3：加入 mesh 分组以便 instancing）
     // ========================================================================
@@ -103,9 +100,8 @@ public:
         glm::vec3 dirLightDirection = {0.0f, -1.0f, 0.0f};     ///< 方向光方向（指向光源的反方向）
         glm::vec4 dirLightColor     = {1.0f, 1.0f, 1.0f, 1.0f}; ///< 方向光颜色(rgb) + 强度(a)
 
-        // 点光源数组（最多 MAX_POINT_LIGHTS 个）
-        std::array<PointLight, MAX_POINT_LIGHTS> pointLights{}; ///< 点光源数组
-        size_t pointLightCount = 1;                             ///< 实际使用的点光源数量（默认 1 个）
+        // 点光源数组（存入 SSBO 无编译期上限，按实际数量上传）
+        std::vector<PointLight> pointLights{1}; ///< 点光源数组（默认 1 个）
 
         // 环境光
         glm::vec4 ambient = {0.3f, 0.3f, 0.3f, 1.0f};          ///< 环境光颜色(rgb) + 强度(a)
@@ -196,9 +192,7 @@ private:
         glm::vec4 viewPos;                            ///< 相机位置（xyz, w 未用）
         glm::vec4 dirLightDirection;                  ///< 方向光方向（xyz, w 未用）
         glm::vec4 dirLightColor;                      ///< 方向光颜色(rgb) + 强度(a)
-        glm::vec4 pointLightPositions[MAX_POINT_LIGHTS]; ///< 点光源位置(xyz) + 半径倒数(w)
-        glm::vec4 pointLightColors[MAX_POINT_LIGHTS];    ///< 点光源颜色(rgb) + 强度(a)
-        glm::vec4 pointLightCount;                    ///< x = 实际点光源数量，yzw 填充对齐
+        glm::vec4 lightCount;                    ///< x = 点光源数量，yzw 填充对齐（点光源本体在 SSBO）
         glm::vec4 ambient;                            ///< 环境光颜色(rgb) + 强度(a)
     };
     static_assert(sizeof(FrameUBO) % 16 == 0, "FrameUBO 必须 16 字节对齐");
@@ -212,6 +206,15 @@ private:
         glm::vec4 color;             ///< 叠加颜色（tint），与纹理颜色相乘
     };
     static_assert(sizeof(InstanceData) == 80, "InstanceData 必须与 std430 布局一致");
+
+    /// 点光源 GPU 布局（与 GLSL PointLight 一致：2 个 vec4 = 32 字节）。
+    /// 存入 set 0, binding 1 的光源 SSBO（无上界动态数组，解除编译期数量上限）。
+    /// position.xyz = 世界位置，position.w = 半径倒数；color.rgb = 颜色，color.a = 强度。
+    struct LightGPU {
+        glm::vec4 position;  ///< xyz = 世界位置，w = 半径倒数
+        glm::vec4 color;     ///< rgb = 颜色，a = 强度
+    };
+    static_assert(sizeof(LightGPU) == 32, "LightGPU 必须与 GLSL PointLight 布局一致");
 
     /// 每材质 UBO（std140 布局，set 1 binding 2，按批次绑定）
     /// 存放材质标量参数：

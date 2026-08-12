@@ -4,9 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-// 点光源最大数量，必须与 C++ 端 Renderer3D::MAX_POINT_LIGHTS 保持一致
-#define MAX_POINT_LIGHTS 8
-
 layout (set = 1, binding = 0) uniform sampler2D samplerColor;
 layout (set = 1, binding = 1) uniform sampler2D samplerNormal;   // 法线贴图（切线空间）
 layout (set = 1, binding = 3) uniform sampler2D samplerEmissive; // 自发光贴图
@@ -31,14 +28,24 @@ layout (set = 0, binding = 0, std140) uniform FrameUBO
     vec4 dirLightDirection;
     vec4 dirLightColor;
 
-// 点光源数组（每个灯 2 个 vec4：position.w = 半径倒数，color.a = 强度）
-    vec4 pointLightPositions[MAX_POINT_LIGHTS];
-    vec4 pointLightColors[MAX_POINT_LIGHTS];
-    vec4 pointLightCount;// x = 实际点光源数量，yzw 填充对齐
+// 点光源数量（本体在 set 0 binding 1 的 SSBO 中，无上界）
+    vec4 lightCount;// x = 点光源数量，yzw 填充对齐
 
 // 环境光
     vec4 ambient;
 } frame;
+
+// 点光源 SSBO（set 0, binding 1）：无上界动态数组，解除编译期数量上限。
+// 与 C++ 端 Renderer3D::LightGPU 布局一致：vec4 position(xyz=位置, w=半径倒数) + vec4 color(rgb=颜色, a=强度)。
+struct PointLight
+{
+    vec4 position;
+    vec4 color;
+};
+layout (set = 0, binding = 1, std430) readonly buffer LightBuffer
+{
+    PointLight lights[];
+} lightBuffer;
 
 layout (location = 0) in vec2 inUV;
 layout (location = 1) in vec3 inWorldPos;
@@ -70,13 +77,13 @@ vec3 calcDirectionalLight(vec3 N, vec3 V, vec3 albedo, float shininess, float sp
 }
 
 /// 计算单个点光源贡献（带距离衰减）
-/// @param index 点光源在数组中的索引
+/// @param light 点光源（取自 SSBO）
 /// @param specularStrength 镜面强度系数（独立控制高光亮暗，与 shininess 形态解耦）
-vec3 calcPointLight(int index, vec3 N, vec3 V, vec3 worldPos, vec3 albedo, float shininess, float specularStrength)
+vec3 calcPointLight(PointLight light, vec3 N, vec3 V, vec3 worldPos, vec3 albedo, float shininess, float specularStrength)
 {
-    vec3 lightPos  = frame.pointLightPositions[index].xyz;
-    vec3 lightColor = frame.pointLightColors[index].rgb * frame.pointLightColors[index].a;
-    float radiusInv = frame.pointLightPositions[index].w;
+    vec3 lightPos  = light.position.xyz;
+    vec3 lightColor = light.color.rgb * light.color.a;
+    float radiusInv = light.position.w;
 
     vec3 L = lightPos - worldPos;
     float dist = length(L);
@@ -122,9 +129,9 @@ void main()
     // 方向光
     result += calcDirectionalLight(N, V, albedo, shininess, specularStrength);
 
-    // 点光源：循环累加所有点光源的贡献
-    for (int i = 0; i < int(frame.pointLightCount.x); i++) {
-        result += calcPointLight(i, N, V, inWorldPos, albedo, shininess, specularStrength);
+    // 点光源：循环累加所有点光源的贡献（数量取自 FrameUBO::lightCount）
+    for (int i = 0; i < int(frame.lightCount.x); i++) {
+        result += calcPointLight(lightBuffer.lights[i], N, V, inWorldPos, albedo, shininess, specularStrength);
     }
 
     // 自发光：直接加色，不受光照影响。

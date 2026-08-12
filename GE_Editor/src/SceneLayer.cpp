@@ -24,7 +24,7 @@
 
 // 编译期开关：true = 启动时从代码程序化构建默认场景；false = 从 .scene 文件加载。
 // 无需代码路径时，编辑器默认从文件加载（false）。
-#define GE_EDITOR_BUILD_SCENE_FROM_CODE 0
+#define GE_EDITOR_BUILD_SCENE_FROM_CODE 1
 
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -104,6 +104,31 @@ void SceneLayer::BuildDefaultSceneFromCode() {
     makeCube("Cube_Red", {-1.5f, 0.5f, 0.0f}, mats[0]);
     makeCube("Cube_Green", {0.0f, 0.5f, 0.0f}, mats[1]);
     makeCube("Cube_Blue", {1.5f, 0.5f, 0.0f}, mats[2]);
+
+    // 大量点光源网格：验证点光源已迁入 SSBO 无编译期上限（此处 49 个 > 原 8 上限）。
+    // 在场景上方铺一层 7x7 点光源网格，颜色按位置渐变，便于观察多灯叠加效果。
+    auto makePointLight = [&](const char *name, const glm::vec3 &pos,
+                              const glm::vec3 &rgb, float radiusInv) {
+        Entity e = m_Context->Scene->CreateEntity(name);
+        e.GetComponent<TransformComponent>().Translation = pos;
+        e.AddComponent<PointLightComponent>(glm::vec4(rgb, 0.6f), radiusInv);
+        return e;
+    };
+
+    const int gridN = 7;        // 网格边长（7x7 = 49 个灯）
+    const float extent = 4.0f;  // 网格范围半径
+    for (int ix = 0; ix < gridN; ++ix) {
+        for (int iz = 0; iz < gridN; ++iz) {
+            float x = -extent + extent * 2.0f * ix / (gridN - 1);
+            float z = -extent + extent * 2.0f * iz / (gridN - 1);
+            // 颜色按位置渐变（X 通道→红，Z 通道→绿，蓝固定），强度较低避免过曝
+            glm::vec3 rgb{
+                (ix + 1.0f) / gridN,
+                (iz + 1.0f) / gridN,
+                0.5f};
+            makePointLight("PointLight_Grid", {x, 1.6f, z}, rgb, 0.5f);
+        }
+    }
 }
 
 void SceneLayer::OnDetach() {

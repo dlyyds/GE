@@ -1,6 +1,7 @@
 #include "Panels/ResourcePanel.h"
 
 #include "GE/Core/Log.h"
+#include "GE/Utils/PlatformUtils.h"
 #include "GE/Render/Renderer.h"
 #include "GE/Render/TextureManager.h"
 #include "GE/Render/MaterialManager.h"
@@ -9,6 +10,7 @@
 #include <backends/imgui_impl_vulkan.h>
 
 #include <algorithm>
+#include <cstdio>  // std::snprintf
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -202,6 +204,16 @@ void ResourcePanel::DrawTextureCreationControls() {
 
         // 从文件加载
         ImGui::InputText("文件路径", m_NewTexPath, sizeof(m_NewTexPath));
+        ImGui::SameLine();
+        if (ImGui::Button("浏览...")) {
+            std::string path = FileDialogs::OpenFile(
+                "Image Files (*.png *.jpg *.jpeg *.bmp *.tga)\0"
+                "*.png;*.jpg;*.jpeg;*.bmp;*.tga\0"
+                "All Files (*.*)\0*.*\0");
+            if (!path.empty()) {
+                std::snprintf(m_NewTexPath, sizeof(m_NewTexPath), "%s", path.c_str());
+            }
+        }
         ImGui::SameLine();
         if (ImGui::Button("加载纹理") && m_NewTexPath[0]) {
             if (!texMgr.Load(m_NewTexPath)) {

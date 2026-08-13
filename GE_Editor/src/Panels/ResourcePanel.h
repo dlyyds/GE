@@ -71,7 +71,6 @@ private:
 
     /// 新增纹理表单的状态
     float m_NewTexColor[4] = {1.0f, 1.0f, 1.0f, 1.0f}; ///< 纯色纹理 RGBA
-    char  m_NewTexPath[256] = "";                      ///< 从文件加载的路径
 };
 
 } // namespace GE

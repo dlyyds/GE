@@ -10,7 +10,6 @@
 #include <backends/imgui_impl_vulkan.h>
 
 #include <algorithm>
-#include <cstdio>  // std::snprintf
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -202,22 +201,14 @@ void ResourcePanel::DrawTextureCreationControls() {
                                            m_NewTexColor[2], m_NewTexColor[3]));
         }
 
-        // 从文件加载
-        ImGui::InputText("文件路径", m_NewTexPath, sizeof(m_NewTexPath));
-        ImGui::SameLine();
-        if (ImGui::Button("浏览...")) {
+        // 从文件加载（浏览选中后直接加载）
+        if (ImGui::Button("浏览并加载...")) {
             std::string path = FileDialogs::OpenFile(
                 "Image Files (*.png *.jpg *.jpeg *.bmp *.tga)\0"
                 "*.png;*.jpg;*.jpeg;*.bmp;*.tga\0"
                 "All Files (*.*)\0*.*\0");
-            if (!path.empty()) {
-                std::snprintf(m_NewTexPath, sizeof(m_NewTexPath), "%s", path.c_str());
-            }
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("加载纹理") && m_NewTexPath[0]) {
-            if (!texMgr.Load(m_NewTexPath)) {
-                GE_CORE_ERROR("纹理加载失败：{}", m_NewTexPath);
+            if (!path.empty() && !texMgr.Load(path)) {
+                GE_CORE_ERROR("纹理加载失败：{}", path);
             }
         }
 

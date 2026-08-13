@@ -2,37 +2,64 @@
 
 #include "imgui.h"
 
+#include "GE/Render/Material.h"
+
+#include <unordered_map>
+#include <vector>
+
 namespace GE {
 
-/// 资源面板 —— 用 ImGui 展示全局加载的 纹理 / 材质 / 网格 资源。
+/// 资源面板 —— 用 ImGui 展示并调试全局 纹理 / 材质 / 网格 资源。
 ///
 /// 功能：
-/// - "Textures"  段：列出所有已加载纹理（路径/尺寸/格式）
-/// - "Materials" 段：列出所有已加载材质（类型/纹理槽位/标量参数/渲染状态）
-/// - "Meshes"    段：列出所有已加载网格（内置标识或文件路径/顶点数/索引数）
+/// - 顶部统计条：纹理 / 材质 / 网格 数量总览
+/// - "纹理" 段：缩略图 + 路径 / 尺寸 / 格式，支持按名过滤
+/// - "材质" 段：可实时编辑着色器类型、纹理槽位、标量参数与渲染状态
+/// - "网格"  段：顶点 / 索引数一览，支持按名过滤
 ///
 /// 数据来源为 Renderer 全局管理器（TextureManager / MaterialManager / MeshManager），
-/// 面板不拥有任何资源，仅做只读展示，资源生命周期由各管理器统一管理。
+/// 面板不拥有任何资源，仅做调试展示与参数调整，资源生命周期由各管理器统一管理。
 class ResourcePanel {
 public:
     ResourcePanel() = default;
+    ~ResourcePanel();
 
     /// 每帧 ImGui 渲染
     void OnImGuiRender();
 
 private:
-    /// 绘制纹理资源列表
+    /// 顶部统计条
+    void DrawStatsBar();
+
+    /// 绘制纹理资源列表（缩略图 + 过滤）
     void DrawTextureSection();
 
-    /// 绘制材质资源列表
+    /// 绘制材质资源列表（可编辑）
     void DrawMaterialSection();
 
-    /// 绘制网格资源列表
+    /// 绘制网格资源列表（过滤）
     void DrawMeshSection();
+
+    /// 单个纹理槽位的赋值控件（缩略图 + 下拉选择）
+    void DrawTextureAssignRow(Material *mat, Material::TextureSlot slot,
+                              const char *label, const std::vector<std::string> &texKeys);
+
+    /// 获取（或创建并缓存）指定纹理的 ImGui 缩略图描述符集
+    ImTextureID GetThumbnail(Texture *tex);
+
+    /// 清理仍被缓存但已不再存活的缩略图描述符集
+    void PruneThumbnails(const std::vector<const Texture *> &live);
 
 private:
     /// 停靠目标 DockSpace ID（根上下文取 "MainDockspace"，首帧初始化一次）
     ImGuiID m_DockSpaceID = 0;
+
+    /// 纹理指针 -> ImGui 缩略图描述符集 缓存（避免每帧重复创建）
+    std::unordered_map<const Texture *, ImTextureID> m_Thumbnails;
+
+    /// 纹理 / 网格列表的按名过滤输入框
+    char m_TextureFilter[128] = "";
+    char m_MeshFilter[128] = "";
 };
 
 } // namespace GE

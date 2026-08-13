@@ -5,8 +5,12 @@
 #include "GE/Render/MaterialManager.h"
 #include "GE/Render/MeshManager.h"
 
-#include "imgui.h"
+#include <backends/imgui_impl_vulkan.h>
 
+#include <algorithm>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace GE {
@@ -14,22 +18,60 @@ namespace GE {
 namespace {
 
 /// 纹理槽位显示名称（与 Material::TextureSlot 一致）
-const char *const kTextureSlotNames[] = {"Albedo", "Normal", "Emissive"};
+const char *const kTextureSlotNames[] = {"Albedo", "Normal", "Emissive", "MetallicRoughness"};
 
 /// 将 vk::Format 枚举转换为可读字符串（仅覆盖常用格式）
 const char *FormatToString(vk::Format format) {
     switch (format) {
-        case vk::Format::eR8G8B8A8Unorm: return "R8G8B8A8Unorm";
-        case vk::Format::eR8G8B8A8Srgb:  return "R8G8B8A8Srgb";
+        case vk::Format::eR8G8B8A8Unorm:   return "R8G8B8A8Unorm";
+        case vk::Format::eR8G8B8A8Srgb:    return "R8G8B8A8Srgb";
         case vk::Format::eR16G16B16A16Sfloat: return "R16G16B16A16Float";
         case vk::Format::eR32G32B32A32Sfloat: return "R32G32B32A32Float";
-        case vk::Format::eB8G8R8A8Unorm:  return "B8G8R8A8Unorm";
-        case vk::Format::eB8G8R8A8Srgb:   return "B8G8R8A8Srgb";
+        case vk::Format::eB8G8R8A8Unorm:   return "B8G8R8A8Unorm";
+        case vk::Format::eB8G8R8A8Srgb:    return "B8G8R8A8Srgb";
         default: return "Unknown";
     }
 }
 
+/// 已知标量参数的编辑描述（标签 + 范围 + 步进），未知参数用通用 DragFloat
+struct FloatParamDesc {
+    const char *label;
+    float min, max, speed;
+};
+
+/// 按参数名查找已知参数描述，未命中返回 nullptr
+const FloatParamDesc *GetFloatParamDesc(const std::string &name) {
+    static const std::unordered_map<std::string, FloatParamDesc> kKnown = {
+        {"shininess",        {"高光锐度",       2.0f, 512.0f, 1.0f}},
+        {"specularStrength", {"镜面强度",       0.0f, 2.0f,   0.01f}},
+        {"emissiveStrength", {"自发光强度",     0.0f, 20.0f,  0.05f}},
+        {"metallic",         {"金属度",         0.0f, 1.0f,   0.005f}},
+        {"roughness",        {"粗糙度",         0.0f, 1.0f,   0.005f}},
+    };
+    auto it = kKnown.find(name);
+    return it != kKnown.end() ? &it->second : nullptr;
+}
+
+/// 从文件路径中截取最后一段作为显示名（用于材料内缩略列表）
+std::string FileNameFromPath(const std::string &path) {
+    auto pos = path.find_last_of("/\\");
+    return pos == std::string::npos ? path : path.substr(pos + 1);
+}
+
 } // namespace
+
+ResourcePanel::~ResourcePanel() {
+    if (!m_Thumbnails.empty()) {
+        // 描述符集可能仍被上一帧的 command buffer 采样，先等 GPU 空闲再释放
+        Renderer::Get().WaitIdle();
+        for (auto &[tex, id] : m_Thumbnails) {
+            if (id) {
+                ImGui_ImplVulkan_RemoveTexture(id);
+            }
+        }
+        m_Thumbnails.clear();
+    }
+}
 
 void ResourcePanel::OnImGuiRender() {
     // 根上下文取一次停靠目标 ID（与 DockSpaceLayer 中 GetID("MainDockspace") 一致）
@@ -40,121 +82,295 @@ void ResourcePanel::OnImGuiRender() {
     ImGui::SetNextWindowDockID(m_DockSpaceID, ImGuiCond_FirstUseEver);
     ImGui::Begin("Resource");
 
-    // 三段可折叠资源列表
-    DrawTextureSection();
-    DrawMaterialSection();
-    DrawMeshSection();
+    // 收集当前仍存活的纹理（管理器缓存 + 材质槽位引用），清理失效的缩略图
+    std::vector<const Texture *> live;
+    auto &texMgr = Renderer::GetTextureManager();
+    for (const auto &k : texMgr.GetAllKeys()) {
+        if (auto *t = texMgr.Get(k)) {
+            live.push_back(t);
+        }
+    }
+    auto &matMgr = Renderer::GetMaterialManager();
+    for (const auto &n : matMgr.GetAllNames()) {
+        if (auto *m = matMgr.Get(n)) {
+            for (size_t s = 0; s < Material::TextureSlot::Count; ++s) {
+                if (auto *t = m->GetTexture(static_cast<Material::TextureSlot>(s))) {
+                    live.push_back(t);
+                }
+            }
+        }
+    }
+    PruneThumbnails(live);
+
+    DrawStatsBar();
+
+    // 三段切换为 Tab 页，视觉更紧凑
+    if (ImGui::BeginTabBar("##ResourceTabs")) {
+        if (ImGui::BeginTabItem("纹理")) {
+            DrawTextureSection();
+            ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem("材质")) {
+            DrawMaterialSection();
+            ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem("网格")) {
+            DrawMeshSection();
+            ImGui::EndTabItem();
+        }
+        ImGui::EndTabBar();
+    }
 
     ImGui::End();
+}
+
+void ResourcePanel::DrawStatsBar() {
+    auto &texMgr   = Renderer::GetTextureManager();
+    auto &matMgr   = Renderer::GetMaterialManager();
+    auto &meshMgr  = Renderer::GetMeshManager();
+
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8.0f, 4.0f));
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextColored(ImVec4(0.45f, 0.75f, 1.0f, 1.0f), "纹理"); ImGui::SameLine();
+    ImGui::Text("%zu", texMgr.GetCount()); ImGui::SameLine();
+    ImGui::TextColored(ImVec4(0.45f, 0.9f, 0.55f, 1.0f), "材质"); ImGui::SameLine();
+    ImGui::Text("%zu", matMgr.GetCount()); ImGui::SameLine();
+    ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.4f, 1.0f), "网格"); ImGui::SameLine();
+    ImGui::Text("%zu", meshMgr.GetCount());
+    ImGui::Separator();
+    ImGui::PopStyleVar();
 }
 
 void ResourcePanel::DrawTextureSection() {
     auto &texMgr = Renderer::GetTextureManager();
 
-    if (ImGui::CollapsingHeader("Textures")) {
-        ImGui::TextDisabled("共 %zu 张纹理", texMgr.GetCount());
-        ImGui::Separator();
+    ImGui::InputTextWithHint("##texfilter", "过滤纹理名...", m_TextureFilter, sizeof(m_TextureFilter));
+    ImGui::Separator();
 
-        const auto keys = texMgr.GetAllKeys();
-        for (const auto &key : keys) {
-            Texture *tex = texMgr.Get(key);
-            if (!tex) {
-                continue;
-            }
-
-            // 用树节点展示单张纹理，二级展开显示详细信息
-            const auto &extent = tex->GetExtent();
-            if (ImGui::TreeNodeEx(key.c_str(), ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen)) {
-                ImGui::SameLine();
-                ImGui::TextDisabled("(%ux%u, %s)",
-                                    extent.width, extent.height, FormatToString(tex->GetFormat()));
-                if (ImGui::IsItemHovered()) {
-                    ImGui::SetTooltip("%s", tex->GetFilePath().c_str());
-                }
-            }
-        }
+    const auto keys = texMgr.GetAllKeys();
+    if (keys.empty()) {
+        ImGui::TextDisabled("暂无纹理");
+        return;
     }
+
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8.0f, 6.0f));
+    for (const auto &key : keys) {
+        if (m_TextureFilter[0] && key.find(m_TextureFilter) == std::string::npos) {
+            continue;
+        }
+        Texture *tex = texMgr.Get(key);
+        if (!tex) {
+            continue;
+        }
+
+        ImGui::PushID(key.c_str());
+
+        // 缩略图（48x48）
+        if (ImTextureID tid = GetThumbnail(tex)) {
+            ImGui::Image(tid, ImVec2(48.0f, 48.0f));
+            ImGui::SameLine();
+        }
+
+        // 名称 + 尺寸 / 格式
+        ImGui::BeginGroup();
+        ImGui::TextUnformatted(key.c_str());
+        const auto &e = tex->GetExtent();
+        ImGui::TextDisabled("%ux%u  %s", e.width, e.height, FormatToString(tex->GetFormat()));
+        ImGui::EndGroup();
+
+        if (ImGui::IsItemHovered() && !tex->GetFilePath().empty()) {
+            ImGui::SetTooltip("%s", tex->GetFilePath().c_str());
+        }
+
+        ImGui::PopID();
+        ImGui::Separator();
+    }
+    ImGui::PopStyleVar();
 }
 
 void ResourcePanel::DrawMaterialSection() {
     auto &matMgr = Renderer::GetMaterialManager();
+    auto &texMgr = Renderer::GetTextureManager();
 
-    if (ImGui::CollapsingHeader("Materials")) {
-        ImGui::TextDisabled("共 %zu 个材质", matMgr.GetCount());
-        ImGui::Separator();
+    const auto names = matMgr.GetAllNames();
+    if (names.empty()) {
+        ImGui::TextDisabled("暂无材质");
+        return;
+    }
 
-        const auto names = matMgr.GetAllNames();
-        for (const auto &name : names) {
-            Material *mat = matMgr.Get(name);
-            if (!mat) {
-                continue;
+    const auto texKeys = texMgr.GetAllKeys();
+
+    for (const auto &name : names) {
+        Material *mat = matMgr.Get(name);
+        if (!mat) {
+            continue;
+        }
+
+        ImGui::PushID(name.c_str());
+        if (ImGui::TreeNodeEx(name.c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
+            // 着色器类型（运行时切换会重建对应管线）
+            const char *types[] = {"BlinnPhong", "PBR"};
+            int typeIdx = (mat->GetType() == Material::Type::PBR) ? 1 : 0;
+            if (ImGui::Combo("着色器类型", &typeIdx, types, 2)) {
+                mat->SetType(typeIdx == 1 ? Material::Type::PBR : Material::Type::BlinnPhong);
             }
 
-            if (ImGui::TreeNode(name.c_str())) {
-                // 调试名称
-                if (!mat->GetDebugName().empty()) {
-                    ImGui::Text("调试名称: %s", mat->GetDebugName().c_str());
-                }
+            // 纹理槽位（下拉赋值 + 缩略图）
+            for (size_t i = 0; i < Material::TextureSlot::Count; ++i) {
+                DrawTextureAssignRow(mat, static_cast<Material::TextureSlot>(i),
+                                     kTextureSlotNames[i], texKeys);
+            }
 
-                // 类型
-                const char *typeStr = "Unknown";
-                switch (mat->GetType()) {
-                    case Material::Type::BlinnPhong: typeStr = "BlinnPhong"; break;
-                }
-                ImGui::Text("类型: %s", typeStr);
-
-                // 纹理槽位
-                for (size_t i = 0; i < Material::TextureSlot::Count; ++i) {
-                    Texture *slotTex = mat->GetTexture(static_cast<Material::TextureSlot>(i));
-                    if (slotTex) {
-                        ImGui::Text("%s: %s",
-                                    kTextureSlotNames[i], slotTex->GetFilePath().c_str());
+            // 标量参数（可编辑；先拷贝再写回，避免修改 unordered_map 时迭代器失效）
+            std::vector<std::pair<std::string, float>> params(
+                mat->GetFloatParams().begin(), mat->GetFloatParams().end());
+            if (params.empty()) {
+                ImGui::TextDisabled("无标量参数");
+            }
+            for (auto &[pname, pval] : params) {
+                if (const FloatParamDesc *desc = GetFloatParamDesc(pname)) {
+                    if (ImGui::SliderFloat(desc->label, &pval, desc->min, desc->max, "%.3f")) {
+                        mat->SetFloat(pname, pval);
                     }
+                } else if (ImGui::DragFloat(pname.c_str(), &pval, 0.01f, -1000.0f, 1000.0f, "%.3f")) {
+                    mat->SetFloat(pname, pval);
                 }
+            }
 
-                // 标量参数
-                const auto &floatParams = mat->GetFloatParams();
-                if (!floatParams.empty()) {
-                    if (ImGui::TreeNode("标量参数")) {
-                        for (const auto &[paramName, value] : floatParams) {
-                            ImGui::Text("%s = %.3f", paramName.c_str(), value);
-                        }
-                        ImGui::TreePop();
-                    }
-                }
+            // 渲染状态
+            ImGui::Separator();
+            bool alphaTest = mat->alphaTest;
+            if (ImGui::Checkbox("Alpha 测试（discard）", &alphaTest)) {
+                mat->alphaTest = alphaTest;
+            }
+            bool doubleSided = mat->doubleSided;
+            if (ImGui::Checkbox("双面渲染（关闭背面剔除）", &doubleSided)) {
+                mat->doubleSided = doubleSided;
+            }
 
-                // 渲染状态
-                ImGui::Text("AlphaTest: %s, DoubleSided: %s",
-                            mat->alphaTest ? "On" : "Off",
-                            mat->doubleSided ? "On" : "Off");
+            ImGui::TreePop();
+        }
+        ImGui::PopID();
+    }
+}
 
-                ImGui::TreePop();
+void ResourcePanel::DrawTextureAssignRow(Material *mat, Material::TextureSlot slot,
+                                         const char *label,
+                                         const std::vector<std::string> &texKeys) {
+    auto &texMgr = Renderer::GetTextureManager();
+    Texture *cur = mat->GetTexture(slot);
+
+    ImGui::PushID(static_cast<int>(slot));
+
+    // 当前槽位缩略图 + 槽位名（同一行，右侧放下拉）
+    if (ImTextureID tid = cur ? GetThumbnail(cur) : nullptr) {
+        ImGui::Image(tid, ImVec2(24.0f, 24.0f));
+        ImGui::SameLine();
+    }
+    ImGui::TextUnformatted(label);
+    ImGui::SameLine();
+
+    // 预览名（取文件最后一段，避免太长）
+    std::string preview = "无";
+    if (cur) {
+        preview = cur->GetFilePath().empty() ? "(纹理)" : FileNameFromPath(cur->GetFilePath());
+    }
+
+    // 定位当前选中项在 texKeys 中的下标（0 = 无）
+    int selected = 0;
+    if (cur) {
+        for (size_t j = 0; j < texKeys.size(); ++j) {
+            if (texMgr.Get(texKeys[j]) == cur) {
+                selected = static_cast<int>(j) + 1;
+                break;
             }
         }
     }
+
+    // 下拉宽度 = 从当前行光标到右侧剩余空间（已扣除缩略图与标签）
+    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+    if (ImGui::BeginCombo("##tex", preview.c_str())) {
+        if (ImGui::Selectable("无", selected == 0)) {
+            mat->SetTexture(slot, nullptr);
+        }
+        for (size_t j = 0; j < texKeys.size(); ++j) {
+            bool itemSel = selected == static_cast<int>(j) + 1;
+            if (ImGui::Selectable(texKeys[j].c_str(), itemSel)) {
+                mat->SetTexture(slot, texMgr.Get(texKeys[j]));
+            }
+        }
+        ImGui::EndCombo();
+    }
+
+    ImGui::PopID();
 }
 
 void ResourcePanel::DrawMeshSection() {
     auto &meshMgr = Renderer::GetMeshManager();
 
-    if (ImGui::CollapsingHeader("Meshes")) {
-        ImGui::TextDisabled("共 %zu 个网格", meshMgr.GetCount());
-        ImGui::Separator();
+    ImGui::InputTextWithHint("##meshfilter", "过滤网格名...", m_MeshFilter, sizeof(m_MeshFilter));
+    ImGui::Separator();
 
-        const auto keys = meshMgr.GetAllKeys();
+    const auto keys = meshMgr.GetAllKeys();
+    if (keys.empty()) {
+        ImGui::TextDisabled("暂无网格");
+        return;
+    }
+
+    if (ImGui::BeginTable("##mesh", 2, ImGuiTableFlags_RowBg)) {
+        ImGui::TableSetupColumn("网格", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("统计", ImGuiTableColumnFlags_WidthFixed, 160.0f);
         for (const auto &key : keys) {
+            if (m_MeshFilter[0] && key.find(m_MeshFilter) == std::string::npos) {
+                continue;
+            }
             Mesh *mesh = meshMgr.Get(key);
             if (!mesh) {
                 continue;
             }
-
-            if (ImGui::TreeNodeEx(key.c_str(), ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen)) {
-                ImGui::SameLine();
-                ImGui::TextDisabled("(%u 顶点, %u 索引, %s)",
-                                    mesh->GetVertexCount(), mesh->GetIndexCount(),
-                                    mesh->GetFilePath().c_str());
-            }
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::TextUnformatted(key.c_str());
+            ImGui::TableSetColumnIndex(1);
+            ImGui::TextDisabled("%u 顶点 / %u 索引", mesh->GetVertexCount(), mesh->GetIndexCount());
         }
+        ImGui::EndTable();
+    }
+}
+
+ImTextureID ResourcePanel::GetThumbnail(Texture *tex) {
+    if (!tex) {
+        return nullptr;
+    }
+    auto it = m_Thumbnails.find(tex);
+    if (it != m_Thumbnails.end()) {
+        return it->second;
+    }
+    // 采样器 + ImageView 采样作为 ImGui 图片（纹理加载后布局即 SHADER_READ_ONLY）
+    ImTextureID id = ImGui_ImplVulkan_AddTexture(
+        tex->GetSampler().GetHandle(),
+        tex->GetImageView().GetHandle(),
+        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    m_Thumbnails[tex] = id;
+    return id;
+}
+
+void ResourcePanel::PruneThumbnails(const std::vector<const Texture *> &live) {
+    std::unordered_set<const Texture *> present(live.begin(), live.end());
+    bool needWait = false;
+    auto it = m_Thumbnails.begin();
+    while (it != m_Thumbnails.end()) {
+        if (it->second && present.count(it->first) == 0) {
+            needWait = true;
+            ImGui_ImplVulkan_RemoveTexture(it->second);
+            it = m_Thumbnails.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    if (needWait) {
+        // 被释放的描述符集可能仍被上一帧引用，等 GPU 空闲以确保安全
+        Renderer::Get().WaitIdle();
     }
 }
 

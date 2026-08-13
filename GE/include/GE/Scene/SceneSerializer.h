@@ -21,8 +21,10 @@ class Material;
  *            DirectionalLightComponent、AmbientLightComponent、RigidBodyComponent、
  *            BoxColliderComponent、SphereColliderComponent。
  *
- * 材质序列化：完整保存纹理槽位（Albedo / Normal / Emissive）与全部浮点标量参数
- * （如 shininess、specularStrength），按内容去重（内容相同的材质复用同一实例）。
+ * 材质序列化：完整保存纹理槽位（Albedo / Normal / Emissive）、各纹理的采样器
+ * 参数（过滤方式、寻址模式、各向异性）与全部浮点标量参数（如 shininess、
+ * specularStrength），按内容去重（内容相同的材质复用同一实例）。
+ * SpriteRenderer 的纹理同样保存其采样器参数。
  *
  * ScriptComponent 不参与序列化（运行时行为，无法持久化）。
  *

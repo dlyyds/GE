@@ -48,6 +48,79 @@ Material::TextureSlot TextureSlotFromName(const std::string &name) {
     return Material::Albedo;
 }
 
+// ============================================================
+// 采样器参数辅助
+// ============================================================
+
+/// 采样器寻址模式 → 字符串
+const char *AddressModeToString(vk::SamplerAddressMode mode) {
+    switch (mode) {
+    case vk::SamplerAddressMode::eMirroredRepeat: return "MirroredRepeat";
+    case vk::SamplerAddressMode::eClampToEdge:    return "ClampToEdge";
+    case vk::SamplerAddressMode::eClampToBorder:  return "ClampToBorder";
+    default:                                      return "Repeat";
+    }
+}
+
+/// 字符串 → 采样器寻址模式
+vk::SamplerAddressMode AddressModeFromString(const std::string &s) {
+    if (s == "MirroredRepeat") return vk::SamplerAddressMode::eMirroredRepeat;
+    if (s == "ClampToEdge")    return vk::SamplerAddressMode::eClampToEdge;
+    if (s == "ClampToBorder")  return vk::SamplerAddressMode::eClampToBorder;
+    return vk::SamplerAddressMode::eRepeat;
+}
+
+/// 纹素过滤器 → 字符串
+const char *FilterToString(vk::Filter f) {
+    return (f == vk::Filter::eNearest) ? "Nearest" : "Linear";
+}
+
+/// 字符串 → 纹素过滤器
+vk::Filter FilterFromString(const std::string &s) {
+    return (s == "Nearest") ? vk::Filter::eNearest : vk::Filter::eLinear;
+}
+
+/**
+ * @brief 将纹理采样器参数写入 YAML 节点。
+ *
+ * 保存过滤方式（Mag/MinFilter）、寻址模式（AddressMode）和各向异性开关，
+ * 供反序列化时恢复。纹理指针为空时为空操作。
+ */
+void SerializeSamplerNode(YAML::Node &samplerNode, Texture *tex) {
+    if (!tex) {
+        return;
+    }
+    samplerNode["MagFilter"]   = FilterToString(tex->GetMagFilter());
+    samplerNode["MinFilter"]   = FilterToString(tex->GetMinFilter());
+    samplerNode["AddressMode"] = AddressModeToString(tex->GetAddressMode());
+    samplerNode["Anisotropy"]  = tex->GetAnisotropyEnabled();
+}
+
+/**
+ * @brief 将采样器参数应用到纹理（反序列化恢复）。
+ *
+ * 纹理通过 TextureManager 按路径加载，默认采样参数为线性过滤 + 重复寻址；
+ * 这里按 YAML 中保存的参数调用 Set* 便捷方法重建采样器。
+ * 纹理指针为空或节点缺失时为空操作。
+ */
+void ApplySamplerParams(Texture *tex, const YAML::Node &samplerNode) {
+    if (!tex || !samplerNode) {
+        return;
+    }
+
+    if (samplerNode["MagFilter"] && samplerNode["MinFilter"]) {
+        vk::Filter mag = FilterFromString(samplerNode["MagFilter"].as<std::string>("Linear"));
+        vk::Filter min = FilterFromString(samplerNode["MinFilter"].as<std::string>("Linear"));
+        tex->SetFilter(mag, min);
+    }
+    if (samplerNode["AddressMode"]) {
+        tex->SetAddressMode(AddressModeFromString(samplerNode["AddressMode"].as<std::string>("Repeat")));
+    }
+    if (samplerNode["Anisotropy"]) {
+        tex->SetAnisotropy(samplerNode["Anisotropy"].as<bool>(false));
+    }
+}
+
 /**
  * @brief 将材质写入 YAML 节点（纹理槽位 + 浮点参数）。
  *
@@ -66,8 +139,10 @@ void SerializeMaterialNode(YAML::Node &matNode, Material *mat) {
         auto slot = static_cast<Material::TextureSlot>(s);
         Texture *tex = mat->GetTexture(slot);
         if (tex && !tex->GetFilePath().empty()) {
-            matNode[std::string(kTextureSlotNames[s]) + "Texture"] =
-                tex->GetFilePath();
+            std::string texKey = std::string(kTextureSlotNames[s]) + "Texture";
+            matNode[texKey] = tex->GetFilePath();
+            // 同时保存该纹理的采样器参数，供反序列化恢复
+            SerializeSamplerNode(matNode[texKey + "Sampler"], tex);
         }
     }
 
@@ -104,6 +179,16 @@ std::string BuildMaterialKey(const YAML::Node &matNode) {
         std::string texKey = std::string(name) + "Texture";
         if (matNode[texKey]) {
             key += std::string(name) + ":" + matNode[texKey].as<std::string>() + ";";
+        }
+        // 采样器参数同样参与去重：同路径不同采样配置的纹理不可合并
+        std::string samplerKey = std::string(name) + "TextureSampler";
+        if (matNode[samplerKey]) {
+            key += std::string(name) + "Sampler:";
+            key += matNode[samplerKey]["MagFilter"].as<std::string>("Linear") + ",";
+            key += matNode[samplerKey]["MinFilter"].as<std::string>("Linear") + ",";
+            key += matNode[samplerKey]["AddressMode"].as<std::string>("Repeat") + ",";
+            key += matNode[samplerKey]["Anisotropy"].as<std::string>("false");
+            key += ";";
         }
     }
 
@@ -156,6 +241,8 @@ Material *GetOrCreateMaterial(const YAML::Node &matNode) {
             std::string path = matNode[texKey].as<std::string>("");
             Texture *tex = Renderer::GetTextureManager().Load(path);
             if (tex) {
+                // 恢复采样器参数（若保存了）
+                ApplySamplerParams(tex, matNode[texKey + "Sampler"]);
                 mat->SetTexture(TextureSlotFromName(name), tex);
             } else {
                 GE_CORE_WARN("SceneSerializer: 材质纹理加载失败: {0}", path);
@@ -302,9 +389,10 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
             spriteNode["Color"] = SerializeVec4(src.Color);
             spriteNode["IsUI"] = src.IsUI;
 
-            // 纹理路径
+            // 纹理路径 + 采样器参数
             if (src.SpriteTexture && !src.SpriteTexture->GetFilePath().empty()) {
                 spriteNode["Texture"] = src.SpriteTexture->GetFilePath();
+                SerializeSamplerNode(spriteNode["TextureSampler"], src.SpriteTexture);
             }
         }
 
@@ -523,6 +611,8 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
             if (spriteNode["Texture"]) {
                 std::string texPath = spriteNode["Texture"].as<std::string>("");
                 src.SpriteTexture = Renderer::GetTextureManager().Load(texPath);
+                // 恢复采样器参数（若保存了）
+                ApplySamplerParams(src.SpriteTexture, spriteNode["TextureSampler"]);
             }
         }
 

@@ -324,12 +324,7 @@ void ResourcePanel::DrawPropertyLabel(const char *text, Texture *thumbnail) {
     ImGui::TableSetColumnIndex(1);
     ImGui::AlignTextToFramePadding();
 
-    // 组 = 可选缩略图 + 文本，整组右侧对齐
-    float textW = ImGui::CalcTextSize(text).x;
-    float thumbW = thumbnail ? 24.0f + ImGui::GetStyle().ItemSpacing.x : 0.0f;
-    float avail = ImGui::GetContentRegionAvail().x;
-    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (avail - thumbW - textW));
-
+    // 组 = 可选缩略图 + 文本，整组左侧对齐
     if (thumbnail) {
         if (ImTextureID tid = GetThumbnail(thumbnail)) {
             ImGui::Image(tid, ImVec2(24.0f, 24.0f));

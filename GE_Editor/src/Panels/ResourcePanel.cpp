@@ -58,13 +58,6 @@ std::string FileNameFromPath(const std::string &path) {
     return pos == std::string::npos ? path : path.substr(pos + 1);
 }
 
-/// 在属性表右列右侧对齐地绘制复选框（隐藏文本标签，仅显示勾选框）
-void DrawRightAlignedCheckbox(const char *id, bool *value) {
-    float boxW = ImGui::GetFrameHeight();
-    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - boxW);
-    ImGui::Checkbox(id, value);
-}
-
 } // namespace
 
 ResourcePanel::~ResourcePanel() {
@@ -215,29 +208,29 @@ void ResourcePanel::DrawMaterialSection() {
 
         ImGui::PushID(name.c_str());
         if (ImGui::TreeNodeEx(name.c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
-            // 属性表：左列右对齐标签，右列控件统一宽度并贴右侧
+            // 属性表：左列控件（统一宽度），右列右侧对齐标签
             if (ImGui::BeginTable("##Props", 2, ImGuiTableFlags_SizingStretchProp)) {
-                ImGui::TableSetupColumn("label", ImGuiTableColumnFlags_WidthFixed, 180.0f);
                 ImGui::TableSetupColumn("widget", ImGuiTableColumnFlags_WidthStretch);
+                ImGui::TableSetupColumn("label", ImGuiTableColumnFlags_WidthFixed, 180.0f);
 
                 // 着色器类型（运行时切换会重建对应管线）
                 const char *types[] = {"BlinnPhong", "PBR"};
                 int typeIdx = (mat->GetType() == Material::Type::PBR) ? 1 : 0;
                 ImGui::TableNextRow();
-                DrawPropertyLabel("着色器类型");
-                ImGui::TableSetColumnIndex(1);
+                ImGui::TableSetColumnIndex(0);
                 ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
                 if (ImGui::Combo("##type", &typeIdx, types, 2)) {
                     mat->SetType(typeIdx == 1 ? Material::Type::PBR : Material::Type::BlinnPhong);
                 }
+                DrawPropertyLabel("着色器类型");
 
-                // 纹理槽位（右列下拉赋值，左列标签带缩略图）
+                // 纹理槽位（左列下拉赋值，右列标签带缩略图）
                 for (size_t i = 0; i < Material::TextureSlot::Count; ++i) {
                     ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(0);
+                    DrawTextureAssignRow(mat, static_cast<Material::TextureSlot>(i), texKeys);
                     DrawPropertyLabel(kTextureSlotNames[i],
                                       mat->GetTexture(static_cast<Material::TextureSlot>(i)));
-                    ImGui::TableSetColumnIndex(1);
-                    DrawTextureAssignRow(mat, static_cast<Material::TextureSlot>(i), texKeys);
                 }
 
                 // 标量参数（可编辑；先拷贝再写回，避免修改 unordered_map 时迭代器失效）
@@ -245,15 +238,14 @@ void ResourcePanel::DrawMaterialSection() {
                     mat->GetFloatParams().begin(), mat->GetFloatParams().end());
                 if (params.empty()) {
                     ImGui::TableNextRow();
-                    DrawPropertyLabel("标量参数");
-                    ImGui::TableSetColumnIndex(1);
+                    ImGui::TableSetColumnIndex(0);
                     ImGui::TextDisabled("无标量参数");
+                    DrawPropertyLabel("标量参数");
                 }
                 for (auto &[pname, pval] : params) {
                     const FloatParamDesc *desc = GetFloatParamDesc(pname);
                     ImGui::TableNextRow();
-                    DrawPropertyLabel(desc ? desc->label : pname.c_str());
-                    ImGui::TableSetColumnIndex(1);
+                    ImGui::TableSetColumnIndex(0);
                     ImGui::PushID(pname.c_str());
                     ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
                     if (desc) {
@@ -264,18 +256,19 @@ void ResourcePanel::DrawMaterialSection() {
                         mat->SetFloat(pname, pval);
                     }
                     ImGui::PopID();
+                    DrawPropertyLabel(desc ? desc->label : pname.c_str());
                 }
 
-                // 渲染状态（复选框右对齐到右列右侧）
+                // 渲染状态（复选框位于左列）
                 ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0);
+                ImGui::Checkbox("##alpha", &mat->alphaTest);
                 DrawPropertyLabel("Alpha 测试");
-                ImGui::TableSetColumnIndex(1);
-                DrawRightAlignedCheckbox("##alpha", &mat->alphaTest);
 
                 ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0);
+                ImGui::Checkbox("##double", &mat->doubleSided);
                 DrawPropertyLabel("双面渲染");
-                ImGui::TableSetColumnIndex(1);
-                DrawRightAlignedCheckbox("##double", &mat->doubleSided);
 
                 ImGui::EndTable();
             }
@@ -328,7 +321,7 @@ void ResourcePanel::DrawTextureAssignRow(Material *mat, Material::TextureSlot sl
 }
 
 void ResourcePanel::DrawPropertyLabel(const char *text, Texture *thumbnail) {
-    ImGui::TableSetColumnIndex(0);
+    ImGui::TableSetColumnIndex(1);
     ImGui::AlignTextToFramePadding();
 
     // 组 = 可选缩略图 + 文本，整组右侧对齐

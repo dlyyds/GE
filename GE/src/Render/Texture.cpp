@@ -147,10 +147,20 @@ Texture::Texture(Texture &&other) noexcept
     , m_Sampler(other.m_Sampler)
     , m_Format(other.m_Format)
     , m_Extent(other.m_Extent)
+    , m_SamplerCache(other.m_SamplerCache)
+    , m_MagFilter(other.m_MagFilter)
+    , m_MinFilter(other.m_MinFilter)
+    , m_MipmapMode(other.m_MipmapMode)
+    , m_AddressU(other.m_AddressU)
+    , m_AddressV(other.m_AddressV)
+    , m_AddressW(other.m_AddressW)
+    , m_AnisotropyEnabled(other.m_AnisotropyEnabled)
+    , m_MaxAnisotropy(other.m_MaxAnisotropy)
 {
-    other.m_Sampler = nullptr;
-    other.m_Format  = vk::Format::eR8G8B8A8Unorm;
-    other.m_Extent  = vk::Extent3D{};
+    other.m_Sampler       = nullptr;
+    other.m_Format        = vk::Format::eR8G8B8A8Unorm;
+    other.m_Extent        = vk::Extent3D{};
+    other.m_SamplerCache  = nullptr;
 }
 
 // ============================================================================
@@ -376,17 +386,57 @@ void Texture::CreateViewAndSampler(VulkanDevice &device,
     // 设备支持各向异性时才启用（基本所有现代 GPU 都支持，这里做个保险判断）
     vk::Bool32 enableAnisotropy = (maxAnisotropy > 1.0f) ? VK_TRUE : VK_FALSE;
 
+    // 记录采样器配置与缓存，供后续 Set* 便捷方法按同样参数重建采样器
+    m_SamplerCache       = &cache;
+    m_MagFilter          = mag_filter;
+    m_MinFilter          = min_filter;
+    m_MipmapMode         = vk::SamplerMipmapMode::eLinear;
+    m_AddressU           = vk::SamplerAddressMode::eRepeat;
+    m_AddressV           = vk::SamplerAddressMode::eRepeat;
+    m_AddressW           = vk::SamplerAddressMode::eRepeat;
+    m_AnisotropyEnabled  = (enableAnisotropy == VK_TRUE);
+    m_MaxAnisotropy      = maxAnisotropy;
+
     // 通过缓存获取 Sampler（启用各向异性过滤，提升曲面纹理质量）
-    m_Sampler = &cache.RequestSampler(
-        mag_filter,                        // mag
-        min_filter,                        // min
-        vk::SamplerMipmapMode::eLinear,    // mipmap
-        vk::SamplerAddressMode::eRepeat,   // address U
-        vk::SamplerAddressMode::eRepeat,   // address V
-        vk::SamplerAddressMode::eRepeat,   // address W
-        0.0f,                              // mip_lod_bias
-        enableAnisotropy,                  // anisotropy_enable
-        maxAnisotropy);                    // max_anisotropy
+    RecreateSampler();
+}
+
+// ============================================================================
+// 采样器便捷修改
+// ============================================================================
+
+void Texture::RecreateSampler() {
+    if (!m_SamplerCache) {
+        return; // 空白纹理未记录缓存，无法按需重建采样器
+    }
+    m_Sampler = &m_SamplerCache->RequestSampler(
+        m_MagFilter,                        // mag
+        m_MinFilter,                        // min
+        m_MipmapMode,                       // mipmap
+        m_AddressU,                         // address U
+        m_AddressV,                         // address V
+        m_AddressW,                         // address W
+        0.0f,                               // mip_lod_bias
+        m_AnisotropyEnabled ? VK_TRUE : VK_FALSE, // anisotropy_enable
+        m_MaxAnisotropy);                   // max_anisotropy
+}
+
+void Texture::SetFilter(vk::Filter mag_filter, vk::Filter min_filter) {
+    m_MagFilter = mag_filter;
+    m_MinFilter = min_filter;
+    RecreateSampler();
+}
+
+void Texture::SetAddressMode(vk::SamplerAddressMode mode) {
+    m_AddressU = mode;
+    m_AddressV = mode;
+    m_AddressW = mode;
+    RecreateSampler();
+}
+
+void Texture::SetAnisotropy(bool enable) {
+    m_AnisotropyEnabled = enable;
+    RecreateSampler();
 }
 
 } // namespace GE

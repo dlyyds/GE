@@ -158,27 +158,94 @@ void ResourcePanel::DrawTextureSection() {
 
         ImGui::PushID(key.c_str());
 
-        // 缩略图（48x48）
+        // 树节点：名称 + 缩略图 + 尺寸/格式，展开后编辑采样器
+        bool open = ImGui::TreeNode(key.c_str());
         if (ImTextureID tid = GetThumbnail(tex)) {
-            ImGui::Image(tid, ImVec2(48.0f, 48.0f));
             ImGui::SameLine();
+            ImGui::Image(tid, ImVec2(20.0f, 20.0f));
         }
-
-        // 名称 + 尺寸 / 格式
-        ImGui::BeginGroup();
-        ImGui::TextUnformatted(key.c_str());
+        ImGui::SameLine();
         const auto &e = tex->GetExtent();
         ImGui::TextDisabled("%ux%u  %s", e.width, e.height, FormatToString(tex->GetFormat()));
-        ImGui::EndGroup();
-
         if (ImGui::IsItemHovered() && !tex->GetFilePath().empty()) {
             ImGui::SetTooltip("%s", tex->GetFilePath().c_str());
+        }
+
+        if (open) {
+            DrawSamplerControls(tex);
+            ImGui::TreePop();
         }
 
         ImGui::PopID();
         ImGui::Separator();
     }
     ImGui::PopStyleVar();
+}
+
+void ResourcePanel::DrawSamplerControls(Texture *tex) {
+    // 与材质段一致的属性表：左列控件，右列左对齐标签
+    if (ImGui::BeginTable("##samp", 2, ImGuiTableFlags_SizingStretchProp)) {
+        ImGui::TableSetupColumn("widget", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("label", ImGuiTableColumnFlags_WidthFixed, 120.0f);
+
+        const char *filterNames[] = {"Nearest", "Linear"};
+        const char *addrNames[]   = {"Repeat", "ClampToEdge", "MirrorRepeat"};
+
+        // 放大过滤
+        int mag = (tex->GetMagFilter() == vk::Filter::eNearest) ? 0 : 1;
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+        if (ImGui::Combo("##mag", &mag, filterNames, 2)) {
+            tex->SetFilter(mag == 0 ? vk::Filter::eNearest : vk::Filter::eLinear,
+                           tex->GetMinFilter());
+        }
+        DrawPropertyLabel("Mag 过滤");
+
+        // 缩小过滤
+        int min = (tex->GetMinFilter() == vk::Filter::eNearest) ? 0 : 1;
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+        if (ImGui::Combo("##min", &min, filterNames, 2)) {
+            tex->SetFilter(tex->GetMagFilter(),
+                           min == 0 ? vk::Filter::eNearest : vk::Filter::eLinear);
+        }
+        DrawPropertyLabel("Min 过滤");
+
+        // 寻址模式
+        int addr = 0;
+        switch (tex->GetAddressMode()) {
+            case vk::SamplerAddressMode::eClampToEdge:   addr = 1; break;
+            case vk::SamplerAddressMode::eMirroredRepeat: addr = 2; break;
+            default:                                      addr = 0; break;
+        }
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+        if (ImGui::Combo("##addr", &addr, addrNames, 3)) {
+            vk::SamplerAddressMode mode = vk::SamplerAddressMode::eRepeat;
+            if (addr == 1) {
+                mode = vk::SamplerAddressMode::eClampToEdge;
+            } else if (addr == 2) {
+                mode = vk::SamplerAddressMode::eMirroredRepeat;
+            }
+            tex->SetAddressMode(mode);
+        }
+        DrawPropertyLabel("寻址模式");
+
+        // 各向异性
+        bool anis = tex->GetAnisotropyEnabled();
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::Checkbox("##anis", &anis);
+        DrawPropertyLabel("各向异性");
+        if (anis != tex->GetAnisotropyEnabled()) {
+            tex->SetAnisotropy(anis);
+        }
+
+        ImGui::EndTable();
+    }
 }
 
 void ResourcePanel::DrawMaterialSection() {

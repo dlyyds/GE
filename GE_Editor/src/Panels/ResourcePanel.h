@@ -39,6 +39,9 @@ private:
     /// 绘制网格资源列表（过滤）
     void DrawMeshSection();
 
+    /// 绘制单张纹理的采样器编辑控件（过滤/寻址/各向异性）
+    void DrawSamplerControls(Texture *tex);
+
     /// 单个纹理槽位的赋值下拉（置于属性表右列）
     void DrawTextureAssignRow(Material *mat, Material::TextureSlot slot,
                               const std::vector<std::string> &texKeys);

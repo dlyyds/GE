@@ -198,6 +198,40 @@ public:
      */
     void SetSampler(VulkanSampler &sampler) { m_Sampler = &sampler; }
 
+    // ========================================================================
+    // 采样器便捷修改（运行时生效，无需重建纹理）
+    // ========================================================================
+    // 以下方法通过 LoadFromFile / LoadFromMemory 创建时记录的采样器缓存
+    // （VulkanResourceCache）按同样参数重新请求一个采样器并替换，仅影响采样
+    // 行为，不改动图像存储。对空白纹理（未设置缓存）调用为无操作。
+
+    /**
+     * @brief 设置放大/缩小过滤方式。
+     */
+    void SetFilter(vk::Filter mag_filter, vk::Filter min_filter);
+
+    /**
+     * @brief 设置寻址模式（U/V/W 三轴一致）。
+     */
+    void SetAddressMode(vk::SamplerAddressMode mode);
+
+    /**
+     * @brief 开关各向异性过滤。
+     */
+    void SetAnisotropy(bool enable);
+
+    /// 当前放大过滤方式。
+    vk::Filter GetMagFilter() const { return m_MagFilter; }
+
+    /// 当前缩小过滤方式。
+    vk::Filter GetMinFilter() const { return m_MinFilter; }
+
+    /// 当前寻址模式（三轴一致时才有意义）。
+    vk::SamplerAddressMode GetAddressMode() const { return m_AddressU; }
+
+    /// 当前是否启用各向异性过滤。
+    bool GetAnisotropyEnabled() const { return m_AnisotropyEnabled; }
+
     /**
      * @brief 设置调试名称（同时作用于 Image、ImageView、Sampler）。
      *
@@ -248,6 +282,13 @@ private:
                               vk::Filter mag_filter,
                               vk::Filter min_filter);
 
+    /**
+     * @brief 按当前记录的采样器参数从缓存重新请求一个 Sampler 并替换。
+     *
+     * 前置条件：m_SamplerCache 已设置（由 CreateViewAndSampler 记录）。
+     */
+    void RecreateSampler();
+
     // ========================================================================
     // 成员
     // ========================================================================
@@ -258,6 +299,17 @@ private:
     vk::Format                       m_Format  = vk::Format::eR8G8B8A8Unorm;
     vk::Extent3D                     m_Extent{};
     std::string                      m_FilePath; ///< 源文件路径（LoadFromFile 时有值）
+
+    // 采样器配置（便捷方法用）：记录当前参数，便于按同样参数重建采样器
+    VulkanResourceCache      *m_SamplerCache   = nullptr; // 非拥有，LoadFromX 时记录
+    vk::Filter                m_MagFilter      = vk::Filter::eLinear;
+    vk::Filter                m_MinFilter      = vk::Filter::eLinear;
+    vk::SamplerMipmapMode     m_MipmapMode     = vk::SamplerMipmapMode::eLinear;
+    vk::SamplerAddressMode    m_AddressU       = vk::SamplerAddressMode::eRepeat;
+    vk::SamplerAddressMode    m_AddressV       = vk::SamplerAddressMode::eRepeat;
+    vk::SamplerAddressMode    m_AddressW       = vk::SamplerAddressMode::eRepeat;
+    bool                      m_AnisotropyEnabled = false;
+    float                     m_MaxAnisotropy  = 0.0f;
 };
 
 } // namespace GE

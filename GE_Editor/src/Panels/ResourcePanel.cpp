@@ -66,7 +66,7 @@ ResourcePanel::~ResourcePanel() {
         Renderer::Get().WaitIdle();
         for (auto &[tex, id] : m_Thumbnails) {
             if (id) {
-                ImGui_ImplVulkan_RemoveTexture(id);
+                ImGui_ImplVulkan_RemoveTexture(reinterpret_cast<VkDescriptorSet>(id));
             }
         }
         m_Thumbnails.clear();
@@ -263,7 +263,7 @@ void ResourcePanel::DrawTextureAssignRow(Material *mat, Material::TextureSlot sl
     ImGui::PushID(static_cast<int>(slot));
 
     // 当前槽位缩略图 + 槽位名（同一行，右侧放下拉）
-    if (ImTextureID tid = cur ? GetThumbnail(cur) : nullptr) {
+    if (ImTextureID tid = cur ? GetThumbnail(cur) : ImTextureID(0)) {
         ImGui::Image(tid, ImVec2(24.0f, 24.0f));
         ImGui::SameLine();
     }
@@ -340,17 +340,18 @@ void ResourcePanel::DrawMeshSection() {
 
 ImTextureID ResourcePanel::GetThumbnail(Texture *tex) {
     if (!tex) {
-        return nullptr;
+        return ImTextureID(0);
     }
     auto it = m_Thumbnails.find(tex);
     if (it != m_Thumbnails.end()) {
         return it->second;
     }
     // 采样器 + ImageView 采样作为 ImGui 图片（纹理加载后布局即 SHADER_READ_ONLY）
-    ImTextureID id = ImGui_ImplVulkan_AddTexture(
+    VkDescriptorSet set = ImGui_ImplVulkan_AddTexture(
         tex->GetSampler().GetHandle(),
         tex->GetImageView().GetHandle(),
         VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    ImTextureID id = reinterpret_cast<ImTextureID>(set);
     m_Thumbnails[tex] = id;
     return id;
 }
@@ -362,7 +363,7 @@ void ResourcePanel::PruneThumbnails(const std::vector<const Texture *> &live) {
     while (it != m_Thumbnails.end()) {
         if (it->second && present.count(it->first) == 0) {
             needWait = true;
-            ImGui_ImplVulkan_RemoveTexture(it->second);
+            ImGui_ImplVulkan_RemoveTexture(reinterpret_cast<VkDescriptorSet>(it->second));
             it = m_Thumbnails.erase(it);
         } else {
             ++it;

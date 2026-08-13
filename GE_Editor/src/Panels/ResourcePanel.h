@@ -33,6 +33,9 @@ private:
     /// 绘制纹理资源列表（缩略图 + 过滤）
     void DrawTextureSection();
 
+    /// 绘制「新增纹理」表单（纯色 / 从文件加载）
+    void DrawTextureCreationControls();
+
     /// 绘制材质资源列表（可编辑）
     void DrawMaterialSection();
 
@@ -65,6 +68,10 @@ private:
     /// 纹理 / 网格列表的按名过滤输入框
     char m_TextureFilter[128] = "";
     char m_MeshFilter[128] = "";
+
+    /// 新增纹理表单的状态
+    float m_NewTexColor[4] = {1.0f, 1.0f, 1.0f, 1.0f}; ///< 纯色纹理 RGBA
+    char  m_NewTexPath[256] = "";                      ///< 从文件加载的路径
 };
 
 } // namespace GE

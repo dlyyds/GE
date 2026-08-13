@@ -1,5 +1,6 @@
 #include "Panels/ResourcePanel.h"
 
+#include "GE/Core/Log.h"
 #include "GE/Render/Renderer.h"
 #include "GE/Render/TextureManager.h"
 #include "GE/Render/MaterialManager.h"
@@ -138,6 +139,10 @@ void ResourcePanel::DrawTextureSection() {
     auto &texMgr = Renderer::GetTextureManager();
 
     ImGui::InputTextWithHint("##texfilter", "过滤纹理名...", m_TextureFilter, sizeof(m_TextureFilter));
+
+    // 新增纹理表单
+    DrawTextureCreationControls();
+
     ImGui::Separator();
 
     const auto keys = texMgr.GetAllKeys();
@@ -180,6 +185,32 @@ void ResourcePanel::DrawTextureSection() {
         ImGui::Separator();
     }
     ImGui::PopStyleVar();
+}
+
+void ResourcePanel::DrawTextureCreationControls() {
+    auto &texMgr = Renderer::GetTextureManager();
+
+    if (ImGui::CollapsingHeader("新增纹理", ImGuiTreeNodeFlags_DefaultOpen)) {
+        // 纯色纹理
+        ImGui::ColorEdit4("颜色", m_NewTexColor, ImGuiColorEditFlags_NoInputs);
+        ImGui::SameLine();
+        if (ImGui::Button("创建纯色纹理")) {
+            // 按颜色去重：已存在则复用，否则新建 1x1 纯色纹理
+            texMgr.GetSolidColor(glm::vec4(m_NewTexColor[0], m_NewTexColor[1],
+                                           m_NewTexColor[2], m_NewTexColor[3]));
+        }
+
+        // 从文件加载
+        ImGui::InputText("文件路径", m_NewTexPath, sizeof(m_NewTexPath));
+        ImGui::SameLine();
+        if (ImGui::Button("加载纹理") && m_NewTexPath[0]) {
+            if (!texMgr.Load(m_NewTexPath)) {
+                GE_CORE_ERROR("纹理加载失败：{}", m_NewTexPath);
+            }
+        }
+
+        ImGui::Separator();
+    }
 }
 
 void ResourcePanel::DrawSamplerControls(Texture *tex) {

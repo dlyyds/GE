@@ -60,18 +60,11 @@ std::string FileNameFromPath(const std::string &path) {
 
 } // namespace
 
-ResourcePanel::~ResourcePanel() {
-    if (!m_Thumbnails.empty()) {
-        // 描述符集可能仍被上一帧的 command buffer 采样，先等 GPU 空闲再释放
-        Renderer::Get().WaitIdle();
-        for (auto &[tex, id] : m_Thumbnails) {
-            if (id) {
-                ImGui_ImplVulkan_RemoveTexture(reinterpret_cast<VkDescriptorSet>(id));
-            }
-        }
-        m_Thumbnails.clear();
-    }
-}
+// 注意：ResourcePanel 析构时不释放缩略图描述符集。
+// 这些描述符集由 ImGui 后端的描述符池持有，会在 ImGui_ImplVulkan_Shutdown()
+// 销毁池时一并释放；而本面板析构发生在 LayerStack::Clear() 的 m_Layers.clear()
+// 阶段，此时 ImGui 后端已先一步 Shutdown（bd 为 null），故不可在析构里调用
+// ImGui_ImplVulkan_RemoveTexture，否则会崩溃。
 
 void ResourcePanel::OnImGuiRender() {
     // 根上下文取一次停靠目标 ID（与 DockSpaceLayer 中 GetID("MainDockspace") 一致）

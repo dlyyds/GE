@@ -22,7 +22,6 @@ namespace GE {
 class ResourcePanel {
 public:
     ResourcePanel() = default;
-    ~ResourcePanel();
 
     /// 每帧 ImGui 渲染
     void OnImGuiRender();

@@ -40,9 +40,12 @@ private:
     /// 绘制网格资源列表（过滤）
     void DrawMeshSection();
 
-    /// 单个纹理槽位的赋值控件（缩略图 + 下拉选择）
+    /// 单个纹理槽位的赋值下拉（置于属性表右列）
     void DrawTextureAssignRow(Material *mat, Material::TextureSlot slot,
-                              const char *label, const std::vector<std::string> &texKeys);
+                              const std::vector<std::string> &texKeys);
+
+    /// 属性表左列：右侧对齐的标签（可选带纹理缩略图）
+    void DrawPropertyLabel(const char *text, Texture *thumbnail = nullptr);
 
     /// 获取（或创建并缓存）指定纹理的 ImGui 缩略图描述符集
     ImTextureID GetThumbnail(Texture *tex);

@@ -58,6 +58,13 @@ std::string FileNameFromPath(const std::string &path) {
     return pos == std::string::npos ? path : path.substr(pos + 1);
 }
 
+/// 在属性表右列右侧对齐地绘制复选框（隐藏文本标签，仅显示勾选框）
+void DrawRightAlignedCheckbox(const char *id, bool *value) {
+    float boxW = ImGui::GetFrameHeight();
+    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - boxW);
+    ImGui::Checkbox(id, value);
+}
+
 } // namespace
 
 ResourcePanel::~ResourcePanel() {
@@ -208,46 +215,70 @@ void ResourcePanel::DrawMaterialSection() {
 
         ImGui::PushID(name.c_str());
         if (ImGui::TreeNodeEx(name.c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
-            // 着色器类型（运行时切换会重建对应管线）
-            const char *types[] = {"BlinnPhong", "PBR"};
-            int typeIdx = (mat->GetType() == Material::Type::PBR) ? 1 : 0;
-            if (ImGui::Combo("着色器类型", &typeIdx, types, 2)) {
-                mat->SetType(typeIdx == 1 ? Material::Type::PBR : Material::Type::BlinnPhong);
-            }
+            // 属性表：左列右对齐标签，右列控件统一宽度并贴右侧
+            if (ImGui::BeginTable("##Props", 2, ImGuiTableFlags_SizingStretchProp)) {
+                ImGui::TableSetupColumn("label", ImGuiTableColumnFlags_WidthFixed, 180.0f);
+                ImGui::TableSetupColumn("widget", ImGuiTableColumnFlags_WidthStretch);
 
-            // 纹理槽位（下拉赋值 + 缩略图）
-            for (size_t i = 0; i < Material::TextureSlot::Count; ++i) {
-                DrawTextureAssignRow(mat, static_cast<Material::TextureSlot>(i),
-                                     kTextureSlotNames[i], texKeys);
-            }
+                // 着色器类型（运行时切换会重建对应管线）
+                const char *types[] = {"BlinnPhong", "PBR"};
+                int typeIdx = (mat->GetType() == Material::Type::PBR) ? 1 : 0;
+                ImGui::TableNextRow();
+                DrawPropertyLabel("着色器类型");
+                ImGui::TableSetColumnIndex(1);
+                ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+                if (ImGui::Combo("##type", &typeIdx, types, 2)) {
+                    mat->SetType(typeIdx == 1 ? Material::Type::PBR : Material::Type::BlinnPhong);
+                }
 
-            // 标量参数（可编辑；先拷贝再写回，避免修改 unordered_map 时迭代器失效）
-            std::vector<std::pair<std::string, float>> params(
-                mat->GetFloatParams().begin(), mat->GetFloatParams().end());
-            if (params.empty()) {
-                ImGui::TextDisabled("无标量参数");
-            }
-            for (auto &[pname, pval] : params) {
-                if (const FloatParamDesc *desc = GetFloatParamDesc(pname)) {
-                    if (ImGui::SliderFloat(desc->label, &pval, desc->min, desc->max, "%.3f")) {
+                // 纹理槽位（右列下拉赋值，左列标签带缩略图）
+                for (size_t i = 0; i < Material::TextureSlot::Count; ++i) {
+                    ImGui::TableNextRow();
+                    DrawPropertyLabel(kTextureSlotNames[i],
+                                      mat->GetTexture(static_cast<Material::TextureSlot>(i)));
+                    ImGui::TableSetColumnIndex(1);
+                    DrawTextureAssignRow(mat, static_cast<Material::TextureSlot>(i), texKeys);
+                }
+
+                // 标量参数（可编辑；先拷贝再写回，避免修改 unordered_map 时迭代器失效）
+                std::vector<std::pair<std::string, float>> params(
+                    mat->GetFloatParams().begin(), mat->GetFloatParams().end());
+                if (params.empty()) {
+                    ImGui::TableNextRow();
+                    DrawPropertyLabel("标量参数");
+                    ImGui::TableSetColumnIndex(1);
+                    ImGui::TextDisabled("无标量参数");
+                }
+                for (auto &[pname, pval] : params) {
+                    const FloatParamDesc *desc = GetFloatParamDesc(pname);
+                    ImGui::TableNextRow();
+                    DrawPropertyLabel(desc ? desc->label : pname.c_str());
+                    ImGui::TableSetColumnIndex(1);
+                    ImGui::PushID(pname.c_str());
+                    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+                    if (desc) {
+                        if (ImGui::SliderFloat("##p", &pval, desc->min, desc->max, "%.3f")) {
+                            mat->SetFloat(pname, pval);
+                        }
+                    } else if (ImGui::DragFloat("##p", &pval, 0.01f, -1000.0f, 1000.0f, "%.3f")) {
                         mat->SetFloat(pname, pval);
                     }
-                } else if (ImGui::DragFloat(pname.c_str(), &pval, 0.01f, -1000.0f, 1000.0f, "%.3f")) {
-                    mat->SetFloat(pname, pval);
+                    ImGui::PopID();
                 }
-            }
 
-            // 渲染状态
-            ImGui::Separator();
-            bool alphaTest = mat->alphaTest;
-            if (ImGui::Checkbox("Alpha 测试（discard）", &alphaTest)) {
-                mat->alphaTest = alphaTest;
-            }
-            bool doubleSided = mat->doubleSided;
-            if (ImGui::Checkbox("双面渲染（关闭背面剔除）", &doubleSided)) {
-                mat->doubleSided = doubleSided;
-            }
+                // 渲染状态（复选框右对齐到右列右侧）
+                ImGui::TableNextRow();
+                DrawPropertyLabel("Alpha 测试");
+                ImGui::TableSetColumnIndex(1);
+                DrawRightAlignedCheckbox("##alpha", &mat->alphaTest);
 
+                ImGui::TableNextRow();
+                DrawPropertyLabel("双面渲染");
+                ImGui::TableSetColumnIndex(1);
+                DrawRightAlignedCheckbox("##double", &mat->doubleSided);
+
+                ImGui::EndTable();
+            }
             ImGui::TreePop();
         }
         ImGui::PopID();
@@ -255,20 +286,11 @@ void ResourcePanel::DrawMaterialSection() {
 }
 
 void ResourcePanel::DrawTextureAssignRow(Material *mat, Material::TextureSlot slot,
-                                         const char *label,
                                          const std::vector<std::string> &texKeys) {
     auto &texMgr = Renderer::GetTextureManager();
     Texture *cur = mat->GetTexture(slot);
 
     ImGui::PushID(static_cast<int>(slot));
-
-    // 当前槽位缩略图 + 槽位名（同一行，右侧放下拉）
-    if (ImTextureID tid = cur ? GetThumbnail(cur) : ImTextureID(0)) {
-        ImGui::Image(tid, ImVec2(24.0f, 24.0f));
-        ImGui::SameLine();
-    }
-    ImGui::TextUnformatted(label);
-    ImGui::SameLine();
 
     // 预览名（取文件最后一段，避免太长）
     std::string preview = "无";
@@ -287,7 +309,7 @@ void ResourcePanel::DrawTextureAssignRow(Material *mat, Material::TextureSlot sl
         }
     }
 
-    // 下拉宽度 = 从当前行光标到右侧剩余空间（已扣除缩略图与标签）
+    // 下拉填满右列，右侧对齐
     ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
     if (ImGui::BeginCombo("##tex", preview.c_str())) {
         if (ImGui::Selectable("无", selected == 0)) {
@@ -303,6 +325,25 @@ void ResourcePanel::DrawTextureAssignRow(Material *mat, Material::TextureSlot sl
     }
 
     ImGui::PopID();
+}
+
+void ResourcePanel::DrawPropertyLabel(const char *text, Texture *thumbnail) {
+    ImGui::TableSetColumnIndex(0);
+    ImGui::AlignTextToFramePadding();
+
+    // 组 = 可选缩略图 + 文本，整组右侧对齐
+    float textW = ImGui::CalcTextSize(text).x;
+    float thumbW = thumbnail ? 24.0f + ImGui::GetStyle().ItemSpacing.x : 0.0f;
+    float avail = ImGui::GetContentRegionAvail().x;
+    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (avail - thumbW - textW));
+
+    if (thumbnail) {
+        if (ImTextureID tid = GetThumbnail(thumbnail)) {
+            ImGui::Image(tid, ImVec2(24.0f, 24.0f));
+            ImGui::SameLine();
+        }
+    }
+    ImGui::TextUnformatted(text);
 }
 
 void ResourcePanel::DrawMeshSection() {

@@ -10,6 +10,7 @@
 #include <backends/imgui_impl_vulkan.h>
 
 #include <algorithm>
+#include <cctype>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -286,6 +287,11 @@ void ResourcePanel::DrawMaterialSection() {
     auto &matMgr = Renderer::GetMaterialManager();
     auto &texMgr = Renderer::GetTextureManager();
 
+    // 新增材质表单（空列表时也显示，便于从零开始创建）
+    DrawMaterialCreationControls();
+
+    ImGui::Separator();
+
     const auto names = matMgr.GetAllNames();
     if (names.empty()) {
         ImGui::TextDisabled("暂无材质");
@@ -369,6 +375,55 @@ void ResourcePanel::DrawMaterialSection() {
             ImGui::TreePop();
         }
         ImGui::PopID();
+    }
+}
+
+void ResourcePanel::DrawMaterialCreationControls() {
+    auto &matMgr = Renderer::GetMaterialManager();
+    auto &texMgr = Renderer::GetTextureManager();
+
+    if (ImGui::CollapsingHeader("新增材质", ImGuiTreeNodeFlags_DefaultOpen)) {
+        // 材质名称
+        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+        ImGui::InputTextWithHint("##matname", "材质名称（唯一）",
+                                 m_NewMaterialName, sizeof(m_NewMaterialName));
+
+        // 着色器类型（决定配套管线）
+        const char *types[] = {"BlinnPhong", "PBR"};
+        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+        ImGui::Combo("##mattype", &m_NewMaterialTypeIdx, types, 2);
+
+        if (ImGui::Button("创建材质")) {
+            std::string name(m_NewMaterialName);
+            // 去掉首尾空白，避免误造出带空格的名称
+            auto notSpace = [](unsigned char c) { return !std::isspace(c); };
+            name.erase(name.begin(),
+                       std::find_if(name.begin(), name.end(), notSpace));
+            name.erase(std::find_if(name.rbegin(), name.rend(), notSpace).base(),
+                       name.end());
+
+            if (name.empty()) {
+                GE_CORE_WARN("材质名称不能为空");
+            } else if (matMgr.Has(name)) {
+                GE_CORE_WARN("材质 [{0}] 已存在", name);
+            } else {
+                // 新建材质：配一块白色反照率纹理，PBR 类型补默认金属度/粗糙度
+                auto mat = std::make_unique<Material>();
+                mat->SetDebugName(name);
+                mat->SetType(m_NewMaterialTypeIdx == 1
+                                 ? Material::Type::PBR : Material::Type::BlinnPhong);
+                mat->SetTexture(Material::Albedo,
+                                texMgr.GetSolidColor(glm::vec4(1.0f, 1.0f, 1.0f, 1.0f)));
+                if (mat->GetType() == Material::Type::PBR) {
+                    mat->SetFloat("metallic", 0.0f);
+                    mat->SetFloat("roughness", 0.5f);
+                }
+                matMgr.Register(name, std::move(mat));
+                GE_CORE_INFO("创建材质 [{0}]", name);
+            }
+        }
+
+        ImGui::Separator();
     }
 }
 

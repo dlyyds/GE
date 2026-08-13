@@ -39,6 +39,9 @@ private:
     /// 绘制材质资源列表（可编辑）
     void DrawMaterialSection();
 
+    /// 绘制「新增材质」表单（命名 + 选择着色器类型）
+    void DrawMaterialCreationControls();
+
     /// 绘制网格资源列表（过滤）
     void DrawMeshSection();
 
@@ -71,6 +74,10 @@ private:
 
     /// 新增纹理表单的状态
     float m_NewTexColor[4] = {1.0f, 1.0f, 1.0f, 1.0f}; ///< 纯色纹理 RGBA
+
+    /// 新增材质表单的状态
+    char m_NewMaterialName[128] = "NewMaterial"; ///< 待创建的材质名称
+    int  m_NewMaterialTypeIdx = 0;               ///< 待创建的材质着色器类型（0=BlinnPhong, 1=PBR）
 };
 
 } // namespace GE

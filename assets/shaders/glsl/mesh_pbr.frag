@@ -7,11 +7,11 @@
 // —— PBR 片元着色器（Cook-Torrance 金属-粗糙度工作流）——
 // 与 mesh.frag 共存：同一套顶点数据 / FrameUBO / 点光源 SSBO / 纹理槽位，
 // 只替换光照函数为物理 BRDF。当前为直接光 PBR（方向光 + 点光源），
-// 环境光用常量近似；线性空间 / 色调映射（P3）与 IBL（P4）后续阶段接入。
+// 环境光用常量近似；PBR 数学在线性空间完成（P3），IBL（P4）后续阶段接入。
 
 layout (set = 1, binding = 0) uniform sampler2D samplerColor;
-layout (set = 1, binding = 1) uniform sampler2D samplerNormal;   // 法线贴图（切线空间）
-layout (set = 1, binding = 3) uniform sampler2D samplerEmissive; // 自发光贴图
+layout (set = 1, binding = 1) uniform sampler2D samplerNormal;// 法线贴图（切线空间）
+layout (set = 1, binding = 3) uniform sampler2D samplerEmissive;// 自发光贴图
 // 金属-粗糙度贴图（glTF 惯例：B=metallic, G=roughness），PBR 材质使用
 layout (set = 1, binding = 4) uniform sampler2D samplerMetallicRoughness;
 
@@ -60,13 +60,20 @@ layout (location = 0) in vec2 inUV;
 layout (location = 1) in vec3 inWorldPos;
 layout (location = 2) in vec3 inNormal;
 layout (location = 3) in vec3 inViewVec;
-layout (location = 4) in flat vec4 inColor;    // per-instance tint，由顶点着色器传入
-layout (location = 5) in vec3 inTangent;       // 世界空间切线
-layout (location = 6) in vec3 inBitangent;     // 世界空间副切线
+layout (location = 4) in flat vec4 inColor;// per-instance tint，由顶点着色器传入
+layout (location = 5) in vec3 inTangent;// 世界空间切线
+layout (location = 6) in vec3 inBitangent;// 世界空间副切线
 
 layout (location = 0) out vec4 outFragColor;
 
 const float PI = 3.14159265359;
+
+// ACES（Academy Color Encoding System）近似色调映射：
+// 将线性 HDR 结果压入 [0,1]，高光柔化、暗部保留层次，避免纯白过曝。
+vec3 acesToneMap(vec3 x) {
+    return clamp((x * (2.51 * x + 0.03)) /
+                 (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
+}
 
 // 菲涅尔：绝缘体 F0=0.04，金属用 albedo 作为基础反射率
 vec3 fresnelSchlick(float cosTheta, vec3 F0) {
@@ -92,13 +99,13 @@ float geometrySchlickGGX(float NdotV, float roughness) {
 // Smith 几何遮蔽：视线方向 × 光照方向双重遮蔽
 float geometrySmith(vec3 N, vec3 V, vec3 L, float roughness) {
     return geometrySchlickGGX(max(dot(N, V), 0.0), roughness)
-         * geometrySchlickGGX(max(dot(N, L), 0.0), roughness);
+    * geometrySchlickGGX(max(dot(N, L), 0.0), roughness);
 }
 
 // 单个光源对片元的辐射贡献（Cook-Torrance 反射方程）
 /// @param radiance 该光源在片元处的辐射率（含颜色与衰减）
 vec3 calcDirectLight(vec3 N, vec3 V, vec3 L, vec3 radiance,
-                     vec3 albedo, float metallic, float roughness) {
+vec3 albedo, float metallic, float roughness) {
     vec3 H = normalize(V + L);
     float NdotL = max(dot(N, L), 0.0);
     float NdotV = max(dot(N, V), 0.0);
@@ -148,8 +155,9 @@ vec3 calcPointLight(PointLight light, vec3 N, vec3 V, vec3 worldPos, vec3 albedo
 
 void main()
 {
-    vec4 texColor = texture(samplerColor, inUV, 0.0);
-    vec3 albedo = texColor.rgb * inColor.rgb;
+    // Albedo 贴图是 sRGB（颜色），采样后解码到线性空间，PBR 光照数学才成立。
+    // 法线 / metallic / roughness 是数据而非颜色，不做 gamma 解码。
+    vec3 albedo = pow(texture(samplerColor, inUV, 0.0).rgb, vec3(2.2)) * inColor.rgb;
 
     // —— 法线贴图：从切线空间采样并变换到世界空间 ——
     // 采样值 [0,1] 映射到 [-1,1]；用 TBN 矩阵变换。
@@ -184,5 +192,7 @@ void main()
     vec3 emissive = texture(samplerEmissive, inUV, 0.0).rgb * material.params.z;
     result += emissive;
 
-    outFragColor = vec4(result, 1.0);
+    // 输出前：ACES 色调映射（线性 HDR → [0,1]）+ gamma 编码回 sRGB 显示。
+    result = acesToneMap(result);
+    outFragColor = vec4(pow(result, vec3(1.0 / 2.2)), 1.0);
 }

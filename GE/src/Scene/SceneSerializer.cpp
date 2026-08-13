@@ -142,7 +142,8 @@ void SerializeMaterialNode(YAML::Node &matNode, Material *mat) {
             std::string texKey = std::string(kTextureSlotNames[s]) + "Texture";
             matNode[texKey] = tex->GetFilePath();
             // 同时保存该纹理的采样器参数，供反序列化恢复
-            SerializeSamplerNode(matNode[texKey + "Sampler"], tex);
+            YAML::Node samplerNode = matNode[texKey + "Sampler"];
+            SerializeSamplerNode(samplerNode, tex);
         }
     }
 
@@ -392,7 +393,9 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
             // 纹理路径 + 采样器参数
             if (src.SpriteTexture && !src.SpriteTexture->GetFilePath().empty()) {
                 spriteNode["Texture"] = src.SpriteTexture->GetFilePath();
-                SerializeSamplerNode(spriteNode["TextureSampler"], src.SpriteTexture);
+                // 同时保存采样器参数，供反序列化恢复
+                YAML::Node samplerNode = spriteNode["TextureSampler"];
+                SerializeSamplerNode(samplerNode, src.SpriteTexture);
             }
         }
 

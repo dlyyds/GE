@@ -706,13 +706,19 @@ void SceneHierarchyPanel::DrawMeshComponent(MeshComponent &component) {
         ImGui::Text("Vertices: %u", component.MeshPtr->GetVertexCount());
         ImGui::Text("Indices:  %u", component.MeshPtr->GetIndexCount());
 
-        // ---- 子网格列表：每个子网格可单独绑定材质 ----
+        // ---- 子网格列表：每个子网格一个可折叠下拉框，展开后绑定/编辑材质 ----
         const auto &subMeshes = component.MeshPtr->GetSubMeshes();
         ImGui::Separator();
         ImGui::Text("SubMeshes: %zu", subMeshes.size());
         for (size_t i = 0; i < subMeshes.size(); ++i) {
-            ImGui::Text("  SubMesh %zu (%u indices)", i, subMeshes[i].indexCount);
-            DrawSubMeshMaterialEditor(component.MeshPtr, i, subMeshes[i]);
+            // 折叠标题：显示子网格索引 + 索引数量
+            std::string header = "SubMesh " + std::to_string(i) +
+                                 " (" + std::to_string(subMeshes[i].indexCount) + " indices)";
+            if (ImGui::CollapsingHeader(header.c_str())) {
+                ImGui::Indent();
+                DrawSubMeshMaterialEditor(component.MeshPtr, i, subMeshes[i]);
+                ImGui::Unindent();
+            }
         }
     }
 }

@@ -36,7 +36,8 @@ class Mesh;
 /**
  * @brief 集中定义的资源子路径常量（相对资源根目录）。
  *
- * 调用处可直接与文件名字符串拼接，例如 AssetPaths::Shaders "/sprite.vert.spv"
+ * 注意：该常量为 constexpr 变量而非字面量，不能直接与字符串字面量拼接。
+ * 需用运行时拼接，例如 std::string(AssetPaths::Shaders) + "/sprite.vert.spv"
  * 得到 "shaders/glsl/sprite.vert.spv"，再交由 AssetManager::ResolvePath 解析。
  */
 namespace AssetPaths {

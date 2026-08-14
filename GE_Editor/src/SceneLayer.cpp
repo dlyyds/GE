@@ -42,7 +42,7 @@ void SceneLayer::OnAttach() {
     // 从代码程序化构建默认场景（网格/纹理/材质由全局管理器持有）
     BuildDefaultSceneFromCode();
 #else
-    constexpr const char *kDefaultScene = AssetPaths::Scenes "/2.scene";
+    const std::string kDefaultScene = std::string(AssetPaths::Scenes) + "/2.scene";
 
     // 从文件加载默认场景（网格/纹理/材质由全局管理器加载持有）
     const std::string defaultScenePath =

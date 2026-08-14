@@ -37,14 +37,14 @@ Renderer2D::Renderer2D() {
     m_VertShader = &cache.RequestShaderModule(
         vk::ShaderStageFlagBits::eVertex,
         ShaderSource(Renderer::GetAssetManager()
-                         .ResolvePath(AssetPaths::Shaders "/sprite.vert.spv")
+                         .ResolvePath(std::string(AssetPaths::Shaders) + "/sprite.vert.spv")
                          .string()),
         "main", ShaderVariant{});
 
     m_FragShader = &cache.RequestShaderModule(
         vk::ShaderStageFlagBits::eFragment,
         ShaderSource(Renderer::GetAssetManager()
-                         .ResolvePath(AssetPaths::Shaders "/sprite.frag.spv")
+                         .ResolvePath(std::string(AssetPaths::Shaders) + "/sprite.frag.spv")
                          .string()),
         "main", ShaderVariant{});
 

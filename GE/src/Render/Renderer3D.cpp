@@ -39,14 +39,14 @@ Renderer3D::Renderer3D() {
     m_VertShader = &cache.RequestShaderModule(
         vk::ShaderStageFlagBits::eVertex,
         ShaderSource(Renderer::GetAssetManager()
-                         .ResolvePath(AssetPaths::Shaders "/mesh.vert.spv")
+                         .ResolvePath(std::string(AssetPaths::Shaders) + "/mesh.vert.spv")
                          .string()),
         "main", ShaderVariant{});
 
     m_FragShader = &cache.RequestShaderModule(
         vk::ShaderStageFlagBits::eFragment,
         ShaderSource(Renderer::GetAssetManager()
-                         .ResolvePath(AssetPaths::Shaders "/mesh.frag.spv")
+                         .ResolvePath(std::string(AssetPaths::Shaders) + "/mesh.frag.spv")
                          .string()),
         "main", ShaderVariant{});
 
@@ -54,7 +54,7 @@ Renderer3D::Renderer3D() {
     m_FragShaderPBR = &cache.RequestShaderModule(
         vk::ShaderStageFlagBits::eFragment,
         ShaderSource(Renderer::GetAssetManager()
-                         .ResolvePath(AssetPaths::Shaders "/mesh_pbr.frag.spv")
+                         .ResolvePath(std::string(AssetPaths::Shaders) + "/mesh_pbr.frag.spv")
                          .string()),
         "main", ShaderVariant{});
 

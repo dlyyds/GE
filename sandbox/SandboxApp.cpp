@@ -50,7 +50,7 @@ public:
         // （由全局 TextureManager 持有，不拥有）
         m_WhiteTex    = texMgr.GetSolidColor(glm::vec4(1.0f));
         m_EmissiveTex = Renderer::GetAssetManager().LoadTexture(
-        AssetPaths::Textures "/Checkerboard.png");
+        std::string(AssetPaths::Textures) + "/Checkerboard.png");
         m_OrangeTex   = texMgr.GetSolidColor(glm::vec4(1.0f, 0.5f, 0.1f, 1.0f));
 
         // 材质注册到全局 MaterialManager（生命周期随 Renderer），

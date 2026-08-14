@@ -41,7 +41,7 @@ void ImGuiLayer::OnAttach() {
     ImFontConfig cfg;
     cfg.MergeMode = false;
     io.FontDefault = io.Fonts->AddFontFromFileTTF(
-        Renderer::GetAssetManager().ResolvePath(AssetPaths::Fonts "/OpenSans-Regular.ttf").string().c_str(),
+        Renderer::GetAssetManager().ResolvePath(std::string(AssetPaths::Fonts) + "/OpenSans-Regular.ttf").string().c_str(),
         fontSize, &cfg);
 
     // 合并中文字体（微软雅黑）— 使中文标点和 CJK 字符能正确显示

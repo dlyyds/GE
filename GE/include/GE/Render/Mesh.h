@@ -32,6 +32,31 @@ namespace GE {
 class Material;
 
 /**
+ * @brief 从 OBJ/MTL 捕获的材质数据（POD，与 tinyobjloader 解耦）。
+ *
+ * 在 Mesh::LoadFromFile 解析 MTL 时填充，供 MeshManager 按子网格的
+ * materialName 匹配后构建真正的 Material（含纹理加载）。纹理路径已
+ * 在此处解析为绝对路径（相对 OBJ 所在目录）。
+ */
+struct MaterialData {
+    std::string name;               ///< MTL 材质名（与 SubMesh::materialName 对应）
+    glm::vec3   baseColor{1.0f};    ///< 漫反射颜色（Kd）
+    glm::vec3   specular{0.0f};     ///< 高光颜色（Ks）
+    glm::vec3   emissive{0.0f};     ///< 自发光颜色（Ke）
+    float       shininess  = 32.0f; ///< 高光指数（Ns）
+    float       dissolve   = 1.0f;  ///< 不透明度（d，1=不透明）
+    float       metallic   = 0.0f;  ///< 金属度（Pm，PBR 扩展）
+    float       roughness  = 0.5f;  ///< 粗糙度（Pr，PBR 扩展）
+    bool        hasPBR     = false; ///< 是否含 PBR 扩展参数（决定材质类型）
+
+    std::string albedoMap;    ///< 漫反射贴图（map_Kd，绝对路径）
+    std::string normalMap;    ///< 法线贴图（map_bump / norm，绝对路径）
+    std::string emissiveMap;  ///< 自发光贴图（map_Ke，绝对路径）
+    std::string metallicMap;  ///< 金属度贴图（map_Pm，绝对路径）
+    std::string roughnessMap; ///< 粗糙度贴图（map_Pr，绝对路径）
+};
+
+/**
  * @brief 顶点数据结构：位置 + 法线 + 纹理坐标 + 切线。
  *
  * 内存布局必须与顶点着色器的输入 location 顺序一致（由着色器反射紧密打包）：
@@ -235,6 +260,14 @@ public:
     const std::vector<SubMesh> &GetSubMeshes() const { return m_SubMeshes; }
 
     /**
+     * @brief 获取从 MTL 捕获的材质数据（LoadFromFile 填充）。
+     *
+     * 供 MeshManager 构建子网格材质时，按 materialName 匹配对应的材质属性。
+     * 无 MTL 的网格（内置几何体 / CPU 直建）该列表为空。
+     */
+    const std::vector<MaterialData> &GetMaterialData() const { return m_MaterialData; }
+
+    /**
      * @brief 设置指定子网格的默认材质。
      *
      * @param index 子网格索引
@@ -287,6 +320,7 @@ private:
     std::vector<Vertex>   m_Vertices;     ///< CPU 端顶点数据
     std::vector<uint32_t> m_Indices;      ///< CPU 端索引数据
     std::vector<SubMesh>  m_SubMeshes;    ///< 子网格列表（空 = 单整体网格）
+    std::vector<MaterialData> m_MaterialData; ///< 从 MTL 捕获的材质数据（LoadFromFile 填充）
     std::string           m_FilePath;     ///< 源文件路径（LoadFromFile 时有值）
 
     std::unique_ptr<VulkanBuffer> m_VertexBuffer; ///< GPU 顶点缓冲

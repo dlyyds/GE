@@ -12,6 +12,7 @@
 #include <iostream>
 #include <unordered_map>
 #include <cmath>
+#include <filesystem>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -122,8 +123,12 @@ std::unique_ptr<Mesh> Mesh::LoadFromFile(VulkanDevice &device,
     std::vector<tinyobj::material_t> materials;
     std::string                      warn, err;
 
+    // 以 OBJ 所在目录作为 MTL 搜索基准目录（默认搜工作目录，会导致模型目录
+    // 下的 .mtl 找不到）。同时用于后续把 MTL 内的相对纹理路径拼成绝对路径。
+    const std::string baseDir = std::filesystem::path(filepath).parent_path().string();
     bool ret = tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err,
-                                filepath.c_str());
+                                filepath.c_str(),
+                                baseDir.empty() ? nullptr : baseDir.c_str());
 
     if (!warn.empty()) {
         std::cout << "[Mesh] Warning: " << warn << std::endl;
@@ -237,6 +242,46 @@ std::unique_ptr<Mesh> Mesh::LoadFromFile(VulkanDevice &device,
     mesh->m_Vertices = std::move(vertices);
     mesh->m_Indices  = std::move(indices);
     mesh->m_SubMeshes = std::move(subMeshes);
+
+    // 从 tinyobj 解析出的 MTL 材质捕获为引擎侧 MaterialData。
+    // 各子网格的 materialName 即对应 MTL 材质名，MeshManager 据此匹配构建材质。
+    auto resolveTex = [&](const std::string &tex) -> std::string {
+        if (tex.empty()) {
+            return {};
+        }
+        std::filesystem::path p(tex);
+        if (p.is_absolute()) {
+            return p.lexically_normal().string();
+        }
+        return (std::filesystem::path(filepath).parent_path() / tex)
+            .lexically_normal().string();
+    };
+
+    mesh->m_MaterialData.reserve(materials.size());
+    for (const auto &src : materials) {
+        MaterialData md;
+        md.name      = src.name;
+        md.baseColor = {src.diffuse[0], src.diffuse[1], src.diffuse[2]};
+        md.specular  = {src.specular[0], src.specular[1], src.specular[2]};
+        md.emissive  = {src.emission[0], src.emission[1], src.emission[2]};
+        md.shininess = src.shininess > 0.0f ? src.shininess : 32.0f;
+        md.dissolve  = src.dissolve;
+        md.metallic  = src.metallic;
+        md.roughness = src.roughness > 0.0f ? src.roughness : 0.5f;
+        // 存在 PBR 扩展参数（非零标量或 MR 贴图）即视为 PBR 材质
+        md.hasPBR    = (src.metallic > 0.0f || src.roughness > 0.0f
+                        || !src.metallic_texname.empty() || !src.roughness_texname.empty());
+
+        md.albedoMap    = resolveTex(src.diffuse_texname);
+        // 法线贴图：优先 norm，其次 map_bump
+        md.normalMap    = resolveTex(!src.normal_texname.empty()
+                                         ? src.normal_texname : src.bump_texname);
+        md.emissiveMap  = resolveTex(src.emissive_texname);
+        md.metallicMap  = resolveTex(src.metallic_texname);
+        md.roughnessMap = resolveTex(src.roughness_texname);
+
+        mesh->m_MaterialData.push_back(std::move(md));
+    }
 
     // 计算顶点切线（法线贴图需要）
     ComputeTangents(mesh->m_Vertices, mesh->m_Indices);

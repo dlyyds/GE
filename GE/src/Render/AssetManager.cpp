@@ -21,7 +21,8 @@ AssetManager::AssetManager(VulkanDevice &device, VulkanResourceCache &cache) {
     m_TextureManager  = std::make_unique<TextureManager>(device, cache);
     // 材质管理器先于网格管理器创建，供 MeshManager 在加载模型时创建子网格材质
     m_MaterialManager = std::make_unique<MaterialManager>();
-    m_MeshManager     = std::make_unique<MeshManager>(device, *m_MaterialManager);
+    m_MeshManager     = std::make_unique<MeshManager>(device, *m_MaterialManager,
+                                                      *m_TextureManager);
     GE_CORE_INFO("AssetManager initialized (asset root: {0})", m_AssetRoot.string());
 }
 

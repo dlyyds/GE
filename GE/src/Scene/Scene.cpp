@@ -188,8 +188,8 @@ void Scene::OnUpdate3D(Timestep ts,
             continue;
         }
 
-        // 统一子网格路径：材质完全由子网格绑定决定（随模型加载），
-        // 无材质（material == nullptr）时由渲染器使用白色 fallback
+        // 统一子网格路径：材质完全由子网格绑定决定（加载时已绑定，无材质名的
+        // 子网格绑定默认空白材质）。material == nullptr 时渲染器仍以白色兜底。
         for (const auto &sub : mc.MeshPtr->GetSubMeshes()) {
             r3d.DrawSubMesh(tc.GetTransform(), mc.MeshPtr, sub, sub.material, mc.Color);
         }

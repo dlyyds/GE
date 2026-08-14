@@ -61,18 +61,18 @@ Mesh *MeshManager::Load(const std::string &filepath) {
         return nullptr;
     }
 
-    // 为各子网格创建命名材质（放进 MaterialManager，随模型生命周期走）。
+    // 为各子网格创建材质（放进 MaterialManager，随模型生命周期走）。
     // 材质 key 用「路径::材质名」避免跨模型同名材质冲突。
+    // 有材质名（OBJ MTL）→ 绑对应材质；无材质名（内置几何体 / 无 MTL 的 OBJ / CPU 直建）
+    // → 绑一个默认（空白）材质，保证每个子网格都有材质，而非走白色 fallback。
     if (m_Materials) {
         const auto &subMeshes = mesh->GetSubMeshes();
         for (size_t i = 0; i < subMeshes.size(); ++i) {
             const auto &name = subMeshes[i].materialName;
-            if (name.empty()) {
-                continue;  // 无材质名的子网格保持 nullptr，渲染走白色 fallback / Entity 材质
-            }
-            const std::string key = filepath + "::" + name;
+            const std::string matName = name.empty() ? "default" : name;
+            const std::string key = filepath + "::" + matName;
             Material *mat = m_Materials->GetOrCreateDefault(key);
-            mat->SetDebugName(name);
+            mat->SetDebugName(matName);
             mesh->SetSubMeshMaterial(static_cast<uint32_t>(i), mat);
         }
     }

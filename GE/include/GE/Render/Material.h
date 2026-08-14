@@ -174,9 +174,21 @@ public:
     /**
      * @brief 设置材质着色器类型。
      *
-     * 切换类型时按新类型补齐默认标量参数（仅当参数不存在时写入，不覆盖已有值）。
+     * 切换类型时清除旧类型的专属标量参数（不留残留），再按新类型补齐默认参数。
+     * 两类共用的 emissiveStrength 保留。
      */
     void SetType(Type type) {
+        if (type == m_Type) {
+            return;  // 类型未变，无需处理
+        }
+        // 清除旧类型专属参数
+        if (m_Type == Type::PBR) {
+            m_FloatParams.erase("metallic");
+            m_FloatParams.erase("roughness");
+        } else {
+            m_FloatParams.erase("shininess");
+            m_FloatParams.erase("specularStrength");
+        }
         m_Type = type;
         m_Dirty = true;
         ApplyTypeDefaults();

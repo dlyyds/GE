@@ -443,6 +443,14 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
             lightNode["Color"] = SerializeVec4(alc.Color);
         }
 
+        // ---- SkyboxComponent ----
+        if (entity.HasComponent<SkyboxComponent>()) {
+            const auto &sc = entity.GetComponent<SkyboxComponent>();
+            YAML::Node skyNode = entityNode["Skybox"];
+            skyNode["Enabled"] = sc.Enabled;
+            skyNode["TexturePath"] = sc.TexturePath;
+        }
+
         // ---- RigidBodyComponent ----
         if (entity.HasComponent<RigidBodyComponent>()) {
             const auto &rbc = entity.GetComponent<RigidBodyComponent>();
@@ -678,6 +686,15 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
             auto &alc = entity.AddComponent<AmbientLightComponent>();
 
             alc.Color = DeserializeVec4(lightNode["Color"], {0.3f, 0.3f, 0.3f, 1.0f});
+        }
+
+        // ---- SkyboxComponent ----
+        if (entityNode["Skybox"]) {
+            YAML::Node skyNode = entityNode["Skybox"];
+            auto &sc = entity.AddComponent<SkyboxComponent>();
+
+            sc.Enabled = skyNode["Enabled"] ? skyNode["Enabled"].as<bool>(true) : true;
+            sc.TexturePath = skyNode["TexturePath"] ? skyNode["TexturePath"].as<std::string>() : std::string();
         }
 
         // ---- RigidBodyComponent ----

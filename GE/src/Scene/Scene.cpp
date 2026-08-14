@@ -178,6 +178,22 @@ void Scene::OnUpdate3D(Timestep ts,
         }
     }
 
+    // ── 天空盒：取场景中第一个 SkyboxComponent，驱动渲染器 ─────────────
+    //    纹理路径变化时才重新加载（避免每帧重复加载），否则仅切换开关。
+    {
+        auto skyboxView = m_Registry.view<SkyboxComponent>();
+        if (skyboxView.begin() != skyboxView.end()
+            && skyboxView.get<SkyboxComponent>(*skyboxView.begin()).Enabled) {
+            const auto &sc = skyboxView.get<SkyboxComponent>(*skyboxView.begin());
+            if (r3d.GetSkyboxPath() != sc.TexturePath) {
+                r3d.SetSkybox(sc.TexturePath);
+            }
+        } else {
+            // 无天空盒组件或已禁用：关闭天空盒
+            r3d.SetSkyboxEnabled(false);
+        }
+    }
+
     r3d.BeginScene(view, projection, viewPos, clearColor);
 
     auto meshView = m_Registry.view<TransformComponent, MeshRendererComponent>();
@@ -446,6 +462,10 @@ void Scene::OnComponentAdded<DirectionalLightComponent>(Entity entity, Direction
 
 template <>
 void Scene::OnComponentAdded<AmbientLightComponent>(Entity entity, AmbientLightComponent &component) {
+}
+
+template <>
+void Scene::OnComponentAdded<SkyboxComponent>(Entity entity, SkyboxComponent &component) {
 }
 
 template <>

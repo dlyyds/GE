@@ -317,6 +317,33 @@ struct AmbientLightComponent {
 };
 
 
+/**
+ * @brief 天空盒组件 —— 场景的背景天空盒（等距柱状投影全景图）。
+ *
+ * 天空盒是场景级属性（不依赖实体的 Transform），取场景中第一个 SkyboxComponent
+ * 作为背景。TexturePath 为等距柱状投影全景图路径（相对资源根），由 Renderer3D
+ * 加载并持有纹理；Enabled 为运行时开关。
+ *
+ * 由 Scene 在渲染前读取，调用 Renderer3D::SetSkybox / SetSkyboxEnabled 驱动。
+ * 可随场景序列化（路径 + 开关）。
+ */
+struct SkyboxComponent {
+    bool Enabled = true;            ///< 是否启用天空盒
+    std::string TexturePath;        ///< 等距柱状投影全景图路径（相对资源根）
+
+    SkyboxComponent() = default;
+
+    SkyboxComponent(const SkyboxComponent &) = default;
+
+    /**
+     * @brief 指定全景图路径的构造函数。
+     */
+    explicit SkyboxComponent(std::string path)
+        : TexturePath(std::move(path)) {
+    }
+};
+
+
 // ============================================================
 // 物理相关组件
 // ============================================================

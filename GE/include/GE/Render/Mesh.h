@@ -49,8 +49,8 @@ struct Vertex {
      * @brief 量化精度：将坐标投影到 1/10000 的均匀网格上。
      *
      * 用于消除浮点精度误差导致的「逻辑相同但位表示不同」的顶点。
-     * operator== 与 hash 都基于量化后的值，保证同一网格内的顶点
-     * 相等判定成立且哈希一致，从而能被正确去重。
+     * 在 LoadFromFile 构造顶点时一次性量化清洗数据，之后 operator==
+     * 与 hash 即可安全地对位模式做精确比较。
      */
     static constexpr float kQuantScale = 10000.0f;
 
@@ -67,10 +67,10 @@ struct Vertex {
     }
 
     bool operator==(const Vertex &other) const {
-        return Quantize(Position) == Quantize(other.Position)
-            && Quantize(Normal)   == Quantize(other.Normal)
-            && Quantize(TexCoord) == Quantize(other.TexCoord)
-            && Quantize(Tangent)  == Quantize(other.Tangent);
+        return Position == other.Position
+            && Normal == other.Normal
+            && TexCoord == other.TexCoord
+            && Tangent == other.Tangent;
     }
 };
 
@@ -81,24 +81,19 @@ namespace std {
 template <>
 struct hash<GE::Vertex> {
     size_t operator()(const GE::Vertex &v) const {
-        // 先量化再哈希，保证与 operator== 一致（同一网格内的顶点哈希相同）
-        const auto pos = GE::Vertex::Quantize(v.Position);
-        const auto nrm = GE::Vertex::Quantize(v.Normal);
-        const auto uv  = GE::Vertex::Quantize(v.TexCoord);
-        const auto tan = GE::Vertex::Quantize(v.Tangent);
-
-        size_t h1 = hash<float>()(pos.x);
-        size_t h2 = hash<float>()(pos.y);
-        size_t h3 = hash<float>()(pos.z);
-        size_t h4 = hash<float>()(nrm.x);
-        size_t h5 = hash<float>()(nrm.y);
-        size_t h6 = hash<float>()(nrm.z);
-        size_t h7 = hash<float>()(uv.x);
-        size_t h8 = hash<float>()(uv.y);
-        size_t h9 = hash<float>()(tan.x);
-        size_t h10 = hash<float>()(tan.y);
-        size_t h11 = hash<float>()(tan.z);
-        size_t h12 = hash<float>()(tan.w);
+        // 顶点已在 LoadFromFile 时量化清洗过，这里直接对位模式精确哈希
+        size_t h1 = hash<float>()(v.Position.x);
+        size_t h2 = hash<float>()(v.Position.y);
+        size_t h3 = hash<float>()(v.Position.z);
+        size_t h4 = hash<float>()(v.Normal.x);
+        size_t h5 = hash<float>()(v.Normal.y);
+        size_t h6 = hash<float>()(v.Normal.z);
+        size_t h7 = hash<float>()(v.TexCoord.x);
+        size_t h8 = hash<float>()(v.TexCoord.y);
+        size_t h9 = hash<float>()(v.Tangent.x);
+        size_t h10 = hash<float>()(v.Tangent.y);
+        size_t h11 = hash<float>()(v.Tangent.z);
+        size_t h12 = hash<float>()(v.Tangent.w);
         // 简易组合哈希
         return h1 ^ (h2 << 1) ^ (h3 << 2) ^ (h4 << 3) ^ (h5 << 4) ^ (h6 << 5) ^ (h7 << 6) ^ (h8 << 7)
              ^ (h9 << 8) ^ (h10 << 9) ^ (h11 << 10) ^ (h12 << 11);

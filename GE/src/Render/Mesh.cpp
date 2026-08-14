@@ -168,6 +168,13 @@ std::unique_ptr<Mesh> Mesh::LoadFromFile(VulkanDevice &device,
                 };
             }
 
+            // 一次性量化清洗：消除浮点精度误差导致的「逻辑相同但位表示不同」的顶点，
+            // 使下方去重的精确比较 / 精确哈希能正确判定（见 Vertex::Quantize 注释）
+            v.Position = Vertex::Quantize(v.Position);
+            v.Normal   = Vertex::Quantize(v.Normal);
+            v.TexCoord = Vertex::Quantize(v.TexCoord);
+            v.Tangent  = Vertex::Quantize(v.Tangent);
+
             // 去重：相同顶点复用索引
             if (uniqueVertices.find(v) == uniqueVertices.end()) {
                 uniqueVertices[v] = static_cast<uint32_t>(vertices.size());

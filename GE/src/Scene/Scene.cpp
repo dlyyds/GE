@@ -9,6 +9,7 @@
 #include "Render/Renderer.h"
 #include "Render/Renderer2D.h"
 #include "Render/Renderer3D.h"
+#include "Render/Material.h"
 #include "Render/Mesh.h"
 
 #include <algorithm>
@@ -179,19 +180,28 @@ void Scene::OnUpdate3D(Timestep ts,
 
     r3d.BeginScene(view, projection, viewPos, clearColor);
 
-    auto meshView = m_Registry.view<TransformComponent, MeshComponent>();
+    auto meshView = m_Registry.view<TransformComponent, MeshRendererComponent>();
     for (auto entity : meshView) {
         auto &tc = meshView.get<TransformComponent>(entity);
-        auto &mc = meshView.get<MeshComponent>(entity);
+        auto &mc = meshView.get<MeshRendererComponent>(entity);
 
         if (!mc.MeshPtr) {
             continue;
         }
 
-        // 统一子网格路径：材质完全由子网格绑定决定（加载时已绑定，无材质名的
-        // 子网格绑定默认空白材质）。material == nullptr 时渲染器仍以白色兜底。
-        for (const auto &sub : mc.MeshPtr->GetSubMeshes()) {
-            r3d.DrawSubMesh(tc.GetTransform(), mc.MeshPtr, sub, sub.material, mc.Color);
+        // 统一子网格路径：材质 = 实体覆写（materialOverrides）优先，否则子网格
+        // 默认材质（defaultMaterial）。material == nullptr 时渲染器以白色兜底。
+        const auto &subMeshes = mc.MeshPtr->GetSubMeshes();
+        for (size_t i = 0; i < subMeshes.size(); ++i) {
+            const SubMesh &sub = subMeshes[i];
+            Material *mat = nullptr;
+            auto it = mc.materialOverrides.find(static_cast<uint32_t>(i));
+            if (it != mc.materialOverrides.end()) {
+                mat = it->second;
+            } else {
+                mat = sub.defaultMaterial;
+            }
+            r3d.DrawSubMesh(tc.GetTransform(), mc.MeshPtr, sub, mat, mc.Color);
         }
     }
 
@@ -419,7 +429,7 @@ void Scene::OnComponentAdded<ScriptComponent>(Entity entity, ScriptComponent &co
 }
 
 template <>
-void Scene::OnComponentAdded<MeshComponent>(Entity entity, MeshComponent &component) {
+void Scene::OnComponentAdded<MeshRendererComponent>(Entity entity, MeshRendererComponent &component) {
 }
 
 template <>

@@ -12,9 +12,11 @@
 #include "Scene/Entity.h"
 #include "Scene/Components.h"
 #include "Render/Texture.h"
+#include "Render/Material.h"
 #include "Render/Mesh.h"
 #include "Render/Renderer.h"
 #include "Render/MeshManager.h"
+#include "Render/MaterialManager.h"
 #include "Render/AssetManager.h"
 #include "Core/Log.h"
 #include "Render/TextureManager.h"
@@ -24,6 +26,10 @@
 
 #include <fstream>
 #include <sstream>
+#include <cstdint>
+#include <string>
+#include <algorithm>
+#include <vector>
 #include <filesystem>
 #include <algorithm>
 #include <vector>
@@ -105,6 +111,122 @@ void ApplySamplerParams(Texture *tex, const YAML::Node &samplerNode) {
     }
 }
 
+// ============================================================
+// 材质辅助（MeshRenderer 子网格材质覆写序列化）
+// ============================================================
+
+/// 材质纹理槽位名（与 Material::TextureSlot 顺序一一对应）
+const char *kTextureSlotNames[] = {"Albedo", "Normal", "Emissive", "MetallicRoughness"};
+
+/// 材质纹理槽位名 → 槽位枚举（用于反序列化）
+Material::TextureSlot TextureSlotFromName(const std::string &name) {
+    if (name == "Normal") return Material::Normal;
+    if (name == "Emissive") return Material::Emissive;
+    if (name == "MetallicRoughness") return Material::MetallicRoughness;
+    return Material::Albedo;
+}
+
+/**
+ * @brief 将材质写入 YAML 节点（纹理槽位 + 浮点参数）。
+ *
+ * 纹理以文件路径写入；浮点参数以 name → value 的 map 写入 FloatParams 节点。
+ */
+void SerializeMaterialNode(YAML::Node &matNode, Material *mat) {
+    if (!mat) {
+        return;
+    }
+
+    // 材质类型（BlinnPhong / PBR），决定渲染管线
+    matNode["Type"] = (mat->GetType() == Material::Type::PBR) ? "PBR" : "BlinnPhong";
+
+    // 纹理槽位（仅写有纹理且带文件路径的槽位）
+    for (int s = 0; s < Material::Count; ++s) {
+        auto slot = static_cast<Material::TextureSlot>(s);
+        Texture *tex = mat->GetTexture(slot);
+        if (tex && !tex->GetFilePath().empty()) {
+            std::string texKey = std::string(kTextureSlotNames[s]) + "Texture";
+            matNode[texKey] = tex->GetFilePath();
+            YAML::Node samplerNode = matNode[texKey + "Sampler"];
+            SerializeSamplerNode(samplerNode, tex);
+        }
+    }
+
+    // 浮点参数（如 shininess、specularStrength、pbr 系数）
+    const auto &params = mat->GetFloatParams();
+    if (!params.empty()) {
+        YAML::Node fp = matNode["FloatParams"];
+        for (const auto &kv : params) {
+            fp[kv.first] = kv.second;
+        }
+    }
+}
+
+/**
+ * @brief 从材质 YAML 节点创建材质并注册到 MaterialManager。
+ *
+ * 按内容生成 key（纹理路径 + 类型 + 浮点参数），内容相同的材质复用同一实例。
+ * 用于 MeshRenderer 子网格材质覆写的反序列化。
+ *
+ * @param matNode 材质节点
+ * @return 材质指针
+ */
+Material *DeserializeMaterialNode(const YAML::Node &matNode) {
+    auto &matMgr = Renderer::GetMaterialManager();
+
+    // 构建内容 key（类型 + 纹理 + 参数拼接），用于去重
+    std::string key;
+    key += matNode["Type"] ? matNode["Type"].as<std::string>() : "BlinnPhong";
+    key += ";";
+    for (auto name : kTextureSlotNames) {
+        std::string texKey = std::string(name) + "Texture";
+        if (matNode[texKey]) {
+            key += std::string(name) + ":" + matNode[texKey].as<std::string>() + ";";
+        }
+    }
+    if (matNode["FloatParams"]) {
+        std::vector<std::string> names;
+        for (const auto &it : matNode["FloatParams"]) {
+            names.push_back(it.first.as<std::string>());
+        }
+        std::sort(names.begin(), names.end());
+        for (const auto &n : names) {
+            key += n + "=" + matNode["FloatParams"][n].as<std::string>() + ";";
+        }
+    }
+    const std::string fullKey = "scene:" + key;
+
+    if (Material *existing = matMgr.Get(fullKey)) {
+        return existing;
+    }
+
+    auto mat = std::make_unique<Material>();
+    mat->SetDebugName(fullKey);
+
+    if (matNode["Type"] && matNode["Type"].as<std::string>() == "PBR") {
+        mat->SetType(Material::Type::PBR);
+    }
+
+    for (auto name : kTextureSlotNames) {
+        std::string texKey = std::string(name) + "Texture";
+        if (matNode[texKey]) {
+            std::string path = matNode[texKey].as<std::string>("");
+            if (Texture *tex = Renderer::GetAssetManager().LoadTexture(path)) {
+                ApplySamplerParams(tex, matNode[texKey + "Sampler"]);
+                mat->SetTexture(TextureSlotFromName(name), tex);
+            } else {
+                GE_CORE_WARN("SceneSerializer: 材质纹理加载失败: {0}", path);
+            }
+        }
+    }
+
+    if (matNode["FloatParams"]) {
+        for (const auto &it : matNode["FloatParams"]) {
+            mat->SetFloat(it.first.as<std::string>(), it.second.as<float>());
+        }
+    }
+
+    return matMgr.Register(fullKey, std::move(mat));
+}
 
 // ============================================================
 // YAML 转换辅助函数（glm 向量 → YAML Node）
@@ -244,15 +366,24 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
             }
         }
 
-        // ---- MeshComponent ----
-        if (entity.HasComponent<MeshComponent>()) {
-            const auto &mc = entity.GetComponent<MeshComponent>();
+        // ---- MeshRendererComponent ----
+        if (entity.HasComponent<MeshRendererComponent>()) {
+            const auto &mc = entity.GetComponent<MeshRendererComponent>();
             YAML::Node meshNode = entityNode["MeshRenderer"];
             meshNode["Color"] = SerializeVec4(mc.Color);
 
             // 网格路径
             if (mc.MeshPtr && !mc.MeshPtr->GetFilePath().empty()) {
                 meshNode["Mesh"] = mc.MeshPtr->GetFilePath();
+            }
+
+            // 子网格材质覆写表（每实体独立）：<子网格索引, 材质内容>
+            if (!mc.materialOverrides.empty()) {
+                YAML::Node overridesNode = meshNode["MaterialOverrides"];
+                for (const auto &kv : mc.materialOverrides) {
+                    YAML::Node ovNode = overridesNode[std::to_string(kv.first)];
+                    SerializeMaterialNode(ovNode, kv.second);
+                }
             }
         }
 
@@ -456,10 +587,10 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
             }
         }
 
-        // ---- MeshComponent ----
+        // ---- MeshRendererComponent ----
         if (entityNode["MeshRenderer"]) {
             YAML::Node meshNode = entityNode["MeshRenderer"];
-            auto &mc = entity.AddComponent<MeshComponent>();
+            auto &mc = entity.AddComponent<MeshRendererComponent>();
 
             mc.Color = DeserializeVec4(meshNode["Color"], {1.0f, 1.0f, 1.0f, 1.0f});
 
@@ -467,6 +598,16 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
             if (meshNode["Mesh"]) {
                 std::string meshPath = meshNode["Mesh"].as<std::string>("");
                 mc.MeshPtr = Renderer::GetAssetManager().LoadMesh(meshPath);
+            }
+
+            // 子网格材质覆写表：重建材质并写入组件（每实体独立）
+            if (meshNode["MaterialOverrides"]) {
+                for (const auto &kv : meshNode["MaterialOverrides"]) {
+                    uint32_t index = static_cast<uint32_t>(std::stoul(kv.first.as<std::string>()));
+                    if (Material *mat = DeserializeMaterialNode(kv.second)) {
+                        mc.materialOverrides[index] = mat;
+                    }
+                }
             }
         }
 

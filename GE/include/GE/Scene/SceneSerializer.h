@@ -17,7 +17,7 @@ class Material;
  *
  * 将场景中的所有实体及其组件序列化为 YAML 文件，或从 YAML 文件反序列化重建场景。
  * 支持的组件：TagComponent、TransformComponent、SpriteRendererComponent、
- *            MeshComponent、CameraComponent、PointLightComponent、
+ *            MeshRendererComponent、CameraComponent、PointLightComponent、
  *            DirectionalLightComponent、AmbientLightComponent、RigidBodyComponent、
  *            BoxColliderComponent、SphereColliderComponent。
  *

@@ -39,7 +39,7 @@ public:
     /**
      * @brief 更新并渲染 3D 场景（网格 + 精灵叠加）。
      *
-     * 先绘制所有 MeshComponent 的 3D 网格（带深度测试和光照），
+     * 先绘制所有 MeshRendererComponent 的 3D 网格（带深度测试和光照），
      * 再在其上叠加绘制 SpriteRendererComponent 的 2D 精灵（不清屏）。
      *
      * @param ts          时间步长

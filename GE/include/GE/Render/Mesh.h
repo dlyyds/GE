@@ -106,13 +106,14 @@ struct hash<GE::Vertex> {
 namespace GE {
 
 /**
- * @brief 子网格：共享同一顶点/索引缓冲，仅用索引范围区分，可绑定一个材质。
+ * @brief 子网格：共享同一顶点/索引缓冲，仅用索引范围区分，带默认材质。
  *
  * 一个 Mesh 可含多个子网格（如 OBJ 按 (shape, material_id) 拆分、未来 glTF
  * 按 primitive）。所有子网格共用 Mesh 持有的单个顶点缓冲 + 索引缓冲，
  * 仅通过 firstIndex / indexCount 划定各自的索引范围进行绘制。
  *
- * material 为运行期材质指针（由 MeshManager 创建并填充，Mesh 不拥有）；
+ * defaultMaterial 为模型加载时的默认材质（MaterialManager 持有，只读借用）；
+ * 实体可通过 MeshRendererComponent.materialOverrides 覆写某个子网格的材质。
  * materialName 为加载期记录的源材质名（OBJ 材质名 / 未来 glTF 材质名）。
  */
 struct SubMesh {
@@ -121,7 +122,7 @@ struct SubMesh {
     uint32_t  firstIndex  = 0;   ///< 索引缓冲起始（元素索引，非字节）
     uint32_t  indexCount  = 0;   ///< 索引数量
     std::string materialName;    ///< 源材质名（加载期填充，用于创建/查找材质）
-    Material *material = nullptr; ///< 运行期材质（由 MeshManager 填充，不拥有）
+    Material *defaultMaterial = nullptr; ///< 默认材质（MeshManager 填充，MaterialManager 持有）
 };
 
 /**
@@ -234,14 +235,14 @@ public:
     const std::vector<SubMesh> &GetSubMeshes() const { return m_SubMeshes; }
 
     /**
-     * @brief 设置指定子网格的运行期材质。
+     * @brief 设置指定子网格的默认材质。
      *
      * @param index 子网格索引
-     * @param mat   材质指针（由外部管理器持有，Mesh 不拥有）
+     * @param mat   默认材质指针（由 MaterialManager 持有，Mesh 不拥有，只读）
      */
-    void SetSubMeshMaterial(uint32_t index, Material *mat) {
+    void SetSubMeshDefaultMaterial(uint32_t index, Material *mat) {
         if (index < m_SubMeshes.size()) {
-            m_SubMeshes[index].material = mat;
+            m_SubMeshes[index].defaultMaterial = mat;
         }
     }
 

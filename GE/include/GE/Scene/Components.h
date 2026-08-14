@@ -8,6 +8,7 @@
 
 #define GLM_ENABLE_EXPERIMENTAL
 #include <string>
+#include <unordered_map>
 #include <glm/gtx/quaternion.hpp>
 
 #include "Render/Camera.h"
@@ -19,6 +20,7 @@ namespace GE {
 
 class Texture;  // 前向声明，避免引入整个 Texture 头文件
 class Mesh;     // 前向声明，避免引入整个 Mesh 头文件
+class Material; // 前向声明，避免引入整个 Material 头文件
 class Entity;   // 前向声明，供 ScriptComponent 回调签名使用
 class Timestep; // 前向声明，供 ScriptComponent 回调签名使用
 
@@ -140,44 +142,48 @@ struct ScriptComponent {
 
 
 /**
- * @brief 静态网格组件 —— 描述一个 3D 网格资源。
+ * @brief 网格渲染组件 —— 描述一个 3D 网格资源及其材质覆写。
  *
  * 与 TransformComponent 配合使用：Transform 决定位置/旋转/缩放，
- * MeshComponent 决定绘制什么网格。
- * 材质由子网格绑定（随模型加载）提供，MeshComponent 不持有材质。
+ * MeshRendererComponent 决定绘制什么网格。
+ * 材质默认来自子网格的 defaultMaterial（随模型加载），实体可通过
+ * materialOverrides 按子网格索引覆写材质（每实体独立，可序列化）。
  *
- * Mesh 使用裸指针引用，不拥有资源。资源由外部资源管理器管理。
+ * Mesh / Material 均使用裸指针引用，不拥有资源。资源由外部资源管理器管理。
  * Color 为 RGBA 分量，白色 (1,1,1,1) 表示原样显示材质颜色。
  *
  * 由 Renderer3D 在 Scene::OnUpdate3D() 中遍历并绘制，
  * 支持深度测试、背面剔除和 Blinn-Phong 光照。
  */
-struct MeshComponent {
+struct MeshRendererComponent {
     glm::vec4 Color{1.0f, 1.0f, 1.0f, 1.0f}; ///< 叠加颜色（默认白色，即不染色）
     Mesh     *MeshPtr = nullptr;              ///< 网格资源指针（可选，为 null 时不绘制）
 
-    MeshComponent() = default;
+    /// 子网格材质覆写表：<子网格索引, 自定义材质>（每实体独立，借用 MaterialManager）
+    std::unordered_map<uint32_t, Material *> materialOverrides;
 
-    MeshComponent(const MeshComponent &) = default;
+    MeshRendererComponent() = default;
+
+    MeshRendererComponent(const MeshRendererComponent &) = default;
 
     /**
      * @brief 仅指定颜色的构造函数（纯色网格，无网格资源）。
      */
-    explicit MeshComponent(const glm::vec4 &color)
+    explicit MeshRendererComponent(const glm::vec4 &color)
         : Color(color) {
     }
 
     /**
      * @brief 指定网格的构造函数（颜色默认白色）。
      */
-    explicit MeshComponent(Mesh *mesh)
+    explicit MeshRendererComponent(Mesh *mesh)
         : MeshPtr(mesh) {
     }
 
     /**
      * @brief 同时指定网格和颜色的构造函数。
      */
-    MeshComponent(Mesh *mesh, const glm::vec4 &color)
+    MeshRendererComponent(Mesh *mesh, const glm::vec4 &color)
         : Color(color), MeshPtr(mesh) {
     }
 };

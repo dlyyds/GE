@@ -73,7 +73,7 @@ Mesh *MeshManager::Load(const std::string &filepath) {
             const std::string key = filepath + "::" + matName;
             Material *mat = m_Materials->GetOrCreateDefault(key);
             mat->SetDebugName(matName);
-            mesh->SetSubMeshMaterial(static_cast<uint32_t>(i), mat);
+            mesh->SetSubMeshDefaultMaterial(static_cast<uint32_t>(i), mat);
         }
     }
 

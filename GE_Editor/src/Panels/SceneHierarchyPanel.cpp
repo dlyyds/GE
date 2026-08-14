@@ -269,8 +269,8 @@ void SceneHierarchyPanel::DrawComponents(Entity entity) {
     DrawComponent<CameraComponent>("Camera", entity,
         [](auto &c) { DrawCameraComponent(c); });
 
-    DrawComponent<MeshComponent>("Mesh Renderer", entity,
-        [](auto &c) { DrawMeshComponent(c); });
+    DrawComponent<MeshRendererComponent>("Mesh Renderer", entity,
+        [](auto &c) { DrawMeshRendererComponent(c); });
 
     DrawComponent<SpriteRendererComponent>("Sprite Renderer", entity,
         [](auto &c) { DrawSpriteRendererComponent(c); });
@@ -309,7 +309,7 @@ void SceneHierarchyPanel::DrawAddComponentPopup() {
 
     // 每种组件一行：重复的 "判重 + 添加 + 警告 + 关闭弹窗" 模板收敛到 TryAddComponent
     TryAddComponent<CameraComponent>("Camera");
-    TryAddComponent<MeshComponent>("Mesh Renderer");
+    TryAddComponent<MeshRendererComponent>("Mesh Renderer");
     TryAddComponent<SpriteRendererComponent>("Sprite Renderer");
     TryAddComponent<PointLightComponent>("Point Light");
     TryAddComponent<DirectionalLightComponent>("Directional Light");
@@ -563,46 +563,59 @@ static void DrawMaterialEditor(Material *material) {
     ImGui::Checkbox("Double Sided", &material->doubleSided);
 }
 
-/// 绘制子网格材质选择器：从 MaterialManager 选一个材质绑定到指定子网格。
+/// 绘制子网格材质选择器：选材质即写入 MeshRendererComponent 的覆写表。
 ///
-/// 材质由 MaterialManager 持有（编辑器不拥有），选择后写入 Mesh 的子网格。
-static void DrawSubMeshMaterialEditor(Mesh *mesh, size_t index, const SubMesh &sub) {
+/// 当前生效材质 = 覆写（materialOverrides）优先，否则子网格默认材质。
+/// 选择某材质 → 生成覆写（每实体独立）；选 "(use default)" → 清除覆写回退默认。
+static void DrawSubMeshMaterialEditor(MeshRendererComponent &comp, size_t index, const SubMesh &sub) {
     auto &matMgr = Renderer::GetMaterialManager();
     auto allMats = matMgr.GetAllNames();
 
-    // 当前材质显示名：优先域名，其次 DebugName，最后占位
-    std::string currentName = "(null)";
-    if (sub.material) {
+    // 当前覆写与生效材质
+    Material *override = nullptr;
+    auto it = comp.materialOverrides.find(static_cast<uint32_t>(index));
+    if (it != comp.materialOverrides.end()) {
+        override = it->second;
+    }
+    Material *effective = override ? override : sub.defaultMaterial;
+
+    // 显示名：有覆写显示覆写名；否则显示默认材质名（标注 default）
+    std::string currentName = "(use default)";
+    if (effective) {
+        currentName = "";
         for (const auto &name : allMats) {
-            if (matMgr.Get(name) == sub.material) {
+            if (matMgr.Get(name) == effective) {
                 currentName = name;
                 break;
             }
         }
-        if (currentName == "(null)") {
-            currentName = sub.material->GetDebugName();
+        if (currentName.empty()) {
+            currentName = effective->GetDebugName();
             if (currentName.empty()) {
                 currentName = "(unnamed)";
             }
+        }
+        if (!override) {
+            currentName += " [default]";
         }
     }
 
     std::string label = "Material##sub_" + std::to_string(index);
     if (ImGui::BeginCombo(label.c_str(), currentName.c_str())) {
-        // None 选项（清除材质 → 白色 fallback）
-        if (ImGui::Selectable("(null)", sub.material == nullptr)) {
-            mesh->SetSubMeshMaterial(static_cast<uint32_t>(index), nullptr);
+        // 使用默认（清除覆写）
+        if (ImGui::Selectable("(use default)", override == nullptr)) {
+            comp.materialOverrides.erase(static_cast<uint32_t>(index));
         }
-        if (sub.material == nullptr) {
+        if (override == nullptr) {
             ImGui::SetItemDefaultFocus();
         }
 
-        // 列出 MaterialManager 中所有已加载材质
+        // 列出 MaterialManager 中所有已加载材质（选即生成覆写）
         for (const auto &name : allMats) {
             Material *mat = matMgr.Get(name);
-            bool isSelected = (mat == sub.material);
+            bool isSelected = (mat == effective);
             if (ImGui::Selectable(name.c_str(), isSelected)) {
-                mesh->SetSubMeshMaterial(static_cast<uint32_t>(index), mat);
+                comp.materialOverrides[static_cast<uint32_t>(index)] = mat;
             }
             if (isSelected) {
                 ImGui::SetItemDefaultFocus();
@@ -612,15 +625,17 @@ static void DrawSubMeshMaterialEditor(Mesh *mesh, size_t index, const SubMesh &s
         ImGui::EndCombo();
     }
 
-    // 选中材质后展开其内容编辑（类型 / 纹理 / 标量参数 / 渲染状态）
-    if (sub.material) {
+    // 有覆写 → 编辑覆写材质（每实体独立）；无覆写 → 只读提示
+    if (override) {
         ImGui::Indent();
-        DrawMaterialEditor(sub.material);
+        DrawMaterialEditor(override);
         ImGui::Unindent();
+    } else if (sub.defaultMaterial) {
+        ImGui::TextDisabled("using default (read-only) — 选一个材质以覆写");
     }
 }
 
-void SceneHierarchyPanel::DrawMeshComponent(MeshComponent &component) {
+void SceneHierarchyPanel::DrawMeshRendererComponent(MeshRendererComponent &component) {
     ImGui::ColorEdit4("Color", glm::value_ptr(component.Color));
 
     // ---- 网格选择下拉框 ----
@@ -716,7 +731,7 @@ void SceneHierarchyPanel::DrawMeshComponent(MeshComponent &component) {
                                  " (" + std::to_string(subMeshes[i].indexCount) + " indices)";
             if (ImGui::CollapsingHeader(header.c_str())) {
                 ImGui::Indent();
-                DrawSubMeshMaterialEditor(component.MeshPtr, i, subMeshes[i]);
+                DrawSubMeshMaterialEditor(component, i, subMeshes[i]);
                 ImGui::Unindent();
             }
         }

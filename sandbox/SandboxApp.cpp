@@ -56,11 +56,11 @@ public:
             glm::vec4(m_Ambient, m_Ambient, m_Ambient, 1.0f));
         m_AmbientEntity = ambLight;
 
-        // ── 三个立方体（MeshComponent，材质走子网格绑定 / 白色 fallback） ──
+        // ── 三个立方体（MeshRendererComponent，材质走子网格默认 / 覆写） ──
         auto makeCube = [&](const char *name, const glm::vec3 &pos) {
             Entity e = m_Scene->CreateEntity(name);
             e.GetComponent<TransformComponent>().Translation = pos;
-            e.AddComponent<MeshComponent>(meshMgr.GetBuiltin("cube"));
+            e.AddComponent<MeshRendererComponent>(meshMgr.GetBuiltin("cube"));
             return e;
         };
         m_CubeEntities[0] = makeCube("Cube_Left",  {-2.0f, 0.5f, 0.0f});

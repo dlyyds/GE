@@ -8,7 +8,7 @@
  * - 渲染状态开关（alpha test、双面渲染等）
  * - 着色器类型（BlinnPhong / PBR 等）
  *
- * 与 MeshComponent 解耦：同一个 Material 可以被多个 Mesh 共享。
+ * 与网格解耦：同一个 Material 可以被多个 Mesh / 子网格共享。
  * 材质资源由 MaterialManager 统一管理（生命周期同管理器）。
  *
  * 使用方式：

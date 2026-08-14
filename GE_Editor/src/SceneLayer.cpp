@@ -84,7 +84,7 @@ void SceneLayer::BuildDefaultSceneFromCode() {
     auto &tc = cube.GetComponent<TransformComponent>();
     tc.Translation = {0.0f, 0.5f, 0.0f};
     tc.Scale = {1.0f, 1.0f, 1.0f};
-    cube.AddComponent<MeshComponent>(meshMgr.GetBuiltin("cube"));
+    cube.AddComponent<MeshRendererComponent>(meshMgr.GetBuiltin("cube"));
 }
 
 void SceneLayer::OnDetach() {
@@ -250,7 +250,7 @@ void SceneLayer::OnImGuiRender() {
 
     // ---- 场景统计信息 ----
     if (m_Context->Scene) {
-        auto meshView = m_Context->Scene->Reg().view<MeshComponent>();
+        auto meshView = m_Context->Scene->Reg().view<MeshRendererComponent>();
         auto lightView = m_Context->Scene->Reg().view<PointLightComponent>();
         ImGui::Text("3D 实体数：%zu", meshView.size());
         ImGui::Text("点光源数：%zu", lightView.size());

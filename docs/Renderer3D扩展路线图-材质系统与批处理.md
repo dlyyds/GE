@@ -2,7 +2,7 @@
 
 ## Context
 
-当前 `Renderer3D` 采用每个网格一个 draw call 的简单模式，没有独立的材质系统——材质属性（纹理、颜色）扁平地嵌在 `MeshComponent` 和 `DrawMesh()` 参数中。随着场景复杂度上升，两个核心问题会凸显：
+当前 `Renderer3D` 采用每个网格一个 draw call 的简单模式，没有独立的材质系统——材质属性（纹理、颜色）扁平地嵌在 `MeshRendererComponent` 和 `DrawMesh()` 参数中。随着场景复杂度上升，两个核心问题会凸显：
 
 1. **draw call 过多**：每个网格独立绑定顶点/索引/纹理/UBO + 独立绘制，没有任何合批
 2. **材质表达能力不足**：只有一张主纹理 + 一个 tint 颜色，无法支持多纹理（法线贴图、金属粗糙度贴图等）、着色器变体、混合模式等
@@ -27,7 +27,7 @@
 ## 阶段 0：材质数据层 + 资源管理
 
 ### 目标
-建立独立的 `Material` 类，将材质属性从 `MeshComponent` / `DrawMesh` 参数中抽离出来，形成统一的材质资源抽象。
+建立独立的 `Material` 类，将材质属性从 `MeshRendererComponent` / `DrawMesh` 参数中抽离出来，形成统一的材质资源抽象。
 
 ### 关键设计
 
@@ -73,10 +73,10 @@ private:
 #### 0.2 MaterialManager（全局缓存）
 与 `VulkanResourceCache` 类似，但针对运行时材质实例。可以简单起步：一个 `std::unordered_map<std::string, std::unique_ptr<Material>>` + 名称查找。
 
-#### 0.3 MeshComponent 扩展
+#### 0.3 MeshRendererComponent 扩展
 **文件**：`GE/include/GE/Scene/Components.h`
 
-在 `MeshComponent` 中增加 `Material* MaterialPtr`（保持裸指针风格，与 `MeshPtr` / `BaseTexture` 一致）。保留 `BaseTexture` 和 `Color` 作为向后兼容的快捷方式，或标记为 deprecated，逐步迁移。
+在 `MeshRendererComponent` 中增加 `Material* MaterialPtr`（保持裸指针风格，与 `MeshPtr` / `BaseTexture` 一致）。保留 `BaseTexture` 和 `Color` 作为向后兼容的快捷方式，或标记为 deprecated，逐步迁移。
 
 #### 0.4 DrawMesh 接口扩展
 **文件**：`GE/include/GE/Render/Renderer3D.h`
@@ -91,7 +91,7 @@ void DrawMesh(const glm::mat4& transform, Mesh* mesh, Material* material);
 #### 0.5 Scene::OnUpdate3D 适配
 **文件**：`GE/src/Scene/Scene.cpp`
 
-在收集 `MeshComponent` 时，优先使用 `MaterialPtr`，fallback 到 `BaseTexture` + `Color` 的旧路径。
+在收集 `MeshRendererComponent` 时，优先使用 `MaterialPtr`，fallback 到 `BaseTexture` + `Color` 的旧路径。
 
 ---
 
@@ -288,7 +288,7 @@ HAS_NORMAL_MAP, HAS_EMISSIVE_MAP, ALPHA_TEST, ...
 | `GE/src/Render/Material.cpp`（新） | Material 实现 |
 | `GE/include/GE/Render/Renderer3D.h` | DrawMesh 新重载、内部结构调整 |
 | `GE/src/Render/Renderer3D.cpp` | 排序、合批、Dynamic UBO、instancing |
-| `GE/include/GE/Scene/Components.h` | MeshComponent 增加 MaterialPtr |
+| `GE/include/GE/Scene/Components.h` | MeshRendererComponent 增加 MaterialPtr |
 | `GE/src/Scene/Scene.cpp` | OnUpdate3D 适配 MaterialPtr |
 | `GE/include/GE/Render/VulkanBase/VulkanShaderModule.h` | ShaderVariant 增加宏定义 |
 | `GE/src/Render/VulkanBase/VulkanShaderModule.cpp` | GLSL 在线编译支持 |

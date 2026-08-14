@@ -20,7 +20,7 @@ namespace GE {
 ///
 /// 适配当前项目的组件系统：
 ///   TagComponent / TransformComponent / SpriteRendererComponent /
-///   MeshComponent / CameraComponent / PointLightComponent / ScriptComponent
+///   MeshRendererComponent / CameraComponent / PointLightComponent / ScriptComponent
 ///
 /// 注意：面板不拥有场景的所有权，仅持有裸指针。
 ///      调用方需保证场景生命周期长于面板，或在场景销毁前调用 SetContext(nullptr)。
@@ -64,8 +64,8 @@ private:
     /// 绘制 Camera 组件属性
     static void DrawCameraComponent(CameraComponent &component);
 
-    /// 绘制 Mesh 组件属性
-    static void DrawMeshComponent(MeshComponent &component);
+    /// 绘制 Mesh Renderer 组件属性
+    static void DrawMeshRendererComponent(MeshRendererComponent &component);
 
     /// 绘制 SpriteRenderer 组件属性
     static void DrawSpriteRendererComponent(SpriteRendererComponent &component);

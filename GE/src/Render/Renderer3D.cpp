@@ -8,6 +8,8 @@
 #include <algorithm>
 #include <bit>
 
+#include <glm/gtc/matrix_inverse.hpp> // glm::inverse（矩阵求逆）
+
 #include "Core/Log.h"
 #include "Render/Texture.h"
 #include "Render/Renderer.h"
@@ -72,6 +74,26 @@ Renderer3D::Renderer3D() {
         {m_VertShader, m_FragShaderPBR});
     m_PipelineLayoutPBR->SetDebugName("Mesh3D_PipelineLayout_PBR");
 
+    // ── 2b. 天空盒着色器 + 管线布局 ─────────────────────────────────
+    //    等距柱状投影天空盒：全屏三角形 + 反投影重建视线 + 采样全景图。
+    //    管线布局由着色器反射自动构建（set 0 binding 0 = SkyboxUBO，binding 1 = sampler2D）。
+    m_SkyboxVert = &cache.RequestShaderModule(
+        vk::ShaderStageFlagBits::eVertex,
+        ShaderSource(Renderer::GetAssetManager()
+                         .ResolvePath(std::string(AssetPaths::Shaders) + "/skybox.vert.spv")
+                         .string()),
+        "main", ShaderVariant{});
+
+    m_SkyboxFrag = &cache.RequestShaderModule(
+        vk::ShaderStageFlagBits::eFragment,
+        ShaderSource(Renderer::GetAssetManager()
+                         .ResolvePath(std::string(AssetPaths::Shaders) + "/skybox.frag.spv")
+                         .string()),
+        "main", ShaderVariant{});
+
+    m_SkyboxLayout = &cache.RequestPipelineLayout({m_SkyboxVert, m_SkyboxFrag});
+    m_SkyboxLayout->SetDebugName("Skybox_PipelineLayout");
+
     // ── 3. 默认 1x1 白色纹理（无纹理时的 fallback），从全局纹理管理器获取 ──
     //    纹理由 TextureManager 去重缓存并持有，这里仅保存非拥有指针。
     m_DefaultWhiteTexture =
@@ -133,6 +155,32 @@ Renderer3D::Renderer3D() {
     GE_CORE_INFO("Renderer3D initialized");
 }
 
+// ============================================================================
+// 天空盒
+// ============================================================================
+
+void Renderer3D::SetSkybox(const std::string &filepath) {
+    auto &device = Renderer::GetVulkanContext().GetDevice();
+    auto &cache  = device.GetResourceCache();
+
+    // 加载等距柱状投影纹理（Unorm 直接采样，与现有纹理一致；全屏图跳过 mipmap）
+    auto tex = Texture::LoadFromFile(device, cache, filepath,
+                                     vk::Format::eR8G8B8A8Unorm,
+                                     vk::Filter::eLinear, vk::Filter::eLinear,
+                                     /*generate_mipmaps*/ false);
+    if (!tex) {
+        GE_CORE_ERROR("Renderer3D: 天空盒纹理加载失败: {0}", filepath);
+        m_SkyboxEnabled = false;
+        return;
+    }
+
+    tex->SetDebugName("Skybox_Equirect");
+    m_SkyboxTexture = std::move(tex);
+    m_SkyboxPath    = filepath;
+    m_SkyboxEnabled = true;
+    GE_CORE_INFO("Renderer3D: 天空盒已启用: {0}", filepath);
+}
+
 Renderer3D::~Renderer3D() {
     GE_CORE_INFO("Renderer3D Shutdown");
 
@@ -142,12 +190,18 @@ Renderer3D::~Renderer3D() {
     m_DefaultEmissiveTexture.reset();
     m_DefaultMetallicRoughnessTexture.reset();
 
+    // 释放天空盒纹理
+    m_SkyboxTexture.reset();
+
     // 着色器和 pipeline layout 由全局资源缓存管理，不需要手动释放
     m_VertShader = nullptr;
     m_FragShader = nullptr;
     m_FragShaderPBR = nullptr;
     m_PipelineLayout = nullptr;
     m_PipelineLayoutPBR = nullptr;
+    m_SkyboxVert = nullptr;
+    m_SkyboxFrag = nullptr;
+    m_SkyboxLayout = nullptr;
 }
 
 // ============================================================================
@@ -287,8 +341,8 @@ void Renderer3D::EndScene() {
     GE_CORE_ASSERT(m_InScene, "EndScene called without BeginScene!");
     m_InScene = false;
 
-    // 没有网格需要绘制，直接返回
-    if (m_Meshes.empty()) {
+    // 没有网格也没有天空盒时，直接返回（仅天空盒时仍需走完渲染流程）
+    if (m_Meshes.empty() && !m_SkyboxEnabled) {
         return;
     }
 
@@ -438,6 +492,84 @@ void Renderer3D::EndScene() {
     }
 
     renderInfo.Begin(vkCmd);
+
+    // ====================================================================
+    // 3b. 天空盒绘制（自包含块，先于网格，作为背景）
+    // ====================================================================
+    //    全屏三角形 + 反投影重建视线方向 + 采样等距柱状全景图。
+    //    关闭深度测试/写入，天空盒始终位于最远背景；网格随后以 clear 后的
+    //    深度（远平面）正常深度测试并覆盖。此块设置完整管线状态（含渲染
+    //    格式、动态状态、视口/剪刀），随后网格配置块会重新覆盖为网格状态，
+    //    两者互不干扰。
+    if (m_SkyboxEnabled && m_SkyboxTexture) {
+        auto skyColorFmt = renderTarget.GetColorFormat();
+        vk::Format skyDepthFmt = vk::Format::eUndefined;
+        if (renderTarget.HasDepth()) {
+            skyDepthFmt = renderTarget.GetDepthFormat();
+        }
+
+        // 分配天空盒 UBO：仅旋转的视图矩阵逆 + 投影矩阵逆
+        //   mat3(m_View) 去掉平移，使天空盒不受相机位置影响（始终"无限远"）
+        SkyboxUBO skyboxUBO{};
+        skyboxUBO.invView = glm::inverse(glm::mat4(glm::mat3(m_View)));
+        skyboxUBO.invProj = glm::inverse(m_Projection);
+        BufferAllocation skyboxUboAlloc = frame.AllocateBuffer(
+            vk::BufferUsageFlagBits::eUniformBuffer, sizeof(SkyboxUBO));
+        skyboxUboAlloc.update(skyboxUBO);
+
+        // 绑定天空盒管线布局
+        cmd.BindPipelineLayout(*m_SkyboxLayout);
+        auto &skyPs = cmd.GetPipelineState();
+        skyPs.setRenderingFormats({skyColorFmt}, skyDepthFmt);
+
+        // 颜色混合（不透明，全通道写入）
+        vk::PipelineColorBlendAttachmentState skyBlend{};
+        skyBlend.colorWriteMask = vk::ColorComponentFlagBits::eR
+                                  | vk::ColorComponentFlagBits::eG
+                                  | vk::ColorComponentFlagBits::eB
+                                  | vk::ColorComponentFlagBits::eA;
+        skyPs.setColorBlendAttachments({skyBlend});
+
+        // 顶点输入（全屏三角形无顶点缓冲，反射为空）
+        skyPs.setVertexInputFromShader(*m_SkyboxVert);
+
+        // 光栅化：背面剔除关闭（全屏三角形风序不固定）、深度测试/写入关闭
+        skyPs.setInputAssembly(vk::PrimitiveTopology::eTriangleList)
+            .setCullMode(vk::CullModeFlagBits::eNone)
+            .setFrontFace(vk::FrontFace::eCounterClockwise)
+            .setDepthTestEnable(VK_FALSE)
+            .setDepthWriteEnable(VK_FALSE);
+
+        // 启用动态状态（视口/剪刀/剔除/深度等运行时设置）
+        skyPs.enableDynamicState(vk::DynamicState::eViewport)
+            .enableDynamicState(vk::DynamicState::eScissor)
+            .enableDynamicState(vk::DynamicState::eCullMode)
+            .enableDynamicState(vk::DynamicState::eFrontFace)
+            .enableDynamicState(vk::DynamicState::ePrimitiveTopology)
+            .enableDynamicState(vk::DynamicState::eDepthTestEnable)
+            .enableDynamicState(vk::DynamicState::eDepthWriteEnable)
+            .enableDynamicState(vk::DynamicState::eDepthCompareOp);
+
+        // 视口 + 剪刀（与网格一致，覆盖整个渲染目标）
+        vk::Viewport skyVp;
+        skyVp.width  = static_cast<float>(extent.width);
+        skyVp.height = static_cast<float>(extent.height);
+        skyVp.minDepth = 0.0f;
+        skyVp.maxDepth = 1.0f;
+        cmd.SetViewport(0, {skyVp});
+
+        vk::Rect2D skyScissor;
+        skyScissor.extent.width  = extent.width;
+        skyScissor.extent.height = extent.height;
+        cmd.SetScissor(0, {skyScissor});
+
+        // 绑定天空盒 UBO + 等距纹理，绘制全屏三角形（3 顶点，无顶点缓冲）
+        cmd.BindBuffer(skyboxUboAlloc.get_buffer(), skyboxUboAlloc.get_offset(),
+                       skyboxUboAlloc.get_size(), 0, 0);
+        cmd.BindImage(m_SkyboxTexture->GetImageView(),
+                      m_SkyboxTexture->GetSampler(), 0, 1);
+        cmd.Draw(3, 1, 0, 0);
+    }
 
     // ====================================================================
     // 4. 配置管线状态

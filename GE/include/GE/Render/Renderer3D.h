@@ -141,6 +141,29 @@ public:
     void SetRenderTarget(RenderTarget *target) { m_RenderTargetOverride = target; }
 
     // ========================================================================
+    // 天空盒
+    // ========================================================================
+
+    /**
+     * @brief 加载等距柱状投影（equirectangular）天空盒纹理并启用。
+     *
+     * 天空盒以全屏三角形 + 反投影重建视线方向 + 采样全景图实现，
+     * 先于网格绘制、关闭深度写入，作为场景背景。纹理由渲染器持有。
+     *
+     * @param filepath 全景图路径（相对资源根，如 "HDRI/xxx.png"）
+     */
+    void SetSkybox(const std::string &filepath);
+
+    /// 运行时开关天空盒（false 时不再绘制天空盒）。
+    void SetSkyboxEnabled(bool enabled) { m_SkyboxEnabled = enabled; }
+
+    /// 当前天空盒是否启用。
+    bool IsSkyboxEnabled() const { return m_SkyboxEnabled; }
+
+    /// 当前天空盒纹理路径（用于场景驱动时判断是否需要重新加载）。
+    const std::string &GetSkyboxPath() const { return m_SkyboxPath; }
+
+    // ========================================================================
     // 场景接口
     // ========================================================================
 
@@ -248,6 +271,15 @@ private:
         glm::vec4 pbr;               ///< x = metallic，y = roughness（金属-粗糙度）
     };
     static_assert(sizeof(MaterialUBO) == 32, "MaterialUBO 必须 16 字节对齐");
+
+    /// 天空盒 UBO（std140 布局，set 0 binding 0）
+    /// 只存反投影所需矩阵：仅旋转视图矩阵逆（invView）+ 投影矩阵逆（invProj）。
+    /// 2 个 mat4 = 128 字节，16 字节对齐。
+    struct SkyboxUBO {
+        glm::mat4 invView;   ///< 仅旋转部分视图矩阵的逆（视方向 → 世界方向）
+        glm::mat4 invProj;   ///< 投影矩阵的逆（NDC → 视空间视线）
+    };
+    static_assert(sizeof(SkyboxUBO) == 128, "SkyboxUBO 必须 16 字节对齐");
 
     /// 一个待绘制的网格实例（可指向网格的某个子网格范围）
     struct MeshInstance {
@@ -357,6 +389,24 @@ private:
 
     /// PBR 管线布局（由全局资源缓存管理，不拥有）
     VulkanPipelineLayout *m_PipelineLayoutPBR = nullptr;
+
+    /// 天空盒顶点着色器（由全局资源缓存管理，不拥有）
+    VulkanShaderModule   *m_SkyboxVert = nullptr;
+
+    /// 天空盒片元着色器（由全局资源缓存管理，不拥有）
+    VulkanShaderModule   *m_SkyboxFrag = nullptr;
+
+    /// 天空盒管线布局（由全局资源缓存管理，不拥有）
+    VulkanPipelineLayout *m_SkyboxLayout = nullptr;
+
+    /// 天空盒等距柱状投影纹理（渲染器持有所有权）
+    std::unique_ptr<Texture> m_SkyboxTexture;
+
+    /// 天空盒是否启用（false 时不绘制）
+    bool m_SkyboxEnabled = false;
+
+    /// 当前天空盒纹理路径（用于场景驱动时判断是否需要重新加载）
+    std::string m_SkyboxPath;
 
     /// 默认 1x1 白色纹理（无纹理时的 fallback，由全局 TextureManager 持有，不拥有）
     Texture *m_DefaultWhiteTexture = nullptr;

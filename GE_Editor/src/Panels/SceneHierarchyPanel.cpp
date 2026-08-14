@@ -21,6 +21,7 @@
 
 #include <glm/gtc/type_ptr.hpp>
 #include <cmath>
+#include <algorithm>
 #include <cstring>
 
 namespace GE {
@@ -435,6 +436,133 @@ void SceneHierarchyPanel::DrawCameraComponent(CameraComponent &component) {
 // ============================================================
 // Mesh 组件
 // ============================================================
+
+/// 绘制单个纹理槽位的下拉选择器（从 TextureManager 选纹理绑定到材质槽位）。
+static bool DrawTextureSlot(const char *label, Material *material, Material::TextureSlot slot) {
+    if (!material) {
+        ImGui::Text("%s: (no material)", label);
+        return false;
+    }
+
+    auto &texMgr = Renderer::GetTextureManager();
+    auto allKeys = texMgr.GetAllKeys();
+
+    // 当前纹理的 key（用于在下拉框中显示预览文本）
+    Texture *currentTex = material->GetTexture(slot);
+    std::string currentPreview = "(none)";
+    if (currentTex) {
+        for (const auto &key : allKeys) {
+            if (texMgr.Get(key) == currentTex) {
+                currentPreview = key;
+                break;
+            }
+        }
+        if (currentPreview == "(none)" && !currentTex->GetFilePath().empty()) {
+            currentPreview = currentTex->GetFilePath();
+        } else if (currentPreview == "(none)") {
+            currentPreview = "(unnamed texture)";
+        }
+    }
+
+    bool changed = false;
+    std::string comboLabel = std::string(label) + "##slot_" + std::to_string(slot);
+    if (ImGui::BeginCombo(comboLabel.c_str(), currentPreview.c_str())) {
+        // None 选项
+        if (ImGui::Selectable("(none)", currentTex == nullptr)) {
+            material->SetTexture(slot, nullptr);
+            changed = true;
+        }
+        if (currentTex == nullptr) {
+            ImGui::SetItemDefaultFocus();
+        }
+
+        // 列出所有已加载纹理
+        for (const auto &key : allKeys) {
+            Texture *tex = texMgr.Get(key);
+            bool isSelected = (tex == currentTex);
+            if (ImGui::Selectable(key.c_str(), isSelected)) {
+                material->SetTexture(slot, tex);
+                changed = true;
+            }
+            if (isSelected) {
+                ImGui::SetItemDefaultFocus();
+            }
+        }
+
+        ImGui::EndCombo();
+    }
+
+    return changed;
+}
+
+/// 绘制材质内容编辑器：类型 / 纹理槽位 / 标量参数 / 渲染状态。
+///
+/// 直接编辑 MaterialManager 持有的 Material 对象；同一材质被多个子网格共享时
+/// 改动对所有引用方即时生效。
+static void DrawMaterialEditor(Material *material) {
+    if (!material) {
+        return;
+    }
+
+    // 材质类型（Blinn-Phong / PBR），决定渲染管线
+    const char *typeNames[] = {"Blinn-Phong", "PBR"};
+    int typeIdx = static_cast<int>(material->GetType());
+    if (ImGui::Combo("Type", &typeIdx, typeNames, 2)) {
+        material->SetType(typeIdx == 1 ? Material::Type::PBR : Material::Type::BlinnPhong);
+    }
+
+    ImGui::Separator();
+
+    // 纹理槽位
+    DrawTextureSlot("Albedo",   material, Material::Albedo);
+    DrawTextureSlot("Normal",   material, Material::Normal);
+    DrawTextureSlot("Emissive", material, Material::Emissive);
+    // PBR 专属：金属-粗糙度贴图（glTF 惯例：B=metallic, G=roughness）
+    if (material->GetType() == Material::Type::PBR) {
+        DrawTextureSlot("Metallic Roughness", material, Material::MetallicRoughness);
+    }
+
+    ImGui::Separator();
+
+    // 标量参数（按材质类型分流）
+    if (material->GetType() == Material::Type::PBR) {
+        float metallic = material->GetFloat("metallic", 0.0f);
+        if (ImGui::SliderFloat("Metallic (金属度)", &metallic, 0.0f, 1.0f)) {
+            material->SetFloat("metallic", metallic);
+        }
+        float roughness = material->GetFloat("roughness", 0.5f);
+        if (ImGui::SliderFloat("Roughness (粗糙度)", &roughness, 0.0f, 1.0f)) {
+            material->SetFloat("roughness", roughness);
+        }
+    } else {
+        // Blinn-Phong：高光指数（对数刻度 0~8 → shininess = 2^位置）
+        float shininess = material->GetFloat("shininess", 32.0f);
+        float logShininess = std::log2(std::max(shininess, 1.0f));
+        if (ImGui::SliderFloat("Shininess (高光指数, 对数刻度)", &logShininess,
+                               0.0f, 8.0f)) {
+            material->SetFloat("shininess", std::pow(2.0f, logShininess));
+        }
+        float specularStrength = material->GetFloat("specularStrength", 0.5f);
+        if (ImGui::SliderFloat("Specular Strength (镜面强度)", &specularStrength,
+                               0.0f, 2.0f)) {
+            material->SetFloat("specularStrength", specularStrength);
+        }
+    }
+
+    // 自发光强度（两种类型共用）
+    float emissiveStrength = material->GetFloat("emissiveStrength", 0.0f);
+    if (ImGui::SliderFloat("Emissive Strength (自发光强度)", &emissiveStrength,
+                           0.0f, 5.0f)) {
+        material->SetFloat("emissiveStrength", emissiveStrength);
+    }
+
+    ImGui::Separator();
+
+    // 渲染状态
+    ImGui::Checkbox("Alpha Test", &material->alphaTest);
+    ImGui::Checkbox("Double Sided", &material->doubleSided);
+}
+
 /// 绘制子网格材质选择器：从 MaterialManager 选一个材质绑定到指定子网格。
 ///
 /// 材质由 MaterialManager 持有（编辑器不拥有），选择后写入 Mesh 的子网格。
@@ -482,6 +610,13 @@ static void DrawSubMeshMaterialEditor(Mesh *mesh, size_t index, const SubMesh &s
         }
 
         ImGui::EndCombo();
+    }
+
+    // 选中材质后展开其内容编辑（类型 / 纹理 / 标量参数 / 渲染状态）
+    if (sub.material) {
+        ImGui::Indent();
+        DrawMaterialEditor(sub.material);
+        ImGui::Unindent();
     }
 }
 

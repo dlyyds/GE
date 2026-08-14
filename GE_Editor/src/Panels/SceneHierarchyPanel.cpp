@@ -11,6 +11,8 @@
 #include "GE/Scene/Scene.h"
 #include "GE/Physics/PhysicsWorld.h"
 #include "GE/Render/Camera.h"
+#include "GE/Render/Material.h"
+#include "GE/Render/MaterialManager.h"
 #include "GE/Render/TextureManager.h"
 #include "GE/Render/Renderer.h"
 #include "GE/Render/Mesh.h"
@@ -433,6 +435,56 @@ void SceneHierarchyPanel::DrawCameraComponent(CameraComponent &component) {
 // ============================================================
 // Mesh 组件
 // ============================================================
+/// 绘制子网格材质选择器：从 MaterialManager 选一个材质绑定到指定子网格。
+///
+/// 材质由 MaterialManager 持有（编辑器不拥有），选择后写入 Mesh 的子网格。
+static void DrawSubMeshMaterialEditor(Mesh *mesh, size_t index, const SubMesh &sub) {
+    auto &matMgr = Renderer::GetMaterialManager();
+    auto allMats = matMgr.GetAllNames();
+
+    // 当前材质显示名：优先域名，其次 DebugName，最后占位
+    std::string currentName = "(null)";
+    if (sub.material) {
+        for (const auto &name : allMats) {
+            if (matMgr.Get(name) == sub.material) {
+                currentName = name;
+                break;
+            }
+        }
+        if (currentName == "(null)") {
+            currentName = sub.material->GetDebugName();
+            if (currentName.empty()) {
+                currentName = "(unnamed)";
+            }
+        }
+    }
+
+    std::string label = "Material##sub_" + std::to_string(index);
+    if (ImGui::BeginCombo(label.c_str(), currentName.c_str())) {
+        // None 选项（清除材质 → 白色 fallback）
+        if (ImGui::Selectable("(null)", sub.material == nullptr)) {
+            mesh->SetSubMeshMaterial(static_cast<uint32_t>(index), nullptr);
+        }
+        if (sub.material == nullptr) {
+            ImGui::SetItemDefaultFocus();
+        }
+
+        // 列出 MaterialManager 中所有已加载材质
+        for (const auto &name : allMats) {
+            Material *mat = matMgr.Get(name);
+            bool isSelected = (mat == sub.material);
+            if (ImGui::Selectable(name.c_str(), isSelected)) {
+                mesh->SetSubMeshMaterial(static_cast<uint32_t>(index), mat);
+            }
+            if (isSelected) {
+                ImGui::SetItemDefaultFocus();
+            }
+        }
+
+        ImGui::EndCombo();
+    }
+}
+
 void SceneHierarchyPanel::DrawMeshComponent(MeshComponent &component) {
     ImGui::ColorEdit4("Color", glm::value_ptr(component.Color));
 
@@ -512,12 +564,21 @@ void SceneHierarchyPanel::DrawMeshComponent(MeshComponent &component) {
         ImGui::EndPopup();
     }
 
-    // 网格信息（只读）
+    // 网格信息 + 子网格材质编辑
     if (component.MeshPtr) {
         ImGui::Separator();
         ImGui::Text("Path: %s", component.MeshPtr->GetFilePath().c_str());
         ImGui::Text("Vertices: %u", component.MeshPtr->GetVertexCount());
         ImGui::Text("Indices:  %u", component.MeshPtr->GetIndexCount());
+
+        // ---- 子网格列表：每个子网格可单独绑定材质 ----
+        const auto &subMeshes = component.MeshPtr->GetSubMeshes();
+        ImGui::Separator();
+        ImGui::Text("SubMeshes: %zu", subMeshes.size());
+        for (size_t i = 0; i < subMeshes.size(); ++i) {
+            ImGui::Text("  SubMesh %zu (%u indices)", i, subMeshes[i].indexCount);
+            DrawSubMeshMaterialEditor(component.MeshPtr, i, subMeshes[i]);
+        }
     }
 }
 

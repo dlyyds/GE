@@ -11,14 +11,12 @@
 #include "Scene/Scene.h"
 #include "Scene/Entity.h"
 #include "Scene/Components.h"
-#include "Render/Material.h"
 #include "Render/Texture.h"
 #include "Render/Mesh.h"
 #include "Render/Renderer.h"
 #include "Render/MeshManager.h"
 #include "Render/AssetManager.h"
 #include "Core/Log.h"
-#include "Render/MaterialManager.h"
 #include "Render/TextureManager.h"
 
 #include <yaml-cpp/yaml.h>
@@ -33,21 +31,6 @@
 namespace GE {
 
 namespace {
-
-// ============================================================
-// 材质辅助
-// ============================================================
-
-/// 材质纹理槽位名（与 Material::TextureSlot 顺序一一对应）
-const char *kTextureSlotNames[] = {"Albedo", "Normal", "Emissive", "MetallicRoughness"};
-
-/// 材质纹理槽位名 → 槽位枚举（用于反序列化）
-Material::TextureSlot TextureSlotFromName(const std::string &name) {
-    if (name == "Normal") return Material::Normal;
-    if (name == "Emissive") return Material::Emissive;
-    if (name == "MetallicRoughness") return Material::MetallicRoughness;
-    return Material::Albedo;
-}
 
 // ============================================================
 // 采样器参数辅助
@@ -122,145 +105,6 @@ void ApplySamplerParams(Texture *tex, const YAML::Node &samplerNode) {
     }
 }
 
-/**
- * @brief 将材质写入 YAML 节点（纹理槽位 + 浮点参数）。
- *
- * 纹理以文件路径写入；浮点参数以 name → value 的 map 写入 FloatParams 节点。
- */
-void SerializeMaterialNode(YAML::Node &matNode, Material *mat) {
-    if (!mat) {
-        return;
-    }
-
-    // 材质类型（BlinnPhong / PBR），决定渲染管线
-    matNode["Type"] = (mat->GetType() == Material::Type::PBR) ? "PBR" : "BlinnPhong";
-
-    // 纹理槽位（仅写有纹理且带文件路径的槽位）
-    for (int s = 0; s < Material::Count; ++s) {
-        auto slot = static_cast<Material::TextureSlot>(s);
-        Texture *tex = mat->GetTexture(slot);
-        if (tex && !tex->GetFilePath().empty()) {
-            std::string texKey = std::string(kTextureSlotNames[s]) + "Texture";
-            matNode[texKey] = tex->GetFilePath();
-            // 同时保存该纹理的采样器参数，供反序列化恢复
-            YAML::Node samplerNode = matNode[texKey + "Sampler"];
-            SerializeSamplerNode(samplerNode, tex);
-        }
-    }
-
-    // 浮点参数（如 shininess、specularStrength）
-    const auto &params = mat->GetFloatParams();
-    if (!params.empty()) {
-        YAML::Node fp = matNode["FloatParams"];
-        for (const auto &kv : params) {
-            fp[kv.first] = kv.second;
-        }
-    }
-}
-
-/**
- * @brief 根据材质节点内容生成唯一 key（用于材质去重）。
- *
- * 由所有纹理路径 + 排序后的浮点参数拼接而成，保证：
- * 内容相同的材质复用同一实例，内容不同则各自独立。
- */
-std::string BuildMaterialKey(const YAML::Node &matNode) {
-    std::string key;
-
-    // 材质类型：不同管线的同内容材质不共享（PBR 与 Blinn-Phong 的标量语义不同）
-    key += "type:";
-    if (matNode["Type"]) {
-        key += matNode["Type"].as<std::string>();
-    } else {
-        key += "BlinnPhong"; // 旧场景无 Type 字段，默认 Blinn-Phong
-    }
-    key += ";";
-
-    // 纹理槽位（按槽位顺序）
-    for (auto name : kTextureSlotNames) {
-        std::string texKey = std::string(name) + "Texture";
-        if (matNode[texKey]) {
-            key += std::string(name) + ":" + matNode[texKey].as<std::string>() + ";";
-        }
-        // 采样器参数同样参与去重：同路径不同采样配置的纹理不可合并
-        std::string samplerKey = std::string(name) + "TextureSampler";
-        if (matNode[samplerKey]) {
-            key += std::string(name) + "Sampler:";
-            key += matNode[samplerKey]["MagFilter"].as<std::string>("Linear") + ",";
-            key += matNode[samplerKey]["MinFilter"].as<std::string>("Linear") + ",";
-            key += matNode[samplerKey]["AddressMode"].as<std::string>("Repeat") + ",";
-            key += matNode[samplerKey]["Anisotropy"].as<std::string>("false");
-            key += ";";
-        }
-    }
-
-    // 浮点参数（按名称排序，保证 key 确定性）
-    if (matNode["FloatParams"]) {
-        std::vector<std::string> names;
-        for (const auto &it : matNode["FloatParams"]) {
-            names.push_back(it.first.as<std::string>());
-        }
-        std::sort(names.begin(), names.end());
-        for (const auto &n : names) {
-            key += n + "=" + matNode["FloatParams"][n].as<std::string>() + ";";
-        }
-    }
-
-    return key;
-}
-
-/**
- * @brief 从材质 YAML 节点获取或创建一个材质（按内容去重）。
- *
- * 加载各纹理槽位并设置全部浮点参数，注册到全局 MaterialManager。
- * 内容相同的材质（key 相同）直接复用已有实例。
- *
- * @param matNode 材质节点（含 AlbedoTexture / NormalTexture / EmissiveTexture
- *                及可选的 FloatParams）
- * @return 材质指针，纹理加载失败可能为部分纹理缺失的材质
- */
-Material *GetOrCreateMaterial(const YAML::Node &matNode) {
-    auto &matMgr = Renderer::GetMaterialManager();
-    const std::string key = "scene:" + BuildMaterialKey(matNode);
-
-    // 已存在则直接返回
-    if (Material *existing = matMgr.Get(key)) {
-        return existing;
-    }
-
-    auto mat = std::make_unique<Material>();
-    mat->SetDebugName(key);
-
-    // 材质类型（默认 Blinn-Phong，兼容旧场景文件）
-    if (matNode["Type"] && matNode["Type"].as<std::string>() == "PBR") {
-        mat->SetType(Material::Type::PBR);
-    }
-
-    // 纹理槽位
-    for (auto name : kTextureSlotNames) {
-        std::string texKey = std::string(name) + "Texture";
-        if (matNode[texKey]) {
-            std::string path = matNode[texKey].as<std::string>("");
-            Texture *tex = Renderer::GetAssetManager().LoadTexture(path);
-            if (tex) {
-                // 恢复采样器参数（若保存了）
-                ApplySamplerParams(tex, matNode[texKey + "Sampler"]);
-                mat->SetTexture(TextureSlotFromName(name), tex);
-            } else {
-                GE_CORE_WARN("SceneSerializer: 材质纹理加载失败: {0}", path);
-            }
-        }
-    }
-
-    // 浮点参数
-    if (matNode["FloatParams"]) {
-        for (const auto &it : matNode["FloatParams"]) {
-            mat->SetFloat(it.first.as<std::string>(), it.second.as<float>());
-        }
-    }
-
-    return matMgr.Register(key, std::move(mat));
-}
 
 // ============================================================
 // YAML 转换辅助函数（glm 向量 → YAML Node）
@@ -410,14 +254,6 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
             if (mc.MeshPtr && !mc.MeshPtr->GetFilePath().empty()) {
                 meshNode["Mesh"] = mc.MeshPtr->GetFilePath();
             }
-        }
-
-        // ---- MaterialComponent ----
-        if (entity.HasComponent<MaterialComponent>()) {
-            const auto &matc = entity.GetComponent<MaterialComponent>();
-            YAML::Node matNode = entityNode["Material"];
-            // 完整序列化材质：纹理槽位（Albedo/Normal/Emissive）+ 浮点参数
-            SerializeMaterialNode(matNode, matc.MaterialPtr);
         }
 
         // ---- CameraComponent ----
@@ -632,17 +468,6 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
                 std::string meshPath = meshNode["Mesh"].as<std::string>("");
                 mc.MeshPtr = Renderer::GetAssetManager().LoadMesh(meshPath);
             }
-        }
-
-        // ---- MaterialComponent ----
-        if (entityNode["Material"]) {
-            YAML::Node matNode = entityNode["Material"];
-
-            // 完整反序列化材质：纹理槽位（Albedo/Normal/Emissive）+ 浮点参数
-            Material *mat = GetOrCreateMaterial(matNode);
-
-            // 即使材质为空也添加组件（表示显式声明了材质组件）
-            entity.AddComponent<MaterialComponent>(mat);
         }
 
         // ---- CameraComponent ----

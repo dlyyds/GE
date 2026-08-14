@@ -10,9 +10,6 @@
 #include "GE/Render/Renderer.h"
 #include "GE/Render/AssetManager.h"
 #include "GE/Render/MeshManager.h"
-#include "GE/Render/TextureManager.h"
-#include "GE/Render/MaterialManager.h"
-#include "GE/Render/Material.h"
 #include "GE/Scene/Components.h"
 #include "GE/Scene/SceneSerializer.h"
 #include "GE/Utils/PlatformUtils.h"
@@ -61,8 +58,6 @@ void SceneLayer::BuildDefaultSceneFromCode() {
     m_Context->Scene = std::make_unique<Scene>();
 
     auto &meshMgr = Renderer::GetMeshManager();
-    auto &texMgr = Renderer::GetTextureManager();
-    auto &matMgr = Renderer::GetMaterialManager();
 
     // 相机实体（Orbit 模式，绕场景中心观测）
     auto camera = m_Context->Scene->CreateEntity("Camera");
@@ -84,65 +79,12 @@ void SceneLayer::BuildDefaultSceneFromCode() {
     auto ambLight = m_Context->Scene->CreateEntity("AmbientLight");
     ambLight.AddComponent<AmbientLightComponent>(glm::vec4(0.15f, 0.15f, 0.15f, 1.0f));
 
-    // ── PBR 测试：单个金属球 ────────────────────────────────────────────
-    // 用 PBR 管线（Material::Type::PBR）放一个球，居中便于观察高光。
-    // 标签拦/Properties 面板可调 Metallic / Roughness 实时改观感。
-    // 无 MetallicRoughness 贴图，走标量 fallback（metallic/roughness 浮点参数）。
-    auto pbrMat = std::make_unique<Material>();
-    pbrMat->SetType(Material::Type::PBR);
-    // 暖橙 albedo；金属度取该色为 F0
-    pbrMat->SetTexture(Material::Albedo,
-                       texMgr.GetSolidColor(glm::vec4(0.9f, 0.5f, 0.3f, 1.0f)));
-    // 纯金属（metallic=1，无漫反射）+ 低粗糙度（0.1，高光锐利），
-    // 让金属质感最明显；Properties 面板仍可实时调节。
-    pbrMat->SetFloat("metallic", 1.0f);
-    pbrMat->SetFloat("roughness", 0.2f);
-    Material *matPBR = matMgr.Register("Editor_PBR_Metal", std::move(pbrMat));
-
-    Entity sphere = m_Context->Scene->CreateEntity("PBR_Sphere");
-    auto &tc = sphere.GetComponent<TransformComponent>();
+    // 用一个立方体作为默认场景内容（材质由子网格绑定 / 白色 fallback）
+    auto cube = m_Context->Scene->CreateEntity("Cube");
+    auto &tc = cube.GetComponent<TransformComponent>();
     tc.Translation = {0.0f, 0.5f, 0.0f};
     tc.Scale = {1.0f, 1.0f, 1.0f};
-    sphere.AddComponent<MeshComponent>(meshMgr.GetBuiltin("sphere"));
-    sphere.AddComponent<MaterialComponent>(matPBR);
-
-    // ── 环绕点光源：给金属提供多个可反射的锐利高光 ──────────────────────
-    // 金属无漫反射，仅靠反射光源/高光显形；光越多、越亮，金属感越强。
-    // 用几个不同方位/颜色的点光源环绕球体，观察金属反射出多彩高光点。
-    auto makePointLight = [&](const glm::vec3 &pos, const glm::vec3 &rgb, float intensity) {
-        Entity e = m_Context->Scene->CreateEntity("PL_Dome");
-        e.GetComponent<TransformComponent>().Translation = pos;
-        e.AddComponent<PointLightComponent>(glm::vec4(rgb, intensity), 0.25f);
-        return e;
-    };
-
-    // 光穹（Light Dome）：在球周围半球铺一圈点光源，金属球反射出高光阵列，
-    // 显出"金属"感（金属无漫反射，只能靠反射光源显形）。灯本身不挂 mesh，
-    // 从其反射即可看到位置。这是没有环境贴图(IBL)时展示金属球的标准做法。
-    const int domeRings = 4; // 仰角环数
-    const int domePerRing = 8; // 每环灯数
-    const float domeRadius = 2.8f; // 穹顶半径
-    const float domeMinElev = 15.0f; // 最低仰角（度）
-    const float domeMaxElev = 85.0f; // 最高仰角
-    for (int r = 0; r < domeRings; ++r) {
-        float elev = glm::radians(domeMaxElev - (domeMaxElev - domeMinElev) * r / (domeRings - 1));
-        for (int k = 0; k < domePerRing; ++k) {
-            float azim = glm::radians(360.0f * k / domePerRing);
-            glm::vec3 pos{
-                domeRadius * glm::cos(azim) * glm::cos(elev),
-                0.5f + domeRadius * glm::sin(elev),
-                domeRadius * glm::sin(azim) * glm::cos(elev),
-            };
-            // 颜色沿方位角渐变，让金属反射出多彩高光阵列
-            glm::vec3 rgb{
-                0.5f + 0.5f * glm::cos(azim),
-                0.5f + 0.5f * glm::sin(azim),
-                0.8f};
-            makePointLight(pos, rgb, 1.0f);
-        }
-    }
-    // 顶部中心补一盏高亮主光
-    makePointLight({0.0f, 3.4f, 0.0f}, {1.0f, 1.0f, 1.0f}, 1.5f);
+    cube.AddComponent<MeshComponent>(meshMgr.GetBuiltin("cube"));
 }
 
 void SceneLayer::OnDetach() {

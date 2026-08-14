@@ -11,8 +11,6 @@
 #include "GE/Scene/Scene.h"
 #include "GE/Physics/PhysicsWorld.h"
 #include "GE/Render/Camera.h"
-#include "GE/Render/Material.h"
-#include "GE/Render/MaterialManager.h"
 #include "GE/Render/TextureManager.h"
 #include "GE/Render/Renderer.h"
 #include "GE/Render/Mesh.h"
@@ -271,9 +269,6 @@ void SceneHierarchyPanel::DrawComponents(Entity entity) {
     DrawComponent<MeshComponent>("Mesh Renderer", entity,
         [](auto &c) { DrawMeshComponent(c); });
 
-    DrawComponent<MaterialComponent>("Material", entity,
-        [](auto &c) { DrawMaterialComponent(c); });
-
     DrawComponent<SpriteRendererComponent>("Sprite Renderer", entity,
         [](auto &c) { DrawSpriteRendererComponent(c); });
 
@@ -312,7 +307,6 @@ void SceneHierarchyPanel::DrawAddComponentPopup() {
     // 每种组件一行：重复的 "判重 + 添加 + 警告 + 关闭弹窗" 模板收敛到 TryAddComponent
     TryAddComponent<CameraComponent>("Camera");
     TryAddComponent<MeshComponent>("Mesh Renderer");
-    TryAddComponent<MaterialComponent>("Material");
     TryAddComponent<SpriteRendererComponent>("Sprite Renderer");
     TryAddComponent<PointLightComponent>("Point Light");
     TryAddComponent<DirectionalLightComponent>("Directional Light");
@@ -524,205 +518,6 @@ void SceneHierarchyPanel::DrawMeshComponent(MeshComponent &component) {
         ImGui::Text("Path: %s", component.MeshPtr->GetFilePath().c_str());
         ImGui::Text("Vertices: %u", component.MeshPtr->GetVertexCount());
         ImGui::Text("Indices:  %u", component.MeshPtr->GetIndexCount());
-    }
-}
-
-// ============================================================
-// Material 组件
-// ============================================================
-
-/**
- * @brief 绘制单个纹理槽位的下拉选择器。
- *
- * 从 TextureManager 获取所有已加载纹理，展示为下拉列表供选择。
- * 选择 "None" 会清除该槽位的纹理。
- *
- * @param label     槽位标签（如 "Albedo"）
- * @param material  材质指针
- * @param slot      纹理槽位
- * @return 是否有修改
- */
-static bool DrawTextureSlot(const char *label, Material *material, Material::TextureSlot slot) {
-    if (!material) {
-        ImGui::Text("%s: (no material)", label);
-        return false;
-    }
-
-    auto &texMgr = Renderer::GetTextureManager();
-    auto allKeys = texMgr.GetAllKeys();
-
-    // 当前纹理的 key（用于在下拉框中显示预览文本）
-    Texture *currentTex = material->GetTexture(slot);
-    std::string currentPreview = "(none)";
-    if (currentTex) {
-        // 尝试在管理器中找到该纹理的 key
-        for (const auto &key : allKeys) {
-            if (texMgr.Get(key) == currentTex) {
-                currentPreview = key;
-                break;
-            }
-        }
-        // 如果在管理器中没找到（可能是未注册的程序化纹理），显示路径或占位符
-        if (currentPreview == "(none)" && !currentTex->GetFilePath().empty()) {
-            currentPreview = currentTex->GetFilePath();
-        } else if (currentPreview == "(none)") {
-            currentPreview = "(unnamed texture)";
-        }
-    }
-
-    bool changed = false;
-    std::string comboLabel = std::string(label) + "##slot_" + std::to_string(slot);
-    if (ImGui::BeginCombo(comboLabel.c_str(), currentPreview.c_str())) {
-        // None 选项
-        if (ImGui::Selectable("(none)", currentTex == nullptr)) {
-            material->SetTexture(slot, nullptr);
-            changed = true;
-        }
-        if (currentTex == nullptr) {
-            ImGui::SetItemDefaultFocus();
-        }
-
-        // 列出所有已加载纹理
-        for (const auto &key : allKeys) {
-            Texture *tex = texMgr.Get(key);
-            bool isSelected = (tex == currentTex);
-            if (ImGui::Selectable(key.c_str(), isSelected)) {
-                material->SetTexture(slot, tex);
-                changed = true;
-            }
-            if (isSelected) {
-                ImGui::SetItemDefaultFocus();
-            }
-        }
-
-        ImGui::EndCombo();
-    }
-
-    return changed;
-}
-
-void SceneHierarchyPanel::DrawMaterialComponent(MaterialComponent &component) {
-    // ---- 材质选择下拉框 ----
-    auto &matMgr = Renderer::GetMaterialManager();
-    auto allMats = matMgr.GetAllNames();
-
-    std::string currentMatName = "(null)";
-    if (component.MaterialPtr) {
-        // 尝试在管理器中找到该材质的名称
-        for (const auto &name : allMats) {
-            if (matMgr.Get(name) == component.MaterialPtr) {
-                currentMatName = name;
-                break;
-            }
-        }
-        // 未在管理器中找到则使用 DebugName
-        if (currentMatName == "(null)") {
-            std::string debugName = component.MaterialPtr->GetDebugName();
-            if (!debugName.empty()) {
-                currentMatName = debugName + " (unmanaged)";
-            } else {
-                currentMatName = "(unnamed, unmanaged)";
-            }
-        }
-    }
-
-    if (ImGui::BeginCombo("Material", currentMatName.c_str())) {
-        // None 选项
-        if (ImGui::Selectable("(null)", component.MaterialPtr == nullptr)) {
-            component.MaterialPtr = nullptr;
-        }
-        if (component.MaterialPtr == nullptr) {
-            ImGui::SetItemDefaultFocus();
-        }
-
-        // 列出所有已加载材质
-        for (const auto &name : allMats) {
-            Material *mat = matMgr.Get(name);
-            bool isSelected = (mat == component.MaterialPtr);
-            if (ImGui::Selectable(name.c_str(), isSelected)) {
-                component.MaterialPtr = mat;
-            }
-            if (isSelected) {
-                ImGui::SetItemDefaultFocus();
-            }
-        }
-
-        ImGui::EndCombo();
-    }
-
-    if (component.MaterialPtr) {
-        // ---- 材质类型（可切换：Blinn-Phong / PBR） ----
-        // 枚举值恰为 0/1，可直接作为下拉框索引。切换后由 Renderer3D 按类型
-        // 路由到对应管线（BlinnPhong=0 / PBR=1）。
-        const char *typeNames[] = {"Blinn-Phong", "PBR"};
-        int typeIdx = static_cast<int>(component.MaterialPtr->GetType());
-        if (ImGui::Combo("Type", &typeIdx, typeNames, 2)) {
-            component.MaterialPtr->SetType(
-                typeIdx == 1 ? Material::Type::PBR : Material::Type::BlinnPhong);
-        }
-
-        ImGui::Separator();
-
-        // ---- 纹理槽位选择器 ----
-        DrawTextureSlot("Albedo",   component.MaterialPtr, Material::Albedo);
-        DrawTextureSlot("Normal",   component.MaterialPtr, Material::Normal);
-        DrawTextureSlot("Emissive", component.MaterialPtr, Material::Emissive);
-        // PBR 专属：金属-粗糙度贴图（glTF 惯例：B=metallic, G=roughness）。
-        // 留空则走标量 metallic/roughness 回退。
-        if (component.MaterialPtr->GetType() == Material::Type::PBR) {
-            DrawTextureSlot("Metallic Roughness", component.MaterialPtr,
-                            Material::MetallicRoughness);
-        }
-
-        ImGui::Separator();
-
-        // ---- 标量参数（按材质类型分流） ----
-        if (component.MaterialPtr->GetType() == Material::Type::PBR) {
-            // 金属度（0=绝缘体 1=金属，写入 "metallic"，PBR 管线的 scalar 系数）
-            float metallic = component.MaterialPtr->GetFloat("metallic", 0.0f);
-            if (ImGui::SliderFloat("Metallic (金属度)", &metallic, 0.0f, 1.0f)) {
-                component.MaterialPtr->SetFloat("metallic", metallic);
-            }
-
-            // 粗糙度（0=镜面 1=漫，写入 "roughness"）
-            float roughness = component.MaterialPtr->GetFloat("roughness", 0.5f);
-            if (ImGui::SliderFloat("Roughness (粗糙度)", &roughness, 0.0f, 1.0f)) {
-                component.MaterialPtr->SetFloat("roughness", roughness);
-            }
-        } else {
-            // Blinn-Phong：高光指数（写入材质 "shininess" 参数，Renderer3D 每帧读取）
-            // 用对数刻度：滑块位置 0~8 对应 shininess = 2^位置（1~256），
-            // 避免线性滑块在高指数区间因 pow() 高光塌缩到亚像素而"看似没反应"。
-            float shininess = component.MaterialPtr->GetFloat("shininess", 32.0f);
-            float logShininess = std::log2(std::max(shininess, 1.0f));
-            if (ImGui::SliderFloat("Shininess (高光指数, 对数刻度)", &logShininess,
-                                   0.0f, 8.0f)) {
-                component.MaterialPtr->SetFloat("shininess", std::pow(2.0f, logShininess));
-            }
-
-            // 镜面强度系数（写入材质 "specularStrength" 参数，独立控制高光亮暗，
-            // 与 shininess 的高光形态解耦）
-            float specularStrength = component.MaterialPtr->GetFloat("specularStrength", 0.5f);
-            if (ImGui::SliderFloat("Specular Strength (镜面强度)", &specularStrength,
-                                   0.0f, 2.0f)) {
-                component.MaterialPtr->SetFloat("specularStrength", specularStrength);
-            }
-        }
-
-        // 自发光强度（两种类型共用；写入材质 "emissiveStrength" 参数，
-        // 缩放 Emissive 槽位纹理颜色；未设置时默认 0，不发光，故必须通过
-        // 这里调高才能看到自发光效果）
-        float emissiveStrength = component.MaterialPtr->GetFloat("emissiveStrength", 0.0f);
-        if (ImGui::SliderFloat("Emissive Strength (自发光强度)", &emissiveStrength,
-                               0.0f, 5.0f)) {
-            component.MaterialPtr->SetFloat("emissiveStrength", emissiveStrength);
-        }
-
-        ImGui::Separator();
-
-        // ---- 渲染状态 ----
-        ImGui::Checkbox("Alpha Test", &component.MaterialPtr->alphaTest);
-        ImGui::Checkbox("Double Sided", &component.MaterialPtr->doubleSided);
     }
 }
 

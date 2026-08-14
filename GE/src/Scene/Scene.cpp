@@ -188,18 +188,10 @@ void Scene::OnUpdate3D(Timestep ts,
             continue;
         }
 
-        // MaterialComponent 可选，没有则传 nullptr（使用白色 fallback）
-        Material *mat = nullptr;
-        auto *matComp = m_Registry.try_get<MaterialComponent>(entity);
-        if (matComp) {
-            mat = matComp->MaterialPtr;
-        }
-
-        // 统一子网格路径：所有 mesh 至少包含 1 个子网格（含内置几何体 / CPU 直建），
-        // 材质优先级为「子网格自带材质 > Entity 级材质 > 白色 fallback」
+        // 统一子网格路径：材质完全由子网格绑定决定（随模型加载），
+        // 无材质（material == nullptr）时由渲染器使用白色 fallback
         for (const auto &sub : mc.MeshPtr->GetSubMeshes()) {
-            r3d.DrawSubMesh(tc.GetTransform(), mc.MeshPtr, sub,
-                            sub.material ? sub.material : mat, mc.Color);
+            r3d.DrawSubMesh(tc.GetTransform(), mc.MeshPtr, sub, sub.material, mc.Color);
         }
     }
 
@@ -428,10 +420,6 @@ void Scene::OnComponentAdded<ScriptComponent>(Entity entity, ScriptComponent &co
 
 template <>
 void Scene::OnComponentAdded<MeshComponent>(Entity entity, MeshComponent &component) {
-}
-
-template <>
-void Scene::OnComponentAdded<MaterialComponent>(Entity entity, MaterialComponent &component) {
 }
 
 template <>

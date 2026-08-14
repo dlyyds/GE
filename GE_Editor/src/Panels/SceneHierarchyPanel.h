@@ -67,9 +67,6 @@ private:
     /// 绘制 Mesh 组件属性
     static void DrawMeshComponent(MeshComponent &component);
 
-    /// 绘制 Material 组件属性
-    static void DrawMaterialComponent(MaterialComponent &component);
-
     /// 绘制 SpriteRenderer 组件属性
     static void DrawSpriteRendererComponent(SpriteRendererComponent &component);
 

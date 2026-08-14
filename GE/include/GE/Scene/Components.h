@@ -19,7 +19,6 @@ namespace GE {
 
 class Texture;  // 前向声明，避免引入整个 Texture 头文件
 class Mesh;     // 前向声明，避免引入整个 Mesh 头文件
-class Material; // 前向声明，避免引入整个 Material 头文件
 class Entity;   // 前向声明，供 ScriptComponent 回调签名使用
 class Timestep; // 前向声明，供 ScriptComponent 回调签名使用
 
@@ -145,7 +144,7 @@ struct ScriptComponent {
  *
  * 与 TransformComponent 配合使用：Transform 决定位置/旋转/缩放，
  * MeshComponent 决定绘制什么网格。
- * 材质由独立的 MaterialComponent 提供，两者组合起来决定最终渲染效果。
+ * 材质由子网格绑定（随模型加载）提供，MeshComponent 不持有材质。
  *
  * Mesh 使用裸指针引用，不拥有资源。资源由外部资源管理器管理。
  * Color 为 RGBA 分量，白色 (1,1,1,1) 表示原样显示材质颜色。
@@ -180,32 +179,6 @@ struct MeshComponent {
      */
     MeshComponent(Mesh *mesh, const glm::vec4 &color)
         : Color(color), MeshPtr(mesh) {
-    }
-};
-
-
-/**
- * @brief 材质组件 —— 为实体指定 3D 渲染所用的材质。
- *
- * 与 MeshComponent 配合使用：Mesh 决定几何形状，Material 决定表面着色。
- * 实体可以只有 MeshComponent 而没有 MaterialComponent（此时使用纯白色 fallback），
- * 也可以有 MaterialComponent 而没有 MeshComponent（此时不参与渲染，但可被其他系统引用）。
- *
- * Material 使用裸指针引用，不拥有资源。资源由外部材质管理器管理。
- * 多个实体可以共享同一个 Material 实例（指针相同）。
- */
-struct MaterialComponent {
-    Material *MaterialPtr = nullptr;  ///< 材质指针
-
-    MaterialComponent() = default;
-
-    MaterialComponent(const MaterialComponent &) = default;
-
-    /**
-     * @brief 指定材质的构造函数。
-     */
-    explicit MaterialComponent(Material *material)
-        : MaterialPtr(material) {
     }
 };
 

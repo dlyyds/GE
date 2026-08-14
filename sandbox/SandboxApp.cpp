@@ -4,10 +4,7 @@
 #include "Render/Renderer.h"
 #include "Render/Renderer3D.h"
 #include "Render/AssetManager.h"
-#include "Render/TextureManager.h"
 #include "Render/MeshManager.h"
-#include "Render/MaterialManager.h"
-#include "Render/Material.h"
 
 #include "Scene/Scene.h"
 #include "Scene/Components.h"
@@ -16,20 +13,14 @@
 
 #include <glm/gtc/matrix_transform.hpp>
 
-#include <cmath>
 #include <memory>
 
 namespace GE {
 
-/// 自发光（Emissive）冒烟测试层：基于场景系统（Scene / Entity / Components）。
+/// 沙盒冒烟测试层：基于场景系统（Scene / Entity / Components）。
 ///
-/// 场景布局（左 → 右）：
-///   左：无自发光贴图（控制组，应被光照正常照亮、不发光）
-///   中：棋盘格自发光贴图（应发出棋盘格光）
-///   右：纯色暖橙自发光（应整体发出橙色光）
-///
+/// 场景布局：三个立方体（材质由子网格绑定，内置几何体无材质 → 白色 fallback）
 /// 相机为 Orbit 模式，绕目标点缓慢旋转；三个立方体各自自转。
-/// 降低环境光后，自发光物体仍发光，差异更明显。
 class Sandbox3DLayer : public Layer {
 public:
     Sandbox3DLayer() : Layer("Sandbox3DLayer") {}
@@ -43,36 +34,6 @@ public:
         m_Scene = std::make_unique<Scene>();
 
         auto &meshMgr = Renderer::GetMeshManager();
-        auto &texMgr = Renderer::GetTextureManager();
-        auto &matMgr = Renderer::GetMaterialManager();
-
-        // 纹理：白色反照率让自发光对比更明显；棋盘格作自发光贴图；暖橙作纯色发光
-        // （由全局 TextureManager 持有，不拥有）
-        m_WhiteTex    = texMgr.GetSolidColor(glm::vec4(1.0f));
-        m_EmissiveTex = Renderer::GetAssetManager().LoadTexture(
-        std::string(AssetPaths::Textures) + "/Checkerboard.png");
-        m_OrangeTex   = texMgr.GetSolidColor(glm::vec4(1.0f, 0.5f, 0.1f, 1.0f));
-
-        // 材质注册到全局 MaterialManager（生命周期随 Renderer），
-        // MaterialComponent 仅持裸指针引用，因此材质必须比场景存活更久。
-        // 1. 无自发光（控制组）
-        auto noEmissive = std::make_unique<Material>();
-        noEmissive->SetTexture(Material::Albedo, m_WhiteTex);
-        m_MatNoEmissive = matMgr.Register("Sandbox_NoEmissive", std::move(noEmissive));
-
-        // 2. 棋盘格自发光贴图 + 强度
-        auto checker = std::make_unique<Material>();
-        checker->SetTexture(Material::Albedo, m_WhiteTex);
-        checker->SetTexture(Material::Emissive, m_EmissiveTex);
-        checker->SetFloat("emissiveStrength", m_CheckerStrength);
-        m_MatChecker = matMgr.Register("Sandbox_Checker", std::move(checker));
-
-        // 3. 纯色暖橙自发光
-        auto orange = std::make_unique<Material>();
-        orange->SetTexture(Material::Albedo, m_WhiteTex);
-        orange->SetTexture(Material::Emissive, m_OrangeTex);
-        orange->SetFloat("emissiveStrength", 1.0f);
-        m_MatOrange = matMgr.Register("Sandbox_Orange", std::move(orange));
 
         // ── 相机实体（Orbit 模式，绕目标点旋转） ─────────────────────────
         auto camera = m_Scene->CreateEntity("Camera");
@@ -95,22 +56,20 @@ public:
             glm::vec4(m_Ambient, m_Ambient, m_Ambient, 1.0f));
         m_AmbientEntity = ambLight;
 
-        // ── 三个立方体（MeshComponent + MaterialComponent） ───────────────
-        auto makeCube = [&](const char *name, const glm::vec3 &pos, Material *mat) {
+        // ── 三个立方体（MeshComponent，材质走子网格绑定 / 白色 fallback） ──
+        auto makeCube = [&](const char *name, const glm::vec3 &pos) {
             Entity e = m_Scene->CreateEntity(name);
             e.GetComponent<TransformComponent>().Translation = pos;
             e.AddComponent<MeshComponent>(meshMgr.GetBuiltin("cube"));
-            e.AddComponent<MaterialComponent>(mat);
             return e;
         };
-        m_CubeEntities[0] = makeCube("Cube_NoEmissive", {-2.0f, 0.5f, 0.0f}, m_MatNoEmissive);
-        m_CubeEntities[1] = makeCube("Cube_Checker",    { 0.0f, 0.5f, 0.0f}, m_MatChecker);
-        m_CubeEntities[2] = makeCube("Cube_Orange",     { 2.0f, 0.5f, 0.0f}, m_MatOrange);
+        m_CubeEntities[0] = makeCube("Cube_Left",  {-2.0f, 0.5f, 0.0f});
+        m_CubeEntities[1] = makeCube("Cube_Center", { 0.0f, 0.5f, 0.0f});
+        m_CubeEntities[2] = makeCube("Cube_Right",  { 2.0f, 0.5f, 0.0f});
     }
 
     void OnDetach() override {
-        // 网格/纹理由全局管理器持有；材质由 MaterialManager 持有，均无需释放。
-        // 仅释放场景（材质引用随之失效，但材质本身仍存活于 MaterialManager）。
+        // 网格由全局管理器持有，仅释放场景即可
         m_Scene.reset();
     }
 
@@ -139,13 +98,13 @@ public:
         m_AmbientEntity.GetComponent<AmbientLightComponent>().Color =
             glm::vec4(m_Ambient, m_Ambient, m_Ambient, 1.0f);
 
-        // ── 三个立方体各自自转，便于观察自发光在不同面 ──────────────────
+        // ── 三个立方体各自自转 ──────────────────────────────────────────
         for (int i = 0; i < 3; i++) {
             m_CubeEntities[i].GetComponent<TransformComponent>().Rotation.y +=
                 ts.GetSeconds() * 0.5f;
         }
 
-        // ── 交给场景系统渲染（脚本 / 物理 / 光源收集 / 网格材质） ───────
+        // ── 交给场景系统渲染（光源收集 / 网格子网格绘制） ───────────────
         glm::mat4 view = camComp.CameraInstance.GetView();
         glm::mat4 proj = camComp.CameraInstance.GetProj();
         glm::vec3 camPos = camComp.CameraInstance.GetPosition();
@@ -160,38 +119,18 @@ public:
     // ========================================================================
 
     void OnImGuiRender() override {
-        ImGui::Begin("Emissive Test");
+        ImGui::Begin("Sandbox");
         ImGui::Text("FPS: %.1f", Application::Get().GetFPS());
         ImGui::Text("实体数：%zu (3 立方体 + 相机 + 2 光源)",
                     m_Scene ? m_Scene->Reg().size() : 0);
         ImGui::Separator();
         ImGui::SliderFloat("环境光强度", &m_Ambient, 0.0f, 0.5f);
-        ImGui::SliderFloat("棋盘格自发光强度", &m_CheckerStrength, 0.0f, 5.0f);
-        ImGui::Checkbox("启用中心立方体自发光", &m_EnableCheckerEmissive);
-        ImGui::Separator();
-        ImGui::Text("布局：左=无自发光(控制) | 中=棋盘格 | 右=纯色");
-        ImGui::TextDisabled("把环境光调低，自发光物体仍发光，对比更明显");
         ImGui::End();
-
-        // 把面板中的参数实时写入中心立方体的材质（下一帧生效）
-        m_MatChecker->SetFloat("emissiveStrength", m_CheckerStrength);
-        m_MatChecker->SetTexture(Material::Emissive,
-                                 m_EnableCheckerEmissive ? m_EmissiveTex : nullptr);
     }
 
 private:
     // 场景（本层所有）
     std::unique_ptr<Scene> m_Scene;
-
-    // 网格 / 纹理由全局管理器持有，仅存非拥有指针
-    Texture *m_WhiteTex    = nullptr;
-    Texture *m_EmissiveTex = nullptr;
-    Texture *m_OrangeTex   = nullptr;
-
-    // 材质由 MaterialManager 持有，仅存非拥有指针
-    Material *m_MatNoEmissive = nullptr;
-    Material *m_MatChecker    = nullptr;
-    Material *m_MatOrange     = nullptr;
 
     // 实体句柄（指向 m_Scene 内实体）
     Entity m_CameraEntity;
@@ -202,12 +141,10 @@ private:
     float m_Angle = 0.0f;
 
     // 面板参数
-    float m_Ambient              = 0.15f;
-    float m_CheckerStrength      = 1.5f;
-    bool  m_EnableCheckerEmissive = true;
+    float m_Ambient = 0.15f;
 };
 
-/// 沙盒应用：仅运行引擎主循环 + 自发光冒烟测试层。
+/// 沙盒应用：仅运行引擎主循环 + 冒烟测试层。
 class Sandbox : public Application {
 public:
     explicit Sandbox(ApplicationCommandLineArgs args) : Application("Sandbox", args) {

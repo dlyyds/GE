@@ -17,13 +17,11 @@ class Material;
  *
  * 将场景中的所有实体及其组件序列化为 YAML 文件，或从 YAML 文件反序列化重建场景。
  * 支持的组件：TagComponent、TransformComponent、SpriteRendererComponent、
- *            MeshComponent、MaterialComponent、CameraComponent、PointLightComponent、
+ *            MeshComponent、CameraComponent、PointLightComponent、
  *            DirectionalLightComponent、AmbientLightComponent、RigidBodyComponent、
  *            BoxColliderComponent、SphereColliderComponent。
  *
- * 材质序列化：完整保存纹理槽位（Albedo / Normal / Emissive）、各纹理的采样器
- * 参数（过滤方式、寻址模式、各向异性）与全部浮点标量参数（如 shininess、
- * specularStrength），按内容去重（内容相同的材质复用同一实例）。
+ * 3D 网格材质由子网格绑定（随模型加载），不序列化到场景。
  * SpriteRenderer 的纹理同样保存其采样器参数。
  *
  * ScriptComponent 不参与序列化（运行时行为，无法持久化）。

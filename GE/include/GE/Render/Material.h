@@ -74,7 +74,9 @@ public:
     // 构造 / 析构
     // ========================================================================
 
-    Material() = default;
+    Material() {
+        ApplyTypeDefaults();  // 初始化时按当前类型设置默认标量参数
+    }
     ~Material() = default;
 
     Material(const Material &) = delete;
@@ -171,10 +173,31 @@ public:
 
     /**
      * @brief 设置材质着色器类型。
+     *
+     * 切换类型时按新类型补齐默认标量参数（仅当参数不存在时写入，不覆盖已有值）。
      */
     void SetType(Type type) {
         m_Type = type;
         m_Dirty = true;
+        ApplyTypeDefaults();
+    }
+
+    /**
+     * @brief 按当前类型补齐默认标量参数（仅当参数不存在时写入，避免覆盖用户已设值）。
+     *
+     * - PBR：metallic（默认 0，绝缘体）、roughness（默认 0.5）
+     * - Blinn-Phong：shininess（默认 32）、specularStrength（默认 0.5）
+     * - 两者共用：emissiveStrength（默认 0，不发光）
+     */
+    void ApplyTypeDefaults() {
+        if (m_Type == Type::PBR) {
+            if (!HasFloat("metallic")) SetFloat("metallic", 0.0f);
+            if (!HasFloat("roughness")) SetFloat("roughness", 0.5f);
+        } else {
+            if (!HasFloat("shininess")) SetFloat("shininess", 32.0f);
+            if (!HasFloat("specularStrength")) SetFloat("specularStrength", 0.5f);
+        }
+        if (!HasFloat("emissiveStrength")) SetFloat("emissiveStrength", 0.0f);
     }
 
     // ========================================================================

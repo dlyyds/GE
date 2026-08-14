@@ -228,8 +228,8 @@ public:
     /**
      * @brief 获取子网格列表。
      *
-     * 空列表表示该网格是单个整体（无子网格划分，如内置几何体），
-     * 渲染时应按整网格绘制（使用 GetIndexCount 全量索引）。
+     * 所有 mesh 至少包含一个子网格（含内置几何体 / CPU 直建，均生成一个
+     * 覆盖全部索引的子网格）。渲染统一按子网格路径绘制。
      */
     const std::vector<SubMesh> &GetSubMeshes() const { return m_SubMeshes; }
 

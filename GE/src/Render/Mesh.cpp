@@ -267,6 +267,13 @@ std::unique_ptr<Mesh> Mesh::Create(VulkanDevice &device,
     mesh->m_Vertices = vertices;
     mesh->m_Indices  = indices;
 
+    // 统一子网格：单整体网格也生成一个覆盖全部索引的子网格，
+    // 使所有 mesh（含内置几何体 / CPU 直建）都走统一的子网格绘制路径
+    mesh->m_SubMeshes.push_back(SubMesh{
+        0, static_cast<uint32_t>(vertices.size()),
+        0, static_cast<uint32_t>(indices.size()),
+        {}, nullptr});
+
     // 计算顶点切线（法线贴图需要）
     ComputeTangents(mesh->m_Vertices, mesh->m_Indices);
 

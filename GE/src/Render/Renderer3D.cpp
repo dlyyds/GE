@@ -174,17 +174,40 @@ void Renderer3D::DrawMesh(const glm::mat4 &transform,
                           Mesh *mesh,
                           Material *material,
                           const glm::vec4 &color) {
+    if (!mesh) {
+        return;
+    }
+    // 整网格绘制 = 单个覆盖全部索引的子网格
+    DrawSubMeshImpl(transform, mesh,
+                    0, mesh->GetIndexCount(), material, color);
+}
+
+void Renderer3D::DrawSubMesh(const glm::mat4 &transform,
+                             Mesh *mesh,
+                             const SubMesh &submesh,
+                             Material *material,
+                             const glm::vec4 &color) {
+    DrawSubMeshImpl(transform, mesh,
+                    submesh.firstIndex, submesh.indexCount, material, color);
+}
+
+void Renderer3D::DrawSubMeshImpl(const glm::mat4 &transform,
+                                 Mesh *mesh,
+                                 uint32_t firstIndex,
+                                 uint32_t indexCount,
+                                 Material *material,
+                                 const glm::vec4 &color) {
     GE_CORE_ASSERT(m_InScene, "DrawMesh called outside BeginScene/EndScene!");
 
-    if (!mesh || mesh->GetIndexCount() == 0) {
+    if (!mesh || indexCount == 0) {
         return;
     }
 
-    // 计算排序键（pipeline → 材质 → mesh → view 空间深度），用于 EndScene
-    // 前分组排序，使同材质同 mesh 的实例连续，便于 instancing 合批
-    SortKey sortKey = ComputeSortKey(material, mesh, transform);
+    // 计算排序键（pipeline → 材质 → mesh → 子网格 → view 空间深度），用于 EndScene
+    // 前分组排序，使同材质同 mesh 同子网格的实例连续，便于 instancing 合批
+    SortKey sortKey = ComputeSortKey(material, mesh, firstIndex, indexCount, transform);
 
-    m_Meshes.push_back({transform, mesh, material, color, sortKey});
+    m_Meshes.push_back({transform, mesh, firstIndex, indexCount, material, color, sortKey});
 }
 
 // ============================================================================
@@ -225,7 +248,9 @@ uint8_t Renderer3D::GetPipelineId(const Material *material) const {
     return 0;
 }
 
-Renderer3D::SortKey Renderer3D::ComputeSortKey(const Material *material, const Mesh *mesh, const glm::mat4 &transform) const {
+Renderer3D::SortKey Renderer3D::ComputeSortKey(const Material *material, const Mesh *mesh,
+                                               uint32_t firstIndex, uint32_t indexCount,
+                                               const glm::mat4 &transform) const {
     // pipeline：按材质类型路由（BlinnPhong=0 / PBR=1），使同类型连续，
     // 减少管线切换（管线切换最贵）。
     SortKey key;
@@ -241,6 +266,11 @@ Renderer3D::SortKey Renderer3D::ComputeSortKey(const Material *material, const M
     // mesh 分组：用 mesh 指针值作分组 id，使同材质内同 mesh 实例连续便于合批。
     // 仅用于排序，合批分组用指针相等判断。
     key.meshId = reinterpret_cast<uintptr_t>(mesh);
+
+    // 子网格分组：同一 mesh 的不同子网格（索引范围）必须分开，否则同材质
+    // 的同 mesh 子网格会被错误合批。打包 firstIndex 与 indexCount 为 64 位。
+    key.submeshId = (static_cast<uint64_t>(firstIndex) << 32)
+                  | static_cast<uint64_t>(indexCount);
 
     // 深度：取模型变换的平移分量转换到 view 空间，取反得到正值（越大越远）。
     // 正浮点数的 IEEE 位模式随值单调递增，故可直接按位作为排序键，
@@ -312,12 +342,16 @@ void Renderer3D::EndScene() {
         const auto &first = m_Meshes[i];
         Material *mat = first.material;
         Mesh *mesh = first.mesh;
+        uint32_t firstIndex = first.firstIndex;
+        uint32_t indexCount = first.indexCount;
 
-        // 找同 (mesh, material) 的连续区间
+        // 找同 (mesh, 子网格, material) 的连续区间
         size_t runStart = i;
         while (i < m_Meshes.size()
                && m_Meshes[i].material == mat
-               && m_Meshes[i].mesh == mesh) {
+               && m_Meshes[i].mesh == mesh
+               && m_Meshes[i].firstIndex == firstIndex
+               && m_Meshes[i].indexCount == indexCount) {
             ++i;
         }
 
@@ -331,7 +365,7 @@ void Renderer3D::EndScene() {
         }
 
         batches.push_back(RenderBatch{
-            mesh, mat, firstInstance,
+            mesh, firstIndex, indexCount, mat, firstInstance,
             static_cast<uint32_t>(i - runStart)});
     }
 
@@ -575,14 +609,15 @@ void Renderer3D::EndScene() {
 
         // 绘制：instanced。firstInstance 让 gl_InstanceIndex 从全局实例缓冲
         // 的起始索引开始，所有实例在单个 vkCmdDrawIndexedInstanced 中完成。
-        cmd.DrawIndexed(batch.mesh->GetIndexCount(), batch.instanceCount,
-                        0, 0, batch.firstInstance);
+        // firstIndex 定位到子网格的索引范围起始，indexCount 为其索引数量。
+        cmd.DrawIndexed(batch.indexCount, batch.instanceCount,
+                        batch.firstIndex, 0, batch.firstInstance);
     }
 
     // ── 6b. 统计 draw call 与三角形数量（draw call = 批次数量） ───────
     uint32_t triangles = 0;
     for (const auto &instance : m_Meshes) {
-        triangles += instance.mesh->GetIndexCount() / 3;
+        triangles += instance.indexCount / 3;
     }
     Renderer::Get().AddStats3D(static_cast<uint32_t>(batches.size()), triangles);
 

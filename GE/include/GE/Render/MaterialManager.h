@@ -63,6 +63,17 @@ public:
     bool Has(const std::string &name) const;
 
     /**
+     * @brief 获取或创建默认材质。
+     *
+     * 已存在则直接返回；否则创建一个默认（白色、无纹理）Material 并注册。
+     * 供模型加载器按材质名创建命名材质使用。
+     *
+     * @param name 唯一名称
+     * @return 材质指针
+     */
+    Material *GetOrCreateDefault(const std::string &name);
+
+    /**
      * @brief 手动注册一个材质到管理器中。
      *
      * 如果 name 已存在，旧材质会被替换并销毁。

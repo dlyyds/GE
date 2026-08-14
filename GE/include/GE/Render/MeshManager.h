@@ -32,6 +32,7 @@
 namespace GE {
 
 class VulkanDevice;
+class MaterialManager;
 
 /**
  * @brief 全局网格管理器。
@@ -43,9 +44,10 @@ class MeshManager {
 public:
     /**
      * @brief 构造网格管理器。
-     * @param device Vulkan 设备引用
+     * @param device          Vulkan 设备引用
+     * @param materialManager 材质管理器引用（加载模型时创建子网格材质）
      */
-    explicit MeshManager(VulkanDevice &device);
+    explicit MeshManager(VulkanDevice &device, MaterialManager &materialManager);
 
     ~MeshManager();
 
@@ -127,7 +129,8 @@ public:
     std::vector<std::string> GetAllKeys() const;
 
 private:
-    VulkanDevice *m_Device = nullptr;  ///< Vulkan 设备（不拥有）
+    VulkanDevice   *m_Device   = nullptr;  ///< Vulkan 设备（不拥有）
+    MaterialManager *m_Materials = nullptr; ///< 材质管理器（不拥有）
 
     /// 网格缓存：资源标识 -> mesh
     std::unordered_map<std::string, std::unique_ptr<Mesh>> m_Meshes;

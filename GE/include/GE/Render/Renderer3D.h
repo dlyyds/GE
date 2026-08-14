@@ -67,11 +67,12 @@ public:
     // material/mesh 用完整指针值（进程内唯一），无需折叠、无碰撞；
     // 合批分组仍以指针相等判断。
 
-    /// 排序键：按 pipeline → material → mesh → depth 顺序比较。
+    /// 排序键：按 pipeline → material → mesh → submesh → depth 顺序比较。
     struct SortKey {
         uint8_t  pipelineId = 0;  ///< 管线 id（阶段4 引入多管线后使用）
         uint64_t materialId = 0;  ///< 材质指针值（分组用）
         uint64_t meshId     = 0;  ///< mesh 指针值（分组用）
+        uint64_t submeshId  = 0;  ///< 子网格范围（firstIndex<<32 | indexCount，分组用）
         uint32_t depthBits  = 0;  ///< view 空间深度（正浮点 IEEE 位模式）
 
         /// 按优先级从高到低比较，供 std::sort 使用。
@@ -79,6 +80,7 @@ public:
             if (pipelineId != o.pipelineId) return pipelineId < o.pipelineId;
             if (materialId != o.materialId) return materialId < o.materialId;
             if (meshId != o.meshId) return meshId < o.meshId;
+            if (submeshId != o.submeshId) return submeshId < o.submeshId;
             return depthBits < o.depthBits;
         }
     };
@@ -170,6 +172,24 @@ public:
                   const glm::vec4 &color = {1.0f, 1.0f, 1.0f, 1.0f});
 
     /**
+     * @brief 提交一个 3D 子网格（网格的索引子范围）。
+     *
+     * 用于多子网格网格（OBJ 按材质拆分 / glTF 按 primitive 拆分）的逐子网格绘制。
+     * 顶点缓冲共享，仅绘制 submesh 划定的索引范围。
+     *
+     * @param transform  模型变换矩阵
+     * @param mesh       网格资源（不能为空）
+     * @param submesh    子网格（firstIndex / indexCount 划定索引范围）
+     * @param material   材质（可为 nullptr，nullptr 时使用纯白色 fallback）
+     * @param color      叠加颜色（tint），默认白色
+     */
+    void DrawSubMesh(const glm::mat4 &transform,
+                     Mesh *mesh,
+                     const SubMesh &submesh,
+                     Material *material,
+                     const glm::vec4 &color = {1.0f, 1.0f, 1.0f, 1.0f});
+
+    /**
      * @brief 结束场景：将所有提交的网格提交到 GPU 绘制。
      *
      * 内部流程：
@@ -229,18 +249,22 @@ private:
     };
     static_assert(sizeof(MaterialUBO) == 32, "MaterialUBO 必须 16 字节对齐");
 
-    /// 一个待绘制的网格实例
+    /// 一个待绘制的网格实例（可指向网格的某个子网格范围）
     struct MeshInstance {
         glm::mat4 transform;   ///< 模型变换矩阵
         Mesh     *mesh;        ///< 网格资源
+        uint32_t  firstIndex;  ///< 索引缓冲起始（元素索引）
+        uint32_t  indexCount;  ///< 索引数量
         Material *material;    ///< 材质（可为 nullptr，nullptr 时使用白色 fallback）
         glm::vec4 color;       ///< 叠加颜色
         SortKey   sortKey;     ///< 排序键（EndScene 绘制前按此排序）
     };
 
-    /// 阶段3：一个 instancing 绘制批次（相同 mesh + 相同材质）
+    /// 阶段3：一个 instancing 绘制批次（相同 mesh + 相同子网格 + 相同材质）
     struct RenderBatch {
         Mesh     *mesh;          ///< 网格资源
+        uint32_t  firstIndex;    ///< 索引缓冲起始（元素索引）
+        uint32_t  indexCount;    ///< 索引数量
         Material *material;      ///< 材质
         uint32_t  firstInstance; ///< 该批次在全局实例缓冲中的起始实例索引
         uint32_t  instanceCount; ///< 实例数量
@@ -249,6 +273,18 @@ private:
     // ========================================================================
     // 内部工具方法
     // ========================================================================
+
+    /**
+     * @brief 提交一个网格实例（内部实现，按索引范围绘制）。
+     *
+     * DrawMesh / DrawSubMesh 均委托到此，统一走实例队列 + 排序键。
+     */
+    void DrawSubMeshImpl(const glm::mat4 &transform,
+                         Mesh *mesh,
+                         uint32_t firstIndex,
+                         uint32_t indexCount,
+                         Material *material,
+                         const glm::vec4 &color);
 
     /**
      * @brief 计算某个网格实例的排序键。
@@ -260,7 +296,9 @@ private:
      * @param mesh     网格（用于排序分组，使同材质同 mesh 的实例连续）
      * @param transform 模型变换矩阵
      */
-    SortKey ComputeSortKey(const Material *material, const Mesh *mesh, const glm::mat4 &transform) const;
+    SortKey ComputeSortKey(const Material *material, const Mesh *mesh,
+                           uint32_t firstIndex, uint32_t indexCount,
+                           const glm::mat4 &transform) const;
 
     /**
      * @brief 解析材质对应的有效纹理。

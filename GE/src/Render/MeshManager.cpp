@@ -5,12 +5,15 @@
 
 #include "Render/MeshManager.h"
 
+#include "Render/MaterialManager.h"
+
 #include "Render/VulkanBase/VulkanDevice.h"
 #include "Core/Log.h"
 
 namespace GE {
 
-MeshManager::MeshManager(VulkanDevice &device) : m_Device(&device) {
+MeshManager::MeshManager(VulkanDevice &device, MaterialManager &materialManager)
+    : m_Device(&device), m_Materials(&materialManager) {
 }
 
 MeshManager::~MeshManager() {
@@ -56,6 +59,22 @@ Mesh *MeshManager::Load(const std::string &filepath) {
     if (!mesh) {
         GE_CORE_WARN("MeshManager: 网格加载失败: {}", filepath);
         return nullptr;
+    }
+
+    // 为各子网格创建命名材质（放进 MaterialManager，随模型生命周期走）。
+    // 材质 key 用「路径::材质名」避免跨模型同名材质冲突。
+    if (m_Materials) {
+        const auto &subMeshes = mesh->GetSubMeshes();
+        for (size_t i = 0; i < subMeshes.size(); ++i) {
+            const auto &name = subMeshes[i].materialName;
+            if (name.empty()) {
+                continue;  // 无材质名的子网格保持 nullptr，渲染走白色 fallback / Entity 材质
+            }
+            const std::string key = filepath + "::" + name;
+            Material *mat = m_Materials->GetOrCreateDefault(key);
+            mat->SetDebugName(name);
+            mesh->SetSubMeshMaterial(static_cast<uint32_t>(i), mat);
+        }
     }
 
     Mesh *raw = mesh.get();

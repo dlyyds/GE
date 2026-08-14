@@ -26,6 +26,13 @@ bool MaterialManager::Has(const std::string &name) const {
     return m_Materials.find(name) != m_Materials.end();
 }
 
+Material *MaterialManager::GetOrCreateDefault(const std::string &name) {
+    if (Material *existing = Get(name)) {
+        return existing;
+    }
+    return Register(name, std::make_unique<Material>());
+}
+
 Material *MaterialManager::Register(const std::string &name,
                                     std::unique_ptr<Material> material) {
     if (!material) {

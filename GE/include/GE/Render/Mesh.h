@@ -29,6 +29,8 @@
 
 namespace GE {
 
+class Material;
+
 /**
  * @brief 顶点数据结构：位置 + 法线 + 纹理坐标 + 切线。
  *
@@ -102,6 +104,25 @@ struct hash<GE::Vertex> {
 } // namespace std
 
 namespace GE {
+
+/**
+ * @brief 子网格：共享同一顶点/索引缓冲，仅用索引范围区分，可绑定一个材质。
+ *
+ * 一个 Mesh 可含多个子网格（如 OBJ 按 (shape, material_id) 拆分、未来 glTF
+ * 按 primitive）。所有子网格共用 Mesh 持有的单个顶点缓冲 + 索引缓冲，
+ * 仅通过 firstIndex / indexCount 划定各自的索引范围进行绘制。
+ *
+ * material 为运行期材质指针（由 MeshManager 创建并填充，Mesh 不拥有）；
+ * materialName 为加载期记录的源材质名（OBJ 材质名 / 未来 glTF 材质名）。
+ */
+struct SubMesh {
+    uint32_t  firstVertex = 0;   ///< 顶点缓冲起始（共享缓冲，通常为 0）
+    uint32_t  vertexCount = 0;   ///< 顶点数量
+    uint32_t  firstIndex  = 0;   ///< 索引缓冲起始（元素索引，非字节）
+    uint32_t  indexCount  = 0;   ///< 索引数量
+    std::string materialName;    ///< 源材质名（加载期填充，用于创建/查找材质）
+    Material *material = nullptr; ///< 运行期材质（由 MeshManager 填充，不拥有）
+};
 
 /**
  * @brief 网格封装 —— 持有顶点缓冲 + 索引缓冲。
@@ -205,6 +226,26 @@ public:
     const std::vector<uint32_t> &GetIndices() const { return m_Indices; }
 
     /**
+     * @brief 获取子网格列表。
+     *
+     * 空列表表示该网格是单个整体（无子网格划分，如内置几何体），
+     * 渲染时应按整网格绘制（使用 GetIndexCount 全量索引）。
+     */
+    const std::vector<SubMesh> &GetSubMeshes() const { return m_SubMeshes; }
+
+    /**
+     * @brief 设置指定子网格的运行期材质。
+     *
+     * @param index 子网格索引
+     * @param mat   材质指针（由外部管理器持有，Mesh 不拥有）
+     */
+    void SetSubMeshMaterial(uint32_t index, Material *mat) {
+        if (index < m_SubMeshes.size()) {
+            m_SubMeshes[index].material = mat;
+        }
+    }
+
+    /**
      * @brief 获取网格源文件路径。
      *
      * - 从文件加载的网格：返回文件路径
@@ -244,6 +285,7 @@ private:
 
     std::vector<Vertex>   m_Vertices;     ///< CPU 端顶点数据
     std::vector<uint32_t> m_Indices;      ///< CPU 端索引数据
+    std::vector<SubMesh>  m_SubMeshes;    ///< 子网格列表（空 = 单整体网格）
     std::string           m_FilePath;     ///< 源文件路径（LoadFromFile 时有值）
 
     std::unique_ptr<VulkanBuffer> m_VertexBuffer; ///< GPU 顶点缓冲

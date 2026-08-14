@@ -195,12 +195,17 @@ void Scene::OnUpdate3D(Timestep ts,
             mat = matComp->MaterialPtr;
         }
 
-        r3d.DrawMesh(
-            tc.GetTransform(),
-            mc.MeshPtr,
-            mat,
-            mc.Color
-            );
+        // 多子网格网格：逐子网格绘制，材质优先级为「子网格自带材质 > Entity 级材质」
+        const auto &subMeshes = mc.MeshPtr->GetSubMeshes();
+        if (subMeshes.empty()) {
+            // 无子网格（如内置几何体）→ 按整网格绘制
+            r3d.DrawMesh(tc.GetTransform(), mc.MeshPtr, mat, mc.Color);
+        } else {
+            for (const auto &sub : subMeshes) {
+                r3d.DrawSubMesh(tc.GetTransform(), mc.MeshPtr, sub,
+                                sub.material ? sub.material : mat, mc.Color);
+            }
+        }
     }
 
     r3d.EndScene();

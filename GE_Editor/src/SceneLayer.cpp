@@ -23,7 +23,7 @@
 
 // 编译期开关：true = 启动时从代码程序化构建默认场景；false = 从 .scene 文件加载。
 // 无需代码路径时，编辑器默认从文件加载（false）。
-#define GE_EDITOR_BUILD_SCENE_FROM_CODE 0
+#define GE_EDITOR_BUILD_SCENE_FROM_CODE 1
 
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -50,14 +50,12 @@ void SceneLayer::OnAttach() {
 #endif
 }
 
-// 从代码程序化构建一个仅用于 PBR 测试的默认场景：相机 + 方向光 + 环境光 +
-// 单个 PBR 金属球。网格/纹理/材质均由全局管理器加载持有，场景组件仅持非拥有指针。
+// 从代码程序化构建一个用于测试 OBJ+MTL 加载的默认场景：相机 + 方向光 + 环境光 +
+// Datsun 280Z 车模。网格/纹理/材质均由全局管理器加载持有，场景组件仅持非拥有指针。
 void SceneLayer::BuildDefaultSceneFromCode() {
     // 先重置实体引用，避免悬空
     m_Context->CameraEntity = {};
     m_Context->Scene = std::make_unique<Scene>();
-
-    auto &meshMgr = Renderer::GetMeshManager();
 
     // 相机实体（Orbit 模式，绕场景中心观测）
     auto camera = m_Context->Scene->CreateEntity("Camera");
@@ -79,12 +77,15 @@ void SceneLayer::BuildDefaultSceneFromCode() {
     auto ambLight = m_Context->Scene->CreateEntity("AmbientLight");
     ambLight.AddComponent<AmbientLightComponent>(glm::vec4(0.15f, 0.15f, 0.15f, 1.0f));
 
-    // 用一个立方体作为默认场景内容（材质由子网格绑定 / 白色 fallback）
-    auto cube = m_Context->Scene->CreateEntity("Cube");
-    auto &tc = cube.GetComponent<TransformComponent>();
-    tc.Translation = {0.0f, 0.5f, 0.0f};
-    tc.Scale = {1.0f, 1.0f, 1.0f};
-    cube.AddComponent<MeshRendererComponent>(meshMgr.GetBuiltin("cube"));
+    // 加载 Datsun 280Z 车模（OBJ + 自动解析 MTL 材质：颜色/法线/自发光贴图）
+    Mesh *carMesh = Renderer::GetAssetManager().LoadMesh("models/car/source/Datsun_280Z.obj");
+    if (carMesh) {
+        auto car = m_Context->Scene->CreateEntity("Datsun_280Z");
+        car.GetComponent<TransformComponent>().Translation = {0.0f, 0.0f, 0.0f};
+        car.AddComponent<MeshRendererComponent>(carMesh);
+    } else {
+        GE_CORE_WARN("SceneLayer: 车模加载失败");
+    }
 }
 
 void SceneLayer::OnDetach() {

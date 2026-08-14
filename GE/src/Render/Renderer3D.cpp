@@ -163,8 +163,13 @@ void Renderer3D::SetSkybox(const std::string &filepath) {
     auto &device = Renderer::GetVulkanContext().GetDevice();
     auto &cache  = device.GetResourceCache();
 
+    // 先解析为绝对路径（相对资源根），Texture::LoadFromFile 用 stbi_load 直接读
+    // 文件，不会自动解析相对路径，必须在此转成绝对路径
+    const std::string resolved =
+        Renderer::GetAssetManager().ResolvePath(filepath).string();
+
     // 加载等距柱状投影纹理（Unorm 直接采样，与现有纹理一致；全屏图跳过 mipmap）
-    auto tex = Texture::LoadFromFile(device, cache, filepath,
+    auto tex = Texture::LoadFromFile(device, cache, resolved,
                                      vk::Format::eR8G8B8A8Unorm,
                                      vk::Filter::eLinear, vk::Filter::eLinear,
                                      /*generate_mipmaps*/ false);

@@ -64,7 +64,7 @@ public:
 
     // ---- Legacy mouse input (used internally; public in case you want raw control) ----
     // dx, dy in pixels (e.g. io.MouseDelta)
-    void OnMouseMove(float dx, float dy, bool left_down, bool middle_down);
+    void OnMouseMove(float dx, float dy, bool left_down, bool right_down);
     // dy: positive = scroll up, negative = scroll down (e.g. io.MouseWheel)
     void OnScroll(float dy);
 
@@ -114,7 +114,7 @@ private:
     float m_LastMouseX = 0.0f;
     float m_LastMouseY = 0.0f;
     bool m_LeftDown = false;
-    bool m_MiddleDown = false;
+    bool m_RightDown = false;
 };
 
 } // namespace GE

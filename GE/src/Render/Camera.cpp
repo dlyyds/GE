@@ -119,13 +119,13 @@ void Camera::SetOrbit(float theta_degrees, float phi_degrees, float distance) {
 
 // ---- Mouse input ----
 
-void Camera::OnMouseMove(float dx, float dy, bool left_down, bool middle_down) {
-    if (middle_down) {
+void Camera::OnMouseMove(float dx, float dy, bool left_down, bool right_down) {
+    if (right_down) {
         // Pan: move perpendicular to look direction
         glm::vec3 forward = GetForward();
         glm::vec3 right = glm::normalize(glm::cross(forward, glm::vec3(0.0f, 1.0f, 0.0f)));
         glm::vec3 up = glm::normalize(glm::cross(right, forward));
-        float pan_speed = 0.005f * (m_Mode == Mode::Orbit ? m_Distance : 1.0f);
+        float pan_speed = 0.002f * (m_Mode == Mode::Orbit ? m_Distance : 1.0f);
 
         if (m_Mode == Mode::FPS) {
             m_Position += right * (-dx * pan_speed) + up * (dy * pan_speed);
@@ -163,21 +163,21 @@ void Camera::OnEvent(Event &event) {
     EventDispatcher dispatcher(event);
 
     dispatcher.Dispatch<MouseMovedEvent>([this](MouseMovedEvent &e) {
-        OnMouseMove(e.GetX() - m_LastMouseX, e.GetY() - m_LastMouseY, m_LeftDown, m_MiddleDown);
+        OnMouseMove(e.GetX() - m_LastMouseX, e.GetY() - m_LastMouseY, m_LeftDown, m_RightDown);
         m_LastMouseX = e.GetX();
         m_LastMouseY = e.GetY();
         return false;
     });
 
     dispatcher.Dispatch<MouseButtonPressedEvent>([this](MouseButtonPressedEvent &e) {
-        if (e.GetMouseButton() == Mouse::ButtonLeft)   m_LeftDown = true;
-        if (e.GetMouseButton() == Mouse::ButtonMiddle) m_MiddleDown = true;
+        if (e.GetMouseButton() == Mouse::ButtonLeft)  m_LeftDown = true;
+        if (e.GetMouseButton() == Mouse::ButtonRight) m_RightDown = true;
         return false;
     });
 
     dispatcher.Dispatch<MouseButtonReleasedEvent>([this](MouseButtonReleasedEvent &e) {
-        if (e.GetMouseButton() == Mouse::ButtonLeft)   m_LeftDown = false;
-        if (e.GetMouseButton() == Mouse::ButtonMiddle) m_MiddleDown = false;
+        if (e.GetMouseButton() == Mouse::ButtonLeft)  m_LeftDown = false;
+        if (e.GetMouseButton() == Mouse::ButtonRight) m_RightDown = false;
         return false;
     });
 

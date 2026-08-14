@@ -23,7 +23,7 @@
 
 // 编译期开关：true = 启动时从代码程序化构建默认场景；false = 从 .scene 文件加载。
 // 无需代码路径时，编辑器默认从文件加载（false）。
-#define GE_EDITOR_BUILD_SCENE_FROM_CODE 1
+#define GE_EDITOR_BUILD_SCENE_FROM_CODE 0
 
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -76,6 +76,9 @@ void SceneLayer::BuildDefaultSceneFromCode() {
     // 环境光实体
     auto ambLight = m_Context->Scene->CreateEntity("AmbientLight");
     ambLight.AddComponent<AmbientLightComponent>(glm::vec4(0.15f, 0.15f, 0.15f, 1.0f));
+
+    // 天空盒（等距柱状投影全景图，作为场景背景）
+    ambLight.AddComponent<SkyboxComponent>("HDRI/DaySkyHDRI065B_4K/DaySkyHDRI065B.png");
 
     // 加载 Datsun 280Z 车模（OBJ + 自动解析 MTL 材质：颜色/法线/自发光贴图）
     Mesh *carMesh = Renderer::GetAssetManager().LoadMesh("models/car/source/Datsun_280Z.obj");

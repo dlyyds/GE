@@ -7,6 +7,7 @@
 #include "Core/Log.h"
 
 #include "Render/Renderer.h"
+#include "Render/AssetManager.h"
 #include "Render/VulkanBase/VulkanRenderingInfo.h"
 
 #include "GLFW/glfw3.h"
@@ -40,7 +41,8 @@ void ImGuiLayer::OnAttach() {
     ImFontConfig cfg;
     cfg.MergeMode = false;
     io.FontDefault = io.Fonts->AddFontFromFileTTF(
-        "assets/fonts/opensans/OpenSans-Regular.ttf", fontSize, &cfg);
+        Renderer::GetAssetManager().ResolvePath(AssetPaths::Fonts "/OpenSans-Regular.ttf").string().c_str(),
+        fontSize, &cfg);
 
     // 合并中文字体（微软雅黑）— 使中文标点和 CJK 字符能正确显示
     cfg.MergeMode = true;

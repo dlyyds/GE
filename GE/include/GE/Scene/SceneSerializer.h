@@ -37,8 +37,8 @@ class Material;
  * 使用方式：
  * @code
  *   SceneSerializer serializer(scene);
- *   serializer.Serialize("assets/scenes/test.scene");   // 保存
- *   serializer.Deserialize("assets/scenes/test.scene"); // 加载（会清空当前场景）
+ *   serializer.Serialize("scenes/test.scene");   // 保存（相对资源根，自动解析）
+ *   serializer.Deserialize("scenes/test.scene"); // 加载（会清空当前场景）
  * @endcode
  */
 class SceneSerializer {

@@ -3,6 +3,7 @@
 #include "GE/Core/Log.h"
 #include "GE/Utils/PlatformUtils.h"
 #include "GE/Render/Renderer.h"
+#include "GE/Render/AssetManager.h"
 #include "GE/Render/TextureManager.h"
 #include "GE/Render/MaterialManager.h"
 #include "GE/Render/MeshManager.h"
@@ -208,7 +209,7 @@ void ResourcePanel::DrawTextureCreationControls() {
                 "Image Files (*.png *.jpg *.jpeg *.bmp *.tga)\0"
                 "*.png;*.jpg;*.jpeg;*.bmp;*.tga\0"
                 "All Files (*.*)\0*.*\0");
-            if (!path.empty() && !texMgr.Load(path)) {
+            if (!path.empty() && !Renderer::GetAssetManager().LoadTexture(path)) {
                 GE_CORE_ERROR("纹理加载失败：{}", path);
             }
         }

@@ -7,6 +7,7 @@
 
 #include "Core/Log.h"
 #include "Render/Renderer.h"
+#include "Render/AssetManager.h"
 #include "Render/TextureManager.h"
 #include "Render/VulkanBase/VulkanCommandBuffer.h"
 #include "Render/VulkanBase/VulkanPipelineLayout.h"
@@ -35,12 +36,16 @@ Renderer2D::Renderer2D() {
     // ── 1. 通过全局资源缓存请求精灵着色器 ──────────────────────────────
     m_VertShader = &cache.RequestShaderModule(
         vk::ShaderStageFlagBits::eVertex,
-        ShaderSource("assets/shaders/glsl/sprite.vert.spv"),
+        ShaderSource(Renderer::GetAssetManager()
+                         .ResolvePath(AssetPaths::Shaders "/sprite.vert.spv")
+                         .string()),
         "main", ShaderVariant{});
 
     m_FragShader = &cache.RequestShaderModule(
         vk::ShaderStageFlagBits::eFragment,
-        ShaderSource("assets/shaders/glsl/sprite.frag.spv"),
+        ShaderSource(Renderer::GetAssetManager()
+                         .ResolvePath(AssetPaths::Shaders "/sprite.frag.spv")
+                         .string()),
         "main", ShaderVariant{});
 
     // ── 2. 请求 PipelineLayout ─────────────────────────────────────────

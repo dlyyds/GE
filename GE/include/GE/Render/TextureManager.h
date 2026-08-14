@@ -10,10 +10,13 @@
  *
  * 使用方式：
  * @code
+ *   // 推荐：经统一资源管理器自动解析路径
+ *   auto& am = Renderer::GetAssetManager();
+ *   Texture* tex = am.LoadTexture("textures/foo.png");
+ *   // 或直接访问子管理器（需传入已解析路径）
  *   auto& texMgr = Renderer::GetTextureManager();
- *   Texture* tex = texMgr.Load("assets/textures/foo.png");
- *   // 再次加载同路径，直接返回缓存
  *   Texture* tex2 = texMgr.Load("assets/textures/foo.png");
+ *   // 再次加载同路径，直接返回缓存
  *   assert(tex == tex2);
  * @endcode
  */

@@ -11,6 +11,7 @@
 #include "Core/Log.h"
 #include "Render/Texture.h"
 #include "Render/Renderer.h"
+#include "Render/AssetManager.h"
 #include "Render/TextureManager.h"
 #include "Render/VulkanBase/VulkanCommandBuffer.h"
 #include "Render/VulkanBase/VulkanPipelineLayout.h"
@@ -37,18 +38,24 @@ Renderer3D::Renderer3D() {
     // ── 1. 通过全局资源缓存请求网格着色器 ──────────────────────────────
     m_VertShader = &cache.RequestShaderModule(
         vk::ShaderStageFlagBits::eVertex,
-        ShaderSource("assets/shaders/glsl/mesh.vert.spv"),
+        ShaderSource(Renderer::GetAssetManager()
+                         .ResolvePath(AssetPaths::Shaders "/mesh.vert.spv")
+                         .string()),
         "main", ShaderVariant{});
 
     m_FragShader = &cache.RequestShaderModule(
         vk::ShaderStageFlagBits::eFragment,
-        ShaderSource("assets/shaders/glsl/mesh.frag.spv"),
+        ShaderSource(Renderer::GetAssetManager()
+                         .ResolvePath(AssetPaths::Shaders "/mesh.frag.spv")
+                         .string()),
         "main", ShaderVariant{});
 
     // PBR 片元着色器（Cook-Torrance）。与 Blinn-Phong 并行，由材质类型路由。
     m_FragShaderPBR = &cache.RequestShaderModule(
         vk::ShaderStageFlagBits::eFragment,
-        ShaderSource("assets/shaders/glsl/mesh_pbr.frag.spv"),
+        ShaderSource(Renderer::GetAssetManager()
+                         .ResolvePath(AssetPaths::Shaders "/mesh_pbr.frag.spv")
+                         .string()),
         "main", ShaderVariant{});
 
     // ── 3. 请求 PipelineLayout（通过反射自动构建） ─────────────────────

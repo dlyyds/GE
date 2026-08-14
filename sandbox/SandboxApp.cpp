@@ -3,6 +3,7 @@
 
 #include "Render/Renderer.h"
 #include "Render/Renderer3D.h"
+#include "Render/AssetManager.h"
 #include "Render/TextureManager.h"
 #include "Render/MeshManager.h"
 #include "Render/MaterialManager.h"
@@ -48,7 +49,8 @@ public:
         // 纹理：白色反照率让自发光对比更明显；棋盘格作自发光贴图；暖橙作纯色发光
         // （由全局 TextureManager 持有，不拥有）
         m_WhiteTex    = texMgr.GetSolidColor(glm::vec4(1.0f));
-        m_EmissiveTex = texMgr.Load("assets/textures/Checkerboard.png");
+        m_EmissiveTex = Renderer::GetAssetManager().LoadTexture(
+        AssetPaths::Textures "/Checkerboard.png");
         m_OrangeTex   = texMgr.GetSolidColor(glm::vec4(1.0f, 0.5f, 0.1f, 1.0f));
 
         // 材质注册到全局 MaterialManager（生命周期随 Renderer），

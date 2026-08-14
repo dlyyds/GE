@@ -16,6 +16,7 @@
 #include "Render/Mesh.h"
 #include "Render/Renderer.h"
 #include "Render/MeshManager.h"
+#include "Render/AssetManager.h"
 #include "Core/Log.h"
 #include "Render/MaterialManager.h"
 #include "Render/TextureManager.h"
@@ -240,7 +241,7 @@ Material *GetOrCreateMaterial(const YAML::Node &matNode) {
         std::string texKey = std::string(name) + "Texture";
         if (matNode[texKey]) {
             std::string path = matNode[texKey].as<std::string>("");
-            Texture *tex = Renderer::GetTextureManager().Load(path);
+            Texture *tex = Renderer::GetAssetManager().LoadTexture(path);
             if (tex) {
                 // 恢复采样器参数（若保存了）
                 ApplySamplerParams(tex, matNode[texKey + "Sampler"]);
@@ -613,7 +614,7 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
             // 纹理路径（如果有 Texture 字段，尝试加载）
             if (spriteNode["Texture"]) {
                 std::string texPath = spriteNode["Texture"].as<std::string>("");
-                src.SpriteTexture = Renderer::GetTextureManager().Load(texPath);
+                src.SpriteTexture = Renderer::GetAssetManager().LoadTexture(texPath);
                 // 恢复采样器参数（若保存了）
                 ApplySamplerParams(src.SpriteTexture, spriteNode["TextureSampler"]);
             }
@@ -629,7 +630,7 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
             // 网格路径（通过全局 MeshManager 加载 / 去重，Serializer 不持有所有权）
             if (meshNode["Mesh"]) {
                 std::string meshPath = meshNode["Mesh"].as<std::string>("");
-                mc.MeshPtr = Renderer::GetMeshManager().Load(meshPath);
+                mc.MeshPtr = Renderer::GetAssetManager().LoadMesh(meshPath);
             }
         }
 

@@ -85,7 +85,7 @@ namespace GE {
  *
  * 使用方式：
  * @code
- *   auto mesh = Mesh::LoadFromFile(device, "assets/meshes/cube.obj");
+ *   auto mesh = Mesh::LoadFromFile(device, "assets/models/cube.obj");
  *   if (mesh) {
  *       // 绑定顶点缓冲 + 索引缓冲并绘制
  *       vkCmdBindVertexBuffers(cmdBuf, 0, 1, &mesh->GetVertexBuffer().GetHandle(), &offset);

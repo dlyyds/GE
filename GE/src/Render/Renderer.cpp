@@ -1,6 +1,7 @@
 #include "Render/Renderer.h"
 #include "Render/Renderer2D.h"
 #include "Render/Renderer3D.h"
+#include "Render/AssetManager.h"
 #include "Render/TextureManager.h"
 #include "Render/MaterialManager.h"
 #include "Render/MeshManager.h"
@@ -38,12 +39,10 @@ Renderer::Renderer(Window &window)
     // 3. 准备 RenderContext（内部创建 RenderFrames，启用深度缓冲）
     m_RenderContext->Prepare(1, true);
 
-    // 4. 初始化纹理 / 材质 / 网格管理器（在渲染器之前，渲染器可能依赖它们）
+    // 4. 初始化统一资源管理器（在渲染器之前，渲染器可能依赖它）
     auto &device    = m_VulkanContext->GetDevice();
     auto &resCache  = device.GetResourceCache();
-    m_TextureManager = std::make_unique<TextureManager>(device, resCache);
-    m_MaterialManager = std::make_unique<MaterialManager>();
-    m_MeshManager = std::make_unique<MeshManager>(device);
+    m_AssetManager = std::make_unique<AssetManager>(device, resCache);
 
     // 5. 初始化 2D 精灵渲染器
     m_2DRenderer = std::make_unique<Renderer2D>();
@@ -61,9 +60,7 @@ Renderer::~Renderer() {
     // 2. 按构造逆序销毁
     m_3DRenderer.reset();
     m_2DRenderer.reset();
-    m_MaterialManager.reset();
-    m_TextureManager.reset();
-    m_MeshManager.reset();
+    m_AssetManager.reset();
     m_ActiveFrameCmd = nullptr; // 仅为观察指针，实际由 RenderContext 所有
     m_RenderContext.reset();
     m_VulkanContext.reset();
@@ -217,19 +214,21 @@ Renderer3D &Renderer::Get3DRenderer() {
     return *Get().m_3DRenderer;
 }
 
+AssetManager &Renderer::GetAssetManager() {
+    GE_CORE_ASSERT(Get().m_AssetManager, "AssetManager not initialized!");
+    return *Get().m_AssetManager;
+}
+
 TextureManager &Renderer::GetTextureManager() {
-    GE_CORE_ASSERT(Get().m_TextureManager, "TextureManager not initialized!");
-    return *Get().m_TextureManager;
+    return GetAssetManager().GetTextureManager();
 }
 
 MaterialManager &Renderer::GetMaterialManager() {
-    GE_CORE_ASSERT(Get().m_MaterialManager, "MaterialManager not initialized!");
-    return *Get().m_MaterialManager;
+    return GetAssetManager().GetMaterialManager();
 }
 
 MeshManager &Renderer::GetMeshManager() {
-    GE_CORE_ASSERT(Get().m_MeshManager, "MeshManager not initialized!");
-    return *Get().m_MeshManager;
+    return GetAssetManager().GetMeshManager();
 }
 
 const RendererStats &Renderer::GetStats() {

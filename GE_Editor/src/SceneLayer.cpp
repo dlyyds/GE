@@ -8,6 +8,7 @@
 #include "GE/Core/Application.h"
 #include "GE/Events/MouseEvent.h"
 #include "GE/Render/Renderer.h"
+#include "GE/Render/AssetManager.h"
 #include "GE/Render/MeshManager.h"
 #include "GE/Render/TextureManager.h"
 #include "GE/Render/MaterialManager.h"
@@ -25,7 +26,7 @@
 
 // 编译期开关：true = 启动时从代码程序化构建默认场景；false = 从 .scene 文件加载。
 // 无需代码路径时，编辑器默认从文件加载（false）。
-#define GE_EDITOR_BUILD_SCENE_FROM_CODE 1
+#define GE_EDITOR_BUILD_SCENE_FROM_CODE 0
 
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -41,11 +42,13 @@ void SceneLayer::OnAttach() {
     // 从代码程序化构建默认场景（网格/纹理/材质由全局管理器持有）
     BuildDefaultSceneFromCode();
 #else
-    constexpr const char *kDefaultScene = "assets/scenes/2.scene";
+    constexpr const char *kDefaultScene = AssetPaths::Scenes "/2.scene";
 
     // 从文件加载默认场景（网格/纹理/材质由全局管理器加载持有）
-    if (!LoadSceneFromFile(kDefaultScene)) {
-        GE_CORE_WARN("SceneLayer: 启动加载默认场景失败: {0}", kDefaultScene);
+    const std::string defaultScenePath =
+        Renderer::GetAssetManager().ResolvePath(kDefaultScene).string();
+    if (!LoadSceneFromFile(defaultScenePath)) {
+        GE_CORE_WARN("SceneLayer: 启动加载默认场景失败: {0}", defaultScenePath);
     }
 #endif
 }
@@ -99,7 +102,7 @@ void SceneLayer::BuildDefaultSceneFromCode() {
     Entity sphere = m_Context->Scene->CreateEntity("PBR_Sphere");
     auto &tc = sphere.GetComponent<TransformComponent>();
     tc.Translation = {0.0f, 0.5f, 0.0f};
-    tc.Scale       = {1.0f, 1.0f, 1.0f};
+    tc.Scale = {1.0f, 1.0f, 1.0f};
     sphere.AddComponent<MeshComponent>(meshMgr.GetBuiltin("sphere"));
     sphere.AddComponent<MaterialComponent>(matPBR);
 
@@ -116,11 +119,11 @@ void SceneLayer::BuildDefaultSceneFromCode() {
     // 光穹（Light Dome）：在球周围半球铺一圈点光源，金属球反射出高光阵列，
     // 显出"金属"感（金属无漫反射，只能靠反射光源显形）。灯本身不挂 mesh，
     // 从其反射即可看到位置。这是没有环境贴图(IBL)时展示金属球的标准做法。
-    const int   domeRings    = 4;                       // 仰角环数
-    const int   domePerRing  = 8;                       // 每环灯数
-    const float domeRadius   = 2.8f;                    // 穹顶半径
-    const float domeMinElev  = 15.0f;                   // 最低仰角（度）
-    const float domeMaxElev  = 85.0f;                   // 最高仰角
+    const int domeRings = 4; // 仰角环数
+    const int domePerRing = 8; // 每环灯数
+    const float domeRadius = 2.8f; // 穹顶半径
+    const float domeMinElev = 15.0f; // 最低仰角（度）
+    const float domeMaxElev = 85.0f; // 最高仰角
     for (int r = 0; r < domeRings; ++r) {
         float elev = glm::radians(domeMaxElev - (domeMaxElev - domeMinElev) * r / (domeRings - 1));
         for (int k = 0; k < domePerRing; ++k) {

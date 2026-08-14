@@ -10,6 +10,7 @@ namespace GE {
 class Window;
 class Renderer2D;
 class Renderer3D;
+class AssetManager;
 class TextureManager;
 class MaterialManager;
 class MeshManager;
@@ -122,6 +123,9 @@ public:
     /// 访问 3D 网格渲染器。
     static Renderer3D &Get3DRenderer();
 
+    /// 访问统一资源管理器。
+    static AssetManager &GetAssetManager();
+
     /// 访问纹理管理器。
     static TextureManager &GetTextureManager();
 
@@ -159,14 +163,8 @@ private:
     /// 3D 网格渲染器。
     std::unique_ptr<Renderer3D> m_3DRenderer;
 
-    /// 全局纹理管理器（按路径去重缓存）。
-    std::unique_ptr<TextureManager> m_TextureManager;
-
-    /// 全局材质管理器（按名称去重缓存）。
-    std::unique_ptr<MaterialManager> m_MaterialManager;
-
-    /// 全局网格管理器（按路径去重缓存）。
-    std::unique_ptr<MeshManager> m_MeshManager;
+    /// 全局资源管理器（持有纹理 / 材质 / 网格子管理器 + 资源根路径）。
+    std::unique_ptr<AssetManager> m_AssetManager;
 
     /// 窗口引用。
     Window &m_Window;

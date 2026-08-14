@@ -14,9 +14,9 @@
  * @code
  *   auto& meshMgr = Renderer::GetMeshManager();
  *   Mesh* cube = meshMgr.GetBuiltin("cube");          // 内置几何体
- *   Mesh* model = meshMgr.Load("assets/meshes/foo.obj"); // 文件模型
+ *   Mesh* model = Renderer::GetAssetManager().LoadMesh("models/foo.obj"); // 文件模型
  *   // 再次加载同路径，直接返回缓存
- *   assert(meshMgr.Load("assets/meshes/foo.obj") == model);
+ *   assert(Renderer::GetAssetManager().LoadMesh("models/foo.obj") == model);
  * @endcode
  */
 

@@ -95,7 +95,7 @@ Scene:
         Color: [0.3019608, 0.3019608, 0.34901962, 1]
       Skybox:
         Enabled: true
-        TexturePath: HDRI\DaySkyHDRI065B_4K\DaySkyHDRI065B.png
+        TexturePath: HDRI\DaySkyHDRI065B_4K\DaySkyHDRI065B_4K_TONEMAPPED.jpg
     - Name: PhysicsFloor
       Transform:
         Translation: [0, -3, 0]

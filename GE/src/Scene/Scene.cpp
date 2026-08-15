@@ -182,36 +182,44 @@ void Scene::OnUpdate3D(Timestep ts,
         }
     }
 
-    // ── 天空盒：取场景中第一个 SkyboxComponent，驱动渲染器 ─────────────
-    //    纹理路径变化时才重新加载（避免每帧重复加载），否则仅切换开关。
+    // ── 环境：取场景中第一个 EnvironmentComponent，驱动天空盒 + IBL ──
+    //    天空盒与 IBL 来自同一环境，按环境名推导路径；环境名变化时重建 IBL。
     {
-        auto skyboxView = m_Registry.view<SkyboxComponent>();
-        if (skyboxView.begin() != skyboxView.end()
-            && skyboxView.get<SkyboxComponent>(*skyboxView.begin()).Enabled) {
-            const auto &sc = skyboxView.get<SkyboxComponent>(*skyboxView.begin());
-            if (r3d.GetSkyboxPath() != sc.TexturePath) {
-                r3d.SetSkybox(sc.TexturePath);
-            }
-        } else {
-            // 无天空盒组件或已禁用：关闭天空盒
-            r3d.SetSkyboxEnabled(false);
-        }
-    }
-
-    // ── 环境映射（IBL）：加载默认环境图（仅首次，避免每帧重建）────
-    //    环境固定不运行时切换，这里用硬编码默认烘焙产物；后续可扩展为场景序列化。
-    if (!r3d.HasEnvironmentMap()) {
         auto &dev = Renderer::GetVulkanContext().GetDevice();
         auto &cache = dev.GetResourceCache();
         auto &am = Renderer::GetAssetManager();
-        auto env = EnvironmentMap::LoadFromFiles(
-            dev, cache,
-            am.ResolvePath("environments/DaySkyHDRI065B/prefilter.ktx").string(),
-            am.ResolvePath("environments/brdf_lut.png").string());
-        if (env) {
-            r3d.SetEnvironmentMap(env.release());
+
+        auto envView = m_Registry.view<EnvironmentComponent>();
+        if (envView.begin() != envView.end()) {
+            const auto &ec = envView.front();
+            const std::string envDir = "environments/" + ec.Name + "/";
+
+            // 天空盒背景：路径（环境）变化时才重新加载，否则仅切换开关。
+            if (ec.SkyboxEnabled) {
+                const std::string skyPath = envDir + "skybox.ktx2";
+                if (r3d.GetSkyboxPath() != skyPath) {
+                    r3d.SetSkybox(skyPath);
+                }
+            } else {
+                r3d.SetSkyboxEnabled(false);
+            }
+
+            // IBL 环境光：环境名变化时重建（支持序列化的环境切换）。
+            if (m_EnvironmentName != ec.Name) {
+                auto env = EnvironmentMap::LoadFromFiles(
+                    dev, cache,
+                    am.ResolvePath(envDir + "prefilter.ktx").string(),
+                    am.ResolvePath("environments/brdf_lut.png").string());
+                if (env) {
+                    r3d.SetEnvironmentMap(env.release());
+                    m_EnvironmentName = ec.Name;
+                } else {
+                    GE_CORE_WARN("Scene: 环境映射加载失败，PBR 回退常量环境光");
+                }
+            }
         } else {
-            GE_CORE_WARN("Scene: 环境映射加载失败，PBR 回退常量环境光");
+            // 无环境组件：关闭天空盒
+            r3d.SetSkyboxEnabled(false);
         }
     }
 
@@ -483,10 +491,6 @@ void Scene::OnComponentAdded<DirectionalLightComponent>(Entity entity, Direction
 
 template <>
 void Scene::OnComponentAdded<AmbientLightComponent>(Entity entity, AmbientLightComponent &component) {
-}
-
-template <>
-void Scene::OnComponentAdded<SkyboxComponent>(Entity entity, SkyboxComponent &component) {
 }
 
 template <>

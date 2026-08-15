@@ -77,8 +77,8 @@ void SceneLayer::BuildDefaultSceneFromCode() {
     auto ambLight = m_Context->Scene->CreateEntity("AmbientLight");
     ambLight.AddComponent<AmbientLightComponent>(glm::vec4(0.15f, 0.15f, 0.15f, 1.0f));
 
-    // 天空盒（等距柱状投影全景图，作为场景背景）
-    ambLight.AddComponent<SkyboxComponent>("HDRI/DaySkyHDRI065B_4K/DaySkyHDRI065B_4K_TONEMAPPED.jpg");
+    // 环境（天空盒背景 + IBL 环境光，统一由环境名推导）
+    ambLight.AddComponent<EnvironmentComponent>("DaySkyHDRI065B");
 
     // 加载 Datsun 280Z 车模（OBJ + 自动解析 MTL 材质：颜色/法线/自发光贴图）
     Mesh *carMesh = Renderer::GetAssetManager().LoadMesh("models/car/source/Datsun_280Z.obj");

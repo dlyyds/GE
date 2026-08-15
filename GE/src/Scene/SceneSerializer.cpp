@@ -443,12 +443,12 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
             lightNode["Color"] = SerializeVec4(alc.Color);
         }
 
-        // ---- SkyboxComponent ----
-        if (entity.HasComponent<SkyboxComponent>()) {
-            const auto &sc = entity.GetComponent<SkyboxComponent>();
-            YAML::Node skyNode = entityNode["Skybox"];
-            skyNode["Enabled"] = sc.Enabled;
-            skyNode["TexturePath"] = sc.TexturePath;
+        // ---- EnvironmentComponent ----
+        if (entity.HasComponent<EnvironmentComponent>()) {
+            const auto &ec = entity.GetComponent<EnvironmentComponent>();
+            YAML::Node envNode = entityNode["Environment"];
+            envNode["Name"] = ec.Name;
+            envNode["SkyboxEnabled"] = ec.SkyboxEnabled;
         }
 
         // ---- RigidBodyComponent ----
@@ -688,13 +688,13 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
             alc.Color = DeserializeVec4(lightNode["Color"], {0.3f, 0.3f, 0.3f, 1.0f});
         }
 
-        // ---- SkyboxComponent ----
-        if (entityNode["Skybox"]) {
-            YAML::Node skyNode = entityNode["Skybox"];
-            auto &sc = entity.AddComponent<SkyboxComponent>();
+        // ---- EnvironmentComponent ----
+        if (entityNode["Environment"]) {
+            YAML::Node envNode = entityNode["Environment"];
+            auto &ec = entity.AddComponent<EnvironmentComponent>();
 
-            sc.Enabled = skyNode["Enabled"] ? skyNode["Enabled"].as<bool>(true) : true;
-            sc.TexturePath = skyNode["TexturePath"] ? skyNode["TexturePath"].as<std::string>() : std::string();
+            ec.Name = envNode["Name"] ? envNode["Name"].as<std::string>() : std::string();
+            ec.SkyboxEnabled = envNode["SkyboxEnabled"] ? envNode["SkyboxEnabled"].as<bool>(true) : true;
         }
 
         // ---- RigidBodyComponent ----

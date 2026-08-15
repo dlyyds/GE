@@ -318,28 +318,29 @@ struct AmbientLightComponent {
 
 
 /**
- * @brief 天空盒组件 —— 场景的背景天空盒（等距柱状投影全景图）。
+ * @brief 环境组件 —— 统一管理场景的环境（天空盒背景 + IBL 环境光）。
  *
- * 天空盒是场景级属性（不依赖实体的 Transform），取场景中第一个 SkyboxComponent
- * 作为背景。TexturePath 为等距柱状投影全景图路径（相对资源根），由 Renderer3D
- * 加载并持有纹理；Enabled 为运行时开关。
+ * 天空盒与 IBL 环境光来自同一 HDRI 源，应天然一致，故用一个组件承载。
+ * Name 为环境名，对应 assets/environments/<Name>/ 子文件夹；Scene 按命名
+ * 约定推导三张图（prefilter 用于 IBL、skybox 用于背景、brdf_lut 共享）。
  *
- * 由 Scene 在渲染前读取，调用 Renderer3D::SetSkybox / SetSkyboxEnabled 驱动。
- * 可随场景序列化（路径 + 开关）。
+ * 环境是场景级属性（不依赖实体的 Transform），取场景中第一个 EnvironmentComponent
+ * 作为环境。由 Scene 在渲染前读取，调用 Renderer3D::SetSkybox /
+ * SetEnvironmentMap 驱动。可随场景序列化（环境名 + 天空盒开关）。
  */
-struct SkyboxComponent {
-    bool Enabled = true;            ///< 是否启用天空盒
-    std::string TexturePath;        ///< 等距柱状投影全景图路径（相对资源根）
+struct EnvironmentComponent {
+    std::string Name;               ///< 环境名，对应 environments/<Name>/ 子文件夹
+    bool SkyboxEnabled = true;      ///< 是否渲染天空盒背景
 
-    SkyboxComponent() = default;
+    EnvironmentComponent() = default;
 
-    SkyboxComponent(const SkyboxComponent &) = default;
+    EnvironmentComponent(const EnvironmentComponent &) = default;
 
     /**
-     * @brief 指定全景图路径的构造函数。
+     * @brief 指定环境名的构造函数。
      */
-    explicit SkyboxComponent(std::string path)
-        : TexturePath(std::move(path)) {
+    explicit EnvironmentComponent(std::string name)
+        : Name(std::move(name)) {
     }
 };
 

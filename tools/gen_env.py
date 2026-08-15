@@ -42,9 +42,18 @@ FACE_ORDER = ["px", "nx", "py", "ny", "pz", "nz"]
 
 
 def run(cmd):
-    """执行外部命令，失败即抛错。"""
+    """执行外部命令，失败即抛错。
+
+    捕获 stdout/stderr 而非直通终端：cmgen 的进度条用 \\r + ANSI 转义刷新，
+    在 cmd.exe 等终端会显示成一堆 '?' 刷屏。这里吞掉正常输出，仅在失败时
+    回显错误，保证脚本输出干净。
+    """
     print("  $ " + " ".join(str(c) for c in cmd))
-    subprocess.run(cmd, check=True)
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        sys.stderr.write(result.stdout)
+        sys.stderr.write(result.stderr)
+        raise RuntimeError(f"命令失败 (exit {result.returncode}): {cmd[0]}")
 
 
 def generate_skybox(env_root, source, tmp, size):

@@ -22,12 +22,11 @@ layout (set = 0, binding = 1) uniform samplerCube uSkybox;
 layout (location = 0) in vec2 inUV;
 layout (location = 0) out vec4 outColor;
 
-// 曝光参数：把 HDR 天空的中位数亮度抬到中间调，让太阳自然过曝成亮白点。
-// 该环境图天空大部分在 0.1~0.9（P50≈0.26），太阳高达 5.7e4，需少量曝光增益。
-const float kExposure = 2.5;
+// 曝光参数：把天空抬到舒适亮度，同时避免过度漂白。
+// 该环境图天空大部分在 0.1~0.9（P50≈0.26），太阳高达 5.7e4。
+const float kExposure = 1.5;
 
-// ACES filmic tonemap（Narkowicz 近似）：高对比、保饱和，接近 Blender 的 Filmic。
-// 相比 Reinhard（x/(x+1)）能更好保留中高光的色调，避免天空被压成灰白。
+// ACES filmic tonemap（Narkowicz 近似）：高对比，接近 Blender 的 Filmic。
 vec3 acesFilmic(vec3 x) {
     const float a = 2.51, b = 0.03, c = 2.43, d = 0.59, e = 0.14;
     return clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0, 1.0);
@@ -49,6 +48,11 @@ void main()
     color *= kExposure;
     color = acesFilmic(color);
     color = pow(color, vec3(1.0 / 2.2));
+
+    // 饱和度恢复：ACES/tonemap 压缩动态范围时会降低饱和度（漂白成灰），
+    // 用 luma 插值补回饱和度，让蓝色天空保持蓝（mix 系数 >1 提饱和）。
+    float luma = dot(color, vec3(0.2126, 0.7152, 0.0722));
+    color = mix(vec3(luma), color, 1.25);
 
     outColor = vec4(color, 1.0);
 }

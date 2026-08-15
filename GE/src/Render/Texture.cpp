@@ -95,7 +95,7 @@ std::unique_ptr<Texture> Texture::LoadCubeMapFromFile(
     // RAII 哨兵：函数结束自动释放 ktx 对象
     struct KtxGuard {
         ktxTexture2 *tex;
-        ~KtxGuard() { if (tex) ktxTexture_Destroy(tex); }
+        ~KtxGuard() { if (tex) ktxTexture2_Destroy(tex); }
     } guard{ktex};
 
     // 2. 校验：必须是 6 面 cubemap
@@ -132,7 +132,7 @@ std::unique_ptr<Texture> Texture::LoadCubeMapFromFile(
     // 逐 face 拷贝，bufferOffset 按 level 基址 + face 偏移计算。
     vk::DeviceSize levelByteOffset = 0;
     for (uint32_t l = 0; l < levels; l++) {
-        vk::DeviceSize faceSize = ktxTexture_GetImageSize(ktex, l);
+        vk::DeviceSize faceSize = ktxTexture2_GetImageSize(ktex, l);
         uint32_t lvlW = std::max(1u, width >> l);
         uint32_t lvlH = std::max(1u, height >> l);
 

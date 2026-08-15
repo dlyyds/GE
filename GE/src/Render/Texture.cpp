@@ -10,6 +10,8 @@
 
 #include "stb_image.h"
 
+#include <ktx.h>
+
 #include <vulkan/vulkan.hpp>
 #include <algorithm>  // std::max
 
@@ -74,6 +76,102 @@ std::unique_ptr<Texture> Texture::LoadFromFile(
 }
 
 // ============================================================================
+// 工厂方法：LoadCubeMapFromFile
+// ============================================================================
+
+std::unique_ptr<Texture> Texture::LoadCubeMapFromFile(
+    VulkanDevice &device,
+    VulkanResourceCache &cache,
+    const std::string &filepath)
+{
+    // 1. 用 libktx 读取 KTX2 文件（含像素数据）
+    ktxTexture2 *ktex = nullptr;
+    KTX_error_code kErr = ktxTexture2_CreateFromNamedFile(
+        filepath.c_str(), KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT, &ktex);
+    if (kErr != KTX_SUCCESS) {
+        GE_CORE_ERROR("无法加载 cubemap ktx: {0} ({1})", filepath, ktxErrorString(kErr));
+        return nullptr;
+    }
+    // RAII 哨兵：函数结束自动释放 ktx 对象
+    struct KtxGuard {
+        ktxTexture2 *tex;
+        ~KtxGuard() { if (tex) ktxTexture_Destroy(tex); }
+    } guard{ktex};
+
+    // 2. 校验：必须是 6 面 cubemap
+    if (ktex->numFaces != 6) {
+        GE_CORE_ERROR("不是 cubemap（faces={0}）: {1}", ktex->numFaces, filepath);
+        return nullptr;
+    }
+
+    vk::Format format   = static_cast<vk::Format>(ktex->vkFormat);
+    uint32_t    width   = ktex->baseWidth;
+    uint32_t    height  = ktex->baseHeight;
+    uint32_t    levels  = std::max(1u, static_cast<uint32_t>(ktex->numLevels));
+    constexpr uint32_t kFaces = 6;
+
+    // 3. 创建 6 层 cubemap 图像（eCubeCompatible）
+    auto texture = std::unique_ptr<Texture>(new Texture(
+        device, vk::Extent3D{width, height, 1}, format, {}, levels, kFaces, true));
+
+    // 4. 整块拷贝到 staging buffer，再逐 (level, face) 上传
+    auto &graphicsQueue = device.GetQueueByFlags(vk::QueueFlagBits::eGraphics, 0);
+    vk::Queue gfxQueue = graphicsQueue.GetHandle();
+    auto &uploadCmd = device.RequestCommandBuffer(vk::CommandBufferLevel::ePrimary, true);
+
+    auto stagingBuffer = VulkanBuffer::create_staging_buffer(
+        device, static_cast<vk::DeviceSize>(ktex->dataSize), ktex->pData);
+
+    // 布局转换：UNDEFINED -> TRANSFER_DST（全 mip × 6 layer）
+    image_utils::TransitionLayout(uploadCmd.GetHandle(), texture->m_Image->GetHandle(),
+                                  vk::ImageLayout::eUndefined,
+                                  vk::ImageLayout::eTransferDstOptimal,
+                                  0, levels, 0, kFaces);
+
+    // KTX2 数据为 level-major：每 level 内 6 个 face 连续排列。
+    // 逐 face 拷贝，bufferOffset 按 level 基址 + face 偏移计算。
+    vk::DeviceSize levelByteOffset = 0;
+    for (uint32_t l = 0; l < levels; l++) {
+        vk::DeviceSize faceSize = ktxTexture_GetImageSize(ktex, l);
+        uint32_t lvlW = std::max(1u, width >> l);
+        uint32_t lvlH = std::max(1u, height >> l);
+
+        for (uint32_t f = 0; f < kFaces; f++) {
+            vk::BufferImageCopy copyRegion{};
+            copyRegion.bufferOffset              = levelByteOffset + f * faceSize;
+            copyRegion.bufferRowLength           = 0;
+            copyRegion.bufferImageHeight         = 0;
+            copyRegion.imageSubresource.aspectMask     = vk::ImageAspectFlagBits::eColor;
+            copyRegion.imageSubresource.mipLevel       = l;
+            copyRegion.imageSubresource.baseArrayLayer = f;
+            copyRegion.imageSubresource.layerCount     = 1;
+            copyRegion.imageOffset               = vk::Offset3D{0, 0, 0};
+            copyRegion.imageExtent               = vk::Extent3D{lvlW, lvlH, 1};
+
+            uploadCmd.GetHandle().copyBufferToImage(
+                stagingBuffer.GetHandle(), texture->m_Image->GetHandle(),
+                vk::ImageLayout::eTransferDstOptimal, copyRegion);
+        }
+        levelByteOffset += static_cast<vk::DeviceSize>(kFaces) * faceSize;
+    }
+
+    // 布局转换：TRANSFER_DST -> SHADER_READ_ONLY（全 mip × 6 layer）
+    image_utils::TransitionLayout(uploadCmd.GetHandle(), texture->m_Image->GetHandle(),
+                                  vk::ImageLayout::eTransferDstOptimal,
+                                  vk::ImageLayout::eShaderReadOnlyOptimal,
+                                  0, levels, 0, kFaces);
+
+    uploadCmd.End();
+    device.FlushCommandBuffer(uploadCmd, gfxQueue);
+
+    // 5. 创建 eCube 视图 + 请求 sampler（cubemap 自动用 ClampToEdge）
+    texture->CreateViewAndSampler(device, cache, vk::Filter::eLinear, vk::Filter::eLinear);
+    texture->m_FilePath = filepath;
+
+    return texture;
+}
+
+// ============================================================================
 // 工厂方法：LoadFromMemory
 // ============================================================================
 
@@ -110,8 +208,20 @@ Texture::Texture(VulkanDevice &device,
                  vk::Format format,
                  vk::ImageUsageFlags extra_usage,
                  uint32_t mip_levels)
+    : Texture(device, extent, format, extra_usage, mip_levels, 1, false)
+{
+}
+
+Texture::Texture(VulkanDevice &device,
+                 vk::Extent3D extent,
+                 vk::Format format,
+                 vk::ImageUsageFlags extra_usage,
+                 uint32_t mip_levels,
+                 uint32_t array_layers,
+                 bool cube_map)
     : m_Format(format)
     , m_Extent(extent)
+    , m_IsCubeMap(cube_map)
 {
     // 基础用法：传输目标 + 可采样
     vk::ImageUsageFlags usage = vk::ImageUsageFlagBits::eTransferDst
@@ -123,10 +233,15 @@ Texture::Texture(VulkanDevice &device,
         usage |= vk::ImageUsageFlagBits::eTransferSrc;
     }
 
+    vk::ImageCreateFlags flags = cube_map ? vk::ImageCreateFlagBits::eCubeCompatible
+                                          : vk::ImageCreateFlagBits{};
+
     VulkanImageBuilder builder(extent);
     builder.with_format(format)
            .with_usage(usage)
-           .with_mip_levels(mip_levels);
+           .with_mip_levels(mip_levels)
+           .with_array_layers(array_layers)
+           .with_flags(flags);
 
     m_Image = std::make_unique<VulkanImage>(device, builder);
 }
@@ -147,6 +262,7 @@ Texture::Texture(Texture &&other) noexcept
     , m_Sampler(other.m_Sampler)
     , m_Format(other.m_Format)
     , m_Extent(other.m_Extent)
+    , m_IsCubeMap(other.m_IsCubeMap)
     , m_SamplerCache(other.m_SamplerCache)
     , m_MagFilter(other.m_MagFilter)
     , m_MinFilter(other.m_MinFilter)
@@ -375,10 +491,12 @@ void Texture::CreateViewAndSampler(VulkanDevice &device,
                                    vk::Filter mag_filter,
                                    vk::Filter min_filter)
 {
-    // 创建 ImageView
+    // 创建 ImageView：cubemap 用 eCube 视图，普通纹理用 e2D
+    vk::ImageViewType viewType = m_IsCubeMap ? vk::ImageViewType::eCube
+                                             : vk::ImageViewType::e2D;
     m_ImageView = std::make_unique<VulkanImageView>(
         *m_Image,
-        vk::ImageViewType::e2D,
+        viewType,
         m_Format);
 
     // 查询设备支持的最大各向异性级别
@@ -391,9 +509,13 @@ void Texture::CreateViewAndSampler(VulkanDevice &device,
     m_MagFilter          = mag_filter;
     m_MinFilter          = min_filter;
     m_MipmapMode         = vk::SamplerMipmapMode::eLinear;
-    m_AddressU           = vk::SamplerAddressMode::eRepeat;
-    m_AddressV           = vk::SamplerAddressMode::eRepeat;
-    m_AddressW           = vk::SamplerAddressMode::eRepeat;
+    // cubemap 不允许 Repeat 寻址，统一用 ClampToEdge（越界采样边缘）
+    vk::SamplerAddressMode addressMode = m_IsCubeMap
+                                             ? vk::SamplerAddressMode::eClampToEdge
+                                             : vk::SamplerAddressMode::eRepeat;
+    m_AddressU = addressMode;
+    m_AddressV = addressMode;
+    m_AddressW = addressMode;
     m_AnisotropyEnabled  = (enableAnisotropy == VK_TRUE);
     m_MaxAnisotropy      = maxAnisotropy;
 

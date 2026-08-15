@@ -231,7 +231,8 @@ vk::ImageView CreateView(vk::Device device, vk::Image image,
 
 void TransitionLayout(vk::CommandBuffer cmd, vk::Image image,
                       vk::ImageLayout old_layout, vk::ImageLayout new_layout,
-                      uint32_t baseMipLevel, uint32_t levelCount)
+                      uint32_t baseMipLevel, uint32_t levelCount,
+                      uint32_t baseArrayLayer, uint32_t layerCount)
 {
 	struct Transition
 	{
@@ -316,8 +317,8 @@ void TransitionLayout(vk::CommandBuffer cmd, vk::Image image,
 	    .subresourceRange = {.aspectMask     = aspectMask,
 	                         .baseMipLevel   = baseMipLevel,
 	                         .levelCount     = levelCount,
-	                         .baseArrayLayer = 0,
-	                         .layerCount     = 1},
+	                         .baseArrayLayer = baseArrayLayer,
+	                         .layerCount     = layerCount},
 	};
 
 	vk::DependencyInfo dep_info{

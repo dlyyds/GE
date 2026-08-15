@@ -115,6 +115,23 @@ public:
         vk::Filter min_filter = vk::Filter::eLinear,
         bool generate_mipmaps = true);
 
+    /**
+     * @brief 从 KTX2 文件加载 cubemap 纹理（6 面，eCube 视图）。
+     *
+     * 用 libktx 读取 `.ktx` 数据，创建 6 层 cubemap 图像（eCubeCompatible）并
+     * 逐 (level, face) 上传，最终建立 eCube ImageView。供天空盒 / IBL 环境图
+     * 等 cubemap 资源使用。
+     *
+     * @param device    Vulkan 设备
+     * @param cache     全局资源缓存（用于 Sampler 去重）
+     * @param filepath  KTX2 文件路径（须为 6 面 cubemap）
+     * @return std::unique_ptr<Texture>  失败时返回 nullptr
+     */
+    static std::unique_ptr<Texture> LoadCubeMapFromFile(
+        VulkanDevice &device,
+        VulkanResourceCache &cache,
+        const std::string &filepath);
+
     // ========================================================================
     // 直接构造（空白纹理，不传数据）
     // ========================================================================
@@ -141,6 +158,25 @@ public:
             vk::Format format,
             vk::ImageUsageFlags extra_usage = {},
             uint32_t mip_levels = 1);
+
+private:
+    /**
+     * @brief 内部构造：创建支持 cubemap 的空白纹理图像。
+     *
+     * @param array_layers  数组层数（cubemap 为 6，普通 2D 为 1）
+     * @param cube_map      是否为 cubemap（true 时设置 eCubeCompatible 标志）
+     *
+     * 公开的无参构造委托给本构造（array_layers=1, cube_map=false）。
+     */
+    Texture(VulkanDevice &device,
+            vk::Extent3D extent,
+            vk::Format format,
+            vk::ImageUsageFlags extra_usage,
+            uint32_t mip_levels,
+            uint32_t array_layers,
+            bool cube_map);
+
+public:
 
     /**
      * @brief 生成 mipmap 链（使用 blit + 线性过滤）。
@@ -298,6 +334,7 @@ private:
     VulkanSampler                   *m_Sampler = nullptr; // 由 VulkanResourceCache 管理
     vk::Format                       m_Format  = vk::Format::eR8G8B8A8Unorm;
     vk::Extent3D                     m_Extent{};
+    bool                             m_IsCubeMap = false; ///< 是否为 cubemap（true 时建 eCube 视图）
     std::string                      m_FilePath; ///< 源文件路径（LoadFromFile 时有值）
 
     // 采样器配置（便捷方法用）：记录当前参数，便于按同样参数重建采样器

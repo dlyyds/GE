@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <bit>
+#include <filesystem>
 
 #include <glm/gtc/matrix_inverse.hpp> // glm::inverse（矩阵求逆）
 
@@ -163,23 +164,29 @@ void Renderer3D::SetSkybox(const std::string &filepath) {
     auto &device = Renderer::GetVulkanContext().GetDevice();
     auto &cache  = device.GetResourceCache();
 
-    // 先解析为绝对路径（相对资源根），Texture::LoadFromFile 用 stbi_load 直接读
+    // 先解析为绝对路径（相对资源根），Texture 加载用文件 IO 直接读
     // 文件，不会自动解析相对路径，必须在此转成绝对路径
     const std::string resolved =
         Renderer::GetAssetManager().ResolvePath(filepath).string();
 
-    // 加载等距柱状投影纹理（Unorm 直接采样，与现有纹理一致；全屏图跳过 mipmap）
-    auto tex = Texture::LoadFromFile(device, cache, resolved,
-                                     vk::Format::eR8G8B8A8Unorm,
-                                     vk::Filter::eLinear, vk::Filter::eLinear,
-                                     /*generate_mipmaps*/ false);
+    // 按扩展名分流：.ktx 走 cubemap 加载（HDR 天空盒），其余走原等距图路径
+    std::unique_ptr<Texture> tex;
+    const std::string ext = std::filesystem::path(filepath).extension().string();
+    if (ext == ".ktx" || ext == ".ktx2") {
+        tex = Texture::LoadCubeMapFromFile(device, cache, resolved);
+    } else {
+        tex = Texture::LoadFromFile(device, cache, resolved,
+                                    vk::Format::eR8G8B8A8Unorm,
+                                    vk::Filter::eLinear, vk::Filter::eLinear,
+                                    /*generate_mipmaps*/ false);
+    }
     if (!tex) {
         GE_CORE_ERROR("Renderer3D: 天空盒纹理加载失败: {0}", filepath);
         m_SkyboxEnabled = false;
         return;
     }
 
-    tex->SetDebugName("Skybox_Equirect");
+    tex->SetDebugName("Skybox_Cubemap");
     m_SkyboxTexture = std::move(tex);
     m_SkyboxPath    = filepath;
     m_SkyboxEnabled = true;

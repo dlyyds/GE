@@ -1,75 +1,23 @@
 Scene:
   Entities:
-    - Name: Empty Entity
+    - Name: car2
       Transform:
-        Translation: [0.24366361, -0.9978661, -0.13308913]
-        Rotation: [0, -0, 0]
-        Scale: [0.1, 0.1, 0.1]
-      MeshRenderer:
-        Color: [1, 1, 1, 1]
-        Mesh: builtin:sphere
-      PointLight:
-        Color: [0.42745098, 1, 0.2627451, 1]
-        RadiusInv: 0.01
-    - Name: car1
-      Transform:
-        Translation: [-0.2605561, -2.8314323, 2.041085]
+        Translation: [1.6701088, -2.8471746, 2.506497]
         Rotation: [0, -0, 0]
         Scale: [1, 1, 1]
       MeshRenderer:
         Color: [1, 1, 1, 1]
         Mesh: assets\models\car\source\Datsun_280Z.obj
-        MaterialOverrides:
-          0:
-            Type: PBR
-            FloatParams:
-              emissiveStrength: 0
-              metallic: 0.464
-              roughness: 0.37
-    - Name: MainCamera
+    - Name: PhysicsBall
       Transform:
-        Translation: [0, 0, 0]
+        Translation: [0, 5, 0]
         Rotation: [0, 0, 0]
-        Scale: [1, 1, 1]
-      Camera:
-        Primary: true
-        FixedAspectRatio: false
-        Mode: Orbit
-        Fov: 60
-        Aspect: 1.4305949
-        Near: 0.1
-        Far: 100
-        Target: [1.4967767, -1.0459343, 2.4365458]
-        Theta: 3.8085518
-        Phi: 8.729548
-        Distance: 6.5
-        Position: [1.9235235, -0.059425473, 8.847059]
-        Yaw: 0
-        Pitch: 0
-    - Name: RedPointLight
-      Transform:
-        Translation: [2.1701374, -0.013627559, -0.012405559]
-        Rotation: [0, -0, 0]
-        Scale: [0.15, 0.15, 0.15]
+        Scale: [0.5, 0.5, 0.5]
       MeshRenderer:
-        Color: [1, 0.4, 0.4, 1]
+        Color: [0.2, 0.6, 1, 1]
         Mesh: builtin:sphere
-      PointLight:
-        Color: [1, 0.2, 0.2, 1.5]
-        RadiusInv: 0.4
-    - Name: BluePointLight
-      Transform:
-        Translation: [1.2417186, -2.75, -0.8415263]
-        Rotation: [-4.0121642e-05, -2.9699718e-09, -8.705972e-05]
-        Scale: [0.15, 0.15, 0.15]
-      MeshRenderer:
-        Color: [0.4, 0.5, 1, 1]
-        Mesh: builtin:sphere
-      PointLight:
-        Color: [0.2, 0.3, 1, 1.5]
-        RadiusInv: 0.4
       RigidBody:
-        Type: Dynamic
+        Type: Kinematic
         Mass: 1
         Friction: 0.6
         Restitution: 0.3
@@ -79,28 +27,11 @@ Scene:
       SphereCollider:
         Radius: 1
         Offset: [0, 0, 0]
-    - Name: DirectionalLight
-      Transform:
-        Translation: [0, 0, 0]
-        Rotation: [-0.7853982, 0.5235988, 0]
-        Scale: [1, 1, 1]
-      DirectionalLight:
-        Color: [1, 0.9490196, 0.8509804, 0]
-    - Name: AmbientLight
-      Transform:
-        Translation: [0, 0, 0]
-        Rotation: [0, 0, 0]
-        Scale: [1, 1, 1]
-      AmbientLight:
-        Color: [0.3019608, 0.3019608, 0.34901962, 1]
-      Skybox:
-        Enabled: true
-        TexturePath: HDRI\DaySkyHDRI065B_4K\DaySkyHDRI065B_4K_TONEMAPPED.jpg
     - Name: PhysicsFloor
       Transform:
-        Translation: [0, -3, 0]
+        Translation: [0, -3.0894172, 0]
         Rotation: [0, -0, 0]
-        Scale: [9.999999, 0.1, 11.509156]
+        Scale: [149.1, 0.2, 170.51]
       MeshRenderer:
         Color: [0.5, 0.5, 0.5, 1]
         Mesh: builtin:cube
@@ -122,16 +53,36 @@ Scene:
       BoxCollider:
         HalfExtents: [1, 1, 1]
         Offset: [0, 0, 0]
-    - Name: PhysicsBall
+    - Name: AmbientLight
       Transform:
-        Translation: [0, 5, 0]
+        Translation: [0, 0, 0]
         Rotation: [0, 0, 0]
-        Scale: [0.5, 0.5, 0.5]
+        Scale: [1, 1, 1]
+      AmbientLight:
+        Color: [0.3019608, 0.3019608, 0.34901962, 1]
+      Skybox:
+        Enabled: true
+        TexturePath: cubemaps\DaySkyHDRI065B_4K_HDR.ktx2
+    - Name: DirectionalLight
+      Transform:
+        Translation: [0, 0, 0]
+        Rotation: [-0.7853982, 0.5235988, 0]
+        Scale: [1, 1, 1]
+      DirectionalLight:
+        Color: [1, 0.9490196, 0.8509804, 0]
+    - Name: BluePointLight
+      Transform:
+        Translation: [1.2417188, -2.75, -0.841519]
+        Rotation: [1.7628981e-06, 7.704974e-10, -9.112565e-05]
+        Scale: [0.15, 0.15, 0.15]
       MeshRenderer:
-        Color: [0.2, 0.6, 1, 1]
+        Color: [0.4, 0.5, 1, 1]
         Mesh: builtin:sphere
+      PointLight:
+        Color: [0.2, 0.3, 1, 1.5]
+        RadiusInv: 0.4
       RigidBody:
-        Type: Kinematic
+        Type: Dynamic
         Mass: 1
         Friction: 0.6
         Restitution: 0.3
@@ -141,11 +92,60 @@ Scene:
       SphereCollider:
         Radius: 1
         Offset: [0, 0, 0]
-    - Name: car2
+    - Name: RedPointLight
       Transform:
-        Translation: [1.6701088, -2.8471746, 2.506497]
+        Translation: [2.1701374, -0.013627559, -0.012405559]
+        Rotation: [0, -0, 0]
+        Scale: [0.15, 0.15, 0.15]
+      MeshRenderer:
+        Color: [1, 0.4, 0.4, 1]
+        Mesh: builtin:sphere
+      PointLight:
+        Color: [1, 0.2, 0.2, 1.5]
+        RadiusInv: 0.4
+    - Name: MainCamera
+      Transform:
+        Translation: [0, 0, 0]
+        Rotation: [0, 0, 0]
+        Scale: [1, 1, 1]
+      Camera:
+        Primary: true
+        FixedAspectRatio: false
+        Mode: Orbit
+        Fov: 60
+        Aspect: 1.4305949
+        Near: 0.1
+        Far: 100
+        Target: [0.15198451, -1.787535, 2.486478]
+        Theta: -2.4018278
+        Phi: 19.289513
+        Distance: 5.5
+        Position: [-0.065567434, 0.029344082, 7.673156]
+        Yaw: 0
+        Pitch: 0
+    - Name: car1
+      Transform:
+        Translation: [-0.2605561, -2.8314323, 2.041085]
         Rotation: [0, -0, 0]
         Scale: [1, 1, 1]
       MeshRenderer:
         Color: [1, 1, 1, 1]
         Mesh: assets\models\car\source\Datsun_280Z.obj
+        MaterialOverrides:
+          0:
+            Type: PBR
+            FloatParams:
+              emissiveStrength: 0
+              metallic: 0.464
+              roughness: 0.37
+    - Name: Empty Entity
+      Transform:
+        Translation: [0.24366361, -0.9978661, -0.13308913]
+        Rotation: [0, -0, 0]
+        Scale: [0.1, 0.1, 0.1]
+      MeshRenderer:
+        Color: [1, 1, 1, 1]
+        Mesh: builtin:sphere
+      PointLight:
+        Color: [0.42745098, 1, 0.2627451, 1]
+        RadiusInv: 0.01

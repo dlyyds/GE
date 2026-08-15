@@ -1,15 +1,15 @@
 #version 460
 
-// 天空盒片元着色器：等距柱状投影（equirectangular）采样。
+// 天空盒片元着色器：cubemap 采样。
 //
-// 核心思路：全屏像素的 UV 反投影重建视线方向，再从全景图采样该方向颜色。
+// 核心思路：全屏像素的 UV 反投影重建视线方向，直接从 cubemap 按方向采样。
 //   1. NDC（inUV*2-1）→ 视空间视线：乘以 invProj（投影矩阵逆）
 //   2. 视空间 → 世界空间方向：乘以仅旋转的视图矩阵逆（mat3(invView)，去掉平移，
 //      使天空盒不受相机位置影响，始终显得"无限远"）
-//   3. 世界方向 → 等距 UV：phi = atan(x,z)，theta = acos(y)，再归一化到 [0,1]
+//   3. 世界方向直接采样 samplerCube
 //
-// 说明：等距图画面上方对应天空（theta=0），下方对应地面（theta=PI），
-// worldDir.y 向上，故此映射与 HDRI 全景图一致。
+// 采用 HDR 天空盒（R16G16B16A16_SFLOAT），因此采样后需做 tonemap + gamma，
+// 否则过曝。
 
 layout (set = 0, binding = 0, std140) uniform SkyboxUBO
 {
@@ -17,12 +17,10 @@ layout (set = 0, binding = 0, std140) uniform SkyboxUBO
     mat4 invProj;   // 投影矩阵的逆（视空间视线 ← NDC 坐标）
 } ubo;
 
-layout (set = 0, binding = 1) uniform sampler2D uEquirect;
+layout (set = 0, binding = 1) uniform samplerCube uSkybox;
 
 layout (location = 0) in vec2 inUV;
 layout (location = 0) out vec4 outColor;
-
-const float PI = 3.14159265359;
 
 void main()
 {
@@ -33,11 +31,12 @@ void main()
     // 视空间 → 世界空间方向（mat3 取旋转部分，天空盒不随相机位移）
     vec3 worldDir = normalize(mat3(ubo.invView) * dir);
 
-    // 等距柱状映射：方向 → UV
-    //   phi   = atan(x, z)：-PI..PI，经度
-    //   theta = acos(y)：0..PI，纬度（0=正上，PI=正下）
-    vec2 uv = vec2(atan(worldDir.z, worldDir.x) / (2.0 * PI) + 0.5,
-                   acos(clamp(worldDir.y, -1.0, 1.0)) / PI);
+    // 直接按方向采样 cubemap
+    vec3 color = texture(uSkybox, worldDir).rgb;
 
-    outColor = vec4(texture(uEquirect, uv).rgb, 1.0);
+    // HDR tonemap（Reinhard）+ gamma 校正
+    color = color / (color + vec3(1.0));
+    color = pow(color, vec3(1.0 / 2.2));
+
+    outColor = vec4(color, 1.0);
 }

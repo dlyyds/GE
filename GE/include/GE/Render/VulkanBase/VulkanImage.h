@@ -203,7 +203,8 @@ vk::ImageView CreateView(vk::Device device, vk::Image image,
  */
 void TransitionLayout(vk::CommandBuffer cmd, vk::Image image,
                       vk::ImageLayout old_layout, vk::ImageLayout new_layout,
-                      uint32_t baseMipLevel = 0, uint32_t levelCount = 1);
+                      uint32_t baseMipLevel = 0, uint32_t levelCount = 1,
+                      uint32_t baseArrayLayer = 0, uint32_t layerCount = 1);
 
 } // namespace image_utils
 } // namespace GE

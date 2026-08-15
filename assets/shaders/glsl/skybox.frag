@@ -22,6 +22,10 @@ layout (set = 0, binding = 1) uniform samplerCube uSkybox;
 layout (location = 0) in vec2 inUV;
 layout (location = 0) out vec4 outColor;
 
+// 曝光参数：把 HDR 天空的中位数亮度抬到中间调，让太阳自然过曝成亮白点。
+// 该环境图天空大部分在 0.1~0.9（P50≈0.26），太阳高达 5.7e4，需少量曝光增益。
+const float kExposure = 2.5;
+
 // ACES filmic tonemap（Narkowicz 近似）：高对比、保饱和，接近 Blender 的 Filmic。
 // 相比 Reinhard（x/(x+1)）能更好保留中高光的色调，避免天空被压成灰白。
 vec3 acesFilmic(vec3 x) {
@@ -41,7 +45,8 @@ void main()
     // 直接按方向采样 cubemap
     vec3 color = texture(uSkybox, worldDir).rgb;
 
-    // HDR tonemap（ACES filmic）+ gamma 校正
+    // 曝光 → HDR tonemap（ACES filmic）→ gamma 校正
+    color *= kExposure;
     color = acesFilmic(color);
     color = pow(color, vec3(1.0 / 2.2));
 

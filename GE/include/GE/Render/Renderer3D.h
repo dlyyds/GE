@@ -25,6 +25,7 @@
 #include "Core/Base.h"
 #include "Render/Material.h"
 #include "Render/Mesh.h"
+#include "Render/EnvironmentMap.h"
 
 #include <glm/glm.hpp>
 
@@ -164,6 +165,21 @@ public:
     const std::string &GetSkyboxPath() const { return m_SkyboxPath; }
 
     // ========================================================================
+    // 环境映射（IBL）
+    // ========================================================================
+
+    /**
+     * @brief 设置环境映射（IBL），渲染器取得所有权。
+     *
+     * 传 nullptr 时禁用 IBL，PBR 材质回退常量环境光（向后兼容）。
+     * 传非空时启用 split-sum IBL：PBR 管线路由到 IBL 变体并绑定三张 IBL 图。
+     */
+    void SetEnvironmentMap(EnvironmentMap *env) { m_EnvironmentMap.reset(env); }
+
+    /// 当前环境映射（IBL）是否可用。
+    bool HasEnvironmentMap() const { return m_EnvironmentMap != nullptr; }
+
+    // ========================================================================
     // 场景接口
     // ========================================================================
 
@@ -237,6 +253,7 @@ private:
         glm::vec4 dirLightColor;                      ///< 方向光颜色(rgb) + 强度(a)
         glm::vec4 lightCount;                    ///< x = 点光源数量，yzw 填充对齐（点光源本体在 SSBO）
         glm::vec4 ambient;                            ///< 环境光颜色(rgb) + 强度(a)
+        glm::vec4 iblParams;                  ///< x = 预滤波最大 mip 数（MAX_REFLECTION_LOD），yzw 预留
     };
     static_assert(sizeof(FrameUBO) % 16 == 0, "FrameUBO 必须 16 字节对齐");
 
@@ -384,11 +401,17 @@ private:
     /// PBR 片元着色器（Cook-Torrance，由全局资源缓存管理，不拥有）
     VulkanShaderModule   *m_FragShaderPBR = nullptr;
 
+    /// PBR-IBL 片元着色器（HAS_IBL 变体，由全局资源缓存管理，不拥有）
+    VulkanShaderModule   *m_FragShaderPBR_IBL = nullptr;
+
     /// Blinn-Phong 管线布局（由全局资源缓存管理，不拥有）
     VulkanPipelineLayout *m_PipelineLayout = nullptr;
 
     /// PBR 管线布局（由全局资源缓存管理，不拥有）
     VulkanPipelineLayout *m_PipelineLayoutPBR = nullptr;
+
+    /// PBR-IBL 管线布局（set 1 含 binding 5/6/7 的 IBL 采样器，由全局资源缓存管理，不拥有）
+    VulkanPipelineLayout *m_PipelineLayoutPBR_IBL = nullptr;
 
     /// 天空盒顶点着色器（由全局资源缓存管理，不拥有）
     VulkanShaderModule   *m_SkyboxVert = nullptr;
@@ -407,6 +430,9 @@ private:
 
     /// 当前天空盒纹理路径（用于场景驱动时判断是否需要重新加载）
     std::string m_SkyboxPath;
+
+    /// 环境映射（IBL）资源（渲染器持有所有权；nullptr = 禁用 IBL）
+    std::unique_ptr<EnvironmentMap> m_EnvironmentMap;
 
     /// 默认 1x1 白色纹理（无纹理时的 fallback，由全局 TextureManager 持有，不拥有）
     Texture *m_DefaultWhiteTexture = nullptr;

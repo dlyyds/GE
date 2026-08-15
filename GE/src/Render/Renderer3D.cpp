@@ -75,6 +75,19 @@ Renderer3D::Renderer3D() {
         {m_VertShader, m_FragShaderPBR});
     m_PipelineLayoutPBR->SetDebugName("Mesh3D_PipelineLayout_PBR");
 
+    // PBR-IBL 片元着色器变体（HAS_IBL：Filament 式 split-sum 环境光）。
+    // 其管线布局 set 1 额外含 binding 5/6/7（辐照度 / 预滤波 / BRDF LUT）。
+    m_FragShaderPBR_IBL = &cache.RequestShaderModule(
+        vk::ShaderStageFlagBits::eFragment,
+        ShaderSource(Renderer::GetAssetManager()
+                         .ResolvePath(std::string(AssetPaths::Shaders) + "/mesh_pbr_ibl.frag.spv")
+                         .string()),
+        "main", ShaderVariant{});
+
+    m_PipelineLayoutPBR_IBL = &cache.RequestPipelineLayout(
+        {m_VertShader, m_FragShaderPBR_IBL});
+    m_PipelineLayoutPBR_IBL->SetDebugName("Mesh3D_PipelineLayout_PBR_IBL");
+
     // ── 2b. 天空盒着色器 + 管线布局 ─────────────────────────────────
     //    等距柱状投影天空盒：全屏三角形 + 反投影重建视线 + 采样全景图。
     //    管线布局由着色器反射自动构建（set 0 binding 0 = SkyboxUBO，binding 1 = sampler2D）。
@@ -205,12 +218,17 @@ Renderer3D::~Renderer3D() {
     // 释放天空盒纹理
     m_SkyboxTexture.reset();
 
+    // 释放环境映射（IBL）资源
+    m_EnvironmentMap.reset();
+
     // 着色器和 pipeline layout 由全局资源缓存管理，不需要手动释放
     m_VertShader = nullptr;
     m_FragShader = nullptr;
     m_FragShaderPBR = nullptr;
+    m_FragShaderPBR_IBL = nullptr;
     m_PipelineLayout = nullptr;
     m_PipelineLayoutPBR = nullptr;
+    m_PipelineLayoutPBR_IBL = nullptr;
     m_SkyboxVert = nullptr;
     m_SkyboxFrag = nullptr;
     m_SkyboxLayout = nullptr;
@@ -389,6 +407,12 @@ void Renderer3D::EndScene() {
         static_cast<float>(m_LightParams.pointLights.size()), 0.0f, 0.0f, 0.0f);
 
     frameUBO.ambient = m_LightParams.ambient;
+
+    // IBL 参数：x = 预滤波图最高 mip 索引（MAX_REFLECTION_LOD，= levelCount-1）。
+    // 无 IBL 时填 0，着色器 HAS_IBL 变体不采样该值（走常量环境光分支）。
+    frameUBO.iblParams = glm::vec4(
+        m_EnvironmentMap ? static_cast<float>(m_EnvironmentMap->GetPrefilterLevels() - 1) : 0.0f,
+        0.0f, 0.0f, 0.0f);
 
     BufferAllocation frameUboAlloc = frame.AllocateBuffer(
         vk::BufferUsageFlagBits::eUniformBuffer, sizeof(FrameUBO));
@@ -663,16 +687,39 @@ void Renderer3D::EndScene() {
     // ── 6. 逐批次 instanced 绘制 ─────────────────────────────────────
     vk::DeviceSize vertexOffset = 0;
 
+    // IBL 是否启用（全局）：启用时 PBR 批次走 IBL 变体管线并绑定三张 IBL 图；
+    // 禁用时 PBR 回退无 IBL 变体（常量环境光），向后兼容。
+    const bool useIbl = (m_EnvironmentMap != nullptr);
+
     // 当前绑定的管线 id（初始为 Blinn-Phong，已在上方绑定 *m_PipelineLayout）。
     // 排序键已按 pipelineId 分组，故同类型批次连续，切换频率最低。
     uint8_t currentPipelineId = 0;
     for (const auto &batch : batches) {
-        // —— 管线路由：材质类型变化时切换管线布局（进而切换管线 / 片元着色器）——
+        // —— 管线路由：材质类型变化时切换管线布局（进而切换管线 / 片元着色器）。
+        //    PBR 批次按 useIbl 分流到 IBL 变体或无 IBL 变体管线。——
         uint8_t pipelineId = GetPipelineId(batch.material);
         if (pipelineId != currentPipelineId) {
-            cmd.BindPipelineLayout(
-                pipelineId == 1 ? *m_PipelineLayoutPBR : *m_PipelineLayout);
+            VulkanPipelineLayout *targetLayout = m_PipelineLayout;
+            if (pipelineId == 1) {
+                targetLayout = useIbl ? m_PipelineLayoutPBR_IBL
+                                      : m_PipelineLayoutPBR;
+            }
+            cmd.BindPipelineLayout(*targetLayout);
             currentPipelineId = pipelineId;
+
+            // 路由到 PBR-IBL 时绑定 IBL 三件套（set 1, binding 5/6/7）。
+            // 排序保证 Blinn 批次在前、PBR 批次在后且连续，故只在首次切换到
+            // PBR-IBL 时绑一次；Blinn 批次（set 1 布局无这些 binding）不会读到。
+            // 辐照度复用预滤波 cubemap（漫反射采样其最高 mip）。
+            if (pipelineId == 1 && useIbl) {
+                auto &ibl = *m_EnvironmentMap;
+                cmd.BindImage(ibl.GetPrefilter().GetImageView(),
+                              ibl.GetPrefilter().GetSampler(), 1, 5); // 辐照度
+                cmd.BindImage(ibl.GetPrefilter().GetImageView(),
+                              ibl.GetPrefilter().GetSampler(), 1, 6); // 预滤波
+                cmd.BindImage(ibl.GetBrdfLUT().GetImageView(),
+                              ibl.GetBrdfLUT().GetSampler(), 1, 7);   // BRDF LUT
+            }
         }
 
         // 绑定纹理（set 1, binding 0 = Albedo，binding 1 = Normal）

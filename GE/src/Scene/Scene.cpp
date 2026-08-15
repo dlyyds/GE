@@ -11,6 +11,9 @@
 #include "Render/Renderer3D.h"
 #include "Render/Material.h"
 #include "Render/Mesh.h"
+#include "Render/EnvironmentMap.h"
+#include "Render/VulkanBase/VulkanDevice.h"
+#include "Core/Log.h"
 
 #include <algorithm>
 #include <glm/glm.hpp>
@@ -191,6 +194,23 @@ void Scene::OnUpdate3D(Timestep ts,
         } else {
             // 无天空盒组件或已禁用：关闭天空盒
             r3d.SetSkyboxEnabled(false);
+        }
+    }
+
+    // ── 环境映射（IBL）：加载默认环境图（仅首次，避免每帧重建）────
+    //    环境固定不运行时切换，这里用硬编码默认烘焙产物；后续可扩展为场景序列化。
+    if (!r3d.HasEnvironmentMap()) {
+        auto &dev = Renderer::GetVulkanContext().GetDevice();
+        auto &cache = dev.GetResourceCache();
+        auto &am = Renderer::GetAssetManager();
+        auto env = EnvironmentMap::LoadFromFiles(
+            dev, cache,
+            am.ResolvePath("ibl/DaySkyHDRI065B_prefilter.ktx").string(),
+            am.ResolvePath("ibl/brdf_lut.png").string());
+        if (env) {
+            r3d.SetEnvironmentMap(env.release());
+        } else {
+            GE_CORE_WARN("Scene: 环境映射加载失败，PBR 回退常量环境光");
         }
     }
 

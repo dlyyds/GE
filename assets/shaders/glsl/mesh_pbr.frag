@@ -15,6 +15,15 @@ layout (set = 1, binding = 3) uniform sampler2D samplerEmissive;// 自发光贴�
 // 金属-粗糙度贴图（glTF 惯例：B=metallic, G=roughness），PBR 材质使用
 layout (set = 1, binding = 4) uniform sampler2D samplerMetallicRoughness;
 
+// —— IBL 环境光三件套（仅 HAS_IBL 变体声明并采样）——
+// 辐照度采样器复用预滤波 cubemap：漫反射取最高 mip（近似余弦卷积），
+// 镜面按粗糙度取 mip。BRDF LUT 是 2D split-sum 表，轴 (NoV, roughness)。
+#ifdef HAS_IBL
+layout (set = 1, binding = 5) uniform samplerCube samplerIrradiance;// 漫反射辐照度（= 预滤波图最高 mip）
+layout (set = 1, binding = 6) uniform samplerCube samplerPrefilter; // 镜面预滤波 mip 链 cubemap
+layout (set = 1, binding = 7) uniform sampler2D  samplerBrdfDFG;    // BRDF LUT（2D，(NoV, roughness)）
+#endif
+
 // 每材质 UB（按批次绑定）：
 //   params.x = shininess（Blinn-Phong 高光指数，PBR 下未用）
 //   params.y = specularStrength（Blinn-Phong 镜面强度，PBR 下未用）
@@ -43,6 +52,9 @@ layout (set = 0, binding = 0, std140) uniform FrameUBO
 
 // 环境光
     vec4 ambient;
+
+// IBL 参数（仅 PBR-IBL 变体 HAS_IBL 使用）：x = 预滤波最大 mip 数（MAX_REFLECTION_LOD）
+    vec4 iblParams;
 } frame;
 
 // 点光源 SSBO（set 0, binding 1）：布局与 C++ 端 Renderer3D::LightGPU 一致。
@@ -176,9 +188,36 @@ void main()
     float metallic  = mr.b * material.pbr.x;
     float roughness = mr.g * material.pbr.y;
 
-    // 环境光：P0 用常量近似（后续 P4 替换为 IBL）
+    // 环境光：P0 用常量近似；P4（HAS_IBL）用 split-sum IBL 替换。
+#ifdef HAS_IBL
+    // —— 环境光：split-sum IBL（Filament 式三图成套采样）——
+    // F0 提到 main：绝缘体恒 0.04，金属取 albedo（直接光与 IBL 共用）
+    vec3 F0 = mix(vec3(0.04), albedo, metallic);
+    float NoV = max(dot(N, V), 0.0);
+
+    // 粗糙度感知菲涅尔（IBL 用）：粗糙表面 F0 随粗糙度向 1 靠拢，避免过暗
+    vec3 F = F0 + (max(vec3(1.0 - roughness), F0) - F0)
+            * pow(clamp(1.0 - NoV, 0.0, 1.0), 5.0);
+    vec3 kS = F;
+    vec3 kD = (1.0 - kS) * (1.0 - metallic);
+
+    // 漫反射：辐照度（预滤波图最高 mip，近似余弦卷积）按法线采样
+    vec3 irradiance = textureLod(samplerIrradiance, N, frame.iblParams.x).rgb;
+    vec3 diffuse = irradiance * albedo * kD;
+
+    // 镜面：反射方向查预滤波 mip，粗糙度选层级
+    vec3 R = reflect(-V, N);
+    vec3 prefiltered = textureLod(samplerPrefilter, R,
+                                  roughness * frame.iblParams.x).rgb;
+    // BRDF LUT：.r = F0 系数（乘 F），.g = 菲涅尔尾项（直接加）
+    vec2 brdf = texture(samplerBrdfDFG, vec2(NoV, roughness)).rg;
+    vec3 specular = prefiltered * (F * brdf.r + brdf.g);
+
+    vec3 result = diffuse + specular;
+#else
     vec3 ambientColor = frame.ambient.rgb * frame.ambient.w;
     vec3 result = ambientColor * albedo;
+#endif
 
     // 方向光
     result += calcDirectionalLight(N, V, albedo, metallic, roughness);

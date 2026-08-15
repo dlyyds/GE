@@ -22,6 +22,13 @@ layout (set = 0, binding = 1) uniform samplerCube uSkybox;
 layout (location = 0) in vec2 inUV;
 layout (location = 0) out vec4 outColor;
 
+// ACES filmic tonemap（Narkowicz 近似）：高对比、保饱和，接近 Blender 的 Filmic。
+// 相比 Reinhard（x/(x+1)）能更好保留中高光的色调，避免天空被压成灰白。
+vec3 acesFilmic(vec3 x) {
+    const float a = 2.51, b = 0.03, c = 2.43, d = 0.59, e = 0.14;
+    return clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0, 1.0);
+}
+
 void main()
 {
     // NDC → 视空间视线（vec4 透视除法前先反投影）
@@ -34,8 +41,8 @@ void main()
     // 直接按方向采样 cubemap
     vec3 color = texture(uSkybox, worldDir).rgb;
 
-    // HDR tonemap（Reinhard）+ gamma 校正
-    color = color / (color + vec3(1.0));
+    // HDR tonemap（ACES filmic）+ gamma 校正
+    color = acesFilmic(color);
     color = pow(color, vec3(1.0 / 2.2));
 
     outColor = vec4(color, 1.0);

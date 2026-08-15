@@ -66,6 +66,25 @@ set(JPH_USE_DX12 OFF CACHE BOOL "" FORCE)
 add_subdirectory(GE/third_party/JoltPhysics/Build JoltPhysics)
 
 
+# ==============================================
+# KTX-Software (libktx) — KTX2 纹理加载/上传
+# ==============================================
+# 只编译 libktx（目标名 ktx，含写入能力，可导出 .ktx2）。
+# 关闭工具/测试/各语言绑定/文档，避免拖慢构建。
+# EXCLUDE_FROM_ALL：不进入默认全量构建，仅在 GE 链接它时按需编译。
+# 子模块（basis_universal/dfdutils/astc-encoder）已随仓库带全。
+set(KTX_FEATURE_TOOLS OFF CACHE BOOL "" FORCE)
+set(KTX_FEATURE_TESTS OFF CACHE BOOL "" FORCE)
+set(KTX_FEATURE_DOC OFF CACHE BOOL "" FORCE)
+set(KTX_FEATURE_JNI OFF CACHE BOOL "" FORCE)
+set(KTX_FEATURE_PY OFF CACHE BOOL "" FORCE)
+set(KTX_FEATURE_JS OFF CACHE BOOL "" FORCE)
+set(KTX_FEATURE_LOADTEST_APPS "" CACHE STRING "" FORCE)
+set(KTX_FEATURE_TOOLS_CTS OFF CACHE BOOL "" FORCE)
+set(BUILD_SHARED_LIBS OFF)  # 静态链接，与 GE 静态库保持一致
+add_subdirectory(GE/third_party/KTX-Software-main KTX-Software EXCLUDE_FROM_ALL)
+
+
 #GE lib
 # ==============================================
 file(GLOB GE_SRC
@@ -122,6 +141,7 @@ target_link_libraries(${GE_NAME} PUBLIC
         TracyClient
         ${Vulkan_LIBRARIES}
         Jolt
+        ktx
 )
 
 # 链接 Vulkan SDK 自带的 SPIRV-Cross 预编译库
@@ -193,7 +213,6 @@ set(Editor_SRC
         ${CMAKE_SOURCE_DIR}/GE_Editor/src/HierarchyLayer.cpp
         ${CMAKE_SOURCE_DIR}/GE_Editor/src/GizmoController.cpp
         ${CMAKE_SOURCE_DIR}/GE_Editor/src/ResourceLayer.cpp
-        ${CMAKE_SOURCE_DIR}/GE_Editor/src/SandboxLayer.cpp
         ${CMAKE_SOURCE_DIR}/GE_Editor/src/Panels/SceneHierarchyPanel.cpp
         ${CMAKE_SOURCE_DIR}/GE_Editor/src/Panels/ResourcePanel.cpp
 )

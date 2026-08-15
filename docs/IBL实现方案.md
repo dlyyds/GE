@@ -58,14 +58,37 @@ IBL 要补的三件套（split-sum 近似）：
 
 ## 2. 阶段总览
 
-| 阶段 | 主题 | 核心产出 | 依赖 |
+| 阶段 | 主题 | 核心产出 | 状态 |
 |------|------|----------|------|
-| **IBL-0** | 烘焙（离线） | cmgen 产出三张 `.ktx` | 无 |
-| **IBL-1** | KTX → Cubemap 加载 | `EnvironmentMap` 读入三张图 | IBL-0 |
-| **IBL-2** | 片元着色器接入 | `mesh_pbr.frag` Filament split-sum 采样 | IBL-1 |
-| **IBL-3** | 场景 / 编辑器接入 | 序列化环境贴图路径 | IBL-2 |
+| **IBL-0** | 烘焙（离线） | 预滤波 cubemap + BRDF LUT | ✅ 完成 |
+| **IBL-1** | 加载 | `EnvironmentMap` 读入两张图 | ✅ 完成 |
+| **IBL-2** | 片元着色器接入 | `mesh_pbr` HAS_IBL 变体 split-sum 采样 | ✅ 完成 |
+| **IBL-3** | 场景序列化 | 环境贴图路径入场景 | ⏳ 未做 |
 
 每步独立可验证、不破坏现有直接光路径（无 IBL 时回退常量环境光）。
+
+---
+
+## 1.5 实施记录（2026-08-15，与方案的两点偏差）
+
+实际实现与方案原文有两处偏差，都是为了**可验证的正确性**，请留意：
+
+1. **无独立辐照度 cubemap**：本机 cmgen（`E:\software\filament`）的
+   `--ibl-irradiance` 输出为空——新版 Filament 漫反射走**运行时 SH**，不产辐照度
+   cubemap。因此辐照度**复用预滤波 cubemap 的最高 mip**（粗糙度≈1 的余弦卷积近似），
+   绑定到 binding 5 与 6 共用同一张图。若日后要严格的辐照度图，可单独烘焙替换
+   binding 5。
+2. **BRDF LUT 自生成而非 cmgen 产物**：cmgen 的 `--ibl-dfg` 只支持 png/exr/dds
+   （不支持 ktx），且实测其 LUT 的 v 轴（roughness）写在**图底部**（与
+   `texture(lut, vec2(NoV, roughness))` 的 Vulkan 采样方向相反），离线无法验证。
+   故用 `assets/ibl/gen_brdf_lut.py` 按标准 GGX split-sum 公式自生成匹配的 LUT
+   （rough=0 在 v=0、u=NoV），与片元公式 `E.x*F0 + E.y` 自洽。**LUT 通道语义仍是
+   Filament 式**（R=F0 系数、G=菲涅尔尾项），只是几何项用 Schlick 而非 cmgen 的
+   高度相关 Smith，属同一 split-sum 的合法变体。
+
+着色器采用**两个变体**而非运行时 flag：`mesh_pbr.frag`（无 IBL，原样）+ 
+`mesh_pbr_ibl.frag.spv`（`-DHAS_IBL`）。Renderer3D 按 `m_EnvironmentMap` 分流，
+无 IBL 时 PBR 走无 IBL 变体（常量环境光），完全向后兼容。
 
 ---
 

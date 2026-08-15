@@ -38,7 +38,7 @@ public:
      *
      * @param device          Vulkan 设备
      * @param cache           全局资源缓存（Sampler 去重）
-     * @param prefilterPath   预滤波 cubemap 的 `.ktx` 路径
+     * @param prefilterPath   预滤波 cubemap 的 `.ktx2` 路径（RGBA16F，与天空盒同格式）
      * @param brdfLutPath     BRDF LUT 的 `.png` 路径
      * @return std::unique_ptr<EnvironmentMap>  任一张图加载失败则返回 nullptr
      */

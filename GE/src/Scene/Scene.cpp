@@ -14,6 +14,7 @@
 #include "Render/EnvironmentMap.h"
 #include "Render/VulkanBase/VulkanDevice.h"
 #include "Core/Log.h"
+#include "Render/AssetManager.h"
 
 #include <algorithm>
 #include <glm/glm.hpp>
@@ -205,7 +206,7 @@ void Scene::OnUpdate3D(Timestep ts,
         auto &am = Renderer::GetAssetManager();
         auto env = EnvironmentMap::LoadFromFiles(
             dev, cache,
-            am.ResolvePath("ibl/DaySkyHDRI065B_prefilter.ktx").string(),
+            am.ResolvePath("ibl/DaySkyHDRI065B_prefilter.ktx2").string(),
             am.ResolvePath("ibl/brdf_lut.png").string());
         if (env) {
             r3d.SetEnvironmentMap(env.release());

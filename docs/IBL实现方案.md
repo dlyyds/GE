@@ -85,6 +85,10 @@ IBL 要补的三件套（split-sum 近似）：
    （rough=0 在 v=0、u=NoV），与片元公式 `E.x*F0 + E.y` 自洽。**LUT 通道语义仍是
    Filament 式**（R=F0 系数、G=菲涅尔尾项），只是几何项用 Schlick 而非 cmgen 的
    高度相关 Smith，属同一 split-sum 的合法变体。
+3. **预滤波图用 KTX2（RGBA16F）而非 cmgen 的 KTX1**：实测本机链接的 libktx 对
+   cmgen 的 KTX1（RGB_10_11_11_REV）报 "Not a KTX file"，而天空盒的 KTX2
+   （RGBA16F）加载正常。故用 `convert_ktx1_to_ktx2.py` 把 cmgen 的 KTX1 预滤波
+   解码为 RGBA16F 并重写为 KTX2（复用天空盒的 DFD），走与天空盒相同的已验证路径。
 
 着色器采用**两个变体**而非运行时 flag：`mesh_pbr.frag`（无 IBL，原样）+ 
 `mesh_pbr_ibl.frag.spv`（`-DHAS_IBL`）。Renderer3D 按 `m_EnvironmentMap` 分流，

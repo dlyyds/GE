@@ -95,7 +95,7 @@ Scene:
         Color: [0.3019608, 0.3019608, 0.34901962, 1]
       Skybox:
         Enabled: true
-        TexturePath: environments\DaySkyHDRI065B\DaySkyHDRI065B_4K_HDR.ktx2
+        TexturePath: environments\DaySkyHDRI065B\skybox.ktx2
     - Name: PhysicsFloor
       Transform:
         Translation: [0, -3.0894172, 0]

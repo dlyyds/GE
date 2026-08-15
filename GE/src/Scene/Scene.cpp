@@ -206,7 +206,7 @@ void Scene::OnUpdate3D(Timestep ts,
         auto &am = Renderer::GetAssetManager();
         auto env = EnvironmentMap::LoadFromFiles(
             dev, cache,
-            am.ResolvePath("environments/DaySkyHDRI065B/DaySkyHDRI065B_prefilter.ktx").string(),
+            am.ResolvePath("environments/DaySkyHDRI065B/prefilter.ktx").string(),
             am.ResolvePath("environments/brdf_lut.png").string());
         if (env) {
             r3d.SetEnvironmentMap(env.release());

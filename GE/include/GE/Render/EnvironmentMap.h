@@ -23,6 +23,7 @@ namespace GE {
 
 class VulkanDevice;
 class VulkanResourceCache;
+class AsyncUploadManager;
 
 /**
  * @brief 环境映射资源。
@@ -52,6 +53,29 @@ public:
         const std::string &prefilterPath,
         const std::string &brdfLutPath);
 
+    /**
+     * @brief 异步加载环境映射（三张图后台解码 + GPU 上传）。
+     *
+     * 立即返回 IsReady()=false 的空壳；每张图就绪后主线程 Poll() 注入，
+     * 待三张图全部就绪 IsReady() 变 true，渲染端经此门控自动亮相。
+     * 任一张图解码失败则对应空壳永不就绪（IsReady 恒 false）。
+     *
+     * @param device          Vulkan 设备
+     * @param cache           全局资源缓存（Sampler 去重）
+     * @param upload          异步上传管理器
+     * @param skyboxPath      天空盒 cubemap 的 `.ktx2` 路径
+     * @param prefilterPath   预滤波 cubemap 的 `.ktx2` 路径
+     * @param brdfLutPath     BRDF LUT 的 `.png` 路径
+     * @return std::unique_ptr<EnvironmentMap>  空壳环境映射（未就绪）
+     */
+    static std::unique_ptr<EnvironmentMap> LoadFromFilesAsync(
+        VulkanDevice &device,
+        VulkanResourceCache &cache,
+        AsyncUploadManager &upload,
+        const std::string &skyboxPath,
+        const std::string &prefilterPath,
+        const std::string &brdfLutPath);
+
     /// 天空盒 cubemap（背景）。
     Texture &GetSkybox() { return *m_Skybox; }
     const Texture &GetSkybox() const { return *m_Skybox; }
@@ -65,7 +89,22 @@ public:
     const Texture &GetBrdfLUT() const { return *m_BrdfLUT; }
 
     /// 预滤波图的 mip 级数（= 片元 MAX_REFLECTION_LOD 上限，= levelCount - 1 的 mip 索引）。
-    uint32_t GetPrefilterLevels() const { return m_PrefilterLevels; }
+    /// 异步加载中就绪前返回 1（MAX_REFLECTION_LOD=0，无害过渡值）。
+    uint32_t GetPrefilterLevels() const {
+        return (m_Prefilter && m_Prefilter->IsReady())
+                   ? m_Prefilter->GetImage().get_mip_level_count() : 1;
+    }
+
+    /**
+     * @brief 环境映射是否完全就绪（三张图均可用）。
+     *
+     * 异步加载时三张图可能尚未完成；未就绪则渲染端应跳过天空盒与 IBL。
+     */
+    bool IsReady() const {
+        return m_Skybox && m_Skybox->IsReady()
+            && m_Prefilter && m_Prefilter->IsReady()
+            && m_BrdfLUT && m_BrdfLUT->IsReady();
+    }
 
 private:
     std::unique_ptr<Texture> m_Skybox;         ///< 天空盒 cubemap

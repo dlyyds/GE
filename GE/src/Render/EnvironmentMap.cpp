@@ -5,6 +5,7 @@
 
 #include "Render/EnvironmentMap.h"
 
+#include "Render/AsyncUploadManager.h"
 #include "Core/Log.h"
 #include "Render/VulkanBase/VulkanDevice.h"
 #include "Render/VulkanBase/VulkanResourceCache.h"
@@ -12,6 +13,45 @@
 #include <vulkan/vulkan.hpp>
 
 namespace GE {
+
+std::unique_ptr<EnvironmentMap> EnvironmentMap::LoadFromFilesAsync(
+    VulkanDevice &device,
+    VulkanResourceCache &cache,
+    AsyncUploadManager &upload,
+    const std::string &skyboxPath,
+    const std::string &prefilterPath,
+    const std::string &brdfLutPath)
+{
+    auto env = std::make_unique<EnvironmentMap>();
+
+    // 三张图异步加载：各自后台解码 + GPU 上传，就绪后主线程 Poll 注入。
+    // 空壳纹理在未就绪前 IsReady()=false，渲染端据此跳过天空盒 / IBL。
+    env->m_Skybox   = Texture::LoadCubeMapFromFileAsync(device, cache, upload, skyboxPath);
+    env->m_Prefilter = Texture::LoadCubeMapFromFileAsync(device, cache, upload, prefilterPath);
+    env->m_BrdfLUT  = Texture::LoadFromFileAsync(
+        device, cache, upload, brdfLutPath,
+        vk::Format::eR8G8B8A8Unorm,
+        vk::Filter::eLinear, vk::Filter::eLinear,
+        /*generate_mipmaps*/ false);
+
+    // 任一图提交失败则整体视为不可用（IsReady 恒 false）
+    if (!env->m_Skybox || !env->m_Prefilter || !env->m_BrdfLUT) {
+        GE_CORE_ERROR("EnvironmentMap: 环境异步加载提交失败: {0}", skyboxPath);
+        return nullptr;
+    }
+
+    // LUT 是数据查找表，寻址用 ClampToEdge（Repeat 在 v=1 处会回绕到 rough=0 行）。
+    // 异步纹理的采样器在就绪时创建，此处先设地址模式，就绪后 InstallAsyncImage
+    // 会以纹理当前记录的寻址模式重建采样器。
+    env->m_BrdfLUT->SetAddressMode(vk::SamplerAddressMode::eClampToEdge);
+
+    env->m_Skybox->SetDebugName("EnvMap_Skybox");
+    env->m_Prefilter->SetDebugName("EnvMap_Prefilter");
+    env->m_BrdfLUT->SetDebugName("EnvMap_BrdfLUT");
+
+    GE_CORE_INFO("EnvironmentMap: 环境异步加载已提交（天空盒 + 预滤波 + BRDF LUT）");
+    return env;
+}
 
 std::unique_ptr<EnvironmentMap> EnvironmentMap::LoadFromFiles(
     VulkanDevice &device,

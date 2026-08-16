@@ -532,6 +532,11 @@ ImTextureID ResourcePanel::GetThumbnail(Texture *tex) {
     if (!tex) {
         return ImTextureID(0);
     }
+    // 异步加载中（未就绪）的空壳纹理无 ImageView/Sampler，直接访问会崩，
+    // 返回 0 占位，待就绪后下次刷新再采样
+    if (!tex->IsReady()) {
+        return ImTextureID(0);
+    }
     auto it = m_Thumbnails.find(tex);
     if (it != m_Thumbnails.end()) {
         return it->second;

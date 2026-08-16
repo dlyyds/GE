@@ -35,6 +35,7 @@ namespace GE {
 
 class VulkanDevice;
 class VulkanResourceCache;
+class AsyncUploadManager;
 
 /**
  * @brief 全局纹理管理器。
@@ -49,8 +50,9 @@ public:
      *
      * @param device  Vulkan 设备引用
      * @param cache   全局资源缓存引用（用于 Sampler 去重）
+     * @param upload  异步上传管理器引用（用于异步加载）
      */
-    TextureManager(VulkanDevice &device, VulkanResourceCache &cache);
+    TextureManager(VulkanDevice &device, VulkanResourceCache &cache, AsyncUploadManager &upload);
 
     ~TextureManager();
 
@@ -80,6 +82,28 @@ public:
                   vk::Format format = vk::Format::eR8G8B8A8Unorm,
                   vk::Filter mag_filter = vk::Filter::eLinear,
                   vk::Filter min_filter = vk::Filter::eLinear);
+
+    /**
+     * @brief 异步加载纹理（按路径去重，已加载则直接返回缓存）。
+     *
+     * 与 Load() 不同：返回的是"空壳"纹理（未就绪），解码 + GPU 上传在后台线程，
+     * 主线程每帧 Poll() 回收后自动注入并置就绪。渲染端须经 IsReady() 检查，
+     * 未就绪时降级为默认纹理。
+     *
+     * @param filepath    纹理文件路径
+     * @param format      纹理格式（默认 eR8G8B8A8Unorm）
+     * @param mag_filter  放大过滤器（默认 eLinear）
+     * @param min_filter  缩小过滤器（默认 eLinear）
+     * @return 纹理指针（未就绪的空壳），加载失败返回 nullptr
+     *
+     * @note 同样仅 filepath 参与去重。未就绪条目也参与缓存查找，同路径只异步
+     *       加载一次。unload 时若仍在异步加载中，内部 AsyncPendingSlot 自动作废，
+     *       在途 finalize 会安全跳过注入，无 use-after-free。
+     */
+    Texture *LoadAsync(const std::string &filepath,
+                       vk::Format format = vk::Format::eR8G8B8A8Unorm,
+                       vk::Filter mag_filter = vk::Filter::eLinear,
+                       vk::Filter min_filter = vk::Filter::eLinear);
 
     /**
      * @brief 获取已加载的纹理（不触发加载）。
@@ -150,8 +174,9 @@ public:
     std::vector<std::string> GetAllKeys() const;
 
 private:
-    VulkanDevice        *m_Device = nullptr;  ///< Vulkan 设备（不拥有）
-    VulkanResourceCache *m_Cache  = nullptr;  ///< 全局资源缓存（不拥有）
+    VulkanDevice        *m_Device  = nullptr;  ///< Vulkan 设备（不拥有）
+    VulkanResourceCache *m_Cache   = nullptr;  ///< 全局资源缓存（不拥有）
+    AsyncUploadManager  *m_AsyncUpload = nullptr; ///< 异步上传管理器（不拥有）
 
     /// 纹理缓存：文件路径 / 自定义 key -> texture
     std::unordered_map<std::string, std::unique_ptr<Texture>> m_Textures;

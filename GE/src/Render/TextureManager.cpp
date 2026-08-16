@@ -5,6 +5,7 @@
 
 #include "Render/TextureManager.h"
 
+#include "Render/AsyncUploadManager.h"
 #include "Render/VulkanBase/VulkanDevice.h"
 #include "Render/VulkanBase/VulkanResourceCache.h"
 #include "Core/Log.h"
@@ -14,8 +15,9 @@
 
 namespace GE {
 
-TextureManager::TextureManager(VulkanDevice &device, VulkanResourceCache &cache)
-    : m_Device(&device), m_Cache(&cache) {
+TextureManager::TextureManager(VulkanDevice &device, VulkanResourceCache &cache,
+                               AsyncUploadManager &upload)
+    : m_Device(&device), m_Cache(&cache), m_AsyncUpload(&upload) {
     GE_CORE_INFO("TextureManager initialized");
 }
 
@@ -43,6 +45,33 @@ Texture *TextureManager::Load(const std::string &filepath,
                                      format, mag_filter, min_filter);
     if (!tex) {
         GE_CORE_WARN("TextureManager: 纹理加载失败: {0}", filepath);
+        return nullptr;
+    }
+
+    Texture *raw = tex.get();
+    m_Textures[filepath] = std::move(tex);
+    return raw;
+}
+
+Texture *TextureManager::LoadAsync(const std::string &filepath,
+                                   vk::Format format,
+                                   vk::Filter mag_filter,
+                                   vk::Filter min_filter) {
+    if (filepath.empty()) {
+        return nullptr;
+    }
+
+    // 已加载（含未就绪的空壳）则直接返回，同路径只异步加载一次
+    auto it = m_Textures.find(filepath);
+    if (it != m_Textures.end()) {
+        return it->second.get();
+    }
+
+    // 异步加载：返回未就绪的空壳纹理并提交后台任务
+    auto tex = Texture::LoadFromFileAsync(*m_Device, *m_Cache, *m_AsyncUpload, filepath,
+                                          format, mag_filter, min_filter);
+    if (!tex) {
+        GE_CORE_WARN("TextureManager: 纹理异步加载失败（提交）: {0}", filepath);
         return nullptr;
     }
 

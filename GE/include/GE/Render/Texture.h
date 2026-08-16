@@ -41,6 +41,7 @@
 
 #include <vulkan/vulkan.hpp>
 
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -48,6 +49,7 @@
 namespace GE {
 
 class VulkanCommandBuffer;
+class AsyncUploadManager;
 
 /**
  * @brief 纹理封装 —— 持有 VulkanImage + ImageView + Sampler。
@@ -132,6 +134,81 @@ public:
         VulkanResourceCache &cache,
         const std::string &filepath);
 
+    /// ========================================================================
+    /// 异步工厂方法（解码 + 上传移入后台线程，主线程每帧 Poll 回收后注入）
+    /// ========================================================================
+    /// 调用后立即返回一个"空壳"纹理（m_Ready=false，m_Image 为空）；后台线程
+    /// 完成解码与 GPU 上传后，主线程 Poll() 时经 InstallAsyncImage 注入并置就绪。
+    /// 就绪前调用方应经 IsReady() 检查，未就绪时降级为默认纹理。
+    ///
+    /// 生命周期：返回的空壳被销毁（如 unload）时自动作废内部注入槽位，已提交的
+    /// 异步任务 finalize 会安全跳过注入，不会 use-after-free。
+
+    /**
+     * @brief 异步从文件加载纹理（stb_image 解码 + GPU 上传全后台）。
+     *
+     * @param device       Vulkan 设备
+     * @param cache        全局资源缓存（Sampler 去重）
+     * @param upload       异步上传管理器（提交 UploadTask）
+     * @param filepath     纹理文件路径
+     * @param format       纹理格式（默认 eR8G8B8A8Unorm）
+     * @param mag_filter   放大过滤器（默认 eLinear）
+     * @param min_filter   缩小过滤器（默认 eLinear）
+     * @param generate_mipmaps  是否自动生成完整 mip 链（默认 true）
+     * @return std::unique_ptr<Texture>  空壳纹理（未就绪），失败时返回 nullptr
+     */
+    static std::unique_ptr<Texture> LoadFromFileAsync(
+        VulkanDevice &device,
+        VulkanResourceCache &cache,
+        AsyncUploadManager &upload,
+        const std::string &filepath,
+        vk::Format format = vk::Format::eR8G8B8A8Unorm,
+        vk::Filter mag_filter = vk::Filter::eLinear,
+        vk::Filter min_filter = vk::Filter::eLinear,
+        bool generate_mipmaps = true);
+
+    /**
+     * @brief 异步从内存像素数据创建纹理（GPU 上传后台，pixels 会被拷贝）。
+     *
+     * @param device       Vulkan 设备
+     * @param cache        全局资源缓存（Sampler 去重）
+     * @param upload       异步上传管理器（提交 UploadTask）
+     * @param pixels       RGBA 像素数据（每个像素 4 字节，调用方须在返回前保持有效，
+     *                     本函数会拷贝到内部容器）
+     * @param width        纹理宽度
+     * @param height       纹理高度
+     * @param format       纹理格式（默认 eR8G8B8A8Unorm）
+     * @param mag_filter   放大过滤器（默认 eLinear）
+     * @param min_filter   缩小过滤器（默认 eLinear）
+     * @param generate_mipmaps  是否自动生成完整 mip 链（默认 true）
+     * @return std::unique_ptr<Texture>  空壳纹理（未就绪），失败时返回 nullptr
+     */
+    static std::unique_ptr<Texture> LoadFromMemoryAsync(
+        VulkanDevice &device,
+        VulkanResourceCache &cache,
+        AsyncUploadManager &upload,
+        const void *pixels,
+        uint32_t width, uint32_t height,
+        vk::Format format = vk::Format::eR8G8B8A8Unorm,
+        vk::Filter mag_filter = vk::Filter::eLinear,
+        vk::Filter min_filter = vk::Filter::eLinear,
+        bool generate_mipmaps = true);
+
+    /**
+     * @brief 异步从 KTX 文件加载 cubemap 纹理（6 面，eCube 视图）。
+     *
+     * @param device    Vulkan 设备
+     * @param cache     全局资源缓存（Sampler 去重）
+     * @param upload    异步上传管理器（提交 UploadTask）
+     * @param filepath  KTX 文件路径（须为 6 面 cubemap）
+     * @return std::unique_ptr<Texture>  空壳纹理（未就绪），失败时返回 nullptr
+     */
+    static std::unique_ptr<Texture> LoadCubeMapFromFileAsync(
+        VulkanDevice &device,
+        VulkanResourceCache &cache,
+        AsyncUploadManager &upload,
+        const std::string &filepath);
+
     // ========================================================================
     // 直接构造（空白纹理，不传数据）
     // ========================================================================
@@ -176,6 +253,27 @@ private:
             uint32_t array_layers,
             bool cube_map);
 
+    /**
+     * @brief 空壳构造（异步加载用）：不创建任何 GPU 图像，m_Image 为空。
+     *
+     * 由异步工厂（LoadFromFileAsync 等）创建，返回给调用方后立即提交后台任务；
+     * 后台加载完成时经 InstallAsyncImage 注入图像并置就绪。
+     */
+    Texture();
+
+    /**
+     * @brief 异步加载注入槽位。
+     *
+     * 由空壳纹理持有（shared_ptr），异步任务 finalize 亦持有同份引用。空壳被
+     * 销毁时（如 unload）析构函数将其标记作废，finalize 据此安全跳过注入，避免
+     * 对已销毁目标的 use-after-free。主线程 Poll() 与 unload 均跑在主线程，故
+     * target/abandoned 无需原子。
+     */
+    struct AsyncPendingSlot {
+        Texture *target = nullptr;   ///< 待注入的目标空壳（析构时置空）
+        bool abandoned = false;      ///< 目标已销毁，finalize 应跳过
+    };
+
 public:
 
     /**
@@ -196,6 +294,36 @@ public:
     Texture(const Texture &) = delete;
     Texture &operator=(Texture &&) = delete;
     Texture &operator=(const Texture &) = delete;
+
+    // ========================================================================
+    // 就绪状态 / 注入
+    // ========================================================================
+
+    /**
+     * @brief 纹理是否已完全就绪（图像 + 视图 + 采样器可用）。
+     *
+     * 异步工厂返回的空壳纹理在后台加载完成、主线程注入前为 false。
+     * 渲染端绑定前必须检查：未就绪时降级为默认纹理，避免访问空句柄。
+     * 同步工厂 / 直接构造创建的纹理恒为 true。
+     */
+    bool IsReady() const { return m_Ready.load(std::memory_order_acquire); }
+
+    /**
+     * @brief 主线程安装后台异步加载完成的本地图像，并创建视图 + 采样器。
+     *
+     * 仅由异步任务 finalize（主线程 Poll()）调用。注入后置 m_Ready=true，
+     * 下帧渲染自动可见。若本纹理已被销毁（经 AsyncPendingSlot 门控），
+     * 调用方会跳过本方法，image 由调用方释放。
+     *
+     * @param image       后台线程创建的本地 VulkanImage（接管所有权）
+     * @param cache       全局资源缓存（Sampler 去重）
+     * @param mag_filter  放大过滤器
+     * @param min_filter  缩小过滤器
+     */
+    void InstallAsyncImage(std::unique_ptr<VulkanImage> image,
+                           VulkanResourceCache &cache,
+                           vk::Filter mag_filter,
+                           vk::Filter min_filter);
 
     // ========================================================================
     // 访问器
@@ -337,6 +465,11 @@ private:
     bool                             m_IsCubeMap = false; ///< 是否为 cubemap（true 时建 eCube 视图）
     std::string                      m_FilePath; ///< 源文件路径（LoadFromFile 时有值）
 
+    // 异步加载状态（空壳纹理专用）
+    std::atomic<bool>                m_Ready{false}; ///< 异步加载是否已就绪（同步纹理恒 true）
+    std::shared_ptr<AsyncPendingSlot> m_AsyncSlot;   ///< 异步注入槽位（空壳纹理持有）
+    VulkanDevice                    *m_AsyncDevice = nullptr; ///< 异步加载用设备（创建视图/采样器）
+
     // 采样器配置（便捷方法用）：记录当前参数，便于按同样参数重建采样器
     VulkanResourceCache      *m_SamplerCache   = nullptr; // 非拥有，LoadFromX 时记录
     vk::Filter                m_MagFilter      = vk::Filter::eLinear;
@@ -347,6 +480,7 @@ private:
     vk::SamplerAddressMode    m_AddressW       = vk::SamplerAddressMode::eRepeat;
     bool                      m_AnisotropyEnabled = false;
     float                     m_MaxAnisotropy  = 0.0f;
+    bool                      m_SamplerConfigExplicit = false; ///< 安装前 Set* 显式设置过采样器（异步纹理安装时保留）
 };
 
 } // namespace GE

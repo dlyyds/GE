@@ -186,16 +186,19 @@ void Renderer3D::SetEnvironment(const std::string &name) {
     auto &device = Renderer::GetVulkanContext().GetDevice();
     auto &cache  = device.GetResourceCache();
     auto &am     = Renderer::GetAssetManager();
+    auto &upload = Renderer::GetAsyncUploadManager();
 
     // 按命名约定推导三张图路径（与 assets/environments/ 布局一致）
     const std::string envDir = "environments/" + name + "/";
-    auto env = EnvironmentMap::LoadFromFiles(
-        device, cache,
+    // 异步加载：立即返回空壳，三张图后台解码 + GPU 上传，就绪前天空盒 / IBL
+    // 不显示，就绪后下帧自动切换
+    auto env = EnvironmentMap::LoadFromFilesAsync(
+        device, cache, upload,
         am.ResolvePath(envDir + "skybox.ktx2").string(),
         am.ResolvePath(envDir + "prefilter.ktx").string(),
         am.ResolvePath("environments/brdf_lut.png").string());
     if (!env) {
-        GE_CORE_ERROR("Renderer3D: 环境加载失败: {0}", name);
+        GE_CORE_ERROR("Renderer3D: 环境异步加载提交失败: {0}", name);
         m_EnvironmentName.clear();   // 允许下次重试
         return;
     }
@@ -294,29 +297,31 @@ void Renderer3D::DrawSubMeshImpl(const glm::mat4 &transform,
 // ============================================================================
 
 Texture *Renderer3D::GetEffectiveTexture(const Material *material) const {
-    // 优先取材质 Albedo 槽位纹理，无材质或无纹理时回退到默认白色纹理
+    // 优先取材质 Albedo 槽位纹理，无材质、无纹理或未就绪（异步加载中）时
+    // 回退到默认白色纹理，避免绑定空句柄
     Texture *tex = (material ? material->GetTexture(Material::Albedo) : nullptr);
-    return tex ? tex : m_DefaultWhiteTexture;
+    return (tex && tex->IsReady()) ? tex : m_DefaultWhiteTexture;
 }
 
 Texture *Renderer3D::GetEffectiveNormalTexture(const Material *material) const {
-    // 优先取材质 Normal 槽位纹理，无材质或无纹理时回退到默认平坦法线纹理
+    // 优先取材质 Normal 槽位纹理，无材质、无纹理或未就绪（异步加载中）时
+    // 回退到默认平坦法线纹理
     Texture *tex = (material ? material->GetTexture(Material::Normal) : nullptr);
-    return tex ? tex : m_DefaultNormalTexture.get();
+    return (tex && tex->IsReady()) ? tex : m_DefaultNormalTexture.get();
 }
 
 Texture *Renderer3D::GetEffectiveEmissiveTexture(const Material *material) const {
-    // 优先取材质 Emissive 槽位纹理，无材质或无纹理时回退到默认黑色纹理
-    // （RGB=(0,0,0)，物体不发光）
+    // 优先取材质 Emissive 槽位纹理，无材质、无纹理或未就绪（异步加载中）时
+    // 回退到默认黑色纹理（RGB=(0,0,0)，物体不发光）
     Texture *tex = (material ? material->GetTexture(Material::Emissive) : nullptr);
-    return tex ? tex : m_DefaultEmissiveTexture.get();
+    return (tex && tex->IsReady()) ? tex : m_DefaultEmissiveTexture.get();
 }
 
 Texture *Renderer3D::GetEffectiveMetallicRoughnessTexture(const Material *material) const {
-    // 优先取材质 MetallicRoughness 槽位纹理，无材质或无纹理时回退到默认
-    // (G=1,B=1) 纹理，使 metallic/roughness 等于标量系数原值
+    // 优先取材质 MetallicRoughness 槽位纹理，无材质、无纹理或未就绪（异步
+    // 加载中）时回退到默认 (G=1,B=1) 纹理，使 metallic/roughness 等于标量系数原值
     Texture *tex = (material ? material->GetTexture(Material::MetallicRoughness) : nullptr);
-    return tex ? tex : m_DefaultMetallicRoughnessTexture.get();
+    return (tex && tex->IsReady()) ? tex : m_DefaultMetallicRoughnessTexture.get();
 }
 
 uint8_t Renderer3D::GetPipelineId(const Material *material) const {
@@ -533,7 +538,8 @@ void Renderer3D::EndScene() {
     //    格式、动态状态、视口/剪刀），随后网格配置块会重新覆盖为网格状态，
     //    两者互不干扰。
     // 天空盒纹理由环境图 EnvironmentMap 统一持有
-    const Texture *skyTex = (m_EnvironmentMap) ? &m_EnvironmentMap->GetSkybox() : nullptr;
+    const Texture *skyTex = (m_EnvironmentMap && m_EnvironmentMap->IsReady())
+                                ? &m_EnvironmentMap->GetSkybox() : nullptr;
 
     if (m_SkyboxEnabled && skyTex) {
         auto skyColorFmt = renderTarget.GetColorFormat();
@@ -685,9 +691,11 @@ void Renderer3D::EndScene() {
     // ── 6. 逐批次 instanced 绘制 ─────────────────────────────────────
     vk::DeviceSize vertexOffset = 0;
 
-    // IBL 是否启用（全局）：需要已加载环境图且 IBL 开关打开，此时 PBR 批次走
-    // IBL 变体管线并绑定三张 IBL 图；否则回退无 IBL 变体（常量环境光）。
-    const bool useIbl = (m_EnvironmentMap != nullptr) && m_IBLEnabled;
+    // IBL 是否启用（全局）：需要已加载环境图且三张图均已就绪且 IBL 开关打开，
+    // 此时 PBR 批次走 IBL 变体管线并绑定三张 IBL 图；否则回退无 IBL 变体
+    // （常量环境光）。异步加载中环境图未就绪则本帧不启用 IBL，就绪后自动切换。
+    const bool useIbl = (m_EnvironmentMap != nullptr) && m_EnvironmentMap->IsReady()
+                        && m_IBLEnabled;
 
     // 当前绑定的管线 id（初始为 Blinn-Phong，已在上方绑定 *m_PipelineLayout）。
     // 排序键已按 pipelineId 分组，故同类型批次连续，切换频率最低。

@@ -305,7 +305,8 @@ void Renderer2D::EndScene() {
     // 无纹理时使用默认 1x1 白色纹理，避免未定义采样行为
     Texture *fallback = m_DefaultWhiteTexture;
     for (const auto &batch : batchInfos) {
-        Texture *tex = batch.texture ? batch.texture : fallback;
+        // 异步加载中（未就绪）的纹理降级为默认白色，避免绑定空句柄
+        Texture *tex = (batch.texture && batch.texture->IsReady()) ? batch.texture : fallback;
         if (tex) {
             cmd.BindImage(tex->GetImageView(),
                           tex->GetSampler(),

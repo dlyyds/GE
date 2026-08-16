@@ -56,7 +56,7 @@ static void ApplyMaterialData(Material &mat, const MaterialData &md,
 
     // 漫反射贴图：有 map_Kd 则加载；否则用漫反射颜色的纯色纹理（非白色时）
     if (!md.albedoMap.empty()) {
-        if (Texture *t = texMgr.Load(md.albedoMap)) {
+        if (Texture *t = texMgr.LoadAsync(md.albedoMap)) {
             mat.SetTexture(Material::Albedo, t);
         }
     } else {
@@ -70,14 +70,14 @@ static void ApplyMaterialData(Material &mat, const MaterialData &md,
 
     // 法线贴图（map_bump / norm）
     if (!md.normalMap.empty()) {
-        if (Texture *t = texMgr.Load(md.normalMap)) {
+        if (Texture *t = texMgr.LoadAsync(md.normalMap)) {
             mat.SetTexture(Material::Normal, t);
         }
     }
 
     // 自发光贴图（map_Ke）
     if (!md.emissiveMap.empty()) {
-        if (Texture *t = texMgr.Load(md.emissiveMap)) {
+        if (Texture *t = texMgr.LoadAsync(md.emissiveMap)) {
             mat.SetTexture(Material::Emissive, t);
         }
     }

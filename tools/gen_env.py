@@ -8,6 +8,7 @@
     skybox.ktx2    天空盒 cubemap（RGBA16F KTX2，cmgen 解 6 面 + ktx 打包）
     prefilter.ktx  IBL 预滤波镜面图（cmgen --ibl-ld 直接输出的 KTX1，加载已兼容）
     brdf_lut.png   BRDF LUT（共享一份，与环境无关，仅首次生成）
+    preview.png    预览缩略图（从源 HDRI 同目录的 .png 复制而来，编辑器下拉框用）
 
 依赖外部工具（可在脚本顶部改路径）：
     cmgen   Filament 离线烘焙工具
@@ -56,8 +57,12 @@ def run(cmd):
         raise RuntimeError(f"命令失败 (exit {result.returncode}): {cmd[0]}")
 
 
-def generate_skybox(env_root, source, tmp, size):
-    """cmgen 解 6 面 + ktx 打包成 RGBA16F cubemap，输出 skybox.ktx2。"""
+def generate_skybox(env_root, source, tmp, skybox_size):
+    """cmgen 解 6 面 + ktx 打包成 RGBA16F cubemap，输出 skybox.ktx2。
+
+    skybox_size 需足够大：天空盒作为背景整屏显示，过小会糊。
+    默认 2048（源 8K 全景 → 2048 单面），与 IBL 预滤波的 --size 分开。
+    """
     out = env_root / "skybox.ktx2"
     if out.exists():
         print(f"  [跳过] 已存在 {out.relative_to(ASSETS_ROOT)}")
@@ -65,7 +70,7 @@ def generate_skybox(env_root, source, tmp, size):
 
     faces_dir = tmp / "faces"
     # cmgen --extract 输出到 <faces_dir>/<源文件名去扩展名>/px.exr ...
-    run([CMGEN, "--type=cubemap", "--format=exr", f"--size={size}",
+    run([CMGEN, "--type=cubemap", "--format=exr", f"--size={skybox_size}",
          f"--extract={faces_dir}", str(source)])
 
     # 定位解出的 6 面（cmgen 放在以源文件名命名的子目录里）
@@ -100,6 +105,28 @@ def generate_prefilter(env_root, source, tmp, size):
     print(f"  [生成] {out.relative_to(ASSETS_ROOT)}")
 
 
+def generate_preview(env_root, source):
+    """从源 HDRI 所在目录复制一张预览缩略图到 preview.png。
+
+    源 HDRI（.exr）通常与缩略图 PNG 同在一个文件夹，如
+    assets/HDRI/DayEnvironmentHDRI107_4K/ 里既有 *_HDR.exr 也有同名 .png。
+    优先取 .png，缺省退回 .jpg（如 *_TONEMAPPED.jpg）。
+    """
+    out = env_root / "preview.png"
+    if out.exists():
+        print(f"  [跳过] 已存在 {out.relative_to(ASSETS_ROOT)}")
+        return
+
+    src_dir = source.parent
+    candidates = sorted(src_dir.glob("*.png")) or sorted(src_dir.glob("*.jpg"))
+    if not candidates:
+        print(f"  [跳过] 源目录未找到 PNG/JPG 缩略图: {src_dir}")
+        return
+    # 用 shutil.copy 而非 copyfile：预览图可能很大，走普通复制即可
+    shutil.copy(str(candidates[0]), out)
+    print(f"  [生成] {out.relative_to(ASSETS_ROOT)} <- {candidates[0].name}")
+
+
 def generate_brdf_lut():
     """BRDF LUT 与环境无关，共享一份在 environments/ 根，仅首次生成。"""
     out = ENVIRONMENTS_DIR / "brdf_lut.png"
@@ -114,7 +141,10 @@ def main():
     parser = argparse.ArgumentParser(description="生成环境资产（天空盒 + 预滤波 + BRDF LUT）")
     parser.add_argument("env_name", help="环境名，作为 environments/ 下的子文件夹名")
     parser.add_argument("source", help="源 HDRI 全景图路径（.exr）")
-    parser.add_argument("--size", type=int, default=256, help="cubemap 单面尺寸（默认 256）")
+    parser.add_argument("--size", type=int, default=256,
+                        help="IBL 预滤波尺寸（默认 256，低频，够用就行）")
+    parser.add_argument("--skybox-size", type=int, default=2048,
+                        help="天空盒 cubemap 单面尺寸（默认 2048，背景整屏显示需高分辨率）")
     args = parser.parse_args()
 
     source = pathlib.Path(args.source).resolve()
@@ -127,8 +157,9 @@ def main():
     print(f"== 生成环境 {args.env_name} -> {env_root.relative_to(ASSETS_ROOT)} ==")
     tmp = pathlib.Path(tempfile.mkdtemp(prefix="env_gen_"))
     try:
-        generate_skybox(env_root, source, tmp, args.size)
+        generate_skybox(env_root, source, tmp, args.skybox_size)
         generate_prefilter(env_root, source, tmp, args.size)
+        generate_preview(env_root, source)
         generate_brdf_lut()
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

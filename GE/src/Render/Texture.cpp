@@ -130,7 +130,7 @@ std::unique_ptr<Texture> Texture::LoadCubeMapFromFile(
 
     // 5. 整块拷贝到 staging buffer，再逐 (level, face) 上传
     auto &graphicsQueue = device.GetQueueByFlags(vk::QueueFlagBits::eGraphics, 0);
-    VulkanQueue &gfxQueue = graphicsQueue;
+    const VulkanQueue &gfxQueue = graphicsQueue;
     auto &uploadCmd = device.RequestCommandBuffer(vk::CommandBufferLevel::ePrimary, true);
 
     auto stagingBuffer = VulkanBuffer::create_staging_buffer(
@@ -316,7 +316,7 @@ void Texture::UploadPixels(VulkanDevice &device, const void *pixels,
 
     // 获取 graphics queue（用于上传后的 flush）
     auto &graphicsQueue = device.GetQueueByFlags(vk::QueueFlagBits::eGraphics, 0);
-    VulkanQueue &gfxQueue = graphicsQueue;
+    const VulkanQueue &gfxQueue = graphicsQueue;
 
     // 获取临时 command buffer
     auto &uploadCmd = device.RequestCommandBuffer(vk::CommandBufferLevel::ePrimary, true);
@@ -379,7 +379,7 @@ void Texture::GenerateMipmaps(VulkanDevice &device) {
 
     // 获取 graphics queue
     auto &graphicsQueue = device.GetQueueByFlags(vk::QueueFlagBits::eGraphics, 0);
-    VulkanQueue &gfxQueue = graphicsQueue;
+    const VulkanQueue &gfxQueue = graphicsQueue;
 
     // 获取临时 command buffer
     auto &cmd = device.RequestCommandBuffer(vk::CommandBufferLevel::ePrimary, true);

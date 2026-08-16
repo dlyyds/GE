@@ -226,7 +226,7 @@ void Renderer3D::FlushRetiredEnvironments() {
     //    的 descriptor set 已消失，ImageView 不再被任何 descriptor set 引用；
     // 2. WaitIdle 确保 GPU 完成所有引用旧环境的已提交命令。
     // 满足二者后销毁旧环境（含其纹理 ImageView）才是合法的。
-    Renderer::WaitIdle();
+    Renderer::Get().WaitIdle();
     m_RetiredEnvironments.clear();
     GE_CORE_INFO("Renderer3D: 已销毁退休环境映射");
 }

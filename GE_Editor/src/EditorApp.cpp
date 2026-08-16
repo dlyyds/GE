@@ -5,7 +5,6 @@
 #include "HierarchyLayer.h"
 #include "ResourceLayer.h"
 #include "DockSpaceLayer.h"
-#include "SandboxLayer.h"
 #include "GizmoController.h"
 
 namespace GE {

@@ -129,6 +129,9 @@ private:
     /// 回收指定槽位（block=false 用 timeout=0 非阻塞查询；block=true 阻塞等待）。
     void ReclaimSlot(Slot &slot, bool block);
 
+    /// 环形 in-flight 槽位数量。
+    static constexpr size_t kMaxInFlight = 3;
+
     VulkanDevice &m_Device;
     vk::Queue m_GraphicsQueue = nullptr; ///< 提交用的图形队列（由队列族能力选出）
 
@@ -141,9 +144,6 @@ private:
 
     std::deque<UploadTask> m_Queue;  ///< 待处理任务队列
     std::array<Slot, kMaxInFlight> m_Slots; ///< 环形 in-flight 槽位
-
-    /// 环形 in-flight 槽位数量。
-    static constexpr size_t kMaxInFlight = 3;
 };
 
 } // namespace GE

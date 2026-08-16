@@ -26,7 +26,7 @@ AsyncUploadManager::AsyncUploadManager(VulkanDevice &device) : m_Device(device) 
         m_Device.GetQueueByFlags(vk::QueueFlagBits::eGraphics, 0).GetFamilyIndex();
     const auto &family_props = m_Device.GetQueue(family_index, 0).GetProperties();
     const uint32_t upload_queue_index = family_props.queueCount > 1 ? 1 : 0;
-    m_GraphicsQueue = m_Device.GetQueue(family_index, upload_queue_index).GetHandle();
+    m_GraphicsQueue = &m_Device.GetQueue(family_index, upload_queue_index);
 
     // 为每个槽位创建命令池 + 持久 fence（复用，避免反复 create/destroy）
     for (auto &slot : m_Slots) {
@@ -118,11 +118,11 @@ void AsyncUploadManager::WorkerLoop() {
             .pCommandBuffers = &native,
         };
         // 本线程与主线程帧提交 / 同步上传可能共享同一图形队列，Vulkan 规范要求
-        // 对同一队列的 vkQueueSubmit 由应用层串行，故经 device 的 per-queue 锁提交
-        //（按队列句柄分锁，不同队列互不阻塞）。
+        // 对同一队列的 vkQueueSubmit 由应用层串行，故经队列自身的 per-queue 锁提交
+        //（不同队列各用各的锁，互不阻塞）。
         {
-            auto queue_lock = m_Device.LockQueueSubmit(m_GraphicsQueue);
-            m_GraphicsQueue.submit(submit_info, slot->fence);
+            auto queue_lock = m_GraphicsQueue->LockSubmit();
+            m_GraphicsQueue->GetHandle().submit(submit_info, slot->fence);
         }
 
         // ── 6. 把任务（含 staging / finalize）交给槽位，标记已提交，回到循环 ──

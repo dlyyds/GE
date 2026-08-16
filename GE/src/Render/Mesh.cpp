@@ -105,7 +105,7 @@ static std::unique_ptr<VulkanBuffer> UploadBuffer(
     // 提交并等待完成（按 command buffer 所属队列族提交）
     cmd.End();
     auto &queue = device.GetQueue(cmd.GetQueueFamilyIndex());
-    device.FlushCommandBuffer(cmd, queue.GetHandle());
+    device.FlushCommandBuffer(cmd, queue);
 
     // staging buffer 在此处自动析构
     return dst;

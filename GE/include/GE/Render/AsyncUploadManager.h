@@ -38,6 +38,7 @@ namespace GE {
 
 class VulkanCommandBuffer;
 class VulkanDevice;
+class VulkanQueue;
 
 /**
  * @brief 资源异步上传管理器。
@@ -133,7 +134,7 @@ private:
     static constexpr size_t kMaxInFlight = 3;
 
     VulkanDevice &m_Device;
-    vk::Queue m_GraphicsQueue = nullptr; ///< 提交用的图形队列（由队列族能力选出）
+    const VulkanQueue *m_GraphicsQueue = nullptr; ///< 提交用的图形队列（由队列族能力选出）
 
     std::thread m_Thread;
     std::atomic<bool> m_RequestExit{false}; ///< 请求后台线程退出

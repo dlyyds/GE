@@ -27,6 +27,8 @@
 
 #include <vulkan/vulkan.hpp>
 
+#include <mutex>
+
 namespace GE {
 
 class VulkanDevice;
@@ -79,6 +81,16 @@ public:
      */
     void Submit(const VulkanCommandBuffer &command_buffer, vk::Fence fence) const;
 
+    /// @brief 对本队列的提交加互斥锁（per-queue submit 串行）。
+    ///
+    /// Vulkan 规范要求对同一个 VkQueue 的并发 vkQueueSubmit / vkQueueWaitIdle 等
+    /// 调用必须由应用层串行（external synchronization）。每个 VulkanQueue 实例
+    /// 自带一把锁，同一队列的并发提交（如后台异步上传与主线程帧提交）经此串行，
+    /// 不同队列各用各的锁互不阻塞。返回的 unique_lock 在其作用域内持有锁。
+    [[nodiscard]] std::unique_lock<std::mutex> LockSubmit() const {
+        return std::unique_lock<std::mutex>(m_SubmitMutex);
+    }
+
     /**
      * @brief 将图像呈现到 surface。
      * @param present_info 呈现信息。
@@ -93,6 +105,9 @@ private:
     uint32_t                    m_Index{0};
     vk::Bool32                  m_CanPresent = false;
     vk::QueueFamilyProperties   m_Properties{};
+
+    /// 提交互斥锁：串行对本队列（同一 VkQueue）的 vkQueueSubmit（per-queue 外部同步）。
+    mutable std::mutex          m_SubmitMutex;
 };
 
 } // namespace GE

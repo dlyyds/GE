@@ -118,27 +118,11 @@ public:
 
     /// @brief 提交 command buffer、等待完成。
     /// @param command_buffer     要刷新的 command buffer
-    /// @param queue              提交到的队列
+    /// @param queue              提交到的队列（其内部按同一 VkQueue 的提交加锁串行）
     /// @param signal_semaphore   可选，提交时 signal 的信号量
     void FlushCommandBuffer(const VulkanCommandBuffer &command_buffer,
-                            vk::Queue queue,
+                            const VulkanQueue &queue,
                             vk::Semaphore signal_semaphore = nullptr) const;
-
-    /// @brief 对指定队列的提交加互斥锁（per-queue submit 串行）。
-    ///
-    /// Vulkan 规范要求对同一个 VkQueue 的并发 vkQueueSubmit / vkQueueWaitIdle 等
-    /// 调用必须由应用层串行（external synchronization）。锁按 VkQueue 句柄区分：
-    /// - 提交到同一队列的各方共享同一把锁（串行）；
-    /// - 提交到不同队列的各方各用独立锁（可并发，符合规范）。
-    ///
-    /// 返回的 unique_lock 在其作用域内持有锁，离开作用域自动释放。
-    [[nodiscard]] std::unique_lock<std::mutex> LockQueueSubmit(vk::Queue queue) const {
-        const VkQueue queue_handle = static_cast<VkQueue>(queue);
-        std::unique_lock<std::mutex> guard(m_QueueSubmitLocksMutex); // 保护锁表
-        auto &queue_mutex = m_QueueSubmitLocks[queue_handle];        // 找到/创建该队列的锁
-        guard.unlock();
-        return std::unique_lock<std::mutex>(queue_mutex);
-    }
 
     // =================================================================
     // 访问器
@@ -187,11 +171,6 @@ private:
     std::unique_ptr<DebugUtils> m_DebugUtils;
     std::vector<const char *> m_EnabledExtensions;
     std::unique_ptr<VulkanFencePool> m_FencePool;
-
-    /// 提交互斥锁表：按 VkQueue 句柄区分，同一队列共享一把锁（串行），
-    /// 不同队列各自独立（可并发）。m_QueueSubmitLocksMutex 保护锁表的读写。
-    mutable std::mutex m_QueueSubmitLocksMutex;
-    mutable std::unordered_map<VkQueue, std::mutex> m_QueueSubmitLocks;
     PhysicalDevice &m_Gpu;
     std::unique_ptr<VulkanResourceCache> m_ResourceCache;
     std::vector<std::vector<VulkanQueue> > m_Queues; ///< [family_index][queue_index]

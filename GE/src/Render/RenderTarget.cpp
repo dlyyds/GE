@@ -180,7 +180,7 @@ void RenderTarget::CreateOffscreenColorBuffer() {
     uploadCmd.End();
 
     auto &graphicsQueue = m_Device.GetQueueByFlags(vk::QueueFlagBits::eGraphics, 0);
-    m_Device.FlushCommandBuffer(uploadCmd, graphicsQueue.GetHandle());
+    m_Device.FlushCommandBuffer(uploadCmd, graphicsQueue);
 }
 
 // ============================================================================
@@ -226,7 +226,7 @@ void RenderTarget::CreateDepthBuffer() {
     uploadCmd.End();
 
     auto &graphicsQueue = m_Device.GetQueueByFlags(vk::QueueFlagBits::eGraphics, 0);
-    m_Device.FlushCommandBuffer(uploadCmd, graphicsQueue.GetHandle());
+    m_Device.FlushCommandBuffer(uploadCmd, graphicsQueue);
 }
 
 vk::Format RenderTarget::PickDepthFormat() const {

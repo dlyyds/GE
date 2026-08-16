@@ -322,10 +322,10 @@ void VulkanDevice::FlushCommandBuffer(const VulkanCommandBuffer &command_buffer,
     vk::Fence fence = GetHandle().createFence(vk::FenceCreateInfo{});
 
     // 提交到队列。Vulkan 规范要求对同一队列的并发 vkQueueSubmit 由应用层串行，
-    // 故按队列句柄经 per-queue 互斥锁提交（异步上传线程与帧提交可能同时向该队列提交）。
+    // 经队列自身的 per-queue 互斥锁提交（异步上传线程与帧提交可能同时向该队列提交）。
     {
-        auto queue_lock = LockQueueSubmit(queue);
-        queue.submit(submit_info, fence);
+        auto queue_lock = queue.LockSubmit();
+        queue.GetHandle().submit(submit_info, fence);
     }
 
     // 等待 fence

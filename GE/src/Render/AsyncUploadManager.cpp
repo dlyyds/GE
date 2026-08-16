@@ -172,8 +172,13 @@ void AsyncUploadManager::ReclaimSlot(Slot &slot, bool block) {
     auto &dev = m_Device.GetHandle();
 
     if (block) {
-        // 阻塞等待 fence（Shutdown 路径使用）
-        dev.waitForFences(1, &slot.fence, VK_TRUE, uint64_t(-1));
+        // 阻塞等待 fence（Shutdown 路径使用）。timeout=-1 无限等待，失败仅可能
+        // 是设备丢失等致命错误，故记录并中断。
+        vk::Result result = dev.waitForFences(1, &slot.fence, VK_TRUE, uint64_t(-1));
+        if (result != vk::Result::eSuccess) {
+            GE_CORE_ERROR("AsyncUploadManager: 等待 fence 失败: {}", vk::to_string(result));
+            abort();
+        }
     }
 
     // ── 主线程执行收尾（创建 view/sampler、安装成员、置 ready） ──

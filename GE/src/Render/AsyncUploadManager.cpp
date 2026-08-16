@@ -190,7 +190,11 @@ void AsyncUploadManager::ReclaimSlot(Slot &slot, bool block) {
     slot.task.staging.reset();
 
     // ── 重置 fence 与命令池，槽位可复用 ──
-    dev.resetFences(1, &slot.fence);
+    vk::Result reset_result = dev.resetFences(1, &slot.fence);
+    if (reset_result != vk::Result::eSuccess) {
+        GE_CORE_ERROR("AsyncUploadManager: 重置 fence 失败: {}", vk::to_string(reset_result));
+        abort();
+    }
     slot.pool->ResetPool();
     slot.task = {};
 

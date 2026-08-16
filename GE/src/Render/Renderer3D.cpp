@@ -172,39 +172,7 @@ Renderer3D::Renderer3D() {
 // ============================================================================
 // 天空盒
 // ============================================================================
-
-void Renderer3D::SetSkybox(const std::string &filepath) {
-    auto &device = Renderer::GetVulkanContext().GetDevice();
-    auto &cache  = device.GetResourceCache();
-
-    // 先解析为绝对路径（相对资源根），Texture 加载用文件 IO 直接读
-    // 文件，不会自动解析相对路径，必须在此转成绝对路径
-    const std::string resolved =
-        Renderer::GetAssetManager().ResolvePath(filepath).string();
-
-    // 按扩展名分流：.ktx 走 cubemap 加载（HDR 天空盒），其余走原等距图路径
-    std::unique_ptr<Texture> tex;
-    const std::string ext = std::filesystem::path(filepath).extension().string();
-    if (ext == ".ktx" || ext == ".ktx2") {
-        tex = Texture::LoadCubeMapFromFile(device, cache, resolved);
-    } else {
-        tex = Texture::LoadFromFile(device, cache, resolved,
-                                    vk::Format::eR8G8B8A8Unorm,
-                                    vk::Filter::eLinear, vk::Filter::eLinear,
-                                    /*generate_mipmaps*/ false);
-    }
-    if (!tex) {
-        GE_CORE_ERROR("Renderer3D: 天空盒纹理加载失败: {0}", filepath);
-        m_SkyboxEnabled = false;
-        return;
-    }
-
-    tex->SetDebugName("Skybox_Cubemap");
-    m_SkyboxTexture = std::move(tex);
-    m_SkyboxPath    = filepath;
-    m_SkyboxEnabled = true;
-    GE_CORE_INFO("Renderer3D: 天空盒已启用: {0}", filepath);
-}
+// 天空盒纹理由环境图 EnvironmentMap 统一持有，渲染器仅维护开关 m_SkyboxEnabled。
 
 Renderer3D::~Renderer3D() {
     GE_CORE_INFO("Renderer3D Shutdown");
@@ -215,10 +183,7 @@ Renderer3D::~Renderer3D() {
     m_DefaultEmissiveTexture.reset();
     m_DefaultMetallicRoughnessTexture.reset();
 
-    // 释放天空盒纹理
-    m_SkyboxTexture.reset();
-
-    // 释放环境映射（IBL）资源
+    // 释放环境映射（IBL）资源（含天空盒纹理）
     m_EnvironmentMap.reset();
 
     // 着色器和 pipeline layout 由全局资源缓存管理，不需要手动释放
@@ -537,9 +502,8 @@ void Renderer3D::EndScene() {
     //    深度（远平面）正常深度测试并覆盖。此块设置完整管线状态（含渲染
     //    格式、动态状态、视口/剪刀），随后网格配置块会重新覆盖为网格状态，
     //    两者互不干扰。
-    // 天空盒纹理：优先用环境图统一持有的天空盒，否则回退到 SetSkybox 单独加载的
+    // 天空盒纹理由环境图 EnvironmentMap 统一持有
     const Texture *skyTex = (m_EnvironmentMap) ? &m_EnvironmentMap->GetSkybox() : nullptr;
-    if (!skyTex) skyTex = m_SkyboxTexture.get();
 
     if (m_SkyboxEnabled && skyTex) {
         auto skyColorFmt = renderTarget.GetColorFormat();

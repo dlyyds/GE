@@ -325,8 +325,8 @@ struct AmbientLightComponent {
  * 约定推导三张图（prefilter 用于 IBL、skybox 用于背景、brdf_lut 共享）。
  *
  * 环境是场景级属性（不依赖实体的 Transform），取场景中第一个 EnvironmentComponent
- * 作为环境。由 Scene 在渲染前读取，调用 Renderer3D::SetSkybox /
- * SetEnvironmentMap 驱动。可随场景序列化（环境名 + 天空盒开关）。
+ * 作为环境。由 Scene 在渲染前读取，调用 Renderer3D::SetEnvironmentMap /
+ * SetSkyboxEnabled 驱动。可随场景序列化（环境名 + 天空盒开关）。
  */
 struct EnvironmentComponent {
     std::string Name;               ///< 环境名，对应 environments/<Name>/ 子文件夹

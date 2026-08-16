@@ -1,0 +1,374 @@
+// -*- tab-width: 4; -*-
+// vi: set sw=2 ts=4 expandtab:
+
+// Copyright 2022 The Khronos Group Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+#include "imageio.h"
+
+#include <array>
+#include <cassert>
+#include <optional>
+#include <string_view>
+#include <vector>
+#define TINYEXR_IMPLEMENTATION
+#define TEXR_ASSERT(x) assert(x)
+// Use tinyexr.h from basis_universal because it is self-contained. By default
+// tinyexr.h uses miniz but the astc-encoder has decided to use the stb_zlib
+// so have omitted miniz.h from their source. It is easier to use the one from
+// basis_universal than figure out how to make stb_zlib or standard zlib
+// available. The tinyexr versions appear broadly similar but I have not found
+// a way to determine the version from the .h file.
+#include "basis_universal/encoder/3rdparty/tinyexr.h"
+#include <KHR/khr_df.h>
+#include "dfd.h"
+
+#include <fmt/format.h>
+
+//
+// Documentation on the OpenEXR format can be found at:
+// https://openexr.readthedocs.io/en/latest/
+// More information about OpenEXR including sample images can be found at:
+// https://www.openexr.com/
+//
+
+class ExrInput final : public ImageInput {
+public:
+    ExrInput() : ImageInput("exr") {
+        // InitEXRVersion(&version); // No need to call, no such function
+        InitEXRHeader(&header);
+        InitEXRImage(&image);
+    }
+    ~ExrInput() {
+        // FreeEXRVersion(&version); // No need to call, no such function
+        if (image.width != 0 && image.height != 0) {
+            FreeEXRImage(&image);
+        }
+        FreeEXRHeader(&header);
+        FreeEXRErrorMessage(err);
+    }
+    virtual void open(ImageSpec&) override;
+
+    virtual void readImage(void* buffer, size_t bufferByteCount,
+                           uint32_t subimage = 0, uint32_t miplevel = 0,
+                           const FormatDescriptor& targetFormat = FormatDescriptor()) override;
+    /// Read a single scanline (all channels) of native data into contiguous
+    /// memory.
+    virtual void readNativeScanline(void* /*buffer*/, size_t /*bufferByteCount*/,
+                                    uint32_t /*y*/, uint32_t /*z*/,
+                                    uint32_t /*subimage*/, uint32_t /*miplevel*/) override { };
+
+    void slurp();
+
+private:
+    std::vector<unsigned char> exrBuffer;
+
+private:
+    EXRVersion version;
+    EXRHeader header;
+    EXRImage image;
+    int ec = 0;
+    const char* err = nullptr;
+};
+
+ImageInput* exrInputCreate() {
+    return new ExrInput;
+}
+
+const char* exrInputExtensions[] = { "exr", nullptr };
+
+void ExrInput::slurp() {
+    size_t exrByteLength;
+
+    isp->seekg(0, isp->end);
+    exrByteLength = isp->tellg();
+    isp->seekg(0, isp->beg);
+
+    exrBuffer.resize(exrByteLength);
+    isp->read(reinterpret_cast<char*>(exrBuffer.data()), exrByteLength);
+}
+
+void ExrInput::open(ImageSpec& newspec) {
+    assert(isp != nullptr && "ImageInput not properly opened");
+
+    {
+        unsigned char versionData[tinyexr::kEXRVersionSize];
+        isp->read(reinterpret_cast<char*>(versionData), tinyexr::kEXRVersionSize);
+        if (isp->fail())
+           throwOnReadFailure();
+        isp->seekg(0);
+
+        ec = ParseEXRVersionFromMemory(&version, versionData, tinyexr::kEXRVersionSize);
+        if (ec == TINYEXR_ERROR_INVALID_MAGIC_NUMBER)
+            throw different_format();
+        if (ec != TINYEXR_SUCCESS)
+            throw std::runtime_error(fmt::format("EXR version decode error: {}.", ec));
+    }
+
+    // It's an EXR file
+    slurp();
+
+    ec = ParseEXRHeaderFromMemory(&header, &version, exrBuffer.data(), exrBuffer.size(), &err);
+    if (ec != TINYEXR_SUCCESS)
+        throw std::runtime_error(fmt::format("EXR header decode error: {} - {}.", ec, err));
+
+    // Determine file data format
+    uint32_t bitDepth = 0;
+    ImageInputFormatType formatType;
+    int qualifiers = 0;
+
+    for (int i = 0; i < header.num_channels; i++) {
+        const auto type = header.channels[i].pixel_type;
+        switch (type) {
+        case TINYEXR_PIXELTYPE_FLOAT:
+            bitDepth = std::max(bitDepth, 32u);
+            formatType = ImageInputFormatType::exr_float;
+            qualifiers = KHR_DF_SAMPLE_DATATYPE_SIGNED | KHR_DF_SAMPLE_DATATYPE_FLOAT;
+            break;
+        case TINYEXR_PIXELTYPE_HALF:
+            bitDepth = std::max(bitDepth, 16u);
+            formatType = ImageInputFormatType::exr_float;
+            qualifiers = KHR_DF_SAMPLE_DATATYPE_SIGNED | KHR_DF_SAMPLE_DATATYPE_FLOAT;
+            break;
+        case TINYEXR_PIXELTYPE_UINT:
+            bitDepth = std::max(bitDepth, 32u);
+            formatType = ImageInputFormatType::exr_uint;
+            qualifiers = 0;
+            break;
+        default:
+            throw std::runtime_error(fmt::format("EXR header decode error: Not supported pixel type: {}.", type));
+        }
+    }
+
+    const uint32_t width = header.data_window.max_x - header.data_window.min_x + 1;
+    const uint32_t height = header.data_window.max_y - header.data_window.min_y + 1;
+
+    // Use "chromaticities" attribute, if present, to determine color primaries.
+    // Per the EXR spec. in the absence of chromaticities, use bt.709.
+    khr_df_primaries_e colorPrimaries = KHR_DF_PRIMARIES_BT709;
+    for (int i = 0; i < header.num_custom_attributes; ++i) {
+        auto attributeName = std::string_view(header.custom_attributes[i].name);
+        if (attributeName == "chromaticities") {
+            int expectedSize = 8 * sizeof(float);
+            if (header.custom_attributes[i].size != expectedSize) {
+                throw std::runtime_error(fmt::format("EXR chromaticities attribute decode error: Expected size {} but got {}.",
+                    expectedSize, header.custom_attributes[i].size));
+            }
+            const float* chromaticities = (const float*)header.custom_attributes[i].value;
+            Primaries primaries;
+            primaries.Rx = chromaticities[0];
+            primaries.Ry = chromaticities[1];
+            primaries.Gx = chromaticities[2];
+            primaries.Gy = chromaticities[3];
+            primaries.Bx = chromaticities[4];
+            primaries.By = chromaticities[5];
+            primaries.Wx = chromaticities[6];
+            primaries.Wy = chromaticities[7];
+            colorPrimaries = findMapping(&primaries, 0.002f);
+        }
+    }
+
+    images.emplace_back(ImageSpec(
+                            width,
+                            height,
+                            1,
+                            // We make TinyEXR decode to top-left.
+                            ImageSpec::Origin(ImageSpec::Origin::eLeft, ImageSpec::Origin::eTop),
+                            header.num_channels,
+                            bitDepth,
+                            static_cast<khr_df_sample_datatype_qualifiers_e>(qualifiers),
+                            KHR_DF_TRANSFER_LINEAR,
+                            colorPrimaries,
+                            KHR_DF_MODEL_RGBSDA),
+                        formatType);
+
+    newspec = spec();
+}
+
+/// @brief Read an entire image into contiguous memory performing conversions
+/// to @a requestFormat.
+///
+/// Supported conversions are half->[half,float,uint], float->float, and uint->uint.
+void ExrInput::readImage(void* outputBuffer, size_t bufferByteCount,
+        uint32_t subimage, uint32_t miplevel,
+        const FormatDescriptor& requestFormat) {
+    assert(subimage == 0); (void) subimage;
+    assert(miplevel == 0); (void) miplevel;
+
+    const auto& targetFormat = requestFormat.isUnknown() ? spec().format() : requestFormat;
+
+    // Determine and verify requested format conversions
+    if (!targetFormat.sameUnitAllChannels() || targetFormat.samples.empty())
+        throw std::runtime_error(fmt::format("EXR load error: "
+                "Requested format conversion to different channels is not supported."));
+
+    const auto targetBitDepth = targetFormat.samples[0].bitLength + 1;
+    const bool targetL = targetFormat.samples[0].qualifierLinear;
+    const bool targetE = targetFormat.samples[0].qualifierExponent;
+    const bool targetS = targetFormat.samples[0].qualifierSigned;
+    const bool targetF = targetFormat.samples[0].qualifierFloat;
+
+    // TinyEXR only supports half->[half,float,uint], float->float, uint->uint conversions
+    int requestedType = 0;
+    if (targetBitDepth == 16 && !targetE && !targetL && targetS && targetF)
+        requestedType = TINYEXR_PIXELTYPE_HALF;
+    else if (targetBitDepth == 32 && !targetE && !targetL && targetS && targetF)
+        requestedType = TINYEXR_PIXELTYPE_FLOAT;
+    else if (targetBitDepth == 32 && !targetE && !targetL && !targetS && !targetF)
+        requestedType = TINYEXR_PIXELTYPE_UINT;
+    else
+        throw std::runtime_error(fmt::format("EXR load error: "
+                "Requested format conversion to {}-bit{}{}{}{} is not supported.",
+                targetBitDepth,
+                targetL ? " Linear" : "",
+                targetE ? " Exponent" : "",
+                targetS ? " Signed" : "",
+                targetF ? " Float" : ""));
+
+    for (int i = 0; i < header.num_channels; ++i) {
+        header.requested_pixel_types[i] = requestedType;
+        if (header.pixel_types[i] != TINYEXR_PIXELTYPE_HALF && header.pixel_types[i] != requestedType)
+            throw std::runtime_error(fmt::format("EXR load error: "
+                    "Requested format conversion from the input type is not supported."));
+    }
+
+    // Load image version
+    EXRVersion exr_version;
+    ec = ParseEXRVersionFromMemory(&exr_version, exrBuffer.data(), exrBuffer.size());
+    if (ec != TINYEXR_SUCCESS)
+        throw std::runtime_error(
+            fmt::format("EXR load error: {} - {}.", ec, "Failed to parse EXR version"));
+    if (exr_version.multipart || exr_version.non_image)
+        throw std::runtime_error(
+            fmt::format("EXR load error: {}.", "Unsupported EXR version (2.0)"));
+
+    // Load image data
+
+    // TinyEXR decodes images so that the first bytes in the returned buffer
+    // are the top-left corner of the image with line_order == 0 "increasing Y"
+    // and the bottom-left corner otherwise, "decreasing Y". Force a top-left
+    // origin regardless of the line_order in the file. See
+    // https://github.com/syoyo/tinyexr/issues/213 for more information.
+    header.line_order = 0;
+    ec = LoadEXRImageFromMemory(&image, &header, exrBuffer.data(), exrBuffer.size(), &err);
+    if (ec != TINYEXR_SUCCESS)
+        throw std::runtime_error(fmt::format("EXR load error: {} - {}.", ec, err));
+
+    for (int i = 0; i < header.num_custom_attributes; i++) {
+         EXRAttribute& attribute = header.custom_attributes[i];
+         // names are null terminated
+         if (strncmp(attribute.name, "envmap", 7) == 0) {
+             throw std::runtime_error("EXR envmaps are not supported. Use exrenvmap to export"
+                                  " images for each face and use those to create your KTX file.");
+         }
+    }
+    if (header.tiled && header.tile_level_mode != TINYEXR_TILE_ONE_LEVEL)
+        throw std::runtime_error(fmt::format("Multi-level tiled EXR images are not supported."));
+    if ((header.tiled && image.tiles == nullptr) || (!header.tiled && image.images == nullptr))
+        throw std::runtime_error(fmt::format("Invalid EXR file. {}",
+            header.tiled ? "Tiled with no tiles" : "scanline with no images."));
+
+    const auto height = static_cast<uint32_t>(image.height);
+    const auto width = static_cast<uint32_t>(image.width);
+    const auto numSourceChannels = static_cast<uint32_t>(image.num_channels);
+    const auto numTargetChannels = targetFormat.channelCount();
+
+    const auto expectedBufferByteCount = height * width * numTargetChannels * targetBitDepth / 8;
+    if (bufferByteCount != expectedBufferByteCount)
+        throw std::runtime_error(fmt::format("EXR load error: "
+                "Provided target buffer size is {} does not match the expected value: {}.", bufferByteCount, expectedBufferByteCount));
+
+    // Find the RGBA channels
+    std::array<std::optional<uint32_t>, 4> channels;
+    for (uint32_t i = 0; i < numSourceChannels; ++i) {
+        if (std::strcmp(header.channels[i].name, "R") == 0)
+            channels[0] = i;
+        else if (std::strcmp(header.channels[i].name, "G") == 0)
+            channels[1] = i;
+        else if (std::strcmp(header.channels[i].name, "B") == 0)
+            channels[2] = i;
+        else if (std::strcmp(header.channels[i].name, "A") == 0)
+            channels[3] = i;
+        else
+            warning(fmt::format("EXR load warning: Unrecognized channel \"{}\" is ignored.", header.channels[i].name));
+        // TODO: check for 1 channel "Y" and make greyscale texture.
+        // TODO: check for "Y", "RY" and "BY" (luminance/chroma) and reject as unsupported.
+        // TODO: check for "AR", "AG", "AB" and make texture with pre-multipled alpha provided there is also an A channel? Or reject?
+    }
+
+    // Copy tiled data
+    const auto copyTiledData = [&](unsigned char* ptr, uint32_t dataSize, const void* defaultColor) {
+        const auto sourcePtr = [&](uint32_t channel, uint32_t tile, uint32_t tx, uint32_t ty) {
+            return reinterpret_cast<const unsigned char*>(image.tiles[tile].images[channel] + (ty * header.tile_size_x + tx) * dataSize);
+        };
+
+        for(int32_t tile = 0; tile < image.num_tiles; ++tile) {
+            for (int32_t ty = 0; ty < image.tiles[tile].height; ++ty) {
+                for (int32_t tx = 0; tx < image.tiles[tile].width; ++tx) {
+                    auto x = image.tiles[tile].offset_x * header.tile_size_x + tx;
+                    auto y = image.tiles[tile].offset_y * header.tile_size_y + ty;
+                    auto* targetPixel = ptr + (y * width * numTargetChannels + x * numTargetChannels) * dataSize;
+                    assert(targetPixel < ptr + bufferByteCount && "outputBuffer overrun loading tiled .exr");
+                    for (uint32_t c = 0; c < numTargetChannels; ++c) {
+                        if (channels[c].has_value()) {
+                            std::memcpy(targetPixel + c * dataSize, sourcePtr(*channels[c], tile, tx, ty), dataSize);
+                        } else {
+                            std::memcpy(targetPixel + c * dataSize, static_cast<const uint8_t*>(defaultColor) + c * dataSize, dataSize);
+                        }
+                    }
+                }
+            }
+        }
+    };
+
+    // Copy scanline data
+    const auto copyScanlineData = [&](unsigned char* ptr, uint32_t dataSize, const void* defaultColor) {
+        const auto sourcePtr = [&](uint32_t channel, uint32_t x, uint32_t y) {
+            return reinterpret_cast<const unsigned char*>(image.images[channel] + (y * width + x) * dataSize);
+        };
+
+        for (uint32_t y = 0; y < height; ++y) {
+            for (uint32_t x = 0; x < width; ++x) {
+                auto* targetPixel = ptr + (y * width * numTargetChannels + x * numTargetChannels) * dataSize;
+                assert(targetPixel < ptr + bufferByteCount && "outputBuffer overrun loading scanline .exr");
+                for (uint32_t c = 0; c < numTargetChannels; ++c) {
+                    if (channels[c].has_value()) {
+                        std::memcpy(targetPixel + c * dataSize, sourcePtr(*channels[c], x, y), dataSize);
+                    } else {
+                        std::memcpy(targetPixel + c * dataSize, static_cast<const uint8_t*>(defaultColor) + c * dataSize, dataSize);
+                    }
+                }
+            }
+        }
+    };
+
+    switch (requestedType) {
+    case TINYEXR_PIXELTYPE_HALF: {
+        uint16_t defaultColor[] = { 0x0000, 0x0000, 0x0000, 0x3C00 }; // { 0.h, 0.h, 0.h,1.h }
+        if (header.tiled)
+            copyTiledData(reinterpret_cast<unsigned char*>(outputBuffer), sizeof(defaultColor[0]), &defaultColor[0]);
+        else
+            copyScanlineData(reinterpret_cast<unsigned char*>(outputBuffer), sizeof(defaultColor[0]), &defaultColor[0]);
+        break;
+    }
+    case TINYEXR_PIXELTYPE_FLOAT: {
+        float defaultColor[] = { 0.f, 0.f, 0.f, 1.f };
+        if (header.tiled)
+            copyTiledData(reinterpret_cast<unsigned char*>(outputBuffer), sizeof(defaultColor[0]), &defaultColor[0]);
+        else
+            copyScanlineData(reinterpret_cast<unsigned char*>(outputBuffer), sizeof(defaultColor[0]), &defaultColor[0]);
+        break;
+    }
+    case TINYEXR_PIXELTYPE_UINT: {
+        uint32_t defaultColor[] = { 0, 0, 0, 1 };
+        if (header.tiled)
+            copyTiledData(reinterpret_cast<unsigned char*>(outputBuffer), sizeof(defaultColor[0]), &defaultColor[0]);
+        else
+            copyScanlineData(reinterpret_cast<unsigned char*>(outputBuffer), sizeof(defaultColor[0]), &defaultColor[0]);
+        break;
+    }
+    default:
+        assert(false && "Internal error");
+        break;
+    }
+}

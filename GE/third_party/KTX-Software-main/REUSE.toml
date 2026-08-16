@@ -1,0 +1,228 @@
+# SPDX-FileCopyrightText: 2024 The Khronos Group Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+version = 1
+SPDX-PackageName = "KTX-Software"
+SPDX-PackageDownloadLocation = "https://github.com/KhronosGroup/KTX-Software"
+
+[[annotations]]
+path = ["**/**.basis", "**/**.bmp", "**/**.ico", "**/**.icns", "**/**.jpg", "**/**.ktx", "**/**.ktx2", "**/**.pam", "**/**.pgm", "**/**.ppm", "**/**.png", "**/**.pspimage", "**/**.svg"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2015-2022 The Khronos Group Inc."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "tests/resources/input/exr/Desk.exr"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "Copyright (c) 2004, Industrial Light & Magic, a division of Lucasfilm Entertainment Company Ltd."
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = "tests/resources/ktx2/Desk_uastc_hdr4x4_zstd_15.ktx2"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "Copyright (c) 2004, Industrial Light & Magic, a division of Lucasfilm Entertainment Company Ltd."
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = "tests/resources/ktx2/Desk_uastc_hdr6x6i.ktx2"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "Copyright (c) 2004, Industrial Light & Magic, a division of Lucasfilm Entertainment Company Ltd."
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = "tests/resources/input/png/kodim17.png"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "Eastman Kodak Company"
+SPDX-License-Identifier = "LicenseRef-Kodak"
+
+[[annotations]]
+path = "tests/resources/input/png/color_grid.png"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "Unknown"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "tests/resources/input/png/FlightHelmet_baseColor.png"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "Microsoft"
+SPDX-License-Identifier = "CC0-1.0"
+
+[[annotations]]
+path = ["tests/resources/ktx/hi_mark.ktx", "tests/resources/ktx/hi_mark_sq.ktx"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "HI Corporation"
+SPDX-License-Identifier = "LicenseRef-HI-Trademark"
+
+[[annotations]]
+path = "tests/resources/input/jpg/Iron_Bars/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "Katsuagi https://3dtextures.me"
+SPDX-License-Identifier = "CC0-1.0"
+
+[[annotations]]
+path = ["tests/resources/input/jpg/GoldenGateBridge3/**", "tests/resources/input/jpg/Yokohama3/**"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "Emil Persson http://www.humus.name"
+SPDX-License-Identifier = "CC-BY-3.0"
+
+[[annotations]]
+path = ["tests/resources/ktx2/skybox.ktx2", "tests/resources/ktx2/skybox_zstd.ktx2"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "HDRIHaven"
+SPDX-License-Identifier = "CC0-1.0"
+
+[[annotations]]
+path = "external/astc-encoder/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2020-2023 Arm Limited"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "external/etcdec/etcdec.cxx"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2013 Ericsson AB"
+SPDX-License-Identifier = "LicenseRef-ETCSLA"
+
+[[annotations]]
+path = "external/fmt/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2012-present Victor Zverovich and {fmt} contributors"
+SPDX-License-Identifier = "LicenseRef-fmt"
+
+[[annotations]]
+path = "**/**.json"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2017-2020 Mark Callow"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "external/lodepng/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2005-2025 Lode Vandevenne"
+SPDX-License-Identifier = "Zlib"
+
+[[annotations]]
+path = "external/dfdutils/vulkan/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2015-2020 The Khronos Group Inc."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "external/dfdutils/.gitrepo"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2019-2020 The Khronos Group Inc"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "external/SDL_gesture/SDL_gesture.h"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "1997-2022 Sam Lantinga <slouken@libsdl.org>"
+SPDX-License-Identifier = "Zlib"
+
+[[annotations]]
+path = "cmake/modules/FindVulkan.cmake"
+precedence = "aggregate"
+SPDX-FileCopyrightText = ["Copyright 2000-2024 Kitware, Inc. and Contributors", "Updates for iOS Copyright (c) 2024, Holochip Inc"]
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = ["cmake/modules/NSIS.InstallOptions.ini.in", "cmake/**.rtf"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2017-2020 Andreas Atteneder"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = ["other_include/zstd**"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2016-present Facebook, Inc."
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = ["other_include/EGL/**.h", "other_include/GL**/**.h", "other_include/KHR/khrplatform.h"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2007-2020 The Khronos Group Inc."
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "pkgdoc/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2018-2023 The Khronos Group Inc."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "tests/webgl/libktx-gltf/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2020 Don McCurdy, Austin Eng, Shrek Shao, and Mark Callow"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = ["tests/webgl/libktx-webgl/**", "tests/webgl/libktx-read-webgl/**"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2020 Mark Callow"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "tests/webgl/llt-three/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2020 Mark Callow"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "tests/gtest/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2008, Google Inc."
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = "tools/package/mac/summary.rtfd/TXT.rtf"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2019 Mark Callow"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "other_include/glm/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2005 G-Truc Creation"
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "lib/etcdec.cxx"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2013 Ericsson AB 2013. All Rights Reserved."
+SPDX-License-Identifier = "LicenseRef-ETCSLA"
+
+[[annotations]]
+path = "tests/**/**loadtests.rc"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2020 The Khronos Group Inc."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "other_include/stb/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2017 Sean Barrett"
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "the_khronos_group_inc.p12.enc"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2022 The Khronos Group Inc."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "external/cxxopts/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2014-2022 Jarryd Beck"
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "NOTICE.md"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 The Khronos Group Inc."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = ["vcpkg.json", "vcpkg-configuration.json"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 The Khronos Group Inc."
+SPDX-License-Identifier = "Apache-2.0"

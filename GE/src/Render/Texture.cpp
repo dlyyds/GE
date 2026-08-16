@@ -337,6 +337,8 @@ std::unique_ptr<Texture> Texture::LoadFromFileAsync(
         }
         bucket->pixels.assign(pixels, pixels + static_cast<size_t>(bucket->width) * bucket->height * 4);
         stbi_image_free(pixels);
+        GE_CORE_TRACE("纹理异步解码完成: {0} ({1}x{2} RGBA8)", bucket->filepath,
+                      bucket->width, bucket->height);
     };
 
     task.upload = [&device, bucket](VulkanCommandBuffer &cmd) {
@@ -406,6 +408,7 @@ std::unique_ptr<Texture> Texture::LoadFromFileAsync(
     };
 
     upload.Submit(std::move(task));
+    GE_CORE_INFO("纹理异步加载提交: {0}", filepath);
     return texture;
 }
 
@@ -490,6 +493,7 @@ std::unique_ptr<Texture> Texture::LoadFromMemoryAsync(
     };
 
     upload.Submit(std::move(task));
+    GE_CORE_INFO("纹理异步加载提交: (内存 {0}x{1})", width, height);
     return texture;
 }
 
@@ -521,6 +525,8 @@ std::unique_ptr<Texture> Texture::LoadCubeMapFromFileAsync(
             return;
         }
         bucket->ktex.reset(ktex);
+        GE_CORE_TRACE("cubemap 异步解码完成: {0} ({1}x{2} mip={3})", bucket->filepath,
+                      ktex->baseWidth, ktex->baseHeight, ktex->numLevels);
     };
 
     task.upload = [&device, bucket](VulkanCommandBuffer &cmd) {
@@ -603,6 +609,7 @@ std::unique_ptr<Texture> Texture::LoadCubeMapFromFileAsync(
     };
 
     upload.Submit(std::move(task));
+    GE_CORE_INFO("cubemap 异步加载提交: {0}", filepath);
     return texture;
 }
 
@@ -912,6 +919,13 @@ void Texture::InstallAsyncImage(std::unique_ptr<VulkanImage> image,
 
     // 置就绪，下帧渲染自动可见
     m_Ready.store(true, std::memory_order_release);
+
+    GE_CORE_INFO("纹理异步就绪: {0} ({1}x{2}x{3} mip={4} 格式={5}{6})",
+                 m_FilePath.empty() ? "(内存)" : m_FilePath,
+                 m_Extent.width, m_Extent.height, m_Extent.depth,
+                 m_Image->get_mip_level_count(),
+                 vk::to_string(m_Format),
+                 m_IsCubeMap ? " cubemap" : "");
 }
 
 // ============================================================================

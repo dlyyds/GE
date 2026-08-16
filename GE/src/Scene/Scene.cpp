@@ -191,7 +191,7 @@ void Scene::OnUpdate3D(Timestep ts,
 
         auto envView = m_Registry.view<EnvironmentComponent>();
         if (envView.begin() != envView.end()) {
-            const auto &ec = envView.front();
+            const auto &ec = envView.get<EnvironmentComponent>(*envView.begin());
             const std::string envDir = "environments/" + ec.Name + "/";
 
             // 天空盒背景：路径（环境）变化时才重新加载，否则仅切换开关。

@@ -6,6 +6,7 @@
 
 #include <imgui.h>
 #include <imgui_internal.h>
+#include <backends/imgui_impl_vulkan.h>
 
 #include "GE/Scene/Components.h"
 #include "GE/Scene/Scene.h"
@@ -14,6 +15,7 @@
 #include "GE/Render/Material.h"
 #include "GE/Render/MaterialManager.h"
 #include "GE/Render/TextureManager.h"
+#include "GE/Render/AssetManager.h"
 #include "GE/Render/Renderer.h"
 #include "GE/Render/Mesh.h"
 #include "GE/Render/MeshManager.h"
@@ -22,7 +24,10 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <cmath>
 #include <algorithm>
+#include <cstdio>
 #include <cstring>
+#include <filesystem>
+#include <vector>
 
 namespace GE {
 
@@ -285,7 +290,7 @@ void SceneHierarchyPanel::DrawComponents(Entity entity) {
         [](auto &c) { DrawAmbientLightComponent(c); });
 
     DrawComponent<EnvironmentComponent>("Environment", entity,
-        [](auto &c) { DrawEnvironmentComponent(c); });
+        [this](auto &c) { DrawEnvironmentComponent(c); });
 
     DrawComponent<RigidBodyComponent>("Rigid Body", entity,
         [&](auto &c) { DrawRigidBodyComponent(entity, c); });
@@ -508,6 +513,13 @@ static void DrawMaterialEditor(Material *material) {
         return;
     }
 
+    // 材质显示名（独立字段，不改变 manager 注册 key）
+    char nameBuf[128];
+    snprintf(nameBuf, sizeof(nameBuf), "%s", material->GetName().c_str());
+    if (ImGui::InputText("名称 (Name)", nameBuf, sizeof(nameBuf))) {
+        material->SetName(nameBuf);
+    }
+
     // 材质类型（Blinn-Phong / PBR），决定渲染管线
     const char *typeNames[] = {"Blinn-Phong", "PBR"};
     int typeIdx = static_cast<int>(material->GetType());
@@ -523,7 +535,14 @@ static void DrawMaterialEditor(Material *material) {
     DrawTextureSlot("Emissive", material, Material::Emissive);
     // PBR 专属：金属-粗糙度贴图（glTF 惯例：B=metallic, G=roughness）
     if (material->GetType() == Material::Type::PBR) {
-        DrawTextureSlot("Metallic Roughness", material, Material::MetallicRoughness);
+        bool mrChanged = DrawTextureSlot("Metallic Roughness", material, Material::MetallicRoughness);
+        // 绑定贴图时让贴图如实驱动金属度/粗糙度：标量系数自动归 1
+        // （否则贴图 B/G 通道会被默认的 metallic=0、roughness=0.5 乘掉）。
+        // 仅在本帧发生了"绑定"（仍是贴图）时触发，取消绑定（回到 none）不干预。
+        if (mrChanged && material->GetTexture(Material::MetallicRoughness)) {
+            material->SetFloat("metallic", 1.0f);
+            material->SetFloat("roughness", 1.0f);
+        }
     }
 
     ImGui::Separator();
@@ -560,6 +579,13 @@ static void DrawMaterialEditor(Material *material) {
         material->SetFloat("emissiveStrength", emissiveStrength);
     }
 
+    // 纹理平铺 / UV 缩放密度（两种类型共用，采样前乘 inUV）
+    float uvTiling = material->GetFloat("uvTiling", 1.0f);
+    if (ImGui::SliderFloat("UV Tiling (纹理平铺)", &uvTiling,
+                           0.1f, 10.0f)) {
+        material->SetFloat("uvTiling", uvTiling);
+    }
+
     ImGui::Separator();
 
     // 渲染状态
@@ -583,21 +609,12 @@ static void DrawSubMeshMaterialEditor(MeshRendererComponent &comp, size_t index,
     }
     Material *effective = override ? override : sub.defaultMaterial;
 
-    // 显示名：有覆写显示覆写名；否则显示默认材质名（标注 default）
+    // 显示名：用材质的显示名（GetName），不显示 manager 注册 key
     std::string currentName = "(use default)";
     if (effective) {
-        currentName = "";
-        for (const auto &name : allMats) {
-            if (matMgr.Get(name) == effective) {
-                currentName = name;
-                break;
-            }
-        }
+        currentName = effective->GetName();
         if (currentName.empty()) {
-            currentName = effective->GetDebugName();
-            if (currentName.empty()) {
-                currentName = "(unnamed)";
-            }
+            currentName = "(unnamed)";
         }
         if (!override) {
             currentName += " [default]";
@@ -614,11 +631,15 @@ static void DrawSubMeshMaterialEditor(MeshRendererComponent &comp, size_t index,
             ImGui::SetItemDefaultFocus();
         }
 
-        // 列出 MaterialManager 中所有已加载材质（选即生成覆写）
+        // 列出 MaterialManager 中所有已加载材质（显示名 GetName，选即生成覆写）
         for (const auto &name : allMats) {
             Material *mat = matMgr.Get(name);
             bool isSelected = (mat == effective);
-            if (ImGui::Selectable(name.c_str(), isSelected)) {
+            std::string displayName = mat ? mat->GetName() : name;
+            if (displayName.empty()) {
+                displayName = name;  // 兜底：无显示名时退回 key
+            }
+            if (ImGui::Selectable(displayName.c_str(), isSelected)) {
                 comp.materialOverrides[static_cast<uint32_t>(index)] = mat;
             }
             if (isSelected) {
@@ -785,12 +806,62 @@ void SceneHierarchyPanel::DrawAmbientLightComponent(AmbientLightComponent &compo
 // Environment 组件
 // ============================================================
 void SceneHierarchyPanel::DrawEnvironmentComponent(EnvironmentComponent &component) {
-    // 环境名：对应 assets/environments/<Name>/ 子文件夹
-    char nameBuf[128];
-    snprintf(nameBuf, sizeof(nameBuf), "%s", component.Name.c_str());
-    if (ImGui::InputText("Name", nameBuf, sizeof(nameBuf))) {
-        component.Name = nameBuf;
+    // 扫描 assets/environments/ 下的子文件夹，作为可选环境列表
+    std::vector<std::string> envNames;
+    const auto envRoot = Renderer::GetAssetManager().GetAssetRoot() / "environments";
+    std::error_code ec;
+    if (std::filesystem::is_directory(envRoot, ec)) {
+        for (const auto &entry : std::filesystem::directory_iterator(envRoot, ec)) {
+            if (entry.is_directory(ec)) {
+                envNames.push_back(entry.path().filename().string());
+            }
+        }
     }
+    std::sort(envNames.begin(), envNames.end());
+
+    // 缩略图尺寸 = 行高 × 行高（1:1，且正好贴合每行高度，不超出）
+    const float thumbSize = GImGui->FontSize + GImGui->Style.FramePadding.y * 2.0f;
+    const ImVec2 thumbSizeVec(thumbSize, thumbSize);
+
+    // 当前选中环境的预览缩略图（显示在下拉框左侧）
+    if (!component.Name.empty()) {
+        if (ImTextureID tid = GetEnvironmentThumbnail(component.Name)) {
+            ImGui::Image(tid, thumbSizeVec);
+            ImGui::SameLine();
+        }
+    }
+
+    // 环境名下拉框：从扫到的子文件夹中选择，选即切换环境
+    std::string currentPreview = component.Name.empty() ? "(none)" : component.Name;
+    if (ImGui::BeginCombo("Name", currentPreview.c_str())) {
+        // None 选项（环境名为空）
+        if (ImGui::Selectable("(none)", component.Name.empty())) {
+            component.Name.clear();
+        }
+        if (component.Name.empty()) {
+            ImGui::SetItemDefaultFocus();
+        }
+
+        // 列出 environments/ 下所有子文件夹，每项右侧带预览缩略图
+        for (const auto &name : envNames) {
+            bool isSelected = (component.Name == name);
+            bool itemSelected = ImGui::Selectable(name.c_str(), isSelected);
+            // 预览图放在名称右侧同一行
+            if (ImTextureID tid = GetEnvironmentThumbnail(name)) {
+                ImGui::SameLine();
+                ImGui::Image(tid, thumbSizeVec);
+            }
+            if (itemSelected) {
+                component.Name = name;
+            }
+            if (isSelected) {
+                ImGui::SetItemDefaultFocus();
+            }
+        }
+
+        ImGui::EndCombo();
+    }
+
     // 环境总开关（关则天空盒 + IBL 一并关闭）
     ImGui::Checkbox("Enabled", &component.Enabled);
     // 天空盒背景开关
@@ -798,6 +869,31 @@ void SceneHierarchyPanel::DrawEnvironmentComponent(EnvironmentComponent &compone
     // IBL 环境光开关
     ImGui::Checkbox("IBL", &component.IBLEnabled);
     ImGui::TextDisabled("环境（天空盒 + IBL）来自 environments/<Name>/，不依赖 Transform");
+}
+
+// ============================================================
+// Environment 预览图缩略图
+// ============================================================
+ImTextureID SceneHierarchyPanel::GetEnvironmentThumbnail(const std::string &envName) {
+    // 已缓存则直接返回
+    auto it = m_EnvThumbnails.find(envName);
+    if (it != m_EnvThumbnails.end()) {
+        return it->second;
+    }
+
+    ImTextureID id = 0;
+    // 加载 environments/<名称>/preview.png（不存在则返回 0，不显示缩略图）
+    Texture *tex = Renderer::GetTextureManager().Load("assets/environments/" + envName + "/preview.png");
+    if (tex) {
+        // 用采样器 + ImageView 注册为 ImGui 图片（与 ResourcePanel::GetThumbnail 一致）
+        VkDescriptorSet set = ImGui_ImplVulkan_AddTexture(
+            tex->GetSampler().GetHandle(),
+            tex->GetImageView().GetHandle(),
+            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        id = reinterpret_cast<ImTextureID>(set);
+    }
+    m_EnvThumbnails[envName] = id;
+    return id;
 }
 
 // ============================================================

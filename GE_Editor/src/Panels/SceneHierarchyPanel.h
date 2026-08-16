@@ -8,6 +8,8 @@
 
 #include "GE/Debug/Assert.h"
 
+#include <unordered_map>
+
 #include "imgui.h"
 
 namespace GE {
@@ -80,7 +82,10 @@ private:
     static void DrawAmbientLightComponent(AmbientLightComponent &component);
 
     /// 绘制 Environment 组件属性
-    static void DrawEnvironmentComponent(EnvironmentComponent &component);
+    void DrawEnvironmentComponent(EnvironmentComponent &component);
+
+    /// 获取环境预览图缩略图的 ImGui 纹理 ID（environments/<名称>/preview.png，按名称缓存）
+    ImTextureID GetEnvironmentThumbnail(const std::string &envName);
 
     /// 绘制 RigidBody 组件属性
     void DrawRigidBodyComponent(Entity entity, RigidBodyComponent &component);
@@ -100,6 +105,9 @@ private:
 
     /// 停靠目标 DockSpace ID（根上下文取 "MainDockspace"，首帧初始化一次）
     ImGuiID m_DockSpaceID = 0;
+
+    /// 环境名 → 预览图 ImGui 纹理 ID 缓存（避免每帧重建描述符集）
+    std::unordered_map<std::string, ImTextureID> m_EnvThumbnails;
 };
 
 } // namespace GE

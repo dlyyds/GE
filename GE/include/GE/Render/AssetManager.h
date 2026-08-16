@@ -137,6 +137,17 @@ public:
     Texture *LoadTexture(const std::string &path);
 
     /**
+     * @brief 异步加载纹理（自动解析路径）。
+     *
+     * 同 LoadTexture，但解码 + GPU 上传在后台线程，返回未就绪的空壳纹理，
+     * 渲染端经 IsReady() 降级默认纹理，就绪后自动亮相。同路径只异步加载一次。
+     *
+     * @param path  纹理路径（相对资源根或绝对路径）
+     * @return 纹理指针（未就绪的空壳），加载失败返回 nullptr
+     */
+    Texture *LoadTextureAsync(const std::string &path);
+
+    /**
      * @brief 加载网格（自动解析路径）。
      *
      * @param path  网格路径（相对资源根或绝对路径）

@@ -85,6 +85,12 @@ Texture *AssetManager::LoadTexture(const std::string &path) {
     return GetTextureManager().Load(resolved.string());
 }
 
+Texture *AssetManager::LoadTextureAsync(const std::string &path) {
+    const std::filesystem::path resolved = ResolvePath(path);
+    // 使用 TextureManager::LoadAsync 的默认格式 eR8G8B8A8Unorm 与线性采样
+    return GetTextureManager().LoadAsync(resolved.string());
+}
+
 Mesh *AssetManager::LoadMesh(const std::string &path) {
     const std::filesystem::path resolved = ResolvePath(path);
     return GetMeshManager().Load(resolved.string());

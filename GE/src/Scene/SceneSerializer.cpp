@@ -220,11 +220,13 @@ Material *DeserializeMaterialNode(const YAML::Node &matNode) {
         std::string texKey = std::string(name) + "Texture";
         if (matNode[texKey]) {
             std::string path = matNode[texKey].as<std::string>("");
-            if (Texture *tex = Renderer::GetAssetManager().LoadTexture(path)) {
+            // 异步加载：返回未就绪空壳，渲染端 IsReady() 门控降级默认纹理，
+            // 就绪后自动亮相，避免反序列化场景时主线程阻塞在纹理解码/上传
+            if (Texture *tex = Renderer::GetAssetManager().LoadTextureAsync(path)) {
                 ApplySamplerParams(tex, matNode[texKey + "Sampler"]);
                 mat->SetTexture(TextureSlotFromName(name), tex);
             } else {
-                GE_CORE_WARN("SceneSerializer: 材质纹理加载失败: {0}", path);
+                GE_CORE_WARN("SceneSerializer: 材质纹理异步加载失败: {0}", path);
             }
         }
     }
@@ -601,7 +603,8 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
             // 纹理路径（如果有 Texture 字段，尝试加载）
             if (spriteNode["Texture"]) {
                 std::string texPath = spriteNode["Texture"].as<std::string>("");
-                src.SpriteTexture = Renderer::GetAssetManager().LoadTexture(texPath);
+                // 异步加载：未就绪前渲染器降级默认纹理，就绪后自动亮相
+                src.SpriteTexture = Renderer::GetAssetManager().LoadTextureAsync(texPath);
                 // 恢复采样器参数（若保存了）
                 ApplySamplerParams(src.SpriteTexture, spriteNode["TextureSampler"]);
             }

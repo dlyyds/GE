@@ -139,6 +139,11 @@ void SerializeMaterialNode(YAML::Node &matNode, Material *mat) {
     // 材质类型（BlinnPhong / PBR），决定渲染管线
     matNode["Type"] = (mat->GetType() == Material::Type::PBR) ? "PBR" : "BlinnPhong";
 
+    // 材质显示名（m_Name），非空才写，保持序列化文件干净
+    if (!mat->GetName().empty()) {
+        matNode["Name"] = mat->GetName();
+    }
+
     // 纹理槽位（仅写有纹理且带文件路径的槽位）
     for (int s = 0; s < Material::Count; ++s) {
         auto slot = static_cast<Material::TextureSlot>(s);
@@ -200,7 +205,12 @@ Material *DeserializeMaterialNode(const YAML::Node &matNode) {
     }
 
     auto mat = std::make_unique<Material>();
-    mat->SetDebugName(fullKey);
+    // 显示名优先取序列化里的 Name，缺省退回内容 key（保持非空）
+    if (matNode["Name"]) {
+        mat->SetName(matNode["Name"].as<std::string>());
+    } else {
+        mat->SetName(fullKey);
+    }
 
     if (matNode["Type"] && matNode["Type"].as<std::string>() == "PBR") {
         mat->SetType(Material::Type::PBR);

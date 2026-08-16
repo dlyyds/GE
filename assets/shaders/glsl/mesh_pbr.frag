@@ -28,7 +28,7 @@ layout (set = 1, binding = 7) uniform sampler2D  samplerBrdfDFG;    // BRDF LUT�
 //   params.x = shininess（Blinn-Phong 高光指数，PBR 下未用）
 //   params.y = specularStrength（Blinn-Phong 镜面强度，PBR 下未用）
 //   params.z = emissiveStrength（自发光强度，与 Blinn-Phong 一致）
-//   params.w 预留。
+//   params.w = uvTiling（纹理平铺 / UV 缩放密度，采样前乘 inUV）
 //   pbr.x = metallic（金属度，0=绝缘体 1=金属）
 //   pbr.y = roughness（粗糙度，0=镜面 1=漫）
 layout (set = 1, binding = 2, std140) uniform MaterialUBO
@@ -169,13 +169,13 @@ void main()
 {
     // Albedo 贴图是 sRGB（颜色），采样后解码到线性空间，PBR 光照数学才成立。
     // 法线 / metallic / roughness 是数据而非颜色，不做 gamma 解码。
-    vec3 albedo = pow(texture(samplerColor, inUV, 0.0).rgb, vec3(2.2)) * inColor.rgb;
+    vec3 albedo = pow(texture(samplerColor, inUV * material.params.w, 0.0).rgb, vec3(2.2)) * inColor.rgb;
 
     // —— 法线贴图：从切线空间采样并变换到世界空间 ——
     // 采样值 [0,1] 映射到 [-1,1]；用 TBN 矩阵变换。
     // 无法线贴图时绑定默认"平坦法线"纹理 (0.5,0.5,1.0)，映射回 (0,0,1)，
     // TBN * (0,0,1) = 几何法线，效果等同未使用法线贴图。
-    vec3 tangentNormal = texture(samplerNormal, inUV, 0.0).rgb * 2.0 - 1.0;
+    vec3 tangentNormal = texture(samplerNormal, inUV * material.params.w, 0.0).rgb * 2.0 - 1.0;
     vec3 T = normalize(inTangent);
     vec3 B = normalize(inBitangent);
     vec3 N = normalize(mat3(T, B, normalize(inNormal)) * tangentNormal);
@@ -184,7 +184,7 @@ void main()
 
     // 金属-粗糙度：贴图 B/G 通道 × 标量系数。无 MR 贴图时绑定默认 (G=1,B=1)
     // 纹理，两者乘以 1 即等于标量 pbr 系数原值（标量 fallback）。
-    vec4 mr = texture(samplerMetallicRoughness, inUV, 0.0);
+    vec4 mr = texture(samplerMetallicRoughness, inUV * material.params.w, 0.0);
     float metallic  = mr.b * material.pbr.x;
     float roughness = mr.g * material.pbr.y;
 
@@ -228,7 +228,7 @@ void main()
     }
 
     // 自发光：直接加色，不受光照影响。
-    vec3 emissive = texture(samplerEmissive, inUV, 0.0).rgb * material.params.z;
+    vec3 emissive = texture(samplerEmissive, inUV * material.params.w, 0.0).rgb * material.params.z;
     result += emissive;
 
     // 输出前：ACES 色调映射（线性 HDR → [0,1]）+ gamma 编码回 sRGB 显示。

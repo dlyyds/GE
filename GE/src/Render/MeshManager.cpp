@@ -167,7 +167,7 @@ Mesh *MeshManager::Load(const std::string &filepath) {
                 }
                 mat = m_Materials->Register(key, std::move(newMat));
             }
-            mat->SetDebugName(matName);
+            mat->SetName(matName);
             mesh->SetSubMeshDefaultMaterial(static_cast<uint32_t>(i), mat);
         }
     }

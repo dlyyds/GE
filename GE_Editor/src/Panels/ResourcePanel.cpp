@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdio>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -308,7 +309,17 @@ void ResourcePanel::DrawMaterialSection() {
         }
 
         ImGui::PushID(name.c_str());
-        if (ImGui::TreeNodeEx(name.c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
+        // 材质面板默认闭合（加了 ImGuiTreeNodeFlags_DefaultOpen 会默认展开）
+        // 标题显示材质的显示名 m_Name，不显示 manager 注册 key
+        const char *displayTitle = mat->GetName().empty() ? name.c_str() : mat->GetName().c_str();
+        if (ImGui::TreeNodeEx(displayTitle, 0)) {
+            // 材质显示名（独立字段，不改变 manager 注册 key）
+            char nameBuf[128];
+            snprintf(nameBuf, sizeof(nameBuf), "%s", mat->GetName().c_str());
+            if (ImGui::InputText("名称 (Name)", nameBuf, sizeof(nameBuf))) {
+                mat->SetName(nameBuf);
+            }
+
             // 属性表：左列控件（统一宽度），右列右侧对齐标签
             if (ImGui::BeginTable("##Props", 2, ImGuiTableFlags_SizingStretchProp)) {
                 ImGui::TableSetupColumn("widget", ImGuiTableColumnFlags_WidthStretch);
@@ -410,7 +421,7 @@ void ResourcePanel::DrawMaterialCreationControls() {
             } else {
                 // 新建材质：配一块白色反照率纹理，PBR 类型补默认金属度/粗糙度
                 auto mat = std::make_unique<Material>();
-                mat->SetDebugName(name);
+                mat->SetName(name);
                 mat->SetType(m_NewMaterialTypeIdx == 1
                                  ? Material::Type::PBR : Material::Type::BlinnPhong);
                 mat->SetTexture(Material::Albedo,

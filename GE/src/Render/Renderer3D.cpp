@@ -774,6 +774,9 @@ void Renderer3D::EndScene() {
         materialUBO.params.z = batch.material
             ? batch.material->GetFloat("emissiveStrength", 0.0f)
             : 0.0f;
+        materialUBO.params.w = batch.material
+            ? batch.material->GetFloat("uvTiling", 1.0f)
+            : 1.0f;
         materialUBO.pbr.x = batch.material
             ? batch.material->GetFloat("metallic", 0.0f)
             : 0.0f;

@@ -1,13 +1,169 @@
 Scene:
   Entities:
-    - Name: car2
+    - Name: Empty Entity
       Transform:
-        Translation: [1.6701088, -2.8471746, 2.506497]
+        Translation: [0.24366361, -0.9978661, -0.13308913]
+        Rotation: [0, -0, 0]
+        Scale: [0.1, 0.1, 0.1]
+      MeshRenderer:
+        Color: [1, 1, 1, 1]
+        Mesh: builtin:sphere
+      PointLight:
+        Color: [0.42745098, 1, 0.2627451, 1]
+        RadiusInv: 0.01
+    - Name: car1
+      Transform:
+        Translation: [-0.2605561, -2.8314323, 2.041085]
         Rotation: [0, -0, 0]
         Scale: [1, 1, 1]
       MeshRenderer:
         Color: [1, 1, 1, 1]
+        Mesh: builtin:cube
+        MaterialOverrides:
+          0:
+            Type: PBR
+            Name: 沙子
+            AlbedoTexture: F:\yxy\project\GameEngine\assets\materal\Ground054_4K-JPG\Ground054_4K-JPG_Color.jpg
+            AlbedoTextureSampler:
+              MagFilter: Linear
+              MinFilter: Linear
+              AddressMode: Repeat
+              Anisotropy: true
+            NormalTexture: F:\yxy\project\GameEngine\assets\materal\Ground054_4K-JPG\Ground054_4K-JPG_NormalGL.jpg
+            NormalTextureSampler:
+              MagFilter: Linear
+              MinFilter: Linear
+              AddressMode: Repeat
+              Anisotropy: true
+            MetallicRoughnessTexture: F:\yxy\project\GameEngine\assets\materal\Ground054_4K-JPG\Ground054_4K-JPG_Roughness.jpg
+            MetallicRoughnessTextureSampler:
+              MagFilter: Linear
+              MinFilter: Linear
+              AddressMode: Repeat
+              Anisotropy: true
+            FloatParams:
+              uvTiling: 1
+              emissiveStrength: 0
+              metallic: 0
+              roughness: 1
+    - Name: MainCamera
+      Transform:
+        Translation: [0, 0, 0]
+        Rotation: [0, 0, 0]
+        Scale: [1, 1, 1]
+      Camera:
+        Primary: true
+        FixedAspectRatio: false
+        Mode: Orbit
+        Fov: 60
+        Aspect: 1.4305949
+        Near: 0.1
+        Far: 100
+        Target: [0.6203404, -4.709879, 2.3663673]
+        Theta: -72.27025
+        Phi: 19.019724
+        Distance: 8.5
+        Position: [-7.033934, -1.9397831, 4.8135386]
+        Yaw: 0
+        Pitch: 0
+    - Name: RedPointLight
+      Transform:
+        Translation: [2.1701374, -0.013627559, -0.012405559]
+        Rotation: [0, -0, 0]
+        Scale: [0.15, 0.15, 0.15]
+      MeshRenderer:
+        Color: [1, 0.4, 0.4, 1]
         Mesh: builtin:sphere
+      PointLight:
+        Color: [1, 0.2, 0.2, 1.5]
+        RadiusInv: 0.4
+    - Name: BluePointLight
+      Transform:
+        Translation: [1.2418141, -5.4906673, -0.84205973]
+        Rotation: [-0.0038081603, -1.3635467e-06, -0.0008124476]
+        Scale: [0.15, 0.15, 0.15]
+      MeshRenderer:
+        Color: [0.4, 0.5, 1, 1]
+        Mesh: builtin:sphere
+      PointLight:
+        Color: [0.2, 0.3, 1, 1.5]
+        RadiusInv: 0.4
+      RigidBody:
+        Type: Dynamic
+        Mass: 1
+        Friction: 0.6
+        Restitution: 0.3
+        LinearDamping: 0.05
+        AngularDamping: 0.05
+        IsSensor: false
+      SphereCollider:
+        Radius: 1
+        Offset: [0, 0, 0]
+    - Name: DirectionalLight
+      Transform:
+        Translation: [0, 0, 0]
+        Rotation: [-0.7853982, 0.5235988, 0]
+        Scale: [1, 1, 1]
+      DirectionalLight:
+        Color: [1, 0.9490196, 0.8509804, 0]
+    - Name: AmbientLight
+      Transform:
+        Translation: [0, 0, 0]
+        Rotation: [0, 0, 0]
+        Scale: [1, 1, 1]
+      AmbientLight:
+        Color: [0.3019608, 0.3019608, 0.34901962, 1]
+      Environment:
+        Name: DaySkyHDRI065B
+        Enabled: true
+        SkyboxEnabled: true
+        IBLEnabled: true
+    - Name: PhysicsFloor
+      Transform:
+        Translation: [0, -5.840667, 0]
+        Rotation: [0, -0, 0]
+        Scale: [149.1, 0.2, 170.51]
+      MeshRenderer:
+        Color: [0.5, 0.5, 0.5, 1]
+        Mesh: builtin:cube
+        MaterialOverrides:
+          0:
+            Type: PBR
+            Name: 沙地
+            AlbedoTexture: F:\yxy\project\GameEngine\assets\materal\Ground054_4K-JPG\Ground054_4K-JPG_Color.jpg
+            AlbedoTextureSampler:
+              MagFilter: Linear
+              MinFilter: Linear
+              AddressMode: Repeat
+              Anisotropy: true
+            NormalTexture: F:\yxy\project\GameEngine\assets\materal\Ground054_4K-JPG\Ground054_4K-JPG_NormalGL.jpg
+            NormalTextureSampler:
+              MagFilter: Linear
+              MinFilter: Linear
+              AddressMode: Repeat
+              Anisotropy: true
+            MetallicRoughnessTexture: F:\yxy\project\GameEngine\assets\materal\Ground054_4K-JPG\Ground054_4K-JPG_Roughness.jpg
+            MetallicRoughnessTextureSampler:
+              MagFilter: Linear
+              MinFilter: Linear
+              AddressMode: Repeat
+              Anisotropy: true
+            FloatParams:
+              uvTiling: 7.41
+              emissiveStrength: 0
+              metallic: 0
+              roughness: 1
+      RigidBody:
+        Type: Static
+        Mass: 1
+        Friction: 0.6
+        Restitution: 0
+        LinearDamping: 0.05
+        AngularDamping: 0.05
+        IsSensor: false
+      BoxCollider:
+        HalfExtents: [1, 1, 1]
+        Offset: [0, 0, 0]
     - Name: PhysicsBall
       Transform:
         Translation: [0, 5, 0]
@@ -27,127 +183,38 @@ Scene:
       SphereCollider:
         Radius: 1
         Offset: [0, 0, 0]
-    - Name: PhysicsFloor
+    - Name: car2
       Transform:
-        Translation: [0, -5.840667, 0]
+        Translation: [-0.11845638, -1.1009448, 5.8653255]
         Rotation: [0, -0, 0]
-        Scale: [149.1, 0.2, 170.51]
+        Scale: [1, 1, 1]
       MeshRenderer:
-        Color: [0.5, 0.5, 0.5, 1]
-        Mesh: builtin:cube
+        Color: [1, 1, 1, 1]
+        Mesh: builtin:sphere
         MaterialOverrides:
           0:
             Type: PBR
+            Name: scene:PBR;Albedo:F:\yxy\project\GameEngine\assets\Metal049A_2K-JPG\Metal049A_2K-JPG_Color.jpg;Normal:F:\yxy\project\GameEngine\assets\Metal049A_2K-JPG\Metal049A_2K-JPG_NormalGL.jpg;MetallicRoughness:F:\yxy\project\GameEngine\assets\Metal049A_2K-JPG\Metal049A_2K-JPG_MetalRough.png;emissiveStrength=0;metallic=1;roughness=1;uvTiling=0.54;
+            AlbedoTexture: F:\yxy\project\GameEngine\assets\Metal049A_2K-JPG\Metal049A_2K-JPG_Color.jpg
+            AlbedoTextureSampler:
+              MagFilter: Linear
+              MinFilter: Linear
+              AddressMode: Repeat
+              Anisotropy: true
+            NormalTexture: F:\yxy\project\GameEngine\assets\Metal049A_2K-JPG\Metal049A_2K-JPG_NormalGL.jpg
+            NormalTextureSampler:
+              MagFilter: Linear
+              MinFilter: Linear
+              AddressMode: Repeat
+              Anisotropy: true
+            MetallicRoughnessTexture: F:\yxy\project\GameEngine\assets\Metal049A_2K-JPG\Metal049A_2K-JPG_MetalRough.png
+            MetallicRoughnessTextureSampler:
+              MagFilter: Linear
+              MinFilter: Linear
+              AddressMode: Repeat
+              Anisotropy: true
             FloatParams:
+              uvTiling: 0.54
               emissiveStrength: 0
               metallic: 1
-              roughness: 0
-      RigidBody:
-        Type: Static
-        Mass: 1
-        Friction: 0.6
-        Restitution: 0
-        LinearDamping: 0.05
-        AngularDamping: 0.05
-        IsSensor: false
-      BoxCollider:
-        HalfExtents: [1, 1, 1]
-        Offset: [0, 0, 0]
-    - Name: AmbientLight
-      Transform:
-        Translation: [0, 0, 0]
-        Rotation: [0, 0, 0]
-        Scale: [1, 1, 1]
-      AmbientLight:
-        Color: [0.3019608, 0.3019608, 0.34901962, 1]
-      Environment:
-        Name: DaySkyHDRI065B
-        Enabled: true
-        SkyboxEnabled: true
-        IBLEnabled: true
-    - Name: DirectionalLight
-      Transform:
-        Translation: [0, 0, 0]
-        Rotation: [-0.7853982, 0.5235988, 0]
-        Scale: [1, 1, 1]
-      DirectionalLight:
-        Color: [1, 0.9490196, 0.8509804, 0]
-    - Name: BluePointLight
-      Transform:
-        Translation: [1.2417201, -2.75, -0.8416986]
-        Rotation: [-0.0012389934, 2.5638298e-07, -0.00010160994]
-        Scale: [0.15, 0.15, 0.15]
-      MeshRenderer:
-        Color: [0.4, 0.5, 1, 1]
-        Mesh: builtin:sphere
-      PointLight:
-        Color: [0.2, 0.3, 1, 1.5]
-        RadiusInv: 0.4
-      RigidBody:
-        Type: Dynamic
-        Mass: 1
-        Friction: 0.6
-        Restitution: 0.3
-        LinearDamping: 0.05
-        AngularDamping: 0.05
-        IsSensor: false
-      SphereCollider:
-        Radius: 1
-        Offset: [0, 0, 0]
-    - Name: RedPointLight
-      Transform:
-        Translation: [2.1701374, -0.013627559, -0.012405559]
-        Rotation: [0, -0, 0]
-        Scale: [0.15, 0.15, 0.15]
-      MeshRenderer:
-        Color: [1, 0.4, 0.4, 1]
-        Mesh: builtin:sphere
-      PointLight:
-        Color: [1, 0.2, 0.2, 1.5]
-        RadiusInv: 0.4
-    - Name: MainCamera
-      Transform:
-        Translation: [0, 0, 0]
-        Rotation: [0, 0, 0]
-        Scale: [1, 1, 1]
-      Camera:
-        Primary: true
-        FixedAspectRatio: false
-        Mode: Orbit
-        Fov: 60
-        Aspect: 1.4305949
-        Near: 0.1
-        Far: 100
-        Target: [0.15198451, -1.787535, 2.486478]
-        Theta: 3.1481345
-        Phi: 10.739533
-        Distance: 8.5
-        Position: [0.61060846, -0.20360613, 10.824993]
-        Yaw: 0
-        Pitch: 0
-    - Name: car1
-      Transform:
-        Translation: [-0.2605561, -2.8314323, 2.041085]
-        Rotation: [0, -0, 0]
-        Scale: [1, 1, 1]
-      MeshRenderer:
-        Color: [1, 1, 1, 1]
-        Mesh: builtin:cube
-        MaterialOverrides:
-          0:
-            Type: PBR
-            FloatParams:
-              emissiveStrength: 0
-              metallic: 0.464
-              roughness: 0.37
-    - Name: Empty Entity
-      Transform:
-        Translation: [0.24366361, -0.9978661, -0.13308913]
-        Rotation: [0, -0, 0]
-        Scale: [0.1, 0.1, 0.1]
-      MeshRenderer:
-        Color: [1, 1, 1, 1]
-        Mesh: builtin:sphere
-      PointLight:
-        Color: [0.42745098, 1, 0.2627451, 1]
-        RadiusInv: 0.01
+              roughness: 1

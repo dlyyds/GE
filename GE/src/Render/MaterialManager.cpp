@@ -39,6 +39,10 @@ Material *MaterialManager::Register(const std::string &name,
         return nullptr;
     }
     Material *raw = material.get();
+    // 显示名默认 = 注册名；调用方已显式改名则保留（Name 是独立字段，与 key 解耦）
+    if (raw->GetName().empty()) {
+        raw->SetName(name);
+    }
     m_Materials[name] = std::move(material);
     return raw;
 }

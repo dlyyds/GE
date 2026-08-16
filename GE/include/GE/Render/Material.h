@@ -210,6 +210,7 @@ public:
             if (!HasFloat("specularStrength")) SetFloat("specularStrength", 0.5f);
         }
         if (!HasFloat("emissiveStrength")) SetFloat("emissiveStrength", 0.0f);
+        if (!HasFloat("uvTiling")) SetFloat("uvTiling", 1.0f);  // 纹理平铺（UV 缩放）密度，1 = 不平铺
     }
 
     // ========================================================================
@@ -224,14 +225,14 @@ public:
     // ========================================================================
 
     /**
-     * @brief 设置调试名称。
+     * @brief 设置材质显示名（独立于管理器的注册 key，可自由改名不改动 manager）。
      */
-    void SetDebugName(const std::string &name) { m_DebugName = name; }
+    void SetName(const std::string &name) { m_Name = name; }
 
     /**
-     * @brief 获取调试名称。
+     * @brief 获取材质显示名。
      */
-    const std::string &GetDebugName() const { return m_DebugName; }
+    const std::string &GetName() const { return m_Name; }
 
     /**
      * @brief 检查材质是否被修改（脏标记）。
@@ -258,7 +259,7 @@ private:
     /// 浮点参数字典
     std::unordered_map<std::string, float> m_FloatParams;
 
-    std::string m_DebugName;   ///< 调试名称
+    std::string m_Name;        ///< 材质显示名（独立字段，默认 = 注册名，可自由改名）
     bool        m_Dirty = true; ///< 脏标记（构造时默认为脏，首次使用前需处理）
 };
 

@@ -106,14 +106,14 @@ vec3 calcPointLight(PointLight light, vec3 N, vec3 V, vec3 worldPos, vec3 albedo
 
 void main()
 {
-    vec4 texColor = texture(samplerColor, inUV, 0.0);
+    vec4 texColor = texture(samplerColor, inUV * material.params.w, 0.0);
     vec3 albedo = texColor.rgb * inColor.rgb;
 
     // —— 法线贴图：从切线空间采样并变换到世界空间 ——
     // 采样值 [0,1] 映射到 [-1,1]；用 TBN 矩阵（切线/副切线/法线）变换。
     // 无法线贴图时绑定默认"平坦法线"纹理 (0.5,0.5,1.0)，映射回 (0,0,1)，
     // TBN * (0,0,1) = 几何法线，效果等同未使用法线贴图。
-    vec3 tangentNormal = texture(samplerNormal, inUV, 0.0).rgb * 2.0 - 1.0;
+    vec3 tangentNormal = texture(samplerNormal, inUV * material.params.w, 0.0).rgb * 2.0 - 1.0;
     vec3 T = normalize(inTangent);
     vec3 B = normalize(inBitangent);
     vec3 N = normalize(mat3(T, B, normalize(inNormal)) * tangentNormal);
@@ -137,7 +137,7 @@ void main()
     // 自发光：直接加色，不受光照影响。
     // 采样自发光贴图颜色，乘强度参数。无自发光贴图时绑定默认黑色纹理，
     // 采样为 0，不改变结果（物体不发光）。
-    vec3 emissive = texture(samplerEmissive, inUV, 0.0).rgb * material.params.z;
+    vec3 emissive = texture(samplerEmissive, inUV * material.params.w, 0.0).rgb * material.params.z;
     result += emissive;
 
     outFragColor = vec4(result, 1.0);

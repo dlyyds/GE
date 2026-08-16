@@ -18,10 +18,15 @@ namespace GE {
 // ============================================================================
 
 AsyncUploadManager::AsyncUploadManager(VulkanDevice &device) : m_Device(device) {
-    // 选择同时支持 Graphics 的队列族创建命令池，并取出对应的图形队列用于提交
+    // 选择同时支持 Graphics 的队列族创建命令池，并取出该族的一条图形队列用于提交。
+    // 若该族有多个同能力队列实例（如 Family 0 常含 16 个），用第 2 个（queue 1）做
+    // 上传，与渲染用的 queue 0 是不同 VkQueue，Vulkan 允许并发提交且不争 per-queue
+    // 锁；单队列设备则退化为 queue 0（此时仍由 per-queue 锁串行）。
     const uint32_t family_index =
         m_Device.GetQueueByFlags(vk::QueueFlagBits::eGraphics, 0).GetFamilyIndex();
-    m_GraphicsQueue = m_Device.GetQueueByFlags(vk::QueueFlagBits::eGraphics, 0).GetHandle();
+    const auto &family_props = m_Device.GetQueue(family_index, 0).GetProperties();
+    const uint32_t upload_queue_index = family_props.queueCount > 1 ? 1 : 0;
+    m_GraphicsQueue = m_Device.GetQueue(family_index, upload_queue_index).GetHandle();
 
     // 为每个槽位创建命令池 + 持久 fence（复用，避免反复 create/destroy）
     for (auto &slot : m_Slots) {

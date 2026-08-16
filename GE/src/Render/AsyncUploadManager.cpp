@@ -112,18 +112,9 @@ void AsyncUploadManager::WorkerLoop() {
         cmd.End();
 
         // ── 5. 提交到图形队列（绑定槽位 fence，GPU 完成后由主线程回收） ──
-        vk::CommandBuffer native = cmd.GetHandle();
-        vk::SubmitInfo submit_info{
-            .commandBufferCount = 1,
-            .pCommandBuffers = &native,
-        };
-        // 本线程与主线程帧提交 / 同步上传可能共享同一图形队列，Vulkan 规范要求
-        // 对同一队列的 vkQueueSubmit 由应用层串行，故经队列自身的 per-queue 锁提交
-        //（不同队列各用各的锁，互不阻塞）。
-        {
-            auto queue_lock = m_GraphicsQueue->LockSubmit();
-            m_GraphicsQueue->GetHandle().submit(submit_info, slot->fence);
-        }
+        // 统一经队列的提交入口（内部对本队列提交加互斥锁串行，与帧提交并发安全；
+        // 若上传用的队列与渲染不同，则各用各的锁互不阻塞）。
+        m_GraphicsQueue->Submit({cmd.GetHandle()}, slot->fence);
 
         // ── 6. 把任务（含 staging / finalize）交给槽位，标记已提交，回到循环 ──
         {

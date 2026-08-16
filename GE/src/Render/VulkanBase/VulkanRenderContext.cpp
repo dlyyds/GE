@@ -492,25 +492,10 @@ vk::Semaphore VulkanRenderContext::Submit(const VulkanQueue &queue,
     VulkanRenderFrame &frame = *m_Frames[m_ActiveFrameIndex];
 
     vk::Semaphore signal_semaphore = frame.GetSemaphorePool().RequestSemaphore("SignalSemaphore");
-
-    vk::SubmitInfo submit_info{
-        .waitSemaphoreCount = 1,
-        .pWaitSemaphores = &wait_semaphore,
-        .pWaitDstStageMask = &wait_pipeline_stage,
-        .commandBufferCount = static_cast<uint32_t>(command_buffers.size()),
-        .pCommandBuffers = command_buffers.data(),
-        .signalSemaphoreCount = 1,
-        .pSignalSemaphores = &signal_semaphore,
-    };
-
     vk::Fence fence = frame.GetFencePool().RequestFence();
 
-    // 对同一队列的 vkQueueSubmit 需应用层串行（可能与本帧的后台上传线程并发提交），
-    // 经队列自身的 per-queue 互斥锁提交。
-    {
-        auto queue_lock = queue.LockSubmit();
-        queue.GetHandle().submit(submit_info, fence);
-    }
+    // 统一经队列的提交入口（内部对本队列提交加互斥锁串行，与异步上传并发安全）
+    queue.Submit(command_buffers, fence, wait_semaphore, wait_pipeline_stage, signal_semaphore);
 
     return signal_semaphore;
 }

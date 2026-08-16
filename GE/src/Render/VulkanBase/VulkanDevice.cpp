@@ -302,7 +302,7 @@ VulkanCommandBuffer &VulkanDevice::RequestCommandBuffer(
 // ============================================================================
 
 void VulkanDevice::FlushCommandBuffer(const VulkanCommandBuffer &command_buffer,
-                                      vk::Queue queue,
+                                      const VulkanQueue &queue,
                                       vk::Semaphore signal_semaphore) const {
     if (!command_buffer.HasHandle()) {
         return;
@@ -310,23 +310,11 @@ void VulkanDevice::FlushCommandBuffer(const VulkanCommandBuffer &command_buffer,
 
     vk::CommandBuffer native = command_buffer.GetHandle();
 
-    vk::SubmitInfo submit_info{
-        .commandBufferCount = 1,
-        .pCommandBuffers = &native,
-    };
-    if (signal_semaphore) {
-        submit_info.setSignalSemaphores(signal_semaphore);
-    }
-
     // 创建 fence 确保 command buffer 执行完成
     vk::Fence fence = GetHandle().createFence(vk::FenceCreateInfo{});
 
-    // 提交到队列。Vulkan 规范要求对同一队列的并发 vkQueueSubmit 由应用层串行，
-    // 经队列自身的 per-queue 互斥锁提交（异步上传线程与帧提交可能同时向该队列提交）。
-    {
-        auto queue_lock = queue.LockSubmit();
-        queue.GetHandle().submit(submit_info, fence);
-    }
+    // 统一经队列的提交入口（内部对本队列提交加互斥锁串行）
+    queue.Submit({native}, fence, nullptr, {}, signal_semaphore);
 
     // 等待 fence
     vk::Result result = GetHandle().waitForFences(1, &fence, VK_TRUE, DEFAULT_FENCE_TIMEOUT);

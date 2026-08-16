@@ -72,13 +72,27 @@ vk::Bool32 VulkanQueue::SupportPresent() const {
     return m_CanPresent;
 }
 
-void VulkanQueue::Submit(const VulkanCommandBuffer &command_buffer, vk::Fence fence) const {
+void VulkanQueue::Submit(const std::vector<vk::CommandBuffer> &command_buffers,
+                         vk::Fence fence,
+                         vk::Semaphore wait_semaphore,
+                         vk::PipelineStageFlags wait_pipeline_stage,
+                         vk::Semaphore signal_semaphore) const {
     GE_PROFILE_FUNCTION();
-    vk::CommandBuffer cmd_handle = command_buffer.GetHandle();
-    vk::SubmitInfo submit_info{
-        .commandBufferCount = 1,
-        .pCommandBuffers = &cmd_handle,
-    };
+
+    vk::SubmitInfo submit_info{};
+    submit_info.commandBufferCount = static_cast<uint32_t>(command_buffers.size());
+    submit_info.pCommandBuffers = command_buffers.data();
+    if (wait_semaphore) {
+        submit_info.setWaitSemaphores(wait_semaphore);
+        submit_info.setWaitDstStageMask(wait_pipeline_stage);
+    }
+    if (signal_semaphore) {
+        submit_info.setSignalSemaphores(signal_semaphore);
+    }
+
+    // 对同一队列的并发 vkQueueSubmit 需应用层串行（external synchronization），
+    // 内部上锁后提交，保证同一队列的提交（异步上传线程、同步上传、帧提交等）互不并发。
+    auto lock = LockSubmit();
     m_Handle.submit(submit_info, fence);
 }
 

@@ -28,6 +28,7 @@
 #include <vulkan/vulkan.hpp>
 
 #include <mutex>
+#include <vector>
 
 namespace GE {
 
@@ -75,11 +76,22 @@ public:
     [[nodiscard]] vk::Bool32 SupportPresent() const;
 
     /**
-     * @brief 提交 command buffer 到队列。
-     * @param command_buffer 要提交的 command buffer。
-     * @param fence          submit 完成后 signal 的 fence（可为 nullptr）。
+     * @brief 提交 command buffer 到队列（内部对本队列的提交加互斥锁串行）。
+     *
+     * 这是提交到该队列的统一入口：内部经 m_SubmitMutex 加锁后调用 vkQueueSubmit，
+     * 保证对同一 VkQueue 的并发提交由应用层串行（Vulkan external synchronization）。
+     *
+     * @param command_buffers     要提交的 command buffer 列表
+     * @param fence               submit 完成后 signal 的 fence（可为 nullptr）
+     * @param wait_semaphore      可选，提交前等待的 semaphore（可为 nullptr）
+     * @param wait_pipeline_stage wait_semaphore 等待的管线阶段
+     * @param signal_semaphore    可选，提交完成时 signal 的 semaphore（可为 nullptr）
      */
-    void Submit(const VulkanCommandBuffer &command_buffer, vk::Fence fence) const;
+    void Submit(const std::vector<vk::CommandBuffer> &command_buffers,
+                vk::Fence fence = nullptr,
+                vk::Semaphore wait_semaphore = nullptr,
+                vk::PipelineStageFlags wait_pipeline_stage = {},
+                vk::Semaphore signal_semaphore = nullptr) const;
 
     /// @brief 对本队列的提交加互斥锁（per-queue submit 串行）。
     ///

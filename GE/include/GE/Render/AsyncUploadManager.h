@@ -139,7 +139,7 @@ private:
     std::thread m_Thread;
     std::atomic<bool> m_RequestExit{false}; ///< 请求后台线程退出
 
-    std::mutex m_Mutex;              ///< 保护队列与槽位状态
+    mutable std::mutex m_Mutex;      ///< 保护队列与槽位状态（const 查询方法 GetInFlightCount 需加锁）
     std::condition_variable m_CV;    ///< 队列非空通知
     std::condition_variable m_slotCv;///< 槽位空闲通知（背压）
 

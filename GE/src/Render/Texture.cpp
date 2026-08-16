@@ -881,12 +881,14 @@ void Texture::InstallAsyncImage(std::unique_ptr<VulkanImage> image,
                                 vk::Filter mag_filter,
                                 vk::Filter min_filter) {
     // 记录安装前显式设置的采样器配置（SetAddressMode 等在安装前即可调用，
-    // 如 BRDF LUT 的 ClampToEdge），安装后恢复，避免被 CreateViewAndSampler 覆盖
+    // 如 BRDF LUT 的 ClampToEdge），安装后恢复，避免被 CreateViewAndSampler 覆盖。
+    // 注意不恢复 m_MaxAnisotropy：它安装前是未初始化的 0，须保持
+    // CreateViewAndSampler 写入的设备上限（≥1），否则 anisotropyEnable=true 时
+    // maxAnisotropy=0 触发 Vulkan 校验错误。
     const bool explicitCfg = m_SamplerConfigExplicit;
     const vk::SamplerAddressMode aU = m_AddressU, aV = m_AddressV, aW = m_AddressW;
     const vk::Filter mg = m_MagFilter, mn = m_MinFilter;
     const bool aniso = m_AnisotropyEnabled;
-    const float maxAniso = m_MaxAnisotropy;
 
     // 注入后台创建的本地图像（此前 m_Image 为空）
     m_Image = std::move(image);
@@ -897,6 +899,7 @@ void Texture::InstallAsyncImage(std::unique_ptr<VulkanImage> image,
     CreateViewAndSampler(*m_AsyncDevice, cache, mag_filter, min_filter);
 
     // 安装前若显式配置过采样器，则恢复并按配置重建采样器
+    // （m_MaxAnisotropy 保持 CreateViewAndSampler 写入的设备上限，见上方注释）
     if (explicitCfg) {
         m_AddressU = aU;
         m_AddressV = aV;
@@ -904,7 +907,6 @@ void Texture::InstallAsyncImage(std::unique_ptr<VulkanImage> image,
         m_MagFilter = mg;
         m_MinFilter = mn;
         m_AnisotropyEnabled = aniso;
-        m_MaxAnisotropy = maxAniso;
         RecreateSampler();
     }
 

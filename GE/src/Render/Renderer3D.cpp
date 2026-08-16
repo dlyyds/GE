@@ -537,7 +537,11 @@ void Renderer3D::EndScene() {
     //    深度（远平面）正常深度测试并覆盖。此块设置完整管线状态（含渲染
     //    格式、动态状态、视口/剪刀），随后网格配置块会重新覆盖为网格状态，
     //    两者互不干扰。
-    if (m_SkyboxEnabled && m_SkyboxTexture) {
+    // 天空盒纹理：优先用环境图统一持有的天空盒，否则回退到 SetSkybox 单独加载的
+    const Texture *skyTex = (m_EnvironmentMap) ? &m_EnvironmentMap->GetSkybox() : nullptr;
+    if (!skyTex) skyTex = m_SkyboxTexture.get();
+
+    if (m_SkyboxEnabled && skyTex) {
         auto skyColorFmt = renderTarget.GetColorFormat();
         vk::Format skyDepthFmt = vk::Format::eUndefined;
         if (renderTarget.HasDepth()) {
@@ -602,8 +606,8 @@ void Renderer3D::EndScene() {
         // 绑定天空盒 UBO + 等距纹理，绘制全屏三角形（3 顶点，无顶点缓冲）
         cmd.BindBuffer(skyboxUboAlloc.get_buffer(), skyboxUboAlloc.get_offset(),
                        skyboxUboAlloc.get_size(), 0, 0);
-        cmd.BindImage(m_SkyboxTexture->GetImageView(),
-                      m_SkyboxTexture->GetSampler(), 0, 1);
+        cmd.BindImage(skyTex->GetImageView(),
+                      skyTex->GetSampler(), 0, 1);
         cmd.Draw(3, 1, 0, 0);
     }
 

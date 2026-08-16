@@ -16,10 +16,18 @@ namespace GE {
 std::unique_ptr<EnvironmentMap> EnvironmentMap::LoadFromFiles(
     VulkanDevice &device,
     VulkanResourceCache &cache,
+    const std::string &skyboxPath,
     const std::string &prefilterPath,
     const std::string &brdfLutPath)
 {
     auto env = std::make_unique<EnvironmentMap>();
+
+    // 天空盒 cubemap（KTX2，背景）。由环境统一持有，渲染器按方向采样。
+    env->m_Skybox = Texture::LoadCubeMapFromFile(device, cache, skyboxPath);
+    if (!env->m_Skybox) {
+        GE_CORE_ERROR("EnvironmentMap: 天空盒加载失败: {0}", skyboxPath);
+        return nullptr;
+    }
 
     // 预滤波镜面环境 cubemap（KTX，含 mip 链）。同时作为漫反射辐照度使用。
     env->m_Prefilter = Texture::LoadCubeMapFromFile(device, cache, prefilterPath);
@@ -45,10 +53,11 @@ std::unique_ptr<EnvironmentMap> EnvironmentMap::LoadFromFiles(
     // 记录预滤波图 mip 级数，供片元着色器 MAX_REFLECTION_LOD 使用。
     env->m_PrefilterLevels = env->m_Prefilter->GetImage().get_mip_level_count();
 
+    env->m_Skybox->SetDebugName("EnvMap_Skybox");
     env->m_Prefilter->SetDebugName("EnvMap_Prefilter");
     env->m_BrdfLUT->SetDebugName("EnvMap_BrdfLUT");
 
-    GE_CORE_INFO("EnvironmentMap: 加载完成（预滤波 {0} 级 mip）", env->m_PrefilterLevels);
+    GE_CORE_INFO("EnvironmentMap: 加载完成（天空盒 + 预滤波 {0} 级 mip）", env->m_PrefilterLevels);
     return env;
 }
 

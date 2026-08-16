@@ -2,8 +2,9 @@
  * @file EnvironmentMap.h
  * @brief 环境映射（IBL）资源封装。
  *
- * 持有 PBR 环境光照所需的两张图：
- * - 预滤波镜面环境图（Prefiltered Env Map）：cubemap + mip 链，按粗糙度采样。
+ * 持有整个环境所需的三张图：
+ * - 天空盒 cubemap（Skybox）：背景，按观察方向直接采样。
+ * - 预滤波镜面环境图（Prefiltered Env Map）：cubemap + mip 链，按粗糙度采样，
  *   同时作为漫反射辐照度使用（采样其最高 mip，近似余弦卷积）。
  * - BRDF LUT：2D 拆分（split-sum）积分表，(NoV, roughness) → (F0 系数, 菲涅尔尾项)。
  *
@@ -24,9 +25,10 @@ class VulkanDevice;
 class VulkanResourceCache;
 
 /**
- * @brief 环境映射（IBL）资源。
+ * @brief 环境映射资源。
  *
- * 由 LoadFromFiles 一次性加载两张图：
+ * 由 LoadFromFiles 一次性加载三张图：
+ *   GetSkybox()    —— 天空盒 cubemap（背景）。
  *   GetPrefilter() —— 预滤波 cubemap（含 mip 链），同时绑给片元着色器的
  *     辐照度采样器（漫反射，取最高 mip）与预滤波采样器（镜面，按粗糙度取 mip）。
  *   GetBrdfLUT()   —— 2D BRDF LUT。
@@ -38,6 +40,7 @@ public:
      *
      * @param device          Vulkan 设备
      * @param cache           全局资源缓存（Sampler 去重）
+     * @param skyboxPath      天空盒 cubemap 的 `.ktx2` 路径
      * @param prefilterPath   预滤波 cubemap 的 `.ktx2` 路径（RGBA16F，与天空盒同格式）
      * @param brdfLutPath     BRDF LUT 的 `.png` 路径
      * @return std::unique_ptr<EnvironmentMap>  任一张图加载失败则返回 nullptr
@@ -45,8 +48,13 @@ public:
     static std::unique_ptr<EnvironmentMap> LoadFromFiles(
         VulkanDevice &device,
         VulkanResourceCache &cache,
+        const std::string &skyboxPath,
         const std::string &prefilterPath,
         const std::string &brdfLutPath);
+
+    /// 天空盒 cubemap（背景）。
+    Texture &GetSkybox() { return *m_Skybox; }
+    const Texture &GetSkybox() const { return *m_Skybox; }
 
     /// 预滤波镜面环境 cubemap（含 mip 链）。
     Texture &GetPrefilter() { return *m_Prefilter; }
@@ -60,6 +68,7 @@ public:
     uint32_t GetPrefilterLevels() const { return m_PrefilterLevels; }
 
 private:
+    std::unique_ptr<Texture> m_Skybox;         ///< 天空盒 cubemap
     std::unique_ptr<Texture> m_Prefilter;      ///< 预滤波镜面环境 cubemap
     std::unique_ptr<Texture> m_BrdfLUT;        ///< BRDF LUT（2D）
     uint32_t                 m_PrefilterLevels = 1; ///< 预滤波图 mip 级数

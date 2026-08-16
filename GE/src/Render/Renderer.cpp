@@ -42,6 +42,10 @@ Renderer::Renderer(Window &window)
     // 4. 初始化统一资源管理器（在渲染器之前，渲染器可能依赖它）
     auto &device    = m_VulkanContext->GetDevice();
     auto &resCache  = device.GetResourceCache();
+
+    // 4a. 创建异步上传管理器（后台线程解码 + GPU 上传，主线程每帧 Poll 回收）
+    m_AsyncUpload = std::make_unique<AsyncUploadManager>(device);
+
     m_AssetManager = std::make_unique<AssetManager>(device, resCache);
 
     // 5. 初始化 2D 精灵渲染器
@@ -61,6 +65,7 @@ Renderer::~Renderer() {
     m_3DRenderer.reset();
     m_2DRenderer.reset();
     m_AssetManager.reset();
+    m_AsyncUpload.reset(); // 持有 device 引用，须在 VulkanContext 之前销毁
     m_ActiveFrameCmd = nullptr; // 仅为观察指针，实际由 RenderContext 所有
     m_RenderContext.reset();
     m_VulkanContext.reset();
@@ -79,6 +84,11 @@ VulkanCommandBuffer &Renderer::BeginFrame() {
 
     // 0. 重置每帧渲染统计
     m_Stats = {};
+
+    // 0a. 回收已完成的后台上传（fence 置位的槽位），使后台解码/上传完成的资源本帧可见
+    if (m_AsyncUpload) {
+        m_AsyncUpload->Poll();
+    }
 
     // 1. Acquire next image + 获取 command buffer
     m_ActiveFrameCmd = &m_RenderContext->Begin();
@@ -217,6 +227,11 @@ Renderer3D &Renderer::Get3DRenderer() {
 AssetManager &Renderer::GetAssetManager() {
     GE_CORE_ASSERT(Get().m_AssetManager, "AssetManager not initialized!");
     return *Get().m_AssetManager;
+}
+
+AsyncUploadManager &Renderer::GetAsyncUploadManager() {
+    GE_CORE_ASSERT(Get().m_AsyncUpload, "AsyncUploadManager not initialized!");
+    return *Get().m_AsyncUpload;
 }
 
 TextureManager &Renderer::GetTextureManager() {

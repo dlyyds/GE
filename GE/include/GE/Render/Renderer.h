@@ -4,6 +4,7 @@
 #include "Render/VulkanBase/VulkanContext.h"
 #include "Render/VulkanBase/VulkanRenderContext.h"
 #include "Render/VulkanBase/VulkanCommandBuffer.h"
+#include "Render/AsyncUploadManager.h"
 
 namespace GE {
 
@@ -126,6 +127,9 @@ public:
     /// 访问统一资源管理器。
     static AssetManager &GetAssetManager();
 
+    /// 访问资源异步上传管理器（后台线程解码上传，主线程每帧 Poll 回收）。
+    static AsyncUploadManager &GetAsyncUploadManager();
+
     /// 访问纹理管理器。
     static TextureManager &GetTextureManager();
 
@@ -165,6 +169,9 @@ private:
 
     /// 全局资源管理器（持有纹理 / 材质 / 网格子管理器 + 资源根路径）。
     std::unique_ptr<AssetManager> m_AssetManager;
+
+    /// 资源异步上传管理器（后台线程解码+上传，主线程每帧 BeginFrame 调 Poll 回收）。
+    std::unique_ptr<AsyncUploadManager> m_AsyncUpload;
 
     /// 窗口引用。
     Window &m_Window;

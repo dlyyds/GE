@@ -506,9 +506,9 @@ vk::Semaphore VulkanRenderContext::Submit(const VulkanQueue &queue,
     vk::Fence fence = frame.GetFencePool().RequestFence();
 
     // 对同一队列的 vkQueueSubmit 需应用层串行（可能与本帧的后台上传线程并发提交），
-    // 统一经 device 的 per-queue 互斥锁提交。
+    // 统一经 device 的 per-queue 互斥锁提交（按队列句柄分锁）。
     {
-        auto queue_lock = m_Device.LockQueueSubmit();
+        auto queue_lock = m_Device.LockQueueSubmit(queue.GetHandle());
         queue.GetHandle().submit(submit_info, fence);
     }
 

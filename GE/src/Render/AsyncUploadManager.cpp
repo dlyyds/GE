@@ -112,10 +112,11 @@ void AsyncUploadManager::WorkerLoop() {
             .commandBufferCount = 1,
             .pCommandBuffers = &native,
         };
-        // 本线程与主线程帧提交 / 同步上传共享同一图形队列，Vulkan 规范要求对
-        // 同一队列的 vkQueueSubmit 由应用层串行，故经 device 的 per-queue 锁提交。
+        // 本线程与主线程帧提交 / 同步上传可能共享同一图形队列，Vulkan 规范要求
+        // 对同一队列的 vkQueueSubmit 由应用层串行，故经 device 的 per-queue 锁提交
+        //（按队列句柄分锁，不同队列互不阻塞）。
         {
-            auto queue_lock = m_Device.LockQueueSubmit();
+            auto queue_lock = m_Device.LockQueueSubmit(m_GraphicsQueue);
             m_GraphicsQueue.submit(submit_info, slot->fence);
         }
 

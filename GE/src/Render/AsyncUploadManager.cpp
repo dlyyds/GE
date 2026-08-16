@@ -112,7 +112,12 @@ void AsyncUploadManager::WorkerLoop() {
             .commandBufferCount = 1,
             .pCommandBuffers = &native,
         };
-        m_GraphicsQueue.submit(submit_info, slot->fence);
+        // 本线程与主线程帧提交 / 同步上传共享同一图形队列，Vulkan 规范要求对
+        // 同一队列的 vkQueueSubmit 由应用层串行，故经 device 的 per-queue 锁提交。
+        {
+            auto queue_lock = m_Device.LockQueueSubmit();
+            m_GraphicsQueue.submit(submit_info, slot->fence);
+        }
 
         // ── 6. 把任务（含 staging / finalize）交给槽位，标记已提交，回到循环 ──
         {

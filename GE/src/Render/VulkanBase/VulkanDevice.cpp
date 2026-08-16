@@ -297,8 +297,12 @@ void VulkanDevice::FlushCommandBuffer(const VulkanCommandBuffer &command_buffer,
     // 创建 fence 确保 command buffer 执行完成
     vk::Fence fence = GetHandle().createFence(vk::FenceCreateInfo{});
 
-    // 提交到队列
-    queue.submit(submit_info, fence);
+    // 提交到队列。Vulkan 规范要求对同一队列的并发 vkQueueSubmit 由应用层串行，
+    // 故经 per-queue 互斥锁提交（异步上传线程与帧提交可能同时向该队列提交）。
+    {
+        auto queue_lock = LockQueueSubmit();
+        queue.submit(submit_info, fence);
+    }
 
     // 等待 fence
     vk::Result result = GetHandle().waitForFences(1, &fence, VK_TRUE, DEFAULT_FENCE_TIMEOUT);

@@ -207,6 +207,30 @@ void Renderer3D::SetEnvironment(const std::string &name) {
     m_EnvironmentName = name;
 }
 
+void Renderer3D::SetEnvironmentMap(EnvironmentMap *env) {
+    // 旧环境不立即销毁：其 ImageView 可能仍被上一帧 descriptor set 引用，
+    // 立即销毁会触发 VUID-vkDestroyImageView-imageView-01026。退休到列表，
+    // 由 FlushRetiredEnvironments 在下一帧安全点内存放。
+    if (m_EnvironmentMap) {
+        m_RetiredEnvironments.push_back(std::move(m_EnvironmentMap));
+    }
+    m_EnvironmentMap.reset(env);
+}
+
+void Renderer3D::FlushRetiredEnvironments() {
+    if (m_RetiredEnvironments.empty()) {
+        return;
+    }
+    // 安全点条件：
+    // 1. 当前帧描述符池已在上方 BeginFrame 重置 —— 上一帧引用旧环境 ImageView
+    //    的 descriptor set 已消失，ImageView 不再被任何 descriptor set 引用；
+    // 2. WaitIdle 确保 GPU 完成所有引用旧环境的已提交命令。
+    // 满足二者后销毁旧环境（含其纹理 ImageView）才是合法的。
+    Renderer::WaitIdle();
+    m_RetiredEnvironments.clear();
+    GE_CORE_INFO("Renderer3D: 已销毁退休环境映射");
+}
+
 Renderer3D::~Renderer3D() {
     GE_CORE_INFO("Renderer3D Shutdown");
 
@@ -370,6 +394,9 @@ void Renderer3D::EndScene() {
 
     GE_CORE_ASSERT(m_InScene, "EndScene called without BeginScene!");
     m_InScene = false;
+
+    // 销毁上一帧切换环境时退休的旧环境（安全点，见 FlushRetiredEnvironments）
+    FlushRetiredEnvironments();
 
     // 没有网格也没有天空盒时，直接返回（仅天空盒时仍需走完渲染流程）
     if (m_Meshes.empty() && !m_SkyboxEnabled) {

@@ -77,8 +77,11 @@ public:
     ~AsyncUploadManager();
 
     AsyncUploadManager(const AsyncUploadManager &) = delete;
+
     AsyncUploadManager &operator=(const AsyncUploadManager &) = delete;
+
     AsyncUploadManager(AsyncUploadManager &&) = delete;
+
     AsyncUploadManager &operator=(AsyncUploadManager &&) = delete;
 
     /**
@@ -110,9 +113,9 @@ public:
 private:
     /// 槽位状态机。
     enum class SlotState : uint8_t {
-        Idle,       ///< 空闲，可被后台线程占用
-        Acquired,   ///< 后台线程占用中（录制/提交中）
-        Submitted,  ///< 已提交，等待 GPU 完成（等待主线程回收）
+        Idle, ///< 空闲，可被后台线程占用
+        Acquired, ///< 后台线程占用中（录制/提交中）
+        Submitted, ///< 已提交，等待 GPU 完成（等待主线程回收）
         Reclaiming, ///< 主线程正在执行 finalize（锁外），防止后台线程复用
     };
 
@@ -131,7 +134,7 @@ private:
     void ReclaimSlot(Slot &slot, bool block);
 
     /// 环形 in-flight 槽位数量。
-    static constexpr size_t kMaxInFlight = 3;
+    static constexpr size_t kMaxInFlight = 5;
 
     VulkanDevice &m_Device;
     const VulkanQueue *m_GraphicsQueue = nullptr; ///< 提交用的图形队列（由队列族能力选出）
@@ -139,11 +142,11 @@ private:
     std::thread m_Thread;
     std::atomic<bool> m_RequestExit{false}; ///< 请求后台线程退出
 
-    mutable std::mutex m_Mutex;      ///< 保护队列与槽位状态（const 查询方法 GetInFlightCount 需加锁）
-    std::condition_variable m_CV;    ///< 队列非空通知
-    std::condition_variable m_slotCv;///< 槽位空闲通知（背压）
+    mutable std::mutex m_Mutex; ///< 保护队列与槽位状态（const 查询方法 GetInFlightCount 需加锁）
+    std::condition_variable m_CV; ///< 队列非空通知
+    std::condition_variable m_slotCv; ///< 槽位空闲通知（背压）
 
-    std::deque<UploadTask> m_Queue;  ///< 待处理任务队列
+    std::deque<UploadTask> m_Queue; ///< 待处理任务队列
     std::array<Slot, kMaxInFlight> m_Slots; ///< 环形 in-flight 槽位
 };
 

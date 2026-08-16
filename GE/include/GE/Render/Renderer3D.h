@@ -160,8 +160,12 @@ public:
      *
      * 传 nullptr 时禁用 IBL，PBR 材质回退常量环境光（向后兼容）。
      * 传非空时启用 split-sum IBL：PBR 管线路由到 IBL 变体并绑定三张 IBL 图。
+     *
+     * @note 旧环境不立即销毁：其 ImageView 可能仍被上一帧 descriptor set 引用，
+     *       立即销毁会触发 VUID-vkDestroyImageView-imageView-01026。改为延迟到
+     *       下一帧 EndScene 的安全点（描述符池已重置 + GPU 空闲）再销毁。
      */
-    void SetEnvironmentMap(EnvironmentMap *env) { m_EnvironmentMap.reset(env); }
+    void SetEnvironmentMap(EnvironmentMap *env);
 
     /// 当前环境映射（IBL）是否可用。
     bool HasEnvironmentMap() const { return m_EnvironmentMap != nullptr; }
@@ -359,6 +363,15 @@ private:
     Texture *GetEffectiveTexture(const Material *material) const;
 
     /**
+     * @brief 销毁上一帧已退休的环境映射（安全点：描述符池已重置 + GPU 空闲）。
+     *
+     * EndScene 开头调用：此时当前帧描述符池已在上方 BeginFrame 重置，上一帧
+     * 引用旧环境 ImageView 的 descriptor set 已消失；再 WaitIdle 确保 GPU 完成
+     * 所有引用旧环境的已提交命令，即可安全销毁退休环境。
+     */
+    void FlushRetiredEnvironments();
+
+    /**
      * @brief 解析材质对应的有效法线贴图。
      *
      * 优先取材质 Normal 槽位纹理，无材质或无纹理时回退到默认
@@ -429,6 +442,9 @@ private:
 
     /// 环境映射（IBL）资源（渲染器持有所有权；nullptr = 禁用 IBL）
     std::unique_ptr<EnvironmentMap> m_EnvironmentMap;
+
+    /// 已退休待销毁的环境映射（延迟到 GPU 空闲 + 描述符池重置后销毁）
+    std::vector<std::unique_ptr<EnvironmentMap>> m_RetiredEnvironments;
 
     /// 已加载环境的名称（用于 SetEnvironment 判断是否需重建）
     std::string m_EnvironmentName;

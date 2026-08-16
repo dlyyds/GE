@@ -17,7 +17,9 @@
 
 namespace GE {
 
-AssetManager::AssetManager(VulkanDevice &device, VulkanResourceCache &cache) {
+AssetManager::AssetManager(VulkanDevice &device, VulkanResourceCache &cache,
+                           AsyncUploadManager &upload)
+    : m_AsyncUpload(&upload) {
     m_TextureManager  = std::make_unique<TextureManager>(device, cache);
     // 材质管理器先于网格管理器创建，供 MeshManager 在加载模型时创建子网格材质
     m_MaterialManager = std::make_unique<MaterialManager>();
@@ -71,6 +73,10 @@ MeshManager &AssetManager::GetMeshManager() {
 
 MaterialManager &AssetManager::GetMaterialManager() {
     return *m_MaterialManager;
+}
+
+AsyncUploadManager &AssetManager::GetAsyncUploadManager() {
+    return *m_AsyncUpload;
 }
 
 Texture *AssetManager::LoadTexture(const std::string &path) {

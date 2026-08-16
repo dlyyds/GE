@@ -46,7 +46,7 @@ Renderer::Renderer(Window &window)
     // 4a. 创建异步上传管理器（后台线程解码 + GPU 上传，主线程每帧 Poll 回收）
     m_AsyncUpload = std::make_unique<AsyncUploadManager>(device);
 
-    m_AssetManager = std::make_unique<AssetManager>(device, resCache);
+    m_AssetManager = std::make_unique<AssetManager>(device, resCache, *m_AsyncUpload);
 
     // 5. 初始化 2D 精灵渲染器
     m_2DRenderer = std::make_unique<Renderer2D>();

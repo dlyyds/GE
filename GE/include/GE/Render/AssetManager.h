@@ -27,6 +27,7 @@ namespace GE {
 
 class VulkanDevice;
 class VulkanResourceCache;
+class AsyncUploadManager;
 class TextureManager;
 class MeshManager;
 class MaterialManager;
@@ -62,8 +63,9 @@ public:
      *
      * @param device Vulkan 设备引用
      * @param cache  全局资源缓存引用
+     * @param upload 资源异步上传管理器引用（用于子管理器的异步加载）
      */
-    AssetManager(VulkanDevice &device, VulkanResourceCache &cache);
+    AssetManager(VulkanDevice &device, VulkanResourceCache &cache, AsyncUploadManager &upload);
 
     ~AssetManager();
 
@@ -117,6 +119,9 @@ public:
     /// 访问材质管理器。
     MaterialManager &GetMaterialManager();
 
+    /// 访问资源异步上传管理器（由 Renderer 持有，此处仅转发）。
+    AsyncUploadManager &GetAsyncUploadManager();
+
     // ========================================================================
     // 便捷加载（自动解析路径后委托子管理器）
     // ========================================================================
@@ -151,6 +156,9 @@ private:
 
     /// 材质管理器（拥有）。
     std::unique_ptr<MaterialManager> m_MaterialManager;
+
+    /// 异步上传管理器（非拥有，由 Renderer 持有），供子管理器异步加载使用。
+    AsyncUploadManager *m_AsyncUpload = nullptr;
 };
 
 } // namespace GE

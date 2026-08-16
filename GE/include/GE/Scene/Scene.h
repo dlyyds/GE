@@ -96,9 +96,6 @@ private:
     /// 物理世界（每个 Scene 一个实例）
     std::unique_ptr<Physics::PhysicsWorld> m_PhysicsWorld;
 
-    /// 当前已加载环境的名称（用于 EnvironmentComponent 切换时重建 IBL）
-    std::string m_EnvironmentName;
-
     /// 是否将输入路由给主相机（由编辑器设置）
     bool m_ProcessCameraInput = false;
 

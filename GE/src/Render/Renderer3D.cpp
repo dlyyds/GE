@@ -174,6 +174,36 @@ Renderer3D::Renderer3D() {
 // ============================================================================
 // 天空盒纹理由环境图 EnvironmentMap 统一持有，渲染器仅维护开关 m_SkyboxEnabled。
 
+// ============================================================================
+// 环境
+// ============================================================================
+
+void Renderer3D::SetEnvironment(const std::string &name) {
+    // 环境名未变则跳过（避免每帧重建天空盒 + 预滤波 + BRDF LUT 三张图）
+    if (name == m_EnvironmentName)
+        return;
+
+    auto &device = Renderer::GetVulkanContext().GetDevice();
+    auto &cache  = device.GetResourceCache();
+    auto &am     = Renderer::GetAssetManager();
+
+    // 按命名约定推导三张图路径（与 assets/environments/ 布局一致）
+    const std::string envDir = "environments/" + name + "/";
+    auto env = EnvironmentMap::LoadFromFiles(
+        device, cache,
+        am.ResolvePath(envDir + "skybox.ktx2").string(),
+        am.ResolvePath(envDir + "prefilter.ktx").string(),
+        am.ResolvePath("environments/brdf_lut.png").string());
+    if (!env) {
+        GE_CORE_ERROR("Renderer3D: 环境加载失败: {0}", name);
+        m_EnvironmentName.clear();   // 允许下次重试
+        return;
+    }
+
+    SetEnvironmentMap(env.release());
+    m_EnvironmentName = name;
+}
+
 Renderer3D::~Renderer3D() {
     GE_CORE_INFO("Renderer3D Shutdown");
 

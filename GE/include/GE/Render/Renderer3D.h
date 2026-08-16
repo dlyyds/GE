@@ -172,6 +172,15 @@ public:
     /// IBL 光照是否启用。
     bool IsIBLEnabled() const { return m_IBLEnabled; }
 
+    /**
+     * @brief 按环境名设置环境（天空盒 + IBL 三张图）。
+     *
+     * 环境名对应 assets/environments/<Name>/ 子文件夹，内部按命名约定加载
+     * skybox.ktx2 / prefilter.ktx / brdf_lut.png。环境名未变时跳过（避免
+     * 每帧重建）；失败时清空缓存以便下次重试。
+     */
+    void SetEnvironment(const std::string &name);
+
     // ========================================================================
     // 场景接口
     // ========================================================================
@@ -420,6 +429,9 @@ private:
 
     /// 环境映射（IBL）资源（渲染器持有所有权；nullptr = 禁用 IBL）
     std::unique_ptr<EnvironmentMap> m_EnvironmentMap;
+
+    /// 已加载环境的名称（用于 SetEnvironment 判断是否需重建）
+    std::string m_EnvironmentName;
 
     /// IBL 光照开关（与 m_EnvironmentMap 非空共同决定是否走 IBL 变体）
     bool m_IBLEnabled = false;

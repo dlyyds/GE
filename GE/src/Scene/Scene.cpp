@@ -183,40 +183,17 @@ void Scene::OnUpdate3D(Timestep ts,
     }
 
     // ── 环境：取场景中第一个 EnvironmentComponent，驱动天空盒 + IBL ──
-    //    天空盒与 IBL 来自同一环境，统一由 EnvironmentMap 持有；环境名变化时
-    //    整体重建。三个开关：Enabled 总开关（关则天空盒 + IBL 一并关）、
-    //    SkyboxEnabled 天空盒、IBLEnabled 环境光。
+    //    只把环境名交给渲染器（内部按命名约定加载三张图），这里控制开关：
+    //    Enabled 总开关（关则天空盒 + IBL 一并关）、SkyboxEnabled 天空盒、
+    //    IBLEnabled 环境光。
     {
-        auto &dev = Renderer::GetVulkanContext().GetDevice();
-        auto &cache = dev.GetResourceCache();
-        auto &am = Renderer::GetAssetManager();
-
         auto envView = m_Registry.view<EnvironmentComponent>();
-        if (envView.begin() != envView.end() ) {
+        if (envView.begin() != envView.end()) {
             const auto &ec = envView.get<EnvironmentComponent>(*envView.begin());
 
             if (ec.Enabled) {
-                const std::string envDir = "environments/" + ec.Name + "/";
-
-                // 环境（天空盒 + IBL）：环境名变化时整体重建（支持序列化的环境切换）。
-                if (m_EnvironmentName != ec.Name) {
-                    auto env = EnvironmentMap::LoadFromFiles(
-                        dev, cache,
-                        am.ResolvePath(envDir + "skybox.ktx2").string(),
-                        am.ResolvePath(envDir + "prefilter.ktx").string(),
-                        am.ResolvePath("environments/brdf_lut.png").string());
-                    if (env) {
-                        r3d.SetEnvironmentMap(env.release());
-                        m_EnvironmentName = ec.Name;
-                    } else {
-                        GE_CORE_WARN("Scene: 环境映射加载失败，PBR 回退常量环境光");
-                        r3d.SetSkyboxEnabled(false);
-                    }
-                }
-
-                // 天空盒背景开关（由环境组件的 SkyboxEnabled 控制）。
+                r3d.SetEnvironment(ec.Name);
                 r3d.SetSkyboxEnabled(ec.SkyboxEnabled);
-                // IBL 环境光开关（由环境组件的 IBLEnabled 控制）。
                 r3d.SetIBLEnabled(ec.IBLEnabled);
             } else {
                 // 环境总开关关闭：天空盒 + IBL 一并关闭

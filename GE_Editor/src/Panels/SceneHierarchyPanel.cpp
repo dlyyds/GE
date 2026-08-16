@@ -284,6 +284,9 @@ void SceneHierarchyPanel::DrawComponents(Entity entity) {
     DrawComponent<AmbientLightComponent>("Ambient Light", entity,
         [](auto &c) { DrawAmbientLightComponent(c); });
 
+    DrawComponent<EnvironmentComponent>("Environment", entity,
+        [](auto &c) { DrawEnvironmentComponent(c); });
+
     DrawComponent<RigidBodyComponent>("Rigid Body", entity,
         [&](auto &c) { DrawRigidBodyComponent(entity, c); });
 
@@ -314,6 +317,7 @@ void SceneHierarchyPanel::DrawAddComponentPopup() {
     TryAddComponent<PointLightComponent>("Point Light");
     TryAddComponent<DirectionalLightComponent>("Directional Light");
     TryAddComponent<AmbientLightComponent>("Ambient Light");
+    TryAddComponent<EnvironmentComponent>("Environment");
     TryAddComponent<RigidBodyComponent>("Rigid Body");
     TryAddComponent<BoxColliderComponent>("Box Collider");
     TryAddComponent<SphereColliderComponent>("Sphere Collider");
@@ -775,6 +779,20 @@ void SceneHierarchyPanel::DrawAmbientLightComponent(AmbientLightComponent &compo
     // 颜色 + 强度（alpha 通道作为强度）
     ImGui::ColorEdit4("Color + Intensity", glm::value_ptr(component.Color));
     ImGui::TextDisabled("全局环境光，不依赖 Transform");
+}
+
+// ============================================================
+// Environment 组件
+// ============================================================
+void SceneHierarchyPanel::DrawEnvironmentComponent(EnvironmentComponent &component) {
+    // 环境名：对应 assets/environments/<Name>/ 子文件夹
+    char nameBuf[128];
+    snprintf(nameBuf, sizeof(nameBuf), "%s", component.Name.c_str());
+    if (ImGui::InputText("Name", nameBuf, sizeof(nameBuf))) {
+        component.Name = nameBuf;
+    }
+    ImGui::Checkbox("Skybox", &component.SkyboxEnabled);
+    ImGui::TextDisabled("环境（天空盒 + IBL）来自 environments/<Name>/，不依赖 Transform");
 }
 
 // ============================================================

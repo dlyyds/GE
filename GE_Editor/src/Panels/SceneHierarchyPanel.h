@@ -79,6 +79,9 @@ private:
     /// 绘制 AmbientLight 组件属性
     static void DrawAmbientLightComponent(AmbientLightComponent &component);
 
+    /// 绘制 Environment 组件属性
+    static void DrawEnvironmentComponent(EnvironmentComponent &component);
+
     /// 绘制 RigidBody 组件属性
     void DrawRigidBodyComponent(Entity entity, RigidBodyComponent &component);
 

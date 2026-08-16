@@ -324,13 +324,20 @@ struct AmbientLightComponent {
  * Name 为环境名，对应 assets/environments/<Name>/ 子文件夹；Scene 按命名
  * 约定推导三张图（prefilter 用于 IBL、skybox 用于背景、brdf_lut 共享）。
  *
+ * 三个开关分工：
+ * - Enabled：环境总开关，关闭则天空盒 + IBL 一并关闭。
+ * - SkyboxEnabled：天空盒背景开关。
+ * - IBLEnabled：IBL 环境光开关。
+ *
  * 环境是场景级属性（不依赖实体的 Transform），取场景中第一个 EnvironmentComponent
  * 作为环境。由 Scene 在渲染前读取，调用 Renderer3D::SetEnvironmentMap /
- * SetSkyboxEnabled 驱动。可随场景序列化（环境名 + 天空盒开关）。
+ * SetSkyboxEnabled / SetIBLEnabled 驱动。可随场景序列化。
  */
 struct EnvironmentComponent {
     std::string Name;               ///< 环境名，对应 environments/<Name>/ 子文件夹
-    bool SkyboxEnabled = true;      ///< 是否渲染天空盒背景
+    bool Enabled = true;            ///< 环境总开关（关则天空盒 + IBL 一并关闭）
+    bool SkyboxEnabled = true;      ///< 天空盒背景开关
+    bool IBLEnabled = true;         ///< IBL 环境光开关
 
     EnvironmentComponent() = default;
 

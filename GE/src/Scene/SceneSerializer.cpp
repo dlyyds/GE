@@ -448,7 +448,9 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
             const auto &ec = entity.GetComponent<EnvironmentComponent>();
             YAML::Node envNode = entityNode["Environment"];
             envNode["Name"] = ec.Name;
+            envNode["Enabled"] = ec.Enabled;
             envNode["SkyboxEnabled"] = ec.SkyboxEnabled;
+            envNode["IBLEnabled"] = ec.IBLEnabled;
         }
 
         // ---- RigidBodyComponent ----
@@ -694,7 +696,9 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
             auto &ec = entity.AddComponent<EnvironmentComponent>();
 
             ec.Name = envNode["Name"] ? envNode["Name"].as<std::string>() : std::string();
+            ec.Enabled = envNode["Enabled"] ? envNode["Enabled"].as<bool>(true) : true;
             ec.SkyboxEnabled = envNode["SkyboxEnabled"] ? envNode["SkyboxEnabled"].as<bool>(true) : true;
+            ec.IBLEnabled = envNode["IBLEnabled"] ? envNode["IBLEnabled"].as<bool>(true) : true;
         }
 
         // ---- RigidBodyComponent ----

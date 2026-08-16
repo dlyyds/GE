@@ -166,6 +166,12 @@ public:
     /// 当前环境映射（IBL）是否可用。
     bool HasEnvironmentMap() const { return m_EnvironmentMap != nullptr; }
 
+    /// 开关 IBL 光照（与 HasEnvironmentMap 共同决定是否走 IBL 变体）。
+    void SetIBLEnabled(bool enabled) { m_IBLEnabled = enabled; }
+
+    /// IBL 光照是否启用。
+    bool IsIBLEnabled() const { return m_IBLEnabled; }
+
     // ========================================================================
     // 场景接口
     // ========================================================================
@@ -414,6 +420,9 @@ private:
 
     /// 环境映射（IBL）资源（渲染器持有所有权；nullptr = 禁用 IBL）
     std::unique_ptr<EnvironmentMap> m_EnvironmentMap;
+
+    /// IBL 光照开关（与 m_EnvironmentMap 非空共同决定是否走 IBL 变体）
+    bool m_IBLEnabled = false;
 
     /// 默认 1x1 白色纹理（无纹理时的 fallback，由全局 TextureManager 持有，不拥有）
     Texture *m_DefaultWhiteTexture = nullptr;

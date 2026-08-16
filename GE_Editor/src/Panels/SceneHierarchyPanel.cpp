@@ -791,7 +791,12 @@ void SceneHierarchyPanel::DrawEnvironmentComponent(EnvironmentComponent &compone
     if (ImGui::InputText("Name", nameBuf, sizeof(nameBuf))) {
         component.Name = nameBuf;
     }
+    // 环境总开关（关则天空盒 + IBL 一并关闭）
+    ImGui::Checkbox("Enabled", &component.Enabled);
+    // 天空盒背景开关
     ImGui::Checkbox("Skybox", &component.SkyboxEnabled);
+    // IBL 环境光开关
+    ImGui::Checkbox("IBL", &component.IBLEnabled);
     ImGui::TextDisabled("环境（天空盒 + IBL）来自 environments/<Name>/，不依赖 Transform");
 }
 

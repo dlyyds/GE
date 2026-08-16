@@ -62,7 +62,9 @@ Scene:
         Color: [0.3019608, 0.3019608, 0.34901962, 1]
       Environment:
         Name: DaySkyHDRI065B
+        Enabled: true
         SkyboxEnabled: true
+        IBLEnabled: true
     - Name: DirectionalLight
       Transform:
         Translation: [0, 0, 0]

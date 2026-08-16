@@ -655,9 +655,9 @@ void Renderer3D::EndScene() {
     // ── 6. 逐批次 instanced 绘制 ─────────────────────────────────────
     vk::DeviceSize vertexOffset = 0;
 
-    // IBL 是否启用（全局）：启用时 PBR 批次走 IBL 变体管线并绑定三张 IBL 图；
-    // 禁用时 PBR 回退无 IBL 变体（常量环境光），向后兼容。
-    const bool useIbl = (m_EnvironmentMap != nullptr);
+    // IBL 是否启用（全局）：需要已加载环境图且 IBL 开关打开，此时 PBR 批次走
+    // IBL 变体管线并绑定三张 IBL 图；否则回退无 IBL 变体（常量环境光）。
+    const bool useIbl = (m_EnvironmentMap != nullptr) && m_IBLEnabled;
 
     // 当前绑定的管线 id（初始为 Blinn-Phong，已在上方绑定 *m_PipelineLayout）。
     // 排序键已按 pipelineId 分组，故同类型批次连续，切换频率最低。

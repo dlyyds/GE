@@ -494,6 +494,10 @@ void Scene::OnComponentAdded<AmbientLightComponent>(Entity entity, AmbientLightC
 }
 
 template <>
+void Scene::OnComponentAdded<EnvironmentComponent>(Entity entity, EnvironmentComponent &component) {
+}
+
+template <>
 void Scene::OnComponentAdded<RigidBodyComponent>(Entity entity, RigidBodyComponent &component) {
     // 延迟创建：将实体加入 PhysicsWorld 的待创建列表
     // 实际创建发生在下一次 Step() 调用时，确保 collider 组件也已添加

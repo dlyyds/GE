@@ -215,6 +215,30 @@ void VulkanDevice::Init(std::unordered_map<std::string, RequestMode> const &requ
         for (uint32_t queue_index = 0; queue_index < qfp.queueCount; ++queue_index) {
             m_Queues[family_index].emplace_back(*this, family_index, qfp, present_supported, queue_index);
         }
+
+        // 诊断日志：列出该队列族的能力位，便于确认设备上是否有独立 transfer / compute
+        // 队列族（若 graphics 族已含 transfer，则独立 transfer 族才有额外收益）。
+        auto has_bit = [&qfp](vk::QueueFlagBits bit) {
+            return (qfp.queueFlags & bit) != vk::QueueFlags{};
+        };
+        std::string caps;
+        auto append = [&caps](bool on, const char *name) {
+            if (on) {
+                if (!caps.empty()) {
+                    caps += "|";
+                }
+                caps += name;
+            }
+        };
+        append(has_bit(vk::QueueFlagBits::eGraphics), "Graphics");
+        append(has_bit(vk::QueueFlagBits::eCompute), "Compute");
+        append(has_bit(vk::QueueFlagBits::eTransfer), "Transfer");
+        append(has_bit(vk::QueueFlagBits::eSparseBinding), "SparseBinding");
+        append(has_bit(vk::QueueFlagBits::eProtected), "Protected");
+
+        GE_CORE_INFO("[QueueFamily {0}] count={1} caps=[{2}] present={3}",
+                     family_index, qfp.queueCount, caps,
+                     present_supported ? "yes" : "no");
     }
 
     // ---- 6. 初始化 VMA 分配器 ----

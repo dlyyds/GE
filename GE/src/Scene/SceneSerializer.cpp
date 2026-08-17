@@ -852,7 +852,7 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
     }
 
     // ---- 第二遍：按父实体 UUID 二次遍历接上父子关系（SetParent 内部带环检测） ----
-    for (const auto &link : pendingParentLinks) {
+    for (auto &link : pendingParentLinks) {
         auto it = idToEntity.find(link.parentId);
         if (it == idToEntity.end()) {
             GE_CORE_WARN("SceneSerializer: 找不到父实体 Id {0}，实体 {1} 将作为根处理",

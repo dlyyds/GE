@@ -62,14 +62,16 @@ void SceneHierarchyPanel::OnImGuiRender() {
     ImGui::Begin("Scene Hierarchy");
 
     // 遍历所有根实体（parent 为空的实体），逐层递归绘制子树
-    m_Context->Reg().view<TransformComponent>().each([&](auto entityID) {
+    // 注意：view<TransformComponent> 的 each() 会对单参 lambda 传组件而非实体句柄，
+    // 故用显式范围 for 取实体句柄（解引用即 entt::entity）
+    for (auto entityID : m_Context->Reg().view<TransformComponent>()) {
         const Entity entity{entityID, m_Context};
-        const auto &tc = entity.GetComponent<TransformComponent>();
+        const auto &tc = m_Context->Reg().get<TransformComponent>(entityID);
         // 有父者由父的递归绘制；父已失效（异常状态）按根处理，避免实体从树上消失
         if (tc.parent != entt::null && m_Context->Reg().valid(tc.parent))
-            return;
+            continue;
         DrawEntityNode(entity);
-    });
+    }
 
     // 点击空白处取消选中
     if (ImGui::IsMouseDown(0) && ImGui::IsWindowHovered())

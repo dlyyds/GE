@@ -4,7 +4,8 @@
  *
  * 材质是渲染属性的集合，包含：
  * - 纹理槽位（Albedo / Normal / Emissive 等）
- * - 标量参数（如金属度、粗糙度、自发光强度等）
+ * - 标量参数（如金属度、粗糙度等）
+ * - 自发光颜色因子（emissiveFactor，乘自发光贴图颜色）
  * - 渲染状态开关（alpha test、双面渲染等）
  * - 着色器类型（BlinnPhong / PBR 等）
  *
@@ -23,6 +24,8 @@
 #pragma once
 
 #include "Render/Texture.h"
+
+#include <glm/glm.hpp>
 
 #include <array>
 #include <string>
@@ -163,6 +166,28 @@ public:
     }
 
     // ========================================================================
+    // 自发光颜色因子
+    // ========================================================================
+
+    /**
+     * @brief 设置自发光颜色因子（glTF 惯例 emissiveFactor）。
+     *
+     * 最终自发光颜色 = 自发光贴图采样颜色 × emissiveFactor，直接加色到
+     * 光照结果上。默认 [0,0,0]（不发光），与 glTF 默认值一致。
+     *
+     * @param factor [R,G,B] 自发光颜色因子（线性空间）
+     */
+    void SetEmissiveFactor(const glm::vec3 &factor) {
+        m_EmissiveFactor = factor;
+        m_Dirty = true;
+    }
+
+    /**
+     * @brief 获取自发光颜色因子。
+     */
+    const glm::vec3 &GetEmissiveFactor() const { return m_EmissiveFactor; }
+
+    // ========================================================================
     // 材质类型
     // ========================================================================
 
@@ -175,7 +200,7 @@ public:
      * @brief 设置材质着色器类型。
      *
      * 切换类型时清除旧类型的专属标量参数（不留残留），再按新类型补齐默认参数。
-     * 两类共用的 emissiveStrength 保留。
+     * 两类共用的 emissiveFactor 保留。
      */
     void SetType(Type type) {
         if (type == m_Type) {
@@ -199,7 +224,7 @@ public:
      *
      * - PBR：metallic（默认 0，绝缘体）、roughness（默认 0.5）
      * - Blinn-Phong：shininess（默认 32）、specularStrength（默认 0.5）
-     * - 两者共用：emissiveStrength（默认 0，不发光）
+     * - 两者共用：emissiveFactor（默认 [0,0,0]，不发光）
      */
     void ApplyTypeDefaults() {
         if (m_Type == Type::PBR) {
@@ -209,7 +234,6 @@ public:
             if (!HasFloat("shininess")) SetFloat("shininess", 32.0f);
             if (!HasFloat("specularStrength")) SetFloat("specularStrength", 0.5f);
         }
-        if (!HasFloat("emissiveStrength")) SetFloat("emissiveStrength", 0.0f);
         if (!HasFloat("uvTiling")) SetFloat("uvTiling", 1.0f);  // 纹理平铺（UV 缩放）密度，1 = 不平铺
     }
 
@@ -258,6 +282,9 @@ private:
 
     /// 浮点参数字典
     std::unordered_map<std::string, float> m_FloatParams;
+
+    /// 自发光颜色因子 [R,G,B]（glTF emissiveFactor，默认 [0,0,0] = 不发光）
+    glm::vec3 m_EmissiveFactor{0.0f, 0.0f, 0.0f};
 
     std::string m_Name;        ///< 材质显示名（独立字段，默认 = 注册名，可自由改名）
     bool        m_Dirty = true; ///< 脏标记（构造时默认为脏，首次使用前需处理）

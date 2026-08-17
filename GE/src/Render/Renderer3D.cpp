@@ -797,8 +797,9 @@ void Renderer3D::EndScene() {
 
         // 绑定材质 UBO（set 1, binding 2）：存材质标量参数。按批次写入，
         // 同批次的实例共享同一材质，故值恒定，无需 per-instance。
-        //   params: shininess / specularStrength（Blinn-Phong）、emissiveStrength（共用）
+        //   params: shininess / specularStrength / uvTiling（Blinn-Phong 共用）
         //   pbr:    metallic / roughness（PBR）
+        //   emissiveFactor: 自发光颜色因子（乘自发光贴图颜色，两类型共用）
         MaterialUBO materialUBO{};
         materialUBO.params.x = batch.material
             ? batch.material->GetFloat("shininess", 32.0f)
@@ -806,9 +807,6 @@ void Renderer3D::EndScene() {
         materialUBO.params.y = batch.material
             ? batch.material->GetFloat("specularStrength", 0.5f)
             : 0.5f;
-        materialUBO.params.z = batch.material
-            ? batch.material->GetFloat("emissiveStrength", 0.0f)
-            : 0.0f;
         materialUBO.params.w = batch.material
             ? batch.material->GetFloat("uvTiling", 1.0f)
             : 1.0f;
@@ -818,6 +816,9 @@ void Renderer3D::EndScene() {
         materialUBO.pbr.y = batch.material
             ? batch.material->GetFloat("roughness", 0.5f)
             : 0.5f;
+        materialUBO.emissiveFactor = batch.material
+            ? glm::vec4(batch.material->GetEmissiveFactor(), 0.0f)
+            : glm::vec4(0.0f);
         BufferAllocation materialUboAlloc = frame.AllocateBuffer(
             vk::BufferUsageFlagBits::eUniformBuffer, sizeof(MaterialUBO));
         materialUboAlloc.update(materialUBO);

@@ -572,11 +572,11 @@ static void DrawMaterialEditor(Material *material) {
         }
     }
 
-    // 自发光强度（两种类型共用）
-    float emissiveStrength = material->GetFloat("emissiveStrength", 0.0f);
-    if (ImGui::SliderFloat("Emissive Strength (自发光强度)", &emissiveStrength,
-                           0.0f, 5.0f)) {
-        material->SetFloat("emissiveStrength", emissiveStrength);
+    // 自发光颜色因子（两种类型共用，glTF emissiveFactor）
+    // 最终自发光颜色 = 自发光贴图颜色 × 该因子；[0,0,0] 表示不发光
+    glm::vec3 emissiveFactor = material->GetEmissiveFactor();
+    if (ImGui::ColorEdit3("Emissive Factor (自发光颜色)", glm::value_ptr(emissiveFactor))) {
+        material->SetEmissiveFactor(emissiveFactor);
     }
 
     // 纹理平铺 / UV 缩放密度（两种类型共用，采样前乘 inUV）

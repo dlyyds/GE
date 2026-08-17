@@ -115,6 +115,12 @@ void ApplySamplerParams(Texture *tex, const YAML::Node &samplerNode) {
 // 材质辅助（MeshRenderer 子网格材质覆写序列化）
 // ============================================================
 
+// 前向声明：SerializeVec3 / DeserializeVec3 定义在本文件下方的
+// "YAML 转换辅助函数"区，材质序列化函数先于其定义使用，需在此声明。
+// （不带默认实参，定义处的默认值在调用点不可见，调用时显式传参。）
+YAML::Node SerializeVec3(const glm::vec3 &v);
+glm::vec3 DeserializeVec3(const YAML::Node &node, const glm::vec3 &def);
+
 /// 材质纹理槽位名（与 Material::TextureSlot 顺序一一对应）
 const char *kTextureSlotNames[] = {"Albedo", "Normal", "Emissive", "MetallicRoughness"};
 
@@ -164,6 +170,9 @@ void SerializeMaterialNode(YAML::Node &matNode, Material *mat) {
             fp[kv.first] = kv.second;
         }
     }
+
+    // 自发光颜色因子（glTF emissiveFactor，乘自发光贴图颜色，两类型共用）
+    matNode["EmissiveFactor"] = SerializeVec3(mat->GetEmissiveFactor());
 }
 
 /**
@@ -197,6 +206,14 @@ Material *DeserializeMaterialNode(const YAML::Node &matNode) {
         for (const auto &n : names) {
             key += n + "=" + matNode["FloatParams"][n].as<std::string>() + ";";
         }
+    }
+    // 自发光颜色因子参与去重：因子不同的材质不复用同一实例
+    if (matNode["EmissiveFactor"]) {
+        key += "EmissiveFactor:";
+        for (const auto &v : matNode["EmissiveFactor"]) {
+            key += v.as<std::string>() + ",";
+        }
+        key += ";";
     }
     const std::string fullKey = "scene:" + key;
 
@@ -235,6 +252,11 @@ Material *DeserializeMaterialNode(const YAML::Node &matNode) {
         for (const auto &it : matNode["FloatParams"]) {
             mat->SetFloat(it.first.as<std::string>(), it.second.as<float>());
         }
+    }
+
+    // 自发光颜色因子（缺省 [0,0,0] = 不发光）
+    if (matNode["EmissiveFactor"]) {
+        mat->SetEmissiveFactor(DeserializeVec3(matNode["EmissiveFactor"], {0.0f, 0.0f, 0.0f}));
     }
 
     return matMgr.Register(fullKey, std::move(mat));

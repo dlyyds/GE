@@ -49,7 +49,6 @@ const FloatParamDesc *GetFloatParamDesc(const std::string &name) {
     static const std::unordered_map<std::string, FloatParamDesc> kKnown = {
         {"shininess",        {"高光锐度",       2.0f, 512.0f, 1.0f}},
         {"specularStrength", {"镜面强度",       0.0f, 2.0f,   0.01f}},
-        {"emissiveStrength", {"自发光强度",     0.0f, 20.0f,  0.05f}},
         {"metallic",         {"金属度",         0.0f, 1.0f,   0.005f}},
         {"roughness",        {"粗糙度",         0.0f, 1.0f,   0.005f}},
     };

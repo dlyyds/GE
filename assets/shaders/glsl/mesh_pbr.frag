@@ -27,14 +27,15 @@ layout (set = 1, binding = 7) uniform sampler2D  samplerBrdfDFG;    // BRDF LUT�
 // 每材质 UB（按批次绑定）：
 //   params.x = shininess（Blinn-Phong 高光指数，PBR 下未用）
 //   params.y = specularStrength（Blinn-Phong 镜面强度，PBR 下未用）
-//   params.z = emissiveStrength（自发光强度，与 Blinn-Phong 一致）
 //   params.w = uvTiling（纹理平铺 / UV 缩放密度，采样前乘 inUV）
 //   pbr.x = metallic（金属度，0=绝缘体 1=金属）
 //   pbr.y = roughness（粗糙度，0=镜面 1=漫）
+//   emissiveFactor.rgb = 自发光颜色因子（乘自发光贴图颜色）
 layout (set = 1, binding = 2, std140) uniform MaterialUBO
 {
     vec4 params;
     vec4 pbr;
+    vec4 emissiveFactor;
 } material;
 
 layout (set = 0, binding = 0, std140) uniform FrameUBO
@@ -228,7 +229,8 @@ void main()
     }
 
     // 自发光：直接加色，不受光照影响。
-    vec3 emissive = texture(samplerEmissive, inUV * material.params.w, 0.0).rgb * material.params.z;
+    // 最终自发光颜色 = 贴图采样颜色 × emissiveFactor（glTF 惯例）。
+    vec3 emissive = texture(samplerEmissive, inUV * material.params.w, 0.0).rgb * material.emissiveFactor.rgb;
     result += emissive;
 
     // 输出前：ACES 色调映射（线性 HDR → [0,1]）后直接输出线性值，由 sRGB

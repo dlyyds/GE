@@ -50,9 +50,8 @@ static void ApplyMaterialData(Material &mat, const MaterialData &md,
         mat.SetFloat("specularStrength",
                      (md.specular.r + md.specular.g + md.specular.b) / 3.0f);
     }
-    // 自发光强度取发光颜色最大通道
-    mat.SetFloat("emissiveStrength",
-                 glm::max(md.emissive.r, glm::max(md.emissive.g, md.emissive.b)));
+    // 自发光颜色因子：取 MTL 发光颜色（emissiveFactor，乘自发光贴图颜色）
+    mat.SetEmissiveFactor(glm::vec3(md.emissive));
 
     // 漫反射贴图：有 map_Kd 则加载；否则用漫反射颜色的纯色纹理（非白色时）。
     // 颜色贴图以 sRGB 格式加载，硬件采样时自动解码到线性空间（与输出侧

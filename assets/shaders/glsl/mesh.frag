@@ -11,11 +11,14 @@ layout (set = 1, binding = 3) uniform sampler2D samplerEmissive; // 自发光贴
 // 每材质 UB（按批次绑定）：存放材质标量参数。
 //   params.x = shininess（高光指数，决定高光斑形态/大小）
 //   params.y = specularStrength（镜面强度，独立控制高光亮暗）
-//   params.z = emissiveStrength（自发光强度，缩放自发光贴图颜色）
-//   params.w 预留供后续材质参数扩展。
+//   params.w = uvTiling（纹理平铺 / UV 缩放密度，采样前乘 inUV）
+//   pbr 为占位字段：必须与 C++ MaterialUBO 布局一致，Blinn-Phong 不使用
+//   emissiveFactor.rgb = 自发光颜色因子（乘自发光贴图颜色）
 layout (set = 1, binding = 2, std140) uniform MaterialUBO
 {
     vec4 params;
+    vec4 pbr;
+    vec4 emissiveFactor;
 } material;
 
 layout (set = 0, binding = 0, std140) uniform FrameUBO
@@ -135,9 +138,9 @@ void main()
     }
 
     // 自发光：直接加色，不受光照影响。
-    // 采样自发光贴图颜色，乘强度参数。无自发光贴图时绑定默认黑色纹理，
-    // 采样为 0，不改变结果（物体不发光）。
-    vec3 emissive = texture(samplerEmissive, inUV * material.params.w, 0.0).rgb * material.params.z;
+    // 最终自发光颜色 = 贴图采样颜色 × emissiveFactor（glTF 惯例）。
+    // 无自发光贴图时绑定默认黑色纹理，采样为 0，不改变结果（物体不发光）。
+    vec3 emissive = texture(samplerEmissive, inUV * material.params.w, 0.0).rgb * material.emissiveFactor.rgb;
     result += emissive;
 
     outFragColor = vec4(result, 1.0);

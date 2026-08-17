@@ -286,14 +286,15 @@ private:
     /// 存放材质标量参数：
     ///   params.x = shininess（高光指数，Blinn-Phong 使用）
     ///   params.y = specularStrength（镜面强度，Blinn-Phong 使用）
-    ///   params.z = emissiveStrength（自发光强度，缩放自发光贴图颜色）
-    ///   params.w 预留后续材质参数扩展。
+    ///   params.w = uvTiling（纹理平铺 / UV 缩放密度，采样前乘 UV）
     ///   pbr.x = metallic，pbr.y = roughness（PBR 材质使用）
+    ///   emissiveFactor.rgb = 自发光颜色因子（乘自发光贴图颜色）
     struct MaterialUBO {
-        glm::vec4 params;            ///< x = shininess，y = specularStrength，z = emissiveStrength
+        glm::vec4 params;            ///< x = shininess，y = specularStrength，z 预留，w = uvTiling
         glm::vec4 pbr;               ///< x = metallic，y = roughness（金属-粗糙度）
+        glm::vec4 emissiveFactor;    ///< rgb = 自发光颜色因子 [R,G,B]，w 预留
     };
-    static_assert(sizeof(MaterialUBO) == 32, "MaterialUBO 必须 16 字节对齐");
+    static_assert(sizeof(MaterialUBO) == 48, "MaterialUBO 必须 16 字节对齐");
 
     /// 天空盒 UBO（std140 布局，set 0 binding 0）
     /// 只存反投影所需矩阵：仅旋转视图矩阵逆（invView）+ 投影矩阵逆（invProj）。

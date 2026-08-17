@@ -199,13 +199,11 @@ std::unique_ptr<Mesh> Mesh::LoadFromFile(VulkanDevice &device,
                     };
                 }
 
-                // 纹理坐标（如果有）：翻转 V —— OBJ 的 vt 原点在左下角（V=0 在纹理
-                // 底部），而 Vulkan 采样 V=0 对应纹理顶部（stb 自上而下逐行上传）。
-                // 原样使用会导致贴图相对 Blender 上下颠倒，故 V' = 1 - V。
+                // 纹理坐标（如果有）
                 if (index.texcoord_index >= 0) {
                     v.TexCoord = {
                         attrib.texcoords[2 * index.texcoord_index + 0],
-                        1.0f - attrib.texcoords[2 * index.texcoord_index + 1],
+                        attrib.texcoords[2 * index.texcoord_index + 1],
                     };
                 }
 

@@ -54,9 +54,12 @@ static void ApplyMaterialData(Material &mat, const MaterialData &md,
     mat.SetFloat("emissiveStrength",
                  glm::max(md.emissive.r, glm::max(md.emissive.g, md.emissive.b)));
 
-    // 漫反射贴图：有 map_Kd 则加载；否则用漫反射颜色的纯色纹理（非白色时）
+    // 漫反射贴图：有 map_Kd 则加载；否则用漫反射颜色的纯色纹理（非白色时）。
+    // 颜色贴图以 sRGB 格式加载，硬件采样时自动解码到线性空间（与输出侧
+    // sRGB swapchain 的硬件编码配对成标准线性管线）。法线/金属度/粗糙度是
+    // 数据而非颜色，仍保持 Unorm 不解码（见下方 normalMap 等分支）。
     if (!md.albedoMap.empty()) {
-        if (Texture *t = texMgr.LoadAsync(md.albedoMap)) {
+        if (Texture *t = texMgr.LoadAsync(md.albedoMap, vk::Format::eR8G8B8A8Srgb)) {
             mat.SetTexture(Material::Albedo, t);
         }
     } else {
@@ -64,7 +67,8 @@ static void ApplyMaterialData(Material &mat, const MaterialData &md,
                        && md.baseColor.b > 0.99f;
         if (!nearWhite) {
             mat.SetTexture(Material::Albedo,
-                           texMgr.GetSolidColor(glm::vec4(md.baseColor, md.dissolve)));
+                           texMgr.GetSolidColor(glm::vec4(md.baseColor, md.dissolve),
+                                                vk::Format::eR8G8B8A8Srgb));
         }
     }
 

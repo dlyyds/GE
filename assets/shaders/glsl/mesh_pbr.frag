@@ -167,9 +167,9 @@ vec3 calcPointLight(PointLight light, vec3 N, vec3 V, vec3 worldPos, vec3 albedo
 
 void main()
 {
-    // Albedo 贴图是 sRGB（颜色），采样后解码到线性空间，PBR 光照数学才成立。
-    // 法线 / metallic / roughness 是数据而非颜色，不做 gamma 解码。
-    vec3 albedo = pow(texture(samplerColor, inUV * material.params.w, 0.0).rgb, vec3(2.2)) * inColor.rgb;
+    // Albedo 贴图以 sRGB 格式加载，硬件采样时自动解码到线性空间，PBR 光照数学才成立。
+    // 法线 / metallic / roughness 是数据而非颜色，仍用 Unorm 不做 gamma 解码。
+    vec3 albedo = texture(samplerColor, inUV * material.params.w, 0.0).rgb * inColor.rgb;
 
     // —— 法线贴图：从切线空间采样并变换到世界空间 ——
     // 采样值 [0,1] 映射到 [-1,1]；用 TBN 矩阵变换。
@@ -231,7 +231,9 @@ void main()
     vec3 emissive = texture(samplerEmissive, inUV * material.params.w, 0.0).rgb * material.params.z;
     result += emissive;
 
-    // 输出前：ACES 色调映射（线性 HDR → [0,1]）+ gamma 编码回 sRGB 显示。
+    // 输出前：ACES 色调映射（线性 HDR → [0,1]）后直接输出线性值，由 sRGB
+    // swapchain 硬件编码回显示空间；若在此再手动 gamma 编码会与硬件叠加成
+    // 双重编码，画面偏亮发白。
     result = acesToneMap(result);
-    outFragColor = vec4(pow(result, vec3(1.0 / 2.2)), 1.0);
+    outFragColor = vec4(result, 1.0);
 }

@@ -37,22 +37,29 @@ OBJ 天生是单几何，契合这个模型；glTF 则是「场景容器」—�
 ## 阶段 1：实体父子系统
 
 ### 目标
-`TransformComponent` 获得层级能力：`parent` / `children`，`GetTransform()` 返回 `父级世界变换 × 自身局部变换`。做交互部件与骨骼动画的地基，**不碰渲染一行**。
+`TransformComponent` 获得层级能力：`parent` / `children`，`GetWorldMatrix()` 返回 `父级世界矩阵 × 自身局部矩阵`。做交互部件与骨骼动画的地基，**不碰渲染一行**。
 
 ### 关键设计
 
 > 设计决策（已定）：
 > - **层级存储** = 组件内 `parent` 向上指针（`entt::entity`，null=根）+ Scene 侧反向索引缓存 `m_ChildrenOf`（parent→children）。唯一真相在组件指针，索引是可由 O(n) 遍历重建的派生缓存，永不失同步。
 > - **根发现** = 不维护常驻 `GetRoots()`/`m_Roots` 集合，DFS 每次现场扫 view、跳过非根（有父的在父的递归中必然被访问），每个实体恰好访问一次。「根」是 `parent == null` 的即时查询，不是数据结构。
-> - **世界矩阵缓存** = Scene 侧表 `m_WorldCache`（entity→mat4），每帧一次 DFS 重建。不写入 `TransformComponent`，保持组件纯 POD（与「组件内不加 vector」同理），也不需要增量维护。
+> - **世界矩阵缓存** = 存组件内 `worldMatrix`（`glm::mat4`），每帧一次 DFS 重建，只读消费。代价是派生缓存与作者数据共存于组件，靠纪律约束（见 1.1「四条纪律」）；`glm::mat4` 平凡可拷贝，不破坏 POD。
 > - **序列化引用** = 每实体持久化 UUID（新增 `IDComponent`），父引用落盘为父实体的 UUID 字符串；反序列化走「先全建→记 ID→句柄 →再二次遍历接 parent」的两遍流程。重排/增删实体不影响引用语义（弃用"数组索引"脆方案），并为阶段 4 glTF node↔实体对应、编辑器 undo/脚本铺路。
 
 #### 1.1 TransformComponent 层级改造
 **文件**：`GE/include/GE/Scene/Components.h`
 
-- `TransformComponent` 增加一个 `entt::entity parent = entt::null`，其余保持纯 POD（**不加** `std::vector<Entity> children`——vector 破坏内存布局与平凡拷贝，且组件间互链是 EnTT 反模式）
-- 新增 `GetWorldTransform()`：沿 `parent` 链上溯累乘 `父世界 × 局部 TRS`。EnTT 句柄带版本位，实体销毁再复用不会产生悬垂引用
-- glTF 的 node transform（TRS 或 matrix）与此结构对齐：rotation 保持四元数（当前已是四元数存储）
+- 字段扩展为：`Translation`（local_pos，vec3）+ `Rotation`（local_rot，`glm::quat`，已是四元数）+ `Scale`（local_scale，vec3）+ `worldMatrix`（新增，`glm::mat4` 缓存）+ `parent`（新增，`entt::entity`，null=根）
+- **不加** `std::vector<Entity> children`——vector 破坏内存布局与平凡拷贝，组件间互链是 EnTT 反模式；子关系由 Scene 反向索引维护
+- **API 语义拆开**（层级化的分水岭，见下）：`GetLocalMatrix()` 返回 `Translation×Rotation×Scale`（旧 `GetTransform()` 改名）；`GetWorldMatrix()` 返回缓存的 `worldMatrix`。渲染/灯光/物理同步一律读 `GetWorldMatrix()`；编辑器/动画写回只碰局部 TRS。EnTT 句柄带版本位，实体销毁再复用不会产生悬垂引用
+- **四条纪律**（组件内缓存 vs 纯作者数据的保证）：
+  1. 单一写点：`worldMatrix` 只能由每帧 `UpdateWorldTransforms`（DFS）写入，其他路径禁止写
+  2. 只读消费：渲染、灯光、脚本一律只读，不写
+  3. 序列化显式排除：`SceneSerializer` 对 `TransformComponent` **不写 `worldMatrix`**（派生值不可持久化）
+  4. 新鲜窗口：`worldMatrix` 仅在「本帧 DFS 之后」有效，DFS 后新建/改动的实体读它可能过期——不得在「改完立刻读 world」——需等下帧 DFS
+- **语义陷阱**：现 `GetTransform()` 返回局部 TRS 却被当世界矩阵用（无层级时两者相等）。层级化后 `OnUpdate3D` 的 `DrawSubMesh(tc.GetTransform(), ...)`（Scene.cpp:233）与精灵路径必须改用 `GetWorldMatrix()`，否则父子实体画错位置
+- glTF 的 node transform（TRS 或 matrix）与此结构对齐：rotation 保持四元数
 
 #### 1.2 IDComponent（新组件）
 **文件**：`GE/include/GE/Scene/Components.h`
@@ -74,21 +81,21 @@ OBJ 天生是单几何，契合这个模型；glTF 则是「场景容器」—�
 #### 1.4 每帧 DFS 算世界矩阵（扫描+跳过，不建 roots 列表）
 **文件**：`GE/src/Scene/Scene.cpp`
 
-- 渲染前每帧一次 DFS 重建世界矩阵缓存 `m_WorldCache`：入口直接扫 `view<TransformComponent>`，`parent != null` 的跳过（有父者在父的递归中必然被访问），从每个根递归下钻；根→子顺序由递归嵌套本身保证「先父后子」
-- 递归体：`world = parentWorld × local`，写入 `m_WorldCache`，再把 `world` 作为子层的 `parentWorld` 传下去
+- 渲染前每帧一次 DFS 重建世界矩阵缓存：入口直接扫 `view<TransformComponent>`，`parent != null` 的跳过（有父者在父的递归中必然被访问），从每个根递归下钻；根→子顺序由递归嵌套本身保证「先父后子」
+- 递归体：`world = parentWorld × local`，**写入 `TransformComponent::worldMatrix`**，再把 `world` 作为子层的 `parentWorld` 传下去
 - 每帧重建（不用脏标记）：实现最简单、无脏标记状态损坏风险；当前规模 DFS 成本可忽略，未来需要时再优化为「只重算脏子树」
-- 世界矩阵缓存存 Scene 侧表（`entity → mat4`），写入面只有 DFS 一处，渲染/逻辑端只读
+- 写入面只有 DFS 一处（纪律 1），渲染/逻辑端只读（纪律 2）
 
 #### 1.5 渲染仍平铺收集，读缓存矩阵
 **文件**：`GE/src/Scene/Scene.cpp`，编辑器场景面板
 
-- `Scene::OnUpdate3D` 保持 `view<TransformComponent, MeshRendererComponent>` 平铺收集（找出"要画的实体"与顺序无关），但把 `tc.GetTransform()`（局部矩阵）替换为读 `m_WorldCache`
+- `Scene::OnUpdate3D` 保持 `view<TransformComponent, MeshRendererComponent>` 平铺收集（找出"要画的实体"与顺序无关），但把 `tc.GetTransform()`（局部矩阵）替换为 `tc.GetWorldMatrix()`（读缓存的 `worldMatrix`）
 - 树形 DFS 与 registry view 职责正交：DFS 保证矩阵正确（必须先父后子所以走树），view 负责查找（无需特定顺序）；渲染只消费缓存，不依赖树的形态
 
 #### 1.6 序列化（UUID + 两遍反序列化）
 **文件**：`GE/src/Scene/SceneSerializer.cpp`
 
-- **写**：`IDComponent` 落盘为 `Id: "..."`；`TransformComponent.parent` 落盘为**父实体的 UUID 字符串**；根实体写 `Parent: null` 或省略
+- **写**：`IDComponent` 落盘为 `Id: "..."`；`TransformComponent.parent` 落盘为**父实体的 UUID 字符串**；根实体写 `Parent: null` 或省略；**`worldMatrix` 显式排除，绝不落盘**（纪律 3，派生值不可持久化）
 - **读**（两遍）：
   1. 第一遍：创建全部实体，记 `uint32_t → 实体句柄` 映射（ID 到句柄）
   2. 第二遍：每实体若 `Parent` 非空，`SetParent(该实体, id映射[parent])` 接上

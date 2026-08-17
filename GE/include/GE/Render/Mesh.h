@@ -3,7 +3,7 @@
  * @brief 网格封装 —— 顶点缓冲 + 索引缓冲，支持从文件加载。
  *
  * 封装 VulkanBuffer（顶点 + 索引），提供：
- * - LoadFromFile()：从 OBJ 文件加载网格（使用 tinyobjloader）
+ * - LoadFromFile()：从模型文件加载网格（按扩展名分派，当前支持 OBJ）
  * - 直接构造：从 CPU 端顶点/索引数组创建网格
  *
  * 内部自动处理：
@@ -34,7 +34,7 @@ class Material;
 /**
  * @brief 从 OBJ/MTL 捕获的材质数据（POD，与 tinyobjloader 解耦）。
  *
- * 在 Mesh::LoadFromFile 解析 MTL 时填充，供 MeshManager 按子网格的
+ * 在 Mesh::LoadFromOBJ 解析 MTL 时填充，供 MeshManager 按子网格的
  * materialName 匹配后构建真正的 Material（含纹理加载）。纹理路径已
  * 在此处解析为绝对路径（相对 OBJ 所在目录）。
  */
@@ -171,11 +171,18 @@ public:
     // ========================================================================
 
     /**
-     * @brief 从 OBJ 文件加载网格。
+     * @brief 从模型文件加载网格（按文件扩展名分派到对应格式加载器）。
+     *
+     * 当前支持的格式：
+     * - .obj：使用 tinyobjloader 解析
+     *
+     * 后续接入 glTF / FBX 等新格式时，只需在 LoadFromFile 中按扩展名
+     * 注册对应的私有加载函数；各格式解析出的数据统一交给 BuildMesh
+     * 完成切线计算 / GPU 上传等格式无关的装配流程。
      *
      * @param device    Vulkan 设备
-     * @param filepath  OBJ 文件路径
-     * @return std::unique_ptr<Mesh>  失败时返回 nullptr
+     * @param filepath  模型文件路径
+     * @return std::unique_ptr<Mesh>  失败或不支持的格式时返回 nullptr
      */
     static std::unique_ptr<Mesh> LoadFromFile(VulkanDevice &device,
                                               const std::string &filepath);
@@ -312,6 +319,42 @@ private:
      * @brief 从 CPU 端顶点/索引数据创建 GPU 缓冲。
      */
     bool UploadToGPU(VulkanDevice &device);
+
+    // ========================================================================
+    // 格式加载器（LoadFromFile 按扩展名分派到各私有加载函数）
+    // ========================================================================
+
+    /**
+     * @brief 从 OBJ 文件加载（tinyobjloader 解析 + MTL 材质捕获）。
+     *
+     * @param device    Vulkan 设备
+     * @param filepath  OBJ 文件路径
+     * @return std::unique_ptr<Mesh>  解析失败时返回 nullptr
+     */
+    static std::unique_ptr<Mesh> LoadFromOBJ(VulkanDevice &device,
+                                             const std::string &filepath);
+
+    /**
+     * @brief 由格式加载器解析出的几何数据构建最终网格（共享装配路径）。
+     *
+     * 完成切线计算、GPU 上传与文件路径记录。OBJ / 未来的 glTF 等
+     * 各格式加载器解析出顶点、索引、子网格与材质数据后统一调用本函数，
+     * 避免每个格式重复装配逻辑。
+     *
+     * @param device        Vulkan 设备
+     * @param vertices      顶点数组（std::move 入）
+     * @param indices       索引数组（std::move 入）
+     * @param subMeshes     子网格列表（std::move 入）
+     * @param materialData  材质数据（std::move 入）
+     * @param filePath      源文件路径（std::move 入）
+     * @return std::unique_ptr<Mesh>  数据为空或上传失败时返回 nullptr
+     */
+    static std::unique_ptr<Mesh> BuildMesh(VulkanDevice &device,
+                                           std::vector<Vertex> vertices,
+                                           std::vector<uint32_t> indices,
+                                           std::vector<SubMesh> subMeshes,
+                                           std::vector<MaterialData> materialData,
+                                           std::string filePath);
 
     // ========================================================================
     // 成员

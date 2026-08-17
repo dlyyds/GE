@@ -1,6 +1,6 @@
 /**
  * @file Mesh.cpp
- * @brief 网格实现 —— 顶点/索引缓冲 + OBJ 加载。
+ * @brief 网格实现 —— 顶点/索引缓冲 + 多格式模型加载（当前支持 OBJ）。
  */
 
 #include "Render/Mesh.h"
@@ -46,11 +46,11 @@ static void ComputeTangents(std::vector<Vertex> &vertices,
 
         glm::vec3 edge1 = v1.Position - v0.Position;
         glm::vec3 edge2 = v2.Position - v0.Position;
-        glm::vec2 duv1  = v1.TexCoord - v0.TexCoord;
-        glm::vec2 duv2  = v2.TexCoord - v0.TexCoord;
+        glm::vec2 duv1 = v1.TexCoord - v0.TexCoord;
+        glm::vec2 duv2 = v2.TexCoord - v0.TexCoord;
 
         float r = 1.0f / (duv1.x * duv2.y - duv2.x * duv1.y);
-        glm::vec3 tangent   = (edge1 * duv2.y - edge2 * duv1.y) * r;
+        glm::vec3 tangent = (edge1 * duv2.y - edge2 * duv1.y) * r;
         glm::vec3 bitangent = (edge2 * duv1.x - edge1 * duv2.x) * r;
 
         tan1[indices[i + 0]] += tangent;
@@ -84,8 +84,7 @@ static std::unique_ptr<VulkanBuffer> UploadBuffer(
     VulkanDevice &device,
     vk::BufferUsageFlagBits usage,
     vk::DeviceSize size,
-    const void *data)
-{
+    const void *data) {
     // 创建 staging buffer 并拷贝数据
     auto staging = VulkanBuffer::create_staging_buffer(device, size, data);
 
@@ -112,16 +111,70 @@ static std::unique_ptr<VulkanBuffer> UploadBuffer(
 }
 
 // ============================================================================
-// 工厂方法：从文件加载
+// 私有装配：由格式加载器解析出的数据构建最终网格（各格式共享路径）
+// ============================================================================
+
+std::unique_ptr<Mesh> Mesh::BuildMesh(VulkanDevice &device,
+                                      std::vector<Vertex> vertices,
+                                      std::vector<uint32_t> indices,
+                                      std::vector<SubMesh> subMeshes,
+                                      std::vector<MaterialData> materialData,
+                                      std::string filePath) {
+    if (vertices.empty() || indices.empty()) {
+        return nullptr;
+    }
+
+    auto mesh = std::unique_ptr<Mesh>(new Mesh());
+    mesh->m_Vertices = std::move(vertices);
+    mesh->m_Indices = std::move(indices);
+    mesh->m_SubMeshes = std::move(subMeshes);
+    mesh->m_MaterialData = std::move(materialData);
+
+    // 计算顶点切线（法线贴图需要）
+    ComputeTangents(mesh->m_Vertices, mesh->m_Indices);
+
+    if (!mesh->UploadToGPU(device)) {
+        return nullptr;
+    }
+
+    // 记录源文件路径
+    mesh->m_FilePath = std::move(filePath);
+    return mesh;
+}
+
+// ============================================================================
+// 工厂方法：从文件加载（按扩展名分派到对应格式加载器）
 // ============================================================================
 
 std::unique_ptr<Mesh> Mesh::LoadFromFile(VulkanDevice &device,
-                                         const std::string &filepath)
-{
-    tinyobj::attrib_t                attrib;
-    std::vector<tinyobj::shape_t>    shapes;
+                                         const std::string &filepath) {
+    // 按扩展名分派；新增模型格式时，在这里注册对应的私有加载函数即可
+    std::string ext = std::filesystem::path(filepath).extension().string();
+    for (char &c : ext) {
+        if (c >= 'A' && c <= 'Z') {
+            c += static_cast<char>('a' - 'A');
+        }
+    }
+
+    if (ext == ".obj") {
+        return LoadFromOBJ(device, filepath);
+    }
+
+    std::cerr << "[Mesh] Unsupported model format '" << ext << "': "
+              << filepath << std::endl;
+    return nullptr;
+}
+
+// ============================================================================
+// 私有加载器：OBJ（tinyobjloader）
+// ============================================================================
+
+std::unique_ptr<Mesh> Mesh::LoadFromOBJ(VulkanDevice &device,
+                                        const std::string &filepath) {
+    tinyobj::attrib_t attrib;
+    std::vector<tinyobj::shape_t> shapes;
     std::vector<tinyobj::material_t> materials;
-    std::string                      warn, err;
+    std::string warn, err;
 
     // 以 OBJ 所在目录作为 MTL 搜索基准目录（默认搜工作目录，会导致模型目录
     // 下的 .mtl 找不到）。同时用于后续把 MTL 内的相对纹理路径拼成绝对路径。
@@ -140,9 +193,9 @@ std::unique_ptr<Mesh> Mesh::LoadFromFile(VulkanDevice &device,
         return nullptr;
     }
 
-    std::vector<Vertex>   vertices;
+    std::vector<Vertex> vertices;
     std::vector<uint32_t> indices;
-    std::vector<SubMesh>  subMeshes;
+    std::vector<SubMesh> subMeshes;
     std::unordered_map<Vertex, uint32_t> uniqueVertices;
 
     // 遍历所有形状，几何合并到共享缓冲，并按 (shape, material_id) 拆分子网格。
@@ -157,10 +210,10 @@ std::unique_ptr<Mesh> Mesh::LoadFromFile(VulkanDevice &device,
 
     for (const auto &shape : shapes) {
         const auto &shapeIndices = shape.mesh.indices;
-        const auto &materialIds  = shape.mesh.material_ids;
+        const auto &materialIds = shape.mesh.material_ids;
 
         // 当前材质组：material_id 变化时封存上一个连续段为一个子网格
-        int      curMaterial     = -2;  // 哨兵值，表示 shape 起始
+        int curMaterial = -2; // 哨兵值，表示 shape 起始
         uint32_t groupStartIndex = static_cast<uint32_t>(indices.size());
 
         for (size_t fi = 0; fi + 2 < shapeIndices.size(); fi += 3) {
@@ -169,8 +222,8 @@ std::unique_ptr<Mesh> Mesh::LoadFromFile(VulkanDevice &device,
 
             // 材质切换：封存上一个材质组为子网格
             if (fi > 0 && matId != curMaterial) {
-                uint32_t firstIndex  = groupStartIndex;
-                uint32_t indexCount  = static_cast<uint32_t>(indices.size()) - groupStartIndex;
+                uint32_t firstIndex = groupStartIndex;
+                uint32_t indexCount = static_cast<uint32_t>(indices.size()) - groupStartIndex;
                 subMeshes.push_back({0, static_cast<uint32_t>(vertices.size()),
                                      firstIndex, indexCount,
                                      makeMaterialName(curMaterial), nullptr});
@@ -203,16 +256,16 @@ std::unique_ptr<Mesh> Mesh::LoadFromFile(VulkanDevice &device,
                 if (index.texcoord_index >= 0) {
                     v.TexCoord = {
                         attrib.texcoords[2 * index.texcoord_index + 0],
-                        attrib.texcoords[2 * index.texcoord_index + 1],
+                        1 - attrib.texcoords[2 * index.texcoord_index + 1],
                     };
                 }
 
                 // 一次性量化清洗：消除浮点精度误差导致的「逻辑相同但位表示不同」的顶点，
                 // 使下方去重的精确比较 / 精确哈希能正确判定（见 Vertex::Quantize 注释）
                 v.Position = Vertex::Quantize(v.Position);
-                v.Normal   = Vertex::Quantize(v.Normal);
+                v.Normal = Vertex::Quantize(v.Normal);
                 v.TexCoord = Vertex::Quantize(v.TexCoord);
-                v.Tangent  = Vertex::Quantize(v.Tangent);
+                v.Tangent = Vertex::Quantize(v.Tangent);
 
                 // 去重：相同顶点复用索引
                 if (uniqueVertices.find(v) == uniqueVertices.end()) {
@@ -238,11 +291,6 @@ std::unique_ptr<Mesh> Mesh::LoadFromFile(VulkanDevice &device,
         return nullptr;
     }
 
-    auto mesh = std::unique_ptr<Mesh>(new Mesh());
-    mesh->m_Vertices = std::move(vertices);
-    mesh->m_Indices  = std::move(indices);
-    mesh->m_SubMeshes = std::move(subMeshes);
-
     // 从 tinyobj 解析出的 MTL 材质捕获为引擎侧 MaterialData。
     // 各子网格的 materialName 即对应 MTL 材质名，MeshManager 据此匹配构建材质。
     auto resolveTex = [&](const std::string &tex) -> std::string {
@@ -257,43 +305,36 @@ std::unique_ptr<Mesh> Mesh::LoadFromFile(VulkanDevice &device,
             .lexically_normal().string();
     };
 
-    mesh->m_MaterialData.reserve(materials.size());
+    std::vector<MaterialData> materialData;
+    materialData.reserve(materials.size());
     for (const auto &src : materials) {
         MaterialData md;
-        md.name      = src.name;
+        md.name = src.name;
         md.baseColor = {src.diffuse[0], src.diffuse[1], src.diffuse[2]};
-        md.specular  = {src.specular[0], src.specular[1], src.specular[2]};
-        md.emissive  = {src.emission[0], src.emission[1], src.emission[2]};
+        md.specular = {src.specular[0], src.specular[1], src.specular[2]};
+        md.emissive = {src.emission[0], src.emission[1], src.emission[2]};
         md.shininess = src.shininess > 0.0f ? src.shininess : 32.0f;
-        md.dissolve  = src.dissolve;
-        md.metallic  = src.metallic;
+        md.dissolve = src.dissolve;
+        md.metallic = src.metallic;
         md.roughness = src.roughness > 0.0f ? src.roughness : 0.5f;
         // 存在 PBR 扩展参数（非零标量或 MR 贴图）即视为 PBR 材质
-        md.hasPBR    = (src.metallic > 0.0f || src.roughness > 0.0f
-                        || !src.metallic_texname.empty() || !src.roughness_texname.empty());
+        md.hasPBR = (src.metallic > 0.0f || src.roughness > 0.0f
+                     || !src.metallic_texname.empty() || !src.roughness_texname.empty());
 
-        md.albedoMap    = resolveTex(src.diffuse_texname);
+        md.albedoMap = resolveTex(src.diffuse_texname);
         // 法线贴图：优先 norm，其次 map_bump
-        md.normalMap    = resolveTex(!src.normal_texname.empty()
-                                         ? src.normal_texname : src.bump_texname);
-        md.emissiveMap  = resolveTex(src.emissive_texname);
-        md.metallicMap  = resolveTex(src.metallic_texname);
+        md.normalMap = resolveTex(!src.normal_texname.empty()
+                                      ? src.normal_texname
+                                      : src.bump_texname);
+        md.emissiveMap = resolveTex(src.emissive_texname);
+        md.metallicMap = resolveTex(src.metallic_texname);
         md.roughnessMap = resolveTex(src.roughness_texname);
 
-        mesh->m_MaterialData.push_back(std::move(md));
+        materialData.push_back(std::move(md));
     }
 
-    // 计算顶点切线（法线贴图需要）
-    ComputeTangents(mesh->m_Vertices, mesh->m_Indices);
-
-    if (!mesh->UploadToGPU(device)) {
-        return nullptr;
-    }
-
-    // 记录源文件路径
-    mesh->m_FilePath = filepath;
-
-    return mesh;
+    return BuildMesh(device, std::move(vertices), std::move(indices),
+                     std::move(subMeshes), std::move(materialData), filepath);
 }
 
 // ============================================================================
@@ -302,31 +343,21 @@ std::unique_ptr<Mesh> Mesh::LoadFromFile(VulkanDevice &device,
 
 std::unique_ptr<Mesh> Mesh::Create(VulkanDevice &device,
                                    const std::vector<Vertex> &vertices,
-                                   const std::vector<uint32_t> &indices)
-{
+                                   const std::vector<uint32_t> &indices) {
     if (vertices.empty() || indices.empty()) {
         return nullptr;
     }
 
-    auto mesh = std::unique_ptr<Mesh>(new Mesh());
-    mesh->m_Vertices = vertices;
-    mesh->m_Indices  = indices;
-
     // 统一子网格：单整体网格也生成一个覆盖全部索引的子网格，
     // 使所有 mesh（含内置几何体 / CPU 直建）都走统一的子网格绘制路径
-    mesh->m_SubMeshes.push_back(SubMesh{
+    std::vector<SubMesh> subMeshes;
+    subMeshes.push_back(SubMesh{
         0, static_cast<uint32_t>(vertices.size()),
         0, static_cast<uint32_t>(indices.size()),
         {}, nullptr});
 
-    // 计算顶点切线（法线贴图需要）
-    ComputeTangents(mesh->m_Vertices, mesh->m_Indices);
-
-    if (!mesh->UploadToGPU(device)) {
-        return nullptr;
-    }
-
-    return mesh;
+    // 复用共享装配路径：切线计算 + GPU 上传
+    return BuildMesh(device, vertices, indices, std::move(subMeshes), {}, {});
 }
 
 // ============================================================================
@@ -334,7 +365,7 @@ std::unique_ptr<Mesh> Mesh::Create(VulkanDevice &device,
 // ============================================================================
 
 std::unique_ptr<Mesh> Mesh::CreateBuiltin(VulkanDevice &device, const std::string &type) {
-    std::vector<Vertex>   vertices;
+    std::vector<Vertex> vertices;
     std::vector<uint32_t> indices;
 
     if (type == "cube") {
@@ -387,18 +418,18 @@ std::unique_ptr<Mesh> Mesh::CreateBuiltin(VulkanDevice &device, const std::strin
         // 平面：XY 平面，边长 2，中心在原点，法线 +Z
         vertices = {
             {{-1.0f, -1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f}},
-            {{ 1.0f, -1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 0.0f}},
-            {{ 1.0f,  1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
-            {{-1.0f,  1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},
+            {{1.0f, -1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 0.0f}},
+            {{1.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
+            {{-1.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},
         };
         indices = {0, 1, 2, 0, 2, 3};
     } else if (type == "quad") {
         // 四边形（plane 的别名）
         vertices = {
             {{-1.0f, -1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f}},
-            {{ 1.0f, -1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 0.0f}},
-            {{ 1.0f,  1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
-            {{-1.0f,  1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},
+            {{1.0f, -1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 0.0f}},
+            {{1.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
+            {{-1.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},
         };
         indices = {0, 1, 2, 0, 2, 3};
     } else if (type == "sphere") {
@@ -436,7 +467,7 @@ std::unique_ptr<Mesh> Mesh::CreateBuiltin(VulkanDevice &device, const std::strin
                 // 注意：绕序必须与法线一致（CCW 朝外）。原实现 (first,second,first+1)
                 // 的叉积法线朝内，导致外侧被当作背面剔除、法线背离相机，
                 // 所有直接光照失效（只剩环境光）。这里交换 last two 顶点翻转绕序。
-                uint32_t first  = static_cast<uint32_t>(lat * (lonBands + 1) + lon);
+                uint32_t first = static_cast<uint32_t>(lat * (lonBands + 1) + lon);
                 uint32_t second = first + static_cast<uint32_t>(lonBands + 1);
                 indices.push_back(first);
                 indices.push_back(first + 1);
@@ -463,20 +494,17 @@ std::unique_ptr<Mesh> Mesh::CreateBuiltin(VulkanDevice &device, const std::strin
 
 Mesh::~Mesh() = default;
 
-Mesh::Mesh(Mesh &&other) noexcept :
-    m_Vertices(std::move(other.m_Vertices)),
-    m_Indices(std::move(other.m_Indices)),
-    m_VertexBuffer(std::move(other.m_VertexBuffer)),
-    m_IndexBuffer(std::move(other.m_IndexBuffer))
-{
+Mesh::Mesh(Mesh &&other) noexcept : m_Vertices(std::move(other.m_Vertices)),
+                                    m_Indices(std::move(other.m_Indices)),
+                                    m_VertexBuffer(std::move(other.m_VertexBuffer)),
+                                    m_IndexBuffer(std::move(other.m_IndexBuffer)) {
 }
 
 // ============================================================================
 // 上传到 GPU
 // ============================================================================
 
-bool Mesh::UploadToGPU(VulkanDevice &device)
-{
+bool Mesh::UploadToGPU(VulkanDevice &device) {
     vk::DeviceSize vbSize = m_Vertices.size() * sizeof(Vertex);
     vk::DeviceSize ibSize = m_Indices.size() * sizeof(uint32_t);
 
@@ -501,8 +529,7 @@ bool Mesh::UploadToGPU(VulkanDevice &device)
 // 调试名称
 // ============================================================================
 
-void Mesh::SetDebugName(const std::string &name)
-{
+void Mesh::SetDebugName(const std::string &name) {
     if (m_VertexBuffer) {
         m_VertexBuffer->SetDebugName(name + "_VB");
     }

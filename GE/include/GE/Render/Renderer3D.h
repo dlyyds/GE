@@ -459,7 +459,8 @@ private:
     /// 默认 1x1 "平坦法线"纹理（无法线贴图时的 fallback，RGB=(128,128,255)）
     std::unique_ptr<Texture> m_DefaultNormalTexture;
 
-    /// 默认 1x1 黑色纹理（无自发光贴图时的 fallback，RGB=(0,0,0)，使物体不发光）
+    /// 默认 1x1 白色纹理（无自发光贴图时的 fallback，RGB=(1,1,1)，
+    /// 使自发光 = emissiveFactor 颜色，即 glTF 的"仅因子发光"语义）
     std::unique_ptr<Texture> m_DefaultEmissiveTexture;
 
     /// 默认 1x1 金属-粗糙度纹理（无 MR 贴图时的 fallback，G=1,B=1，

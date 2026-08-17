@@ -132,21 +132,20 @@ Renderer3D::Renderer3D() {
         GE_CORE_ERROR("Renderer3D: 创建默认平坦法线纹理失败！");
     }
 
-    // ── 5. 创建默认 1x1 黑色纹理（无自发光贴图时的 fallback） ──────────
-    //    RGB = (0, 0, 0)：采样后加色为 0，不改变光照结果，即物体不发光，
-    //    使未绑定自发光贴图的材质表现得如同未使用自发光。
-    // 像素字面量按 0xAABBGGRR 小端约定书写：0xFF000000 = (0, 0, 0, 255) 黑色不透明。
-    // 注意：切勿写成 0x000000FF，那会解析成 (255,0,0,0) 红色透明，导致无自发光
-    // 贴图时物体发出红光（shader 仅采样 .rgb，alpha 被忽略）。
-    uint32_t blackPixel = 0xFF000000; // RGBA8: (0, 0, 0, 255)
+    // ── 5. 创建默认 1x1 白色纹理（无自发光贴图时的 fallback） ──────────
+    //    RGB = (1, 1, 1)：采样后乘 emissiveFactor 等于因子本身，即无贴图时
+    //    用 emissiveFactor 颜色直接发光（glTF 语义）；有贴图时贴图颜色 × 因子，
+    //    黑色区域仍不发光。
+    // 像素字面量按 0xAABBGGRR 小端约定书写：0xFFFFFFFF = (255, 255, 255, 255) 白色不透明。
+    uint32_t whitePixel = 0xFFFFFFFF; // RGBA8: (255, 255, 255, 255)
     m_DefaultEmissiveTexture = Texture::LoadFromMemory(
-        device, cache, &blackPixel, 1, 1,
+        device, cache, &whitePixel, 1, 1,
         vk::Format::eR8G8B8A8Unorm,
         vk::Filter::eLinear, vk::Filter::eLinear);
     if (m_DefaultEmissiveTexture) {
         m_DefaultEmissiveTexture->SetDebugName("DefaultEmissiveTexture");
     } else {
-        GE_CORE_ERROR("Renderer3D: 创建默认黑色自发光纹理失败！");
+        GE_CORE_ERROR("Renderer3D: 创建默认白色自发光纹理失败！");
     }
 
     // ── 6. 创建默认 1x1 金属-粗糙度纹理（无 MR 贴图时的 fallback） ──────
@@ -336,7 +335,7 @@ Texture *Renderer3D::GetEffectiveNormalTexture(const Material *material) const {
 
 Texture *Renderer3D::GetEffectiveEmissiveTexture(const Material *material) const {
     // 优先取材质 Emissive 槽位纹理，无材质、无纹理或未就绪（异步加载中）时
-    // 回退到默认黑色纹理（RGB=(0,0,0)，物体不发光）
+    // 回退到默认白色纹理（RGB=(1,1,1)，自发光 = emissiveFactor 颜色）
     Texture *tex = (material ? material->GetTexture(Material::Emissive) : nullptr);
     return (tex && tex->IsReady()) ? tex : m_DefaultEmissiveTexture.get();
 }
@@ -773,8 +772,9 @@ void Renderer3D::EndScene() {
                           1, 1);
         }
 
-        // 自发光贴图（set 1, binding 3）：无材质或无纹理时使用默认黑色纹理，
-        // 其颜色为 (0,0,0)，加色为 0，保证材质无需自发光贴图也能正常渲染
+        // 自发光贴图（set 1, binding 3）：无材质或无纹理时使用默认白色纹理，
+        // 采样为 (1,1,1)，自发光 = emissiveFactor 颜色，支持"仅因子发光"。
+        // 有贴图时贴图颜色 × 因子，贴图黑色区域不发光。
         Texture *emissiveTex = GetEffectiveEmissiveTexture(batch.material);
         if (emissiveTex) {
             cmd.BindImage(emissiveTex->GetImageView(),

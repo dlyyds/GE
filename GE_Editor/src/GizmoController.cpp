@@ -64,9 +64,21 @@ void GizmoController::Render(const Camera &camera, const glm::vec2 &viewportPos,
     ImGui::Checkbox("Snap", &m_UseSnap);
     ImGui::PopStyleVar(2);
 
-    // ---- 取出选中实体的局部变换矩阵（gizmo 编辑的是局部 TRS，写回也只碰局部） ----
+    // ---- 取出选中实体的世界矩阵给 ImGuizmo 显示 ----
+    // ImGuizmo 按视口世界坐标渲染手柄，层级化后局部矩阵 ≠ 世界矩阵：
+    // 若把局部矩阵直接传入，子实体的手柄会与实体实际位置/朝向不重合。
+    // 故传入世界矩阵；写回时再乘父世界矩阵的逆，还原为局部 TRS（见下）。
     auto &transformComp = selected.GetComponent<TransformComponent>();
-    glm::mat4 transform = transformComp.GetLocalMatrix();
+    glm::mat4 transform = transformComp.GetWorldMatrix();
+
+    // 父实体世界矩阵（根实体为恒等）：用于把 gizmo 输出的世界结果换算回局部 TRS
+    glm::mat4 parentWorld = glm::mat4(1.0f);
+    if (m_Context->Scene) {
+        if (Entity parent = m_Context->Scene->GetParent(selected)) {
+            if (parent.HasComponent<TransformComponent>())
+                parentWorld = parent.GetComponent<TransformComponent>().GetWorldMatrix();
+        }
+    }
 
     ImGuizmo::SetRect(viewportPos.x, viewportPos.y, viewportSize.x, viewportSize.y);
 
@@ -90,9 +102,13 @@ void GizmoController::Render(const Camera &camera, const glm::vec2 &viewportPos,
         snap);   // snap：吸附步长（第 7 参）
 
     if (changed && ImGuizmo::IsUsing()) {
-        // 从 gizmo 更新后的矩阵拆回 平移/旋转(度)/缩放 写回组件
+        // gizmo 更新的是世界矩阵，先乘父世界矩阵的逆还原为局部矩阵，再拆回 平移/旋转(度)/缩放。
+        // （根实体 parentWorld 为恒等，换算无影响；子实体则把父级位移/旋转/缩放一并剥离）
+        glm::mat4 localMatrix = glm::inverse(parentWorld) * transform;
+
+        // 从 gizmo 更新后的局部矩阵拆回 平移/旋转(度)/缩放 写回组件
         float translation[3], rotationDeg[3], scale[3];
-        ImGuizmo::DecomposeMatrixToComponents(glm::value_ptr(transform), translation, rotationDeg, scale);
+        ImGuizmo::DecomposeMatrixToComponents(glm::value_ptr(localMatrix), translation, rotationDeg, scale);
         transformComp.Translation = {translation[0], translation[1], translation[2]};
         // ImGuizmo 拆出欧拉角（角度），在此编辑器边界转成四元数写回
         transformComp.SetRotationEuler(glm::radians(glm::vec3(rotationDeg[0], rotationDeg[1], rotationDeg[2])));

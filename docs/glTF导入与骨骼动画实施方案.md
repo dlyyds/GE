@@ -43,6 +43,8 @@ OBJ 天生是单几何，契合这个模型；glTF 则是「场景容器」—�
 
 > 设计决策（已定）：
 > - **层级存储** = 组件内 `parent` 向上指针（`entt::entity`，null=根）+ Scene 侧反向索引缓存 `m_ChildrenOf`（parent→children）。唯一真相在组件指针，索引是可由 O(n) 遍历重建的派生缓存，永不失同步。
+> - **根发现** = 不维护常驻 `GetRoots()`/`m_Roots` 集合，DFS 每次现场扫 view、跳过非根（有父的在父的递归中必然被访问），每个实体恰好访问一次。「根」是 `parent == null` 的即时查询，不是数据结构。
+> - **世界矩阵缓存** = Scene 侧表 `m_WorldCache`（entity→mat4），每帧一次 DFS 重建。不写入 `TransformComponent`，保持组件纯 POD（与「组件内不加 vector」同理），也不需要增量维护。
 > - **序列化引用** = 每实体持久化 UUID（新增 `IDComponent`），父引用落盘为父实体的 UUID 字符串；反序列化走「先全建→记 ID→句柄 →再二次遍历接 parent」的两遍流程。重排/增删实体不影响引用语义（弃用"数组索引"脆方案），并为阶段 4 glTF node↔实体对应、编辑器 undo/脚本铺路。
 
 #### 1.1 TransformComponent 层级改造
@@ -67,15 +69,23 @@ OBJ 天生是单几何，契合这个模型；glTF 则是「场景容器」—�
   - `Entity GetParent(Entity)` / `std::vector<Entity> GetChildren(Entity)`
   - `void RebuildChildrenIndex()` — 全量扫描重建反向索引（恢复现场/兜底）
 - `DestroyEntity` 改造：沿反向索引递归销毁后代，并把自己从父实体的后代列表中移除
+- **环检测**：`SetParent` 中沿 `child` 的 parent 链上溯，若中途遇到 `parent` 自身则拒绝并报错，杜绝互设父子导致的 DFS 无限递归
 
-#### 1.4 遍历改递归 + 世界矩阵缓存
+#### 1.4 每帧 DFS 算世界矩阵（扫描+跳过，不建 roots 列表）
+**文件**：`GE/src/Scene/Scene.cpp`
+
+- 渲染前每帧一次 DFS 重建世界矩阵缓存 `m_WorldCache`：入口直接扫 `view<TransformComponent>`，`parent != null` 的跳过（有父者在父的递归中必然被访问），从每个根递归下钻；根→子顺序由递归嵌套本身保证「先父后子」
+- 递归体：`world = parentWorld × local`，写入 `m_WorldCache`，再把 `world` 作为子层的 `parentWorld` 传下去
+- 每帧重建（不用脏标记）：实现最简单、无脏标记状态损坏风险；当前规模 DFS 成本可忽略，未来需要时再优化为「只重算脏子树」
+- 世界矩阵缓存存 Scene 侧表（`entity → mat4`），写入面只有 DFS 一处，渲染/逻辑端只读
+
+#### 1.5 渲染仍平铺收集，读缓存矩阵
 **文件**：`GE/src/Scene/Scene.cpp`，编辑器场景面板
 
-- 实体遍历从「平铺所有实体」改为「递归走树」（根 → 子）
-- 渲染前每帧按树深度先父后子一遍 DFS：`world = parentWorld × local`，缓存到 `TransformComponent` 或 Scene 侧世界矩阵表；渲染端只读世界矩阵
-- `Scene::OnUpdate3D` 仍按实体收集，但世界矩阵用缓存值
+- `Scene::OnUpdate3D` 保持 `view<TransformComponent, MeshRendererComponent>` 平铺收集（找出"要画的实体"与顺序无关），但把 `tc.GetTransform()`（局部矩阵）替换为读 `m_WorldCache`
+- 树形 DFS 与 registry view 职责正交：DFS 保证矩阵正确（必须先父后子所以走树），view 负责查找（无需特定顺序）；渲染只消费缓存，不依赖树的形态
 
-#### 1.5 序列化（UUID + 两遍反序列化）
+#### 1.6 序列化（UUID + 两遍反序列化）
 **文件**：`GE/src/Scene/SceneSerializer.cpp`
 
 - **写**：`IDComponent` 落盘为 `Id: "..."`；`TransformComponent.parent` 落盘为**父实体的 UUID 字符串**；根实体写 `Parent: null` 或省略

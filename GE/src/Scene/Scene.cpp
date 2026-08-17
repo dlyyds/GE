@@ -41,12 +41,136 @@ Entity Scene::CreateEntity(const std::string &name) {
 
     entity.AddComponent<TransformComponent>();
     entity.AddComponent<TagComponent>(name);
+    entity.AddComponent<IDComponent>(GenerateUUID());
 
     return entity;
 }
 
 void Scene::DestroyEntity(Entity entity) {
-    m_Registry.destroy(static_cast<entt::entity>(entity));
+    const entt::entity handle = static_cast<entt::entity>(entity);
+    if (!m_Registry.valid(handle))
+        return;
+
+    // 先从父实体的后代列表中脱离（保留组件排查语义：父仍存在，删除只影响子树）
+    if (auto *tc = m_Registry.try_get<TransformComponent>(handle)) {
+        if (tc->parent != entt::null) {
+            if (auto it = m_ChildrenOf.find(tc->parent); it != m_ChildrenOf.end()) {
+                auto &vec = it->second;
+                vec.erase(std::remove(vec.begin(), vec.end(), handle), vec.end());
+                if (vec.empty())
+                    m_ChildrenOf.erase(it);
+            }
+            tc->parent = entt::null;
+        }
+    }
+
+    // 级联销毁后代（沿反向索引递归）；子实体的 DestroyEntity 会继续处理其自身子树
+    if (auto it = m_ChildrenOf.find(handle); it != m_ChildrenOf.end()) {
+        std::vector<entt::entity> children = std::move(it->second);
+        m_ChildrenOf.erase(it);
+        for (entt::entity child : children) {
+            if (m_Registry.valid(child))
+                DestroyEntity(Entity(child, this));
+        }
+    }
+
+    // 实体销毁（触发各组件 on_destroy 清理，如 RigidBodyComponent 的物理 body）
+    m_Registry.destroy(handle);
+}
+
+bool Scene::SetParent(Entity child, Entity parent) {
+    const entt::entity childHandle = static_cast<entt::entity>(child);
+    const entt::entity parentHandle = parent ? static_cast<entt::entity>(parent) : entt::null;
+
+    if (!m_Registry.valid(childHandle))
+        return false;
+    if (parentHandle != entt::null) {
+        if (!m_Registry.valid(parentHandle))
+            return false;
+        // 父实体必须带 Transform：DFS 依赖 parent 链持有 Transform 下钻
+        if (!m_Registry.all_of<TransformComponent>(parentHandle))
+            return false;
+        // 不能设自己为父
+        if (parentHandle == childHandle)
+            return false;
+        // 环检测：若 parent 位于 child 的子树上，则沿 parent 的父链上溯必然能到达 child，
+        // 新边 child→parent 会构成环、导致每帧 DFS 无限递归，拒绝。
+        for (entt::entity cur = parentHandle; cur != entt::null && m_Registry.valid(cur);) {
+            if (cur == childHandle)
+                return false;
+            auto *curTc = m_Registry.try_get<TransformComponent>(cur);
+            cur = curTc ? curTc->parent : entt::null;
+        }
+    }
+
+    auto *childTc = m_Registry.try_get<TransformComponent>(childHandle);
+    if (!childTc)
+        return false;
+
+    // 与旧父脱离（同步组件指针 + 反向索引两处）
+    if (childTc->parent != entt::null) {
+        if (auto it = m_ChildrenOf.find(childTc->parent); it != m_ChildrenOf.end()) {
+            auto &vec = it->second;
+            vec.erase(std::remove(vec.begin(), vec.end(), childHandle), vec.end());
+            if (vec.empty())
+                m_ChildrenOf.erase(it);
+        }
+    }
+
+    // 挂到新父
+    childTc->parent = parentHandle;
+    if (parentHandle != entt::null)
+        m_ChildrenOf[parentHandle].push_back(childHandle);
+
+    return true;
+}
+
+Entity Scene::GetParent(Entity entity) {
+    const entt::entity handle = static_cast<entt::entity>(entity);
+    if (!m_Registry.valid(handle))
+        return {};
+    auto *tc = m_Registry.try_get<TransformComponent>(handle);
+    if (!tc || tc->parent == entt::null)
+        return {};
+    return Entity(tc->parent, this);
+}
+
+std::vector<Entity> Scene::GetChildren(Entity entity) {
+    std::vector<Entity> result;
+    const entt::entity handle = static_cast<entt::entity>(entity);
+    if (auto it = m_ChildrenOf.find(handle); it != m_ChildrenOf.end()) {
+        result.reserve(it->second.size());
+        for (entt::entity child : it->second)
+            result.emplace_back(child, this);
+    }
+    return result;
+}
+
+void Scene::RebuildChildrenIndex() {
+    m_ChildrenOf.clear();
+    auto view = m_Registry.view<TransformComponent>();
+    for (auto entity : view) {
+        const auto &tc = view.get<TransformComponent>(entity);
+        if (tc.parent != entt::null && m_Registry.valid(tc.parent))
+            m_ChildrenOf[tc.parent].push_back(entity);
+    }
+}
+
+void Scene::ClearAllEntities() {
+    m_ChildrenOf.clear();
+    m_Registry.clear();
+}
+
+Entity Scene::FindEntityByID(const std::string &uuid) {
+    if (uuid.empty())
+        return {};
+    auto view = m_Registry.view<IDComponent>();
+    for (auto entity : view) {
+        const auto &idc = view.get<IDComponent>(entity);
+        if (idc.UUID == uuid)
+            return Entity(entity, this);
+    }
+    return {};
 }
 
 Entity Scene::GetPrimaryCameraEntity() {
@@ -68,6 +192,49 @@ Entity Scene::GetPrimaryCameraEntity() {
     return {};
 }
 
+void Scene::UpdateWorldTransforms() {
+    auto view = m_Registry.view<TransformComponent>();
+    for (auto entity : view) {
+        const auto &tc = view.get<TransformComponent>(entity);
+
+        // 有父实体者由父的递归下钻访问，此处跳过（根→子顺序由递归嵌套保证先父后子）。
+        if (tc.parent != entt::null && m_Registry.valid(tc.parent)
+            && m_Registry.all_of<TransformComponent>(tc.parent)) {
+            continue;
+        }
+
+        // 父实体已失效（正常流程经 SetParent/DestroyEntity 不会出现）：兜底自动脱离，
+        // 否则该实体既不被父递归访问、又因 parent 非空被跳过，世界矩阵将永不更新。
+        if (tc.parent != entt::null) {
+            auto &mutableTc = view.get<TransformComponent>(entity);
+            mutableTc.parent = entt::null;
+            if (auto it = m_ChildrenOf.find(tc.parent); it != m_ChildrenOf.end()) {
+                auto &vec = it->second;
+                vec.erase(std::remove(vec.begin(), vec.end(), entity), vec.end());
+                if (vec.empty())
+                    m_ChildrenOf.erase(it);
+            }
+            GE_CORE_WARN("Scene::UpdateWorldTransforms: 父实体已失效，实体 {} 自动脱离为根",
+                         static_cast<uint32_t>(entity));
+        }
+
+        // 从根递归下钻（世界矩阵缓存重建 + 反向索引保序）
+        UpdateWorldTransformsRecursive(entity, glm::mat4(1.0f));
+    }
+}
+
+void Scene::UpdateWorldTransformsRecursive(entt::entity entity, const glm::mat4 &parentWorld) {
+    auto &tc = m_Registry.get<TransformComponent>(entity);
+    tc.worldMatrix = parentWorld * tc.GetLocalMatrix();
+
+    if (auto it = m_ChildrenOf.find(entity); it != m_ChildrenOf.end()) {
+        for (entt::entity child : it->second) {
+            if (m_Registry.valid(child) && m_Registry.all_of<TransformComponent>(child))
+                UpdateWorldTransformsRecursive(child, tc.worldMatrix);
+        }
+    }
+}
+
 
 void Scene::OnUpdate(Timestep ts,
                      const glm::mat4 &viewProjection,
@@ -84,6 +251,9 @@ void Scene::OnUpdate(Timestep ts,
         }
     }
 
+    // ── 世界矩阵缓存重建（每帧一次 DFS：先于渲染，保证本帧矩阵最新） ──
+    UpdateWorldTransforms();
+
     // ── 2D 精灵渲染 ────────────────────────────────────────────────────
     auto &r2d = Renderer::Get2DRenderer();
     r2d.BeginScene(glm::mat4(1.0f), viewProjection, false, clearColor);
@@ -94,7 +264,7 @@ void Scene::OnUpdate(Timestep ts,
         auto &sc = view.get<SpriteRendererComponent>(entity);
 
         r2d.DrawSprite(
-            tc.GetTransform(),
+            tc.GetWorldMatrix(),
             sc.SpriteTexture,
             sc.Color
             );
@@ -125,6 +295,11 @@ void Scene::OnUpdate3D(Timestep ts,
         m_PhysicsWorld->Step(ts);
     }
 
+    // ── 世界矩阵缓存重建（每帧一次 DFS）───────────────────────────────
+    // 放在物理步进之后、光源收集/渲染之前：物理刚回写完局部 TRS，
+    // 此处重算让本帧渲染即使用最新世界矩阵。
+    UpdateWorldTransforms();
+
     // ── 3D 网格渲染 ────────────────────────────────────────────────────
     auto &r3d = Renderer::Get3DRenderer();
 
@@ -140,11 +315,16 @@ void Scene::OnUpdate3D(Timestep ts,
                 auto &tc = dirLightView.get<TransformComponent>(entity);
                 auto &dlc = dirLightView.get<DirectionalLightComponent>(entity);
 
-                // 由 Transform 的旋转推导出方向光方向（前向向量，-Z 轴旋转后为光线射出方向）
+                // 由世界矩阵的旋转部分推导出方向光方向（前向向量，-Z 轴旋转后为光线射出方向）。
+                // 读世界矩阵而非局部 Rotation：挂在父子层级下时父级旋转一并作用于照射方向。
+                // 缩放会乘进 mat3 的三列，先逐列归一化消除后再转四元数（uniform/非 uniform 缩放均安全）。
                 // 着色器中 dirLightDirection 表示"指向光源的方向"（即从表面指向光源），
                 // 与光线射出方向相反，因此取反
-                const glm::quat &rot = tc.Rotation;
-                glm::vec3 lightDir = rot * glm::vec3(0.0f, 0.0f, -1.0f);
+                const glm::mat3 rot3 = glm::mat3(tc.GetWorldMatrix());
+                const glm::mat3 normalizedRot(
+                    glm::normalize(rot3[0]), glm::normalize(rot3[1]), glm::normalize(rot3[2]));
+                const glm::quat worldRot = glm::quat_cast(normalizedRot);
+                glm::vec3 lightDir = worldRot * glm::vec3(0.0f, 0.0f, -1.0f);
                 lightParams.dirLightDirection = glm::normalize(-lightDir);
                 lightParams.dirLightColor = dlc.Color;
             } else {
@@ -175,7 +355,8 @@ void Scene::OnUpdate3D(Timestep ts,
             auto &plc = pointLightView.get<PointLightComponent>(entity);
 
             Renderer3D::PointLight pl;
-            pl.position = tc.Translation;
+            // 读世界矩阵的平移列：子层级下的点光源位置随父实体整体联动
+            pl.position = glm::vec3(tc.GetWorldMatrix()[3]);
             pl.color = plc.Color;
             pl.radiusInv = plc.RadiusInv;
             lightParams.pointLights.push_back(pl);
@@ -230,7 +411,7 @@ void Scene::OnUpdate3D(Timestep ts,
             } else {
                 mat = sub.defaultMaterial;
             }
-            r3d.DrawSubMesh(tc.GetTransform(), mc.MeshPtr, sub, mat, mc.Color);
+            r3d.DrawSubMesh(tc.GetWorldMatrix(), mc.MeshPtr, sub, mat, mc.Color);
         }
     }
 
@@ -259,7 +440,7 @@ void Scene::OnUpdate3D(Timestep ts,
                 continue;
 
             r2d.DrawSprite(
-                tc.GetTransform(),
+                tc.GetWorldMatrix(),
                 sc.SpriteTexture,
                 sc.Color
                 );
@@ -296,7 +477,7 @@ void Scene::OnUpdate3D(Timestep ts,
         r2d.BeginScene(glm::mat4(1.0f), uiProjection, false, glm::vec4(-1.0f));
         for (auto &sp : uiSprites) {
             r2d.DrawSprite(
-                sp.tc->GetTransform(),
+                sp.tc->GetWorldMatrix(),
                 sp.sc->SpriteTexture,
                 sp.sc->Color
                 );
@@ -447,6 +628,10 @@ void Scene::OnComponentAdded<TransformComponent>(Entity entity, TransformCompone
 
 template <>
 void Scene::OnComponentAdded<TagComponent>(Entity entity, TagComponent &component) {
+}
+
+template <>
+void Scene::OnComponentAdded<IDComponent>(Entity entity, IDComponent &component) {
 }
 
 template <>

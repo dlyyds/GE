@@ -9,7 +9,11 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #include <string>
 #include <unordered_map>
+#include <random>
+#include <cstdint>
 #include <glm/gtx/quaternion.hpp>
+
+#include "entt.hpp"
 
 #include "Render/Camera.h"
 #include "Core/KeyCodes.h"
@@ -37,18 +41,29 @@ struct TagComponent {
 };
 
 struct TransformComponent {
+    // 局部 TRS（作者数据）：编辑器/动画/物理只写这组字段
     glm::vec3 Translation = {0.0f, 0.0f, 0.0f};
     // 内部统一存四元数，避免欧拉角万向锁（绕中间轴 ±90° 时自由度丢失）
     // 需要欧拉角时仅在编辑器显示边界用 Get/SetRotationEuler 转换
     glm::quat Rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
     glm::vec3 Scale = {1.0f, 1.0f, 1.0f};
 
+    // 世界矩阵缓存（派生值）：只能由 Scene::UpdateWorldTransforms 每帧 DFS 写入，
+    // 其他路径禁止写（四条纪律 1）；仅在本帧 DFS 之后有效（纪律 4），序列化显式排除（纪律 3）。
+    // 平凡可拷贝，不破坏 EnTT 对组件的 POD 要求。
+    glm::mat4 worldMatrix = glm::mat4(1.0f);
+
+    // 父实体句柄（entt::null = 根）。唯一真相在组件指针，Scene 侧的反向索引是派生缓存。
+    // EnTT 句柄带版本位，实体销毁后再复用不会产生悬垂引用。
+    entt::entity parent = entt::null;
+
     TransformComponent() = default;
 
     TransformComponent(const TransformComponent &) = default;
 
     explicit TransformComponent(const glm::vec3 &translation)
-        : Translation(translation) {
+        : Translation(translation),
+          worldMatrix(glm::translate(glm::mat4(1.0f), translation)) {
     }
 
     /// @brief 取欧拉角（弧度，GLM 的 XYZ 顺序），仅供编辑器显示使用
@@ -61,13 +76,57 @@ struct TransformComponent {
         Rotation = glm::quat(euler);
     }
 
-    [[nodiscard]] glm::mat4 GetTransform() const {
-
+    /// @brief 局部矩阵 = Translation × Rotation × Scale（层级化后不再等同世界矩阵）
+    [[nodiscard]] glm::mat4 GetLocalMatrix() const {
         const glm::mat4 rotation = glm::toMat4(Rotation);
-
         return glm::translate(glm::mat4(1.0f), Translation)
                * rotation
                * glm::scale(glm::mat4(1.0f), Scale);
+    }
+
+    /// @brief 世界矩阵（读缓存的 worldMatrix，由 Scene 每帧 DFS 更新；父子层级下子实体正确跟随父级）
+    [[nodiscard]] const glm::mat4 &GetWorldMatrix() const {
+        return worldMatrix;
+    }
+};
+
+/// 生成 128 位随机标识字符串（32 个十六进制字符）。
+/// 供 IDComponent 使用：实体创建时分配，用于序列化时跨文件稳定引用父实体（UUID 方案）。
+/// 使用函数内静态 mt19937_64，以 random_device 一次性播种。
+inline std::string GenerateUUID() {
+    static std::mt19937_64 generator{std::random_device{}()};
+    std::uniform_int_distribution<uint64_t> distribution;
+    constexpr char kHex[] = "0123456789abcdef";
+    std::string result;
+    result.reserve(32);
+    for (int i = 0; i < 4; ++i) {
+        const uint64_t word = distribution(generator);
+        for (int j = 0; j < 16; ++j) {
+            result.push_back(kHex[(word >> (j * 4)) & 0xF]);
+        }
+    }
+    return result;
+}
+
+/**
+ * @brief 实体唯一标识组件 —— 持久化引用标识。
+ *
+ * 创建实体时由 Scene::CreateEntity 分配随机 UUID；随实体序列化落盘。
+ * 场景级联引用（父实体）在序列化文件里以父实体的 UUID 字符串承接，
+ * 反序列化走「先全建 → 记 ID → 再二次遍历接 parent」的两遍流程，
+ * 重排 / 增删实体不影响引用语义。
+ *
+ * 不参与渲染 / 物理遍历；运行时也可按 ID 反查实体（Scene::FindEntityByID）。
+ */
+struct IDComponent {
+    std::string UUID;
+
+    IDComponent() = default;
+
+    IDComponent(const IDComponent &) = default;
+
+    explicit IDComponent(std::string uuid)
+        : UUID(std::move(uuid)) {
     }
 };
 

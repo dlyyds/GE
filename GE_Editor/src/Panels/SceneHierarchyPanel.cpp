@@ -61,9 +61,13 @@ void SceneHierarchyPanel::OnImGuiRender() {
     ImGui::SetNextWindowDockID(m_DockSpaceID, ImGuiCond_FirstUseEver);
     ImGui::Begin("Scene Hierarchy");
 
-    // 遍历所有实体（entt::entity 视图），逐个绘制节点
-    m_Context->Reg().view<entt::entity>().each([&](auto entityID) {
+    // 遍历所有根实体（parent 为空的实体），逐层递归绘制子树
+    m_Context->Reg().view<TransformComponent>().each([&](auto entityID) {
         const Entity entity{entityID, m_Context};
+        const auto &tc = entity.GetComponent<TransformComponent>();
+        // 有父者由父的递归绘制；父已失效（异常状态）按根处理，避免实体从树上消失
+        if (tc.parent != entt::null && m_Context->Reg().valid(tc.parent))
+            return;
         DrawEntityNode(entity);
     });
 
@@ -95,31 +99,66 @@ void SceneHierarchyPanel::OnImGuiRender() {
 void SceneHierarchyPanel::DrawEntityNode(Entity entity) {
     auto &tag = entity.GetComponent<TagComponent>().Tag;
 
+    auto children = m_Context->GetChildren(entity);
+    const bool hasChildren = !children.empty();
+
     ImGuiTreeNodeFlags flags = ((m_SelectionContext == entity) ? ImGuiTreeNodeFlags_Selected : 0)
                                | ImGuiTreeNodeFlags_OpenOnArrow
                                | ImGuiTreeNodeFlags_SpanAllColumns;
     // 叶子节点（无子实体）使用 Bullet 样式，避免展开箭头
-    flags |= ImGuiTreeNodeFlags_Leaf;
+    flags |= (hasChildren ? 0 : ImGuiTreeNodeFlags_Leaf);
 
-    bool opened [[maybe_unused]] = ImGui::TreeNodeEx((void *)(uint64_t)(uint32_t)entity, flags, "%s", tag.c_str());
+    const bool opened = ImGui::TreeNodeEx((void *)(uint64_t)(uint32_t)entity, flags, "%s", tag.c_str());
     if (ImGui::IsItemClicked()) {
         m_SelectionContext = entity;
     }
 
+    // ---- 右键菜单：删除实体（级联删子树） / 脱离父级 ----
     bool entityDeleted = false;
+    bool detachRequested = false;
     if (ImGui::BeginPopupContextItem()) {
         if (ImGui::MenuItem("Delete Entity"))
             entityDeleted = true;
+        if (ImGui::MenuItem("Detach from Parent"))
+            detachRequested = true;
         ImGui::EndPopup();
     }
 
-    // 由于使用了 Leaf 标记，这里无需处理子节点，直接 TreePop 即可
-    ImGui::TreePop();
+    // ---- 拖拽源：本实体可被拖到另一个节点上 → 重设父级 ----
+    if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceNoHoldToOpenOthers)) {
+        ImGui::SetDragDropPayload("ENTITY_TREE", &entity, sizeof(Entity));
+        ImGui::Text("%s", tag.c_str());
+        ImGui::EndDragDropSource();
+    }
+
+    // ---- 拖放目标：接受被拖来的实体作为自己的子实体（Scene::SetParent 内部做环检测） ----
+    if (ImGui::BeginDragDropTarget()) {
+        if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("ENTITY_TREE")) {
+            Entity dragged = *static_cast<const Entity *>(payload->Data);
+            if (dragged != entity && !m_Context->SetParent(dragged, entity)) {
+                GE_CORE_WARN("SceneHierarchyPanel: 无法把 {0} 设为 {1} 的子实体（可能构成环引用）",
+                             dragged.GetComponent<TagComponent>().Tag, tag);
+            }
+        }
+        ImGui::EndDragDropTarget();
+    }
+
+    if (opened) {
+        // 递归绘制子树（子实体顺序 = 反向索引的插入序）
+        for (auto &child : children) {
+            DrawEntityNode(child);
+        }
+        ImGui::TreePop();
+    }
 
     if (entityDeleted) {
+        // 删除父实体 → 级联删除整个子树（Scene::DestroyEntity 负责递归）
         m_Context->DestroyEntity(entity);
         if (m_SelectionContext == entity)
             m_SelectionContext = {};
+    } else if (detachRequested) {
+        // 空父 = 脱离为根节点
+        m_Context->SetParent(entity, {});
     }
 }
 

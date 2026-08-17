@@ -6,6 +6,9 @@
 #include "Core/Timestep.h"
 #include <glm/glm.hpp>
 #include <memory>
+#include <string>
+#include <vector>
+#include <unordered_map>
 
 namespace GE {
 
@@ -22,6 +25,35 @@ public:
     Entity CreateEntity(const std::string &name = "Entity");
 
     void DestroyEntity(Entity entity);
+
+    /**
+     * @brief 设置父子关系（唯一改父子关系的入口）。
+     *
+     * 同步更新组件的 parent 指针与 Scene 侧反向索引两处，杜绝双真相漂移。
+     * parent 为空实体（默认构造的 Entity）表示脱离父级、成为根节点。
+     * 带环检测：若 parent 位于 child 的子树上（新边会构成环）则拒绝并返回 false，
+     * 杜绝互设父子导致的 DFS 无限递归。
+     *
+     * @param child  要挂载/脱离的子实体
+     * @param parent 新父实体（空实体 = 脱离为根）
+     * @return true 成功；false 被拒（实体无效 / 环检测失败 / parent 无 Transform）
+     */
+    bool SetParent(Entity child, Entity parent);
+
+    /// 查询父实体（无父返回空 Entity）
+    Entity GetParent(Entity entity);
+
+    /// 查询直接子实体列表（保插入序）
+    std::vector<Entity> GetChildren(Entity entity);
+
+    /// 全量扫描重建反向 children 索引（恢复现场 / 兜底；唯一真相在组件指针）
+    void RebuildChildrenIndex();
+
+    /// 清空场景全部实体与反向索引（触发各组件 on_destroy 清理）
+    void ClearAllEntities();
+
+    /// 按 ID 反查实体（无匹配返回空 Entity）
+    Entity FindEntityByID(const std::string &uuid);
 
     // TEMP
     entt::registry &Reg() { return m_Registry; }
@@ -84,6 +116,12 @@ public:
     Entity GetPrimaryCameraEntity();
 
 private:
+    /// 每帧渲染前重建世界矩阵缓存（DFS：扫描 + 跳过非根，从根递归下钻）
+    void UpdateWorldTransforms();
+
+    /// DFS 递归体：写自己 world = parentWorld × local，再以下钻传递
+    void UpdateWorldTransformsRecursive(entt::entity entity, const glm::mat4 &parentWorld);
+
     /// 将输入事件分发给所有 ScriptComponent
     void DispatchInputEventToScripts(Event &e);
 
@@ -92,6 +130,11 @@ private:
 
     entt::registry m_Registry;
     uint32_t m_ViewportWidth = 0, m_ViewportHeight = 0;
+
+    /// 反向索引：parent → 直接子实体（保插入序）。
+    /// 派生缓存：唯一真相在组件 TransformComponent::parent，
+    /// 层级变更只走 SetParent 单一入口同步两处；可用 RebuildChildrenIndex 全量重建兜底。
+    std::unordered_map<entt::entity, std::vector<entt::entity>> m_ChildrenOf;
 
     /// 物理世界（每个 Scene 一个实例）
     std::unique_ptr<Physics::PhysicsWorld> m_PhysicsWorld;

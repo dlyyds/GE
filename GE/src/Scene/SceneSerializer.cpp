@@ -31,6 +31,7 @@
 #include <string>
 #include <algorithm>
 #include <vector>
+#include <unordered_map>
 #include <filesystem>
 #include <algorithm>
 #include <vector>
@@ -407,6 +408,18 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
             entityNode["Name"] = "Entity";
         }
 
+        // ---- IDComponent（持久化引用标识）----
+        if (entity.HasComponent<IDComponent>()) {
+            entityNode["Id"] = entity.GetComponent<IDComponent>().UUID;
+        }
+
+        // ---- 父实体引用（写父实体的 UUID 字符串，根实体省略）----
+        // worldMatrix 是每帧 DFS 的派生值，绝不落盘（纪律 3）
+        if (Entity parent = m_Scene->GetParent(entity)) {
+            if (parent.HasComponent<IDComponent>())
+                entityNode["Parent"] = parent.GetComponent<IDComponent>().UUID;
+        }
+
         // ---- TransformComponent ----
         if (entity.HasComponent<TransformComponent>()) {
             const auto &tc = entity.GetComponent<TransformComponent>();
@@ -617,8 +630,7 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
     YAML::Node entitiesNode = sceneNode["Entities"];
 
     // 清空当前场景中的所有实体（无论文件中是否有实体）
-    auto &reg = m_Scene->Reg();
-    reg.clear();
+    m_Scene->ClearAllEntities();
 
     if (!entitiesNode || !entitiesNode.IsSequence()) {
         GE_CORE_WARN("SceneSerializer::Deserialize: 场景中没有 Entities 节点，将加载为空场景");
@@ -626,6 +638,15 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
     }
 
     uint32_t entityCount = 0;
+
+    // 两遍反序列化：先全建实体并记录 Id → 实体句柄映射，再二次遍历接上 parent。
+    // 不存在依赖"数组索引"的脆弱方案，重排/增删实体不影响引用语义。
+    std::unordered_map<std::string, Entity> idToEntity;
+    struct PendingParentLink {
+        Entity child;
+        std::string parentId;
+    };
+    std::vector<PendingParentLink> pendingParentLinks;
 
     for (const auto &entityNode : entitiesNode) {
         // ---- 实体名称 ----
@@ -635,6 +656,23 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
         }
 
         Entity entity = m_Scene->CreateEntity(name);
+
+        // ---- Id：文件带 Id 时覆盖 CreateEntity 生成的随机 UUID，缺省（旧场景）保留刚生成的 ----
+        std::string id = entityNode["Id"] ? entityNode["Id"].as<std::string>("") : std::string();
+        if (!id.empty())
+            entity.GetComponent<IDComponent>().UUID = id;
+        id = entity.GetComponent<IDComponent>().UUID;
+        if (idToEntity.count(id)) {
+            GE_CORE_WARN("SceneSerializer: 检测到重复实体 Id {0}，后者覆盖前者", id);
+        }
+        idToEntity[id] = entity;
+
+        // ---- 父引用：记下父实体 UUID，等全部实体建好后第二遍再连接 ----
+        if (entityNode["Parent"]) {
+            std::string parentId = entityNode["Parent"].as<std::string>("");
+            if (!parentId.empty())
+                pendingParentLinks.push_back({entity, parentId});
+        }
 
         // ---- TransformComponent ----
         // 注意：CreateEntity 已经添加了 TransformComponent，这里只需修改值
@@ -811,6 +849,21 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
         // 不反序列化：无法恢复回调函数
 
         entityCount++;
+    }
+
+    // ---- 第二遍：按父实体 UUID 二次遍历接上父子关系（SetParent 内部带环检测） ----
+    for (const auto &link : pendingParentLinks) {
+        auto it = idToEntity.find(link.parentId);
+        if (it == idToEntity.end()) {
+            GE_CORE_WARN("SceneSerializer: 找不到父实体 Id {0}，实体 {1} 将作为根处理",
+                         link.parentId, link.child.GetComponent<TagComponent>().Tag);
+            continue;
+        }
+        if (!m_Scene->SetParent(link.child, it->second)) {
+            GE_CORE_WARN("SceneSerializer: 设置父子关系失败（{0} -> {1}），可能构成环引用",
+                         link.child.GetComponent<TagComponent>().Tag,
+                         it->second.GetComponent<TagComponent>().Tag);
+        }
     }
 
     GE_CORE_INFO("SceneSerializer: 场景已从 {} 加载（{} 个实体）",

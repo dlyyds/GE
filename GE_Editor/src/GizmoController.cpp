@@ -64,9 +64,9 @@ void GizmoController::Render(const Camera &camera, const glm::vec2 &viewportPos,
     ImGui::Checkbox("Snap", &m_UseSnap);
     ImGui::PopStyleVar(2);
 
-    // ---- 取出选中实体的变换矩阵 ----
+    // ---- 取出选中实体的局部变换矩阵（gizmo 编辑的是局部 TRS，写回也只碰局部） ----
     auto &transformComp = selected.GetComponent<TransformComponent>();
-    glm::mat4 transform = transformComp.GetTransform();
+    glm::mat4 transform = transformComp.GetLocalMatrix();
 
     ImGuizmo::SetRect(viewportPos.x, viewportPos.y, viewportSize.x, viewportSize.y);
 

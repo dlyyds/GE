@@ -41,25 +41,48 @@ OBJ 天生是单几何，契合这个模型；glTF 则是「场景容器」—�
 
 ### 关键设计
 
+> 设计决策（已定）：
+> - **层级存储** = 组件内 `parent` 向上指针（`entt::entity`，null=根）+ Scene 侧反向索引缓存 `m_ChildrenOf`（parent→children）。唯一真相在组件指针，索引是可由 O(n) 遍历重建的派生缓存，永不失同步。
+> - **序列化引用** = 每实体持久化 UUID（新增 `IDComponent`），父引用落盘为父实体的 UUID 字符串；反序列化走「先全建→记 ID→句柄 →再二次遍历接 parent」的两遍流程。重排/增删实体不影响引用语义（弃用"数组索引"脆方案），并为阶段 4 glTF node↔实体对应、编辑器 undo/脚本铺路。
+
 #### 1.1 TransformComponent 层级改造
 **文件**：`GE/include/GE/Scene/Components.h`
 
-- `TransformComponent` 增加 `Entity parent` 引用 + `std::vector<Entity> children`（或由 Scene 集中维护 `parentOf: 实体→实体` + `childrenOf: 实体→列表` 两张表，避免在组件里直接持 Entity 造成的循环依赖/序列化麻烦）
-- 新增 `GetWorldTransform()`：沿 parent 链累乘，含 `父世界矩阵 × 局部矩阵`
-- glTF 的 node transform（TRS 或 matrix）与此结构对齐：rotation 保持用四元数（当前 `TransformComponent` 已是四元数存储，Mesh.cpp/Commit bb0eef2 已消除万向锁）
+- `TransformComponent` 增加一个 `entt::entity parent = entt::null`，其余保持纯 POD（**不加** `std::vector<Entity> children`——vector 破坏内存布局与平凡拷贝，且组件间互链是 EnTT 反模式）
+- 新增 `GetWorldTransform()`：沿 `parent` 链上溯累乘 `父世界 × 局部 TRS`。EnTT 句柄带版本位，实体销毁再复用不会产生悬垂引用
+- glTF 的 node transform（TRS 或 matrix）与此结构对齐：rotation 保持四元数（当前已是四元数存储）
 
-#### 1.2 Scene 遍历改递归
+#### 1.2 IDComponent（新组件）
+**文件**：`GE/include/GE/Scene/Components.h`
+
+- 新增 `IDComponent`，持 `std::string UUID`（创建实体时生成，运行时也可按 ID 查实体）
+- 序列化时随实体落盘；不参与渲染/物理遍历
+
+#### 1.3 Scene 反向索引 + 层级 API
+**文件**：`GE/src/Scene/Scene.cpp`
+
+- Scene 持有 `std::unordered_map<entt::entity, std::vector<entt::entity>> m_ChildrenOf`（保插入序）
+- 层级变更**只走单一入口**，同步更新组件指针 + 反向索引两处，杜绝双真相漂移：
+  - `void Scene::SetParent(Entity child, Entity parent)` — 唯一改父子关系的 API
+  - `Entity GetParent(Entity)` / `std::vector<Entity> GetChildren(Entity)`
+  - `void RebuildChildrenIndex()` — 全量扫描重建反向索引（恢复现场/兜底）
+- `DestroyEntity` 改造：沿反向索引递归销毁后代，并把自己从父实体的后代列表中移除
+
+#### 1.4 遍历改递归 + 世界矩阵缓存
 **文件**：`GE/src/Scene/Scene.cpp`，编辑器场景面板
 
-- 实体遍历从「平铺所有实体」改为「递归走树」（根节点 → 子节点）
-- 删除实体时级联删除子树（当前 `DestroyEntity` 需处理）
-- 渲染遍历（`Scene::OnUpdate3D`）仍按实体收集——深度由 `meshRenderer` 决定，但世界矩阵须用 `GetWorldTransform()`
+- 实体遍历从「平铺所有实体」改为「递归走树」（根 → 子）
+- 渲染前每帧按树深度先父后子一遍 DFS：`world = parentWorld × local`，缓存到 `TransformComponent` 或 Scene 侧世界矩阵表；渲染端只读世界矩阵
+- `Scene::OnUpdate3D` 仍按实体收集，但世界矩阵用缓存值
 
-#### 1.3 序列化
+#### 1.5 序列化（UUID + 两遍反序列化）
 **文件**：`GE/src/Scene/SceneSerializer.cpp`
 
-- 序列化 parent/children 关系（保存每实体的 parent 引用，加载时二次遍历重建）
-- 向后兼容：旧场景无 parent 字段，视为根节点
+- **写**：`IDComponent` 落盘为 `Id: "..."`；`TransformComponent.parent` 落盘为**父实体的 UUID 字符串**；根实体写 `Parent: null` 或省略
+- **读**（两遍）：
+  1. 第一遍：创建全部实体，记 `uint32_t → 实体句柄` 映射（ID 到句柄）
+  2. 第二遍：每实体若 `Parent` 非空，`SetParent(该实体, id映射[parent])` 接上
+- **向后兼容**：旧场景无 `Id`/`Parent` 字段 → 生成随机 UUID、视为根节点；旧格式（节点无 Id）只在加载新格式时正常，旧文件仍可加载为平铺树
 
 ### 验收标准
 - 父实体移动，子实体整体跟随；子实体局部旋转只转自己

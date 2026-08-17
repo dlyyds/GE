@@ -18,6 +18,7 @@
 
 #include <vulkan/vulkan.hpp>
 
+#include <atomic>
 #include <cstdint>
 #include <cstddef>
 #include <cmath>
@@ -30,6 +31,7 @@
 namespace GE {
 
 class Material;
+class AsyncUploadManager;
 
 /**
  * @brief 从 OBJ/MTL 捕获的材质数据（POD，与 tinyobjloader 解耦）。
@@ -188,6 +190,26 @@ public:
                                               const std::string &filepath);
 
     /**
+     * @brief 异步从模型文件加载网格（解析 + GPU 上传全后台）。
+     *
+     * 立即返回"空壳" Mesh（m_Ready=false，无 CPU 数据与 GPU 缓冲）；后台线程完成
+     * OBJ/MTL 解析、MTL 材质数据捕获、顶点切线计算与顶点/索引缓冲上传后，主线程
+     * AsyncUploadManager::Poll() 回收时经 InstallAsyncData 安装并置就绪。
+     *
+     * @param device       Vulkan 设备
+     * @param upload       异步上传管理器（提交 UploadTask）
+     * @param filepath     模型文件路径
+     * @param onInstalled  数据安装完成后、置就绪前的回调（主线程 finalize 调用，供
+     *                     MeshManager 构建子网格材质；加载失败或空壳已销毁则不会调用）
+     * @return std::unique_ptr<Mesh>  空壳 Mesh（未就绪）；提交失败返回 nullptr
+     */
+    static std::unique_ptr<Mesh> LoadFromFileAsync(
+        VulkanDevice &device,
+        AsyncUploadManager &upload,
+        const std::string &filepath,
+        std::function<void(Mesh &)> onInstalled = {});
+
+    /**
      * @brief 从 CPU 端顶点/索引数组创建网格。
      *
      * @param device   Vulkan 设备
@@ -241,6 +263,52 @@ public:
     Mesh(const Mesh &) = delete;
     Mesh &operator=(Mesh &&) = delete;
     Mesh &operator=(const Mesh &) = delete;
+
+    // ========================================================================
+    // 就绪状态 / 注入（异步加载）
+    // ========================================================================
+
+    /**
+     * @brief 异步加载注入槽位。
+     *
+     * 由空壳 Mesh 持有（shared_ptr），异步任务 finalize 亦持有同份引用。空壳被
+     * 销毁时（如 MeshManager::Unload）析构函数将其标记作废，finalize 据此安全
+     * 跳过注入与材质构建，避免对已销毁目标的 use-after-free。主线程 Poll() 与
+     * unload 均跑在主线程，故 target/abandoned 无需原子。
+     */
+    struct AsyncPendingSlot {
+        Mesh *target = nullptr;   ///< 待注入的目标空壳（析构时置空）
+        bool abandoned = false;   ///< 目标已销毁，finalize 应跳过
+    };
+
+    /**
+     * @brief 网格是否已完全就绪（CPU 数据 + GPU 缓冲 + 子网格材质可用）。
+     *
+     * 异步工厂返回的空壳网格在后台加载完成、主线程注入前为 false。渲染端绑定前
+     * 必须检查：未就绪时跳过绘制。同步工厂 / 内置几何体创建的网格恒为 true。
+     */
+    bool IsReady() const { return m_Ready.load(std::memory_order_acquire); }
+
+    /**
+     * @brief 主线程安装后台异步加载完成的数据与 GPU 缓冲。
+     *
+     * 仅由异步任务 finalize（主线程 Poll()）调用。注入后由调用方置 m_Ready=true，
+     * 下帧渲染自动可见。若本网格已被销毁（经 AsyncPendingSlot 门控），调用方会跳过
+     * 本方法。
+     *
+     * @param vertices      顶点数组（接管所有权）
+     * @param indices       索引数组（接管所有权）
+     * @param subMeshes     子网格列表（接管所有权）
+     * @param materialData  MTL 材质数据（接管所有权）
+     * @param vertexBuffer  后台创建的本地顶点缓冲（接管所有权）
+     * @param indexBuffer   后台创建的本地索引缓冲（接管所有权）
+     */
+    void InstallAsyncData(std::vector<Vertex> vertices,
+                          std::vector<uint32_t> indices,
+                          std::vector<SubMesh> subMeshes,
+                          std::vector<MaterialData> materialData,
+                          std::unique_ptr<VulkanBuffer> vertexBuffer,
+                          std::unique_ptr<VulkanBuffer> indexBuffer);
 
     // ========================================================================
     // 访问器
@@ -368,6 +436,10 @@ private:
 
     std::unique_ptr<VulkanBuffer> m_VertexBuffer; ///< GPU 顶点缓冲
     std::unique_ptr<VulkanBuffer> m_IndexBuffer;  ///< GPU 索引缓冲
+
+    // 异步加载状态（空壳网格专用；同步路径构造后 m_Ready 恒 true）
+    std::atomic<bool> m_Ready{false}; ///< 异步加载是否已就绪
+    std::shared_ptr<AsyncPendingSlot> m_AsyncSlot; ///< 异步注入槽位（空壳网格持有）
 };
 
 } // namespace GE

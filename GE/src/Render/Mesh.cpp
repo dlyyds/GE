@@ -4,8 +4,10 @@
  */
 
 #include "Render/Mesh.h"
+#include "Render/AsyncUploadManager.h"
 #include "Render/VulkanBase/VulkanCommandBuffer.h"
 #include "Render/VulkanBase/VulkanQueue.h"
+#include "Core/Log.h"
 
 #include "tiny_obj_loader.h"
 
@@ -76,6 +78,29 @@ static void ComputeTangents(std::vector<Vertex> &vertices,
     }
 }
 
+/**
+ * @brief 网格异步加载共享数据容器（decode / upload / finalize 三阶段间传递）。
+ *
+ * 由主线程组装参数，后台线程写入 decode / upload 结果，最终主线程 finalize 读取。
+ * 经 shared_ptr 在阶段回调间共享，保证后台只产出局部对象（不持 Mesh 裸指针），
+ * 所有写 Mesh 成员的动作都收敛到主线程 finalize。
+ */
+struct AsyncMeshLoadData {
+    bool parsed = false; ///< OBJ/MTL 是否解析成功（decode 写入）
+
+    // decode 输出（后台线程写入）
+    std::vector<Vertex>       vertices;      ///< 顶点数组（已含切线）
+    std::vector<uint32_t>     indices;       ///< 索引数组
+    std::vector<SubMesh>      subMeshes;     ///< 子网格列表
+    std::vector<MaterialData> materialData;  ///< 从 MTL 捕获的材质数据
+
+    // upload 输出（后台线程写入，主线程 finalize 消费）
+    std::unique_ptr<VulkanBuffer> stagingVB;    ///< 顶点 staging buffer（GPU 用完后随桶释放）
+    std::unique_ptr<VulkanBuffer> stagingIB;    ///< 索引 staging buffer（GPU 用完后随桶释放）
+    std::unique_ptr<VulkanBuffer> vertexBuffer; ///< 后台创建的本地顶点缓冲
+    std::unique_ptr<VulkanBuffer> indexBuffer;  ///< 后台创建的本地索引缓冲
+};
+
 // ============================================================================
 // 辅助：上传数据到 GPU buffer（staging buffer 方式）
 // ============================================================================
@@ -137,6 +162,9 @@ std::unique_ptr<Mesh> Mesh::BuildMesh(VulkanDevice &device,
         return nullptr;
     }
 
+    // 同步路径加载完成立即就绪（异步路径在 finalize 安装后才置就绪）
+    mesh->m_Ready.store(true, std::memory_order_release);
+
     // 记录源文件路径
     mesh->m_FilePath = std::move(filePath);
     return mesh;
@@ -169,8 +197,26 @@ std::unique_ptr<Mesh> Mesh::LoadFromFile(VulkanDevice &device,
 // 私有加载器：OBJ（tinyobjloader）
 // ============================================================================
 
-std::unique_ptr<Mesh> Mesh::LoadFromOBJ(VulkanDevice &device,
-                                        const std::string &filepath) {
+/**
+ * @brief 从 OBJ 文件解析出几何与材质数据（纯 CPU，不含 GPU 上传）。
+ *
+ * 内容 = tinyobj 解析 + 顶点装配/量化/去重 + 子网格拆分 + MTL → MaterialData 捕获。
+ * 由同步路径 LoadFromOBJ 与异步路径 Mesh::LoadFromFileAsync 的 decode 阶段共用，
+ * 保证两套加载路径的解析逻辑完全一致（切线计算不在此处——同步在 BuildMesh、
+ * 异步在 decode 中各自调用 ComputeTangents）。
+ *
+ * @param filepath      OBJ 文件路径
+ * @param vertices      顶点数组（输出）
+ * @param indices       索引数组（输出）
+ * @param subMeshes     子网格列表（输出）
+ * @param materialData  MTL 材质数据（输出）
+ * @return 解析成功且含有效几何数据返回 true
+ */
+static bool ParseOBJData(const std::string &filepath,
+                         std::vector<Vertex> &vertices,
+                         std::vector<uint32_t> &indices,
+                         std::vector<SubMesh> &subMeshes,
+                         std::vector<MaterialData> &materialData) {
     tinyobj::attrib_t attrib;
     std::vector<tinyobj::shape_t> shapes;
     std::vector<tinyobj::material_t> materials;
@@ -190,12 +236,9 @@ std::unique_ptr<Mesh> Mesh::LoadFromOBJ(VulkanDevice &device,
         std::cerr << "[Mesh] Error loading '" << filepath << "': " << err << std::endl;
     }
     if (!ret) {
-        return nullptr;
+        return false;
     }
 
-    std::vector<Vertex> vertices;
-    std::vector<uint32_t> indices;
-    std::vector<SubMesh> subMeshes;
     std::unordered_map<Vertex, uint32_t> uniqueVertices;
 
     // 遍历所有形状，几何合并到共享缓冲，并按 (shape, material_id) 拆分子网格。
@@ -288,7 +331,7 @@ std::unique_ptr<Mesh> Mesh::LoadFromOBJ(VulkanDevice &device,
 
     if (vertices.empty() || indices.empty()) {
         std::cerr << "[Mesh] Empty mesh loaded from '" << filepath << "'" << std::endl;
-        return nullptr;
+        return false;
     }
 
     // 从 tinyobj 解析出的 MTL 材质捕获为引擎侧 MaterialData。
@@ -333,8 +376,119 @@ std::unique_ptr<Mesh> Mesh::LoadFromOBJ(VulkanDevice &device,
         materialData.push_back(std::move(md));
     }
 
+    return true;
+}
+
+std::unique_ptr<Mesh> Mesh::LoadFromOBJ(VulkanDevice &device,
+                                        const std::string &filepath) {
+    std::vector<Vertex> vertices;
+    std::vector<uint32_t> indices;
+    std::vector<SubMesh> subMeshes;
+    std::vector<MaterialData> materialData;
+    if (!ParseOBJData(filepath, vertices, indices, subMeshes, materialData)) {
+        return nullptr;
+    }
+    // 同步路径：解析后走共享装配（切线计算 + GPU 上传）
     return BuildMesh(device, std::move(vertices), std::move(indices),
                      std::move(subMeshes), std::move(materialData), filepath);
+}
+
+// ============================================================================
+// 工厂方法：异步加载（LoadFromFileAsync）
+// ============================================================================
+// 统一模型：
+//   1. 主线程创建空壳 Mesh（无 CPU 数据与 GPU 缓冲，m_Ready=false），组装
+//      AsyncMeshLoadData 与 UploadTask。
+//   2. 后台线程执行 decode（OBJ/MTL 解析 + 材质数据捕获 + 切线计算）与 upload
+//      （创建 local 顶点/索引缓冲 + staging，录拷贝命令）。
+//   3. 主线程每帧 Poll()，fence 完成后执行 finalize：经 AsyncPendingSlot 门控后
+//      调用 InstallAsyncData 注入，再调 onInstalled 构建材质，置 m_Ready=true。
+// 后台线程只产出局部对象，绝不写 Mesh 成员；staging 由 AsyncMeshLoadData 持有，
+// 随任务 finalize（主线程、GPU 完成后）释放。
+
+std::unique_ptr<Mesh> Mesh::LoadFromFileAsync(
+    VulkanDevice &device, AsyncUploadManager &upload,
+    const std::string &filepath, std::function<void(Mesh &)> onInstalled) {
+
+    // 空壳网格：无 CPU 数据与 GPU 缓冲，注入槽位指向自身
+    auto mesh = std::unique_ptr<Mesh>(new Mesh());
+    mesh->m_FilePath  = filepath;
+    mesh->m_AsyncSlot = std::make_shared<AsyncPendingSlot>();
+    mesh->m_AsyncSlot->target = mesh.get();
+
+    auto bucket = std::make_shared<AsyncMeshLoadData>();
+
+    // finalize 捕获的注入目标（shared_ptr 槽位，空壳销毁后自动作废）
+    auto slot = mesh->m_AsyncSlot;
+
+    AsyncUploadManager::UploadTask task;
+    task.decode = [bucket, filepath] {
+        // 后台：OBJ/MTL 解析 + MTL 材质数据捕获（纯 CPU）
+        bucket->parsed = ParseOBJData(filepath, bucket->vertices, bucket->indices,
+                                      bucket->subMeshes, bucket->materialData);
+        if (!bucket->parsed) {
+            return;
+        }
+        // 切线计算（供法线贴图 TBN 使用），与同步路径 BuildMesh 中的一致
+        ComputeTangents(bucket->vertices, bucket->indices);
+        GE_CORE_TRACE("网格异步解析完成: {0} ({1} 顶点 / {2} 索引)", filepath,
+                      bucket->vertices.size(), bucket->indices.size());
+    };
+
+    task.upload = [&device, bucket](VulkanCommandBuffer &cmd) {
+        // 后台：创建本地顶点/索引缓冲 + staging，录拷贝命令。
+        // 解析失败时跳过创建；finalize 见到空缓冲会跳过注入（与纹理失败行为一致）
+        if (!bucket->parsed || bucket->vertices.empty() || bucket->indices.empty()) {
+            return;
+        }
+
+        auto recordCopy = [&cmd, &device, bucket](
+                vk::BufferUsageFlagBits usage, vk::DeviceSize size, const void *data,
+                std::unique_ptr<VulkanBuffer> &stagingOut,
+                std::unique_ptr<VulkanBuffer> &dstOut) {
+            stagingOut = std::make_unique<VulkanBuffer>(std::move(
+                VulkanBuffer::create_staging_buffer(device, size, data)));
+            dstOut = VulkanBufferBuilder(size)
+                .with_usage(usage | vk::BufferUsageFlagBits::eTransferDst)
+                .with_vma_usage(VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE)
+                .build_unique(device);
+            vk::BufferCopy copyRegion{};
+            copyRegion.size = size;
+            cmd.GetHandle().copyBuffer(stagingOut->GetHandle(), dstOut->GetHandle(), copyRegion);
+        };
+
+        recordCopy(vk::BufferUsageFlagBits::eVertexBuffer,
+                   static_cast<vk::DeviceSize>(bucket->vertices.size() * sizeof(Vertex)),
+                   bucket->vertices.data(), bucket->stagingVB, bucket->vertexBuffer);
+        recordCopy(vk::BufferUsageFlagBits::eIndexBuffer,
+                   static_cast<vk::DeviceSize>(bucket->indices.size() * sizeof(uint32_t)),
+                   bucket->indices.data(), bucket->stagingIB, bucket->indexBuffer);
+    };
+
+    task.finalize = [slot, bucket, onInstalled] {
+        // 主线程：空壳已销毁或加载失败（无数据/无缓冲）则跳过注入与材质构建
+        if (slot->abandoned || !slot->target) {
+            return;
+        }
+        Mesh *mesh = slot->target;
+        if (!bucket->parsed || !bucket->vertexBuffer || !bucket->indexBuffer) {
+            return; // 解析/上传失败，保持未就绪（与纹理失败行为一致）
+        }
+        mesh->InstallAsyncData(std::move(bucket->vertices), std::move(bucket->indices),
+                               std::move(bucket->subMeshes), std::move(bucket->materialData),
+                               std::move(bucket->vertexBuffer), std::move(bucket->indexBuffer));
+        // 先构建子网格材质再置就绪，保证渲染看到就绪网格时材质已绑定
+        if (onInstalled) {
+            onInstalled(*mesh);
+        }
+        mesh->m_Ready.store(true, std::memory_order_release);
+        GE_CORE_INFO("网格异步就绪: {0} ({1} 顶点 / {2} 索引)", mesh->m_FilePath,
+                     mesh->m_Vertices.size(), mesh->m_Indices.size());
+    };
+
+    upload.Submit(std::move(task));
+    GE_CORE_INFO("网格异步加载提交: {0}", filepath);
+    return mesh;
 }
 
 // ============================================================================
@@ -492,12 +646,29 @@ std::unique_ptr<Mesh> Mesh::CreateBuiltin(VulkanDevice &device, const std::strin
 // 析构 / 移动
 // ============================================================================
 
-Mesh::~Mesh() = default;
+Mesh::~Mesh() {
+    // 空壳网格销毁时作废异步注入槽位，使在途 finalize 安全跳过注入/材质构建
+    if (m_AsyncSlot) {
+        m_AsyncSlot->abandoned = true;
+        m_AsyncSlot->target    = nullptr;
+    }
+}
 
-Mesh::Mesh(Mesh &&other) noexcept : m_Vertices(std::move(other.m_Vertices)),
-                                    m_Indices(std::move(other.m_Indices)),
-                                    m_VertexBuffer(std::move(other.m_VertexBuffer)),
-                                    m_IndexBuffer(std::move(other.m_IndexBuffer)) {
+Mesh::Mesh(Mesh &&other) noexcept
+    : m_Vertices(std::move(other.m_Vertices)),
+      m_Indices(std::move(other.m_Indices)),
+      m_SubMeshes(std::move(other.m_SubMeshes)),
+      m_MaterialData(std::move(other.m_MaterialData)),
+      m_FilePath(std::move(other.m_FilePath)),
+      m_VertexBuffer(std::move(other.m_VertexBuffer)),
+      m_IndexBuffer(std::move(other.m_IndexBuffer)),
+      m_Ready(other.m_Ready.load()),
+      m_AsyncSlot(other.m_AsyncSlot) {
+    // 转移后把注入槽位目标重定向到新对象，避免在途 finalize 注入进已移动的空壳
+    if (m_AsyncSlot) {
+        m_AsyncSlot->target = this;
+    }
+    other.m_AsyncSlot = nullptr;
 }
 
 // ============================================================================
@@ -523,6 +694,24 @@ bool Mesh::UploadToGPU(VulkanDevice &device) {
     }
 
     return true;
+}
+
+// ============================================================================
+// 异步：安装后台加载完成的数据与 GPU 缓冲
+// ============================================================================
+
+void Mesh::InstallAsyncData(std::vector<Vertex> vertices,
+                            std::vector<uint32_t> indices,
+                            std::vector<SubMesh> subMeshes,
+                            std::vector<MaterialData> materialData,
+                            std::unique_ptr<VulkanBuffer> vertexBuffer,
+                            std::unique_ptr<VulkanBuffer> indexBuffer) {
+    m_Vertices = std::move(vertices);
+    m_Indices  = std::move(indices);
+    m_SubMeshes = std::move(subMeshes);
+    m_MaterialData = std::move(materialData);
+    m_VertexBuffer = std::move(vertexBuffer);
+    m_IndexBuffer  = std::move(indexBuffer);
 }
 
 // ============================================================================

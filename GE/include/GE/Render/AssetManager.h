@@ -150,8 +150,11 @@ public:
     /**
      * @brief 加载网格（自动解析路径）。
      *
+     * 文件模型异步加载（后台解析 + GPU 上传），返回未就绪空壳（IsReady()=false），
+     * 就绪后下帧自动可见；文件不存在返回 nullptr。内置几何体同步加载并立即就绪。
+     *
      * @param path  网格路径（相对资源根或绝对路径）
-     * @return 网格指针，加载失败返回 nullptr
+     * @return 网格指针（文件模型为未就绪空壳），加载失败返回 nullptr
      */
     Mesh *LoadMesh(const std::string &path);
 

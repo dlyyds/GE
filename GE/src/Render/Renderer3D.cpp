@@ -308,6 +308,11 @@ void Renderer3D::DrawSubMeshImpl(const glm::mat4 &transform,
         return;
     }
 
+    // 异步加载中的网格（空壳，缓冲未安装）直接跳过本批，就绪后下帧自动亮相
+    if (!mesh->IsReady()) {
+        return;
+    }
+
     // 计算排序键（pipeline → 材质 → mesh → 子网格 → view 空间深度），用于 EndScene
     // 前分组排序，使同材质同 mesh 同子网格的实例连续，便于 instancing 合批
     SortKey sortKey = ComputeSortKey(material, mesh, firstIndex, indexCount, transform);

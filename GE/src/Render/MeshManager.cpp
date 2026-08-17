@@ -5,6 +5,7 @@
 
 #include "Render/MeshManager.h"
 
+#include "Render/AsyncUploadManager.h"
 #include "Render/MaterialManager.h"
 #include "Render/TextureManager.h"
 
@@ -13,11 +14,14 @@
 
 #include <glm/glm.hpp>
 
+#include <filesystem>
+
 namespace GE {
 
 MeshManager::MeshManager(VulkanDevice &device, MaterialManager &materialManager,
-                         TextureManager &textureManager)
-    : m_Device(&device), m_Materials(&materialManager), m_Textures(&textureManager) {
+                         TextureManager &textureManager, AsyncUploadManager &upload)
+    : m_Device(&device), m_Materials(&materialManager), m_Textures(&textureManager),
+      m_AsyncUpload(&upload) {
 }
 
 // ============================================================================
@@ -113,71 +117,97 @@ Mesh *MeshManager::Load(const std::string &filepath) {
         return nullptr;
     }
 
-    // 已加载则直接返回缓存
+    // 已加载（含未就绪空壳）则直接返回缓存，同路径只异步加载一次
     if (Mesh *existing = Get(filepath)) {
         return existing;
     }
 
-    if (!m_Device) {
-        GE_CORE_WARN("MeshManager: 无法加载网格 {}（未提供 VulkanDevice）", filepath);
+    if (!m_Device || !m_AsyncUpload) {
+        GE_CORE_WARN("MeshManager: 无法加载网格 {}（未提供 VulkanDevice / AsyncUploadManager）",
+                     filepath);
         return nullptr;
     }
 
-    std::unique_ptr<Mesh> mesh;
-
-    // 内置几何体（builtin:cube, builtin:sphere 等）
+    // 内置几何体：体积小、生成瞬时完成且被编辑器即时消费，保持同步立即就绪
     if (Mesh::IsBuiltinPath(filepath)) {
-        mesh = Mesh::CreateBuiltin(*m_Device, Mesh::GetBuiltinType(filepath));
-    } else {
-        mesh = Mesh::LoadFromFile(*m_Device, filepath);
+        auto mesh = Mesh::CreateBuiltin(*m_Device, Mesh::GetBuiltinType(filepath));
+        if (!mesh) {
+            GE_CORE_WARN("MeshManager: 内置网格创建失败: {}", filepath);
+            return nullptr;
+        }
+        BuildSubMeshMaterials(*mesh, filepath);
+        Mesh *raw = mesh.get();
+        m_Meshes[filepath] = std::move(mesh);
+        return raw;
     }
 
-    if (!mesh) {
-        GE_CORE_WARN("MeshManager: 网格加载失败: {}", filepath);
+    // 文件模型：异步加载（后台解析 + GPU 上传，主线程 Poll 回收后置就绪）。
+    // 文件不存在直接返回 nullptr，保留同步失败语义（编辑器据此弹窗）；文件存在但
+    // 内容非法时返回空壳（后台解析失败后保持未就绪，与纹理失败行为一致）。
+    if (!std::filesystem::exists(filepath)) {
+        GE_CORE_WARN("MeshManager: 网格文件不存在: {}", filepath);
         return nullptr;
     }
 
-    // 为各子网格创建材质（放进 MaterialManager，随模型生命周期走）。
-    // 材质 key 用「路径::材质名」避免跨模型同名材质冲突。
-    // 有材质名（OBJ MTL）→ 按 MTL 数据构建真实材质；无材质名（内置几何体 /
-    // 无 MTL 的 OBJ / CPU 直建）→ 绑一个默认（空白）材质，保证每个子网格都
-    // 有材质，而非走白色 fallback。
-    if (m_Materials) {
-        const auto &subMeshes = mesh->GetSubMeshes();
-        const auto &matData   = mesh->GetMaterialData();
-        for (size_t i = 0; i < subMeshes.size(); ++i) {
-            const auto &name = subMeshes[i].materialName;
-            const std::string matName = name.empty() ? "default" : name;
-            const std::string key = filepath + "::" + matName;
-
-            // 按子网格材质名匹配对应的 MTL 材质数据
-            const MaterialData *md = nullptr;
-            if (!name.empty()) {
-                for (const auto &cand : matData) {
-                    if (cand.name == name) {
-                        md = &cand;
-                        break;
-                    }
-                }
-            }
-
-            // 已存在则复用（同 key 首次创建时填充），否则新建并注册
-            Material *mat = m_Materials->Get(key);
-            if (!mat) {
-                auto newMat = std::make_unique<Material>();
-                if (md && m_Textures) {
-                    ApplyMaterialData(*newMat, *md, *m_Textures);
-                }
-                mat = m_Materials->Register(key, std::move(newMat));
-            }
-            mat->SetName(matName);
-            mesh->SetSubMeshDefaultMaterial(static_cast<uint32_t>(i), mat);
-        }
+    // 材质构建在数据安装完成后、置就绪前于主线程 finalize 中执行
+    auto shell = Mesh::LoadFromFileAsync(*m_Device, *m_AsyncUpload, filepath,
+                                         [this, filepath](Mesh &mesh) {
+                                             BuildSubMeshMaterials(mesh, filepath);
+                                         });
+    if (!shell) {
+        GE_CORE_WARN("MeshManager: 网格异步加载提交失败: {}", filepath);
+        return nullptr;
     }
 
-    Mesh *raw = mesh.get();
-    m_Meshes[filepath] = std::move(mesh);
+    Mesh *raw = shell.get();
+    m_Meshes[filepath] = std::move(shell);
     return raw;
+}
+
+// ============================================================================
+// 辅助：为子网格构建默认材质（同步内置路径与异步 finalize 共用）
+// ============================================================================
+
+// 为各子网格创建材质（放进 MaterialManager，随模型生命周期走）。
+// 材质 key 用「路径::材质名」避免跨模型同名材质冲突。
+// 有材质名（OBJ MTL）→ 按 MTL 数据构建真实材质；无材质名（内置几何体 /
+// 无 MTL 的 OBJ / CPU 直建）→ 绑一个默认（空白）材质，保证每个子网格都
+// 有材质，而非走白色 fallback。
+void MeshManager::BuildSubMeshMaterials(Mesh &mesh, const std::string &filepath) {
+    if (!m_Materials) {
+        return;
+    }
+
+    const auto &subMeshes = mesh.GetSubMeshes();
+    const auto &matData   = mesh.GetMaterialData();
+    for (size_t i = 0; i < subMeshes.size(); ++i) {
+        const auto &name = subMeshes[i].materialName;
+        const std::string matName = name.empty() ? "default" : name;
+        const std::string key = filepath + "::" + matName;
+
+        // 按子网格材质名匹配对应的 MTL 材质数据
+        const MaterialData *md = nullptr;
+        if (!name.empty()) {
+            for (const auto &cand : matData) {
+                if (cand.name == name) {
+                    md = &cand;
+                    break;
+                }
+            }
+        }
+
+        // 已存在则复用（同 key 首次创建时填充），否则新建并注册
+        Material *mat = m_Materials->Get(key);
+        if (!mat) {
+            auto newMat = std::make_unique<Material>();
+            if (md && m_Textures) {
+                ApplyMaterialData(*newMat, *md, *m_Textures);
+            }
+            mat = m_Materials->Register(key, std::move(newMat));
+        }
+        mat->SetName(matName);
+        mesh.SetSubMeshDefaultMaterial(static_cast<uint32_t>(i), mat);
+    }
 }
 
 Mesh *MeshManager::GetBuiltin(const std::string &type) {

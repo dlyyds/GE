@@ -34,6 +34,7 @@ namespace GE {
 class VulkanDevice;
 class MaterialManager;
 class TextureManager;
+class AsyncUploadManager;
 
 /**
  * @brief 全局网格管理器。
@@ -48,9 +49,10 @@ public:
      * @param device          Vulkan 设备引用
      * @param materialManager 材质管理器引用（加载模型时创建子网格材质）
      * @param textureManager  纹理管理器引用（加载模型时按 MTL 加载材质纹理）
+     * @param upload          异步上传管理器引用（文件模型异步加载）
      */
     explicit MeshManager(VulkanDevice &device, MaterialManager &materialManager,
-                         TextureManager &textureManager);
+                         TextureManager &textureManager, AsyncUploadManager &upload);
 
     ~MeshManager();
 
@@ -66,10 +68,12 @@ public:
     /**
      * @brief 加载网格（按资源标识去重，已加载则直接返回缓存）。
      *
-     * 支持内置几何体路径（"builtin:cube" 等）与外部模型文件路径。
+     * 内置几何体同步加载并立即就绪；文件模型异步加载（后台解析 + GPU 上传），
+     * 返回"空壳"网格（IsReady()=false），就绪后下帧自动可见，渲染端须经
+     * IsReady() 检查跳过未就绪网格。文件不存在时返回 nullptr（保留失败语义）。
      *
      * @param filepath 内置标识或模型文件路径
-     * @return 网格指针，加载失败返回 nullptr
+     * @return 网格指针（文件模型为未就绪空壳），加载失败返回 nullptr
      */
     Mesh *Load(const std::string &filepath);
 
@@ -132,9 +136,23 @@ public:
     std::vector<std::string> GetAllKeys() const;
 
 private:
+    /**
+     * @brief 为网格的各子网格创建默认材质（放入 MaterialManager，随模型生命周期走）。
+     *
+     * 材质 key 用「路径::材质名」避免跨模型同名材质冲突。有材质名（OBJ MTL）→
+     * 按 MTL 数据构建真实材质；无材质名（内置几何体 / 无 MTL 的 OBJ / CPU 直建）→
+     * 绑一个默认（空白）材质，保证每个子网格都有材质。同步路径（内置几何体）与
+     * 异步路径 finalize（主线程）共用。
+     *
+     * @param mesh     目标网格（其子网格数据需已就绪）
+     * @param filepath 资源标识键（用于材质 key 与缓存查找）
+     */
+    void BuildSubMeshMaterials(Mesh &mesh, const std::string &filepath);
+
     VulkanDevice   *m_Device   = nullptr;  ///< Vulkan 设备（不拥有）
     MaterialManager *m_Materials = nullptr; ///< 材质管理器（不拥有）
     TextureManager *m_Textures = nullptr;   ///< 纹理管理器（不拥有）
+    AsyncUploadManager *m_AsyncUpload = nullptr; ///< 异步上传管理器（不拥有）
 
     /// 网格缓存：资源标识 -> mesh
     std::unordered_map<std::string, std::unique_ptr<Mesh>> m_Meshes;

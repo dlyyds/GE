@@ -536,7 +536,12 @@ void ResourcePanel::DrawMeshSection() {
             ImGui::TableSetColumnIndex(0);
             ImGui::TextUnformatted(key.c_str());
             ImGui::TableSetColumnIndex(1);
-            ImGui::TextDisabled("%u 顶点 / %u 索引", mesh->GetVertexCount(), mesh->GetIndexCount());
+            // 异步加载中尚未就绪时不显示 0 统计，避免误导
+            if (mesh->IsReady()) {
+                ImGui::TextDisabled("%u 顶点 / %u 索引", mesh->GetVertexCount(), mesh->GetIndexCount());
+            } else {
+                ImGui::TextDisabled("加载中...");
+            }
         }
         ImGui::EndTable();
     }

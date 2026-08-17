@@ -22,6 +22,14 @@
 
 namespace GE {
 
+// 模型解析总入口（按扩展名分派到各格式解析器）：同步 LoadFromFile 与异步
+// LoadFromFileAsync 的 decode 阶段共用，保证扩展名分派逻辑只存在一处。
+static bool ParseModelData(const std::string &filepath,
+                           std::vector<Vertex> &vertices,
+                           std::vector<uint32_t> &indices,
+                           std::vector<SubMesh> &subMeshes,
+                           std::vector<MaterialData> &materialData);
+
 // ============================================================================
 // 辅助：计算顶点切线（法线贴图需要 TBN 切线空间）
 // ============================================================================
@@ -89,16 +97,16 @@ struct AsyncMeshLoadData {
     bool parsed = false; ///< OBJ/MTL 是否解析成功（decode 写入）
 
     // decode 输出（后台线程写入）
-    std::vector<Vertex>       vertices;      ///< 顶点数组（已含切线）
-    std::vector<uint32_t>     indices;       ///< 索引数组
-    std::vector<SubMesh>      subMeshes;     ///< 子网格列表
-    std::vector<MaterialData> materialData;  ///< 从 MTL 捕获的材质数据
+    std::vector<Vertex> vertices; ///< 顶点数组（已含切线）
+    std::vector<uint32_t> indices; ///< 索引数组
+    std::vector<SubMesh> subMeshes; ///< 子网格列表
+    std::vector<MaterialData> materialData; ///< 从 MTL 捕获的材质数据
 
     // upload 输出（后台线程写入，主线程 finalize 消费）
-    std::unique_ptr<VulkanBuffer> stagingVB;    ///< 顶点 staging buffer（GPU 用完后随桶释放）
-    std::unique_ptr<VulkanBuffer> stagingIB;    ///< 索引 staging buffer（GPU 用完后随桶释放）
+    std::unique_ptr<VulkanBuffer> stagingVB; ///< 顶点 staging buffer（GPU 用完后随桶释放）
+    std::unique_ptr<VulkanBuffer> stagingIB; ///< 索引 staging buffer（GPU 用完后随桶释放）
     std::unique_ptr<VulkanBuffer> vertexBuffer; ///< 后台创建的本地顶点缓冲
-    std::unique_ptr<VulkanBuffer> indexBuffer;  ///< 后台创建的本地索引缓冲
+    std::unique_ptr<VulkanBuffer> indexBuffer; ///< 后台创建的本地索引缓冲
 };
 
 // ============================================================================
@@ -171,26 +179,23 @@ std::unique_ptr<Mesh> Mesh::BuildMesh(VulkanDevice &device,
 }
 
 // ============================================================================
-// 工厂方法：从文件加载（按扩展名分派到对应格式加载器）
+// 工厂方法：从文件加载（同步）
 // ============================================================================
+// 与异步 LoadFromFileAsync 共享同一解析分派器 ParseModelData，新增格式时只改
+// ParseModelData 一处即可——同步/异步两条路径同时生效。
 
 std::unique_ptr<Mesh> Mesh::LoadFromFile(VulkanDevice &device,
                                          const std::string &filepath) {
-    // 按扩展名分派；新增模型格式时，在这里注册对应的私有加载函数即可
-    std::string ext = std::filesystem::path(filepath).extension().string();
-    for (char &c : ext) {
-        if (c >= 'A' && c <= 'Z') {
-            c += static_cast<char>('a' - 'A');
-        }
+    std::vector<Vertex> vertices;
+    std::vector<uint32_t> indices;
+    std::vector<SubMesh> subMeshes;
+    std::vector<MaterialData> materialData;
+    if (!ParseModelData(filepath, vertices, indices, subMeshes, materialData)) {
+        return nullptr;
     }
-
-    if (ext == ".obj") {
-        return LoadFromOBJ(device, filepath);
-    }
-
-    std::cerr << "[Mesh] Unsupported model format '" << ext << "': "
-              << filepath << std::endl;
-    return nullptr;
+    // 同步路径：解析后走共享装配（切线计算 + GPU 上传）
+    return BuildMesh(device, std::move(vertices), std::move(indices),
+                     std::move(subMeshes), std::move(materialData), filepath);
 }
 
 // ============================================================================
@@ -201,9 +206,9 @@ std::unique_ptr<Mesh> Mesh::LoadFromFile(VulkanDevice &device,
  * @brief 从 OBJ 文件解析出几何与材质数据（纯 CPU，不含 GPU 上传）。
  *
  * 内容 = tinyobj 解析 + 顶点装配/量化/去重 + 子网格拆分 + MTL → MaterialData 捕获。
- * 由同步路径 LoadFromOBJ 与异步路径 Mesh::LoadFromFileAsync 的 decode 阶段共用，
- * 保证两套加载路径的解析逻辑完全一致（切线计算不在此处——同步在 BuildMesh、
- * 异步在 decode 中各自调用 ComputeTangents）。
+ * 由 ParseModelData 统一分派：同步路径 LoadFromFile 与异步路径 LoadFromFileAsync
+ * 的 decode 阶段共用，保证两套加载路径的解析逻辑完全一致（切线计算不在此处——同步
+ * 在 BuildMesh、异步在 decode 中各自调用 ComputeTangents）。
  *
  * @param filepath      OBJ 文件路径
  * @param vertices      顶点数组（输出）
@@ -348,7 +353,6 @@ static bool ParseOBJData(const std::string &filepath,
             .lexically_normal().string();
     };
 
-    std::vector<MaterialData> materialData;
     materialData.reserve(materials.size());
     for (const auto &src : materials) {
         MaterialData md;
@@ -379,18 +383,46 @@ static bool ParseOBJData(const std::string &filepath,
     return true;
 }
 
-std::unique_ptr<Mesh> Mesh::LoadFromOBJ(VulkanDevice &device,
-                                        const std::string &filepath) {
-    std::vector<Vertex> vertices;
-    std::vector<uint32_t> indices;
-    std::vector<SubMesh> subMeshes;
-    std::vector<MaterialData> materialData;
-    if (!ParseOBJData(filepath, vertices, indices, subMeshes, materialData)) {
-        return nullptr;
+// ============================================================================
+// 解析总入口：按扩展名分派到各格式解析器（同步 / 异步共用）
+// ============================================================================
+
+/**
+ * @brief 按文件扩展名把模型解析分派到对应格式解析器（纯 CPU，不含 GPU 上传）。
+ *
+ * 当前支持的格式：
+ * - .obj：tinyobjloader（ParseOBJData）
+ *
+ * 新增模型格式时：实现一个签名相同的 ParseXXXData 解析器（输出顶点/索引/子网格/
+ * 材质数据），并在下方注册一行扩展名判断即可——同步 LoadFromFile 与异步
+ * LoadFromFileAsync 的 decode 阶段会自动同时生效，无需改动调用方。
+ *
+ * @param filepath      模型文件路径
+ * @param vertices      顶点数组（输出）
+ * @param indices       索引数组（输出）
+ * @param subMeshes     子网格列表（输出）
+ * @param materialData  MTL/格式材质数据（输出）
+ * @return 解析成功且含有效几何数据返回 true
+ */
+static bool ParseModelData(const std::string &filepath,
+                           std::vector<Vertex> &vertices,
+                           std::vector<uint32_t> &indices,
+                           std::vector<SubMesh> &subMeshes,
+                           std::vector<MaterialData> &materialData) {
+    // 文件扩展名统一转小写，避免 ".OBJ" 之类的混合大小写漏匹配
+    std::string ext = std::filesystem::path(filepath).extension().string();
+    for (char &c : ext) {
+        if (c >= 'A' && c <= 'Z') {
+            c += static_cast<char>('a' - 'A');
+        }
     }
-    // 同步路径：解析后走共享装配（切线计算 + GPU 上传）
-    return BuildMesh(device, std::move(vertices), std::move(indices),
-                     std::move(subMeshes), std::move(materialData), filepath);
+
+    if (ext == ".obj") {
+        return ParseOBJData(filepath, vertices, indices, subMeshes, materialData);
+    }
+
+    GE_CORE_ERROR("[Mesh] 不支持的模型格式 '{}': {}", ext, filepath);
+    return false;
 }
 
 // ============================================================================
@@ -412,7 +444,7 @@ std::unique_ptr<Mesh> Mesh::LoadFromFileAsync(
 
     // 空壳网格：无 CPU 数据与 GPU 缓冲，注入槽位指向自身
     auto mesh = std::unique_ptr<Mesh>(new Mesh());
-    mesh->m_FilePath  = filepath;
+    mesh->m_FilePath = filepath;
     mesh->m_AsyncSlot = std::make_shared<AsyncPendingSlot>();
     mesh->m_AsyncSlot->target = mesh.get();
 
@@ -423,9 +455,9 @@ std::unique_ptr<Mesh> Mesh::LoadFromFileAsync(
 
     AsyncUploadManager::UploadTask task;
     task.decode = [bucket, filepath] {
-        // 后台：OBJ/MTL 解析 + MTL 材质数据捕获（纯 CPU）
-        bucket->parsed = ParseOBJData(filepath, bucket->vertices, bucket->indices,
-                                      bucket->subMeshes, bucket->materialData);
+        // 后台：按扩展名分派解析（OBJ/MTL 解析 + 材质数据捕获，纯 CPU）
+        bucket->parsed = ParseModelData(filepath, bucket->vertices, bucket->indices,
+                                        bucket->subMeshes, bucket->materialData);
         if (!bucket->parsed) {
             return;
         }
@@ -443,9 +475,9 @@ std::unique_ptr<Mesh> Mesh::LoadFromFileAsync(
         }
 
         auto recordCopy = [&cmd, &device, bucket](
-                vk::BufferUsageFlagBits usage, vk::DeviceSize size, const void *data,
-                std::unique_ptr<VulkanBuffer> &stagingOut,
-                std::unique_ptr<VulkanBuffer> &dstOut) {
+            vk::BufferUsageFlagBits usage, vk::DeviceSize size, const void *data,
+            std::unique_ptr<VulkanBuffer> &stagingOut,
+            std::unique_ptr<VulkanBuffer> &dstOut) {
             stagingOut = std::make_unique<VulkanBuffer>(std::move(
                 VulkanBuffer::create_staging_buffer(device, size, data)));
             dstOut = VulkanBufferBuilder(size)
@@ -650,7 +682,7 @@ Mesh::~Mesh() {
     // 空壳网格销毁时作废异步注入槽位，使在途 finalize 安全跳过注入/材质构建
     if (m_AsyncSlot) {
         m_AsyncSlot->abandoned = true;
-        m_AsyncSlot->target    = nullptr;
+        m_AsyncSlot->target = nullptr;
     }
 }
 
@@ -707,11 +739,11 @@ void Mesh::InstallAsyncData(std::vector<Vertex> vertices,
                             std::unique_ptr<VulkanBuffer> vertexBuffer,
                             std::unique_ptr<VulkanBuffer> indexBuffer) {
     m_Vertices = std::move(vertices);
-    m_Indices  = std::move(indices);
+    m_Indices = std::move(indices);
     m_SubMeshes = std::move(subMeshes);
     m_MaterialData = std::move(materialData);
     m_VertexBuffer = std::move(vertexBuffer);
-    m_IndexBuffer  = std::move(indexBuffer);
+    m_IndexBuffer = std::move(indexBuffer);
 }
 
 // ============================================================================

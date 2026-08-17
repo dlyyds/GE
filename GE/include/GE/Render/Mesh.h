@@ -36,7 +36,7 @@ class AsyncUploadManager;
 /**
  * @brief 从 OBJ/MTL 捕获的材质数据（POD，与 tinyobjloader 解耦）。
  *
- * 在 Mesh::LoadFromOBJ 解析 MTL 时填充，供 MeshManager 按子网格的
+ * 在 ParseOBJData 解析 MTL 时填充（同步 / 异步路径共用），供 MeshManager 按子网格的
  * materialName 匹配后构建真正的 Material（含纹理加载）。纹理路径已
  * 在此处解析为绝对路径（相对 OBJ 所在目录）。
  */
@@ -173,14 +173,14 @@ public:
     // ========================================================================
 
     /**
-     * @brief 从模型文件加载网格（按文件扩展名分派到对应格式加载器）。
+     * @brief 从模型文件同步加载网格（按扩展名分派到对应格式解析器）。
      *
      * 当前支持的格式：
      * - .obj：使用 tinyobjloader 解析
      *
-     * 后续接入 glTF / FBX 等新格式时，只需在 LoadFromFile 中按扩展名
-     * 注册对应的私有加载函数；各格式解析出的数据统一交给 BuildMesh
-     * 完成切线计算 / GPU 上传等格式无关的装配流程。
+     * 扩展名分派集中在 ParseModelData（同步 / 异步共用）；接入 glTF / FBX 等
+     * 新格式时，只需在 ParseModelData 注册一个输出标准数据的解析器，各格式
+     * 解析出的数据统一交给 BuildMesh 完成切线计算 / GPU 上传等格式无关装配。
      *
      * @param device    Vulkan 设备
      * @param filepath  模型文件路径
@@ -389,21 +389,11 @@ private:
     bool UploadToGPU(VulkanDevice &device);
 
     // ========================================================================
-    // 格式加载器（LoadFromFile 按扩展名分派到各私有加载函数）
+    // 私有装配（格式解析器为文件内静态函数，经 ParseModelData 统一分派）
     // ========================================================================
 
     /**
-     * @brief 从 OBJ 文件加载（tinyobjloader 解析 + MTL 材质捕获）。
-     *
-     * @param device    Vulkan 设备
-     * @param filepath  OBJ 文件路径
-     * @return std::unique_ptr<Mesh>  解析失败时返回 nullptr
-     */
-    static std::unique_ptr<Mesh> LoadFromOBJ(VulkanDevice &device,
-                                             const std::string &filepath);
-
-    /**
-     * @brief 由格式加载器解析出的几何数据构建最终网格（共享装配路径）。
+     * @brief 由格式解析器产出的几何数据构建最终网格（共享装配路径）。
      *
      * 完成切线计算、GPU 上传与文件路径记录。OBJ / 未来的 glTF 等
      * 各格式加载器解析出顶点、索引、子网格与材质数据后统一调用本函数，

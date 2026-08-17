@@ -10,6 +10,8 @@
 
 #include <backends/imgui_impl_vulkan.h>
 
+#include <glm/gtc/type_ptr.hpp>
+
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
@@ -343,6 +345,19 @@ void ResourcePanel::DrawMaterialSection() {
                     DrawPropertyLabel(kTextureSlotNames[i],
                                       mat->GetTexture(static_cast<Material::TextureSlot>(i)));
                 }
+
+                // 自发光颜色因子（glTF emissiveFactor）：乘自发光贴图颜色，
+                // 无贴图时（默认白色兜底）直接以该颜色发光；[0,0,0] = 不发光
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0);
+                {
+                    glm::vec3 emissiveFactor = mat->GetEmissiveFactor();
+                    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+                    if (ImGui::ColorEdit3("##emissive", glm::value_ptr(emissiveFactor))) {
+                        mat->SetEmissiveFactor(emissiveFactor);
+                    }
+                }
+                DrawPropertyLabel("自发光颜色");
 
                 // 标量参数（可编辑；先拷贝再写回，避免修改 unordered_map 时迭代器失效）
                 std::vector<std::pair<std::string, float>> params(

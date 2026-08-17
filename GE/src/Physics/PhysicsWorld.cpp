@@ -390,7 +390,7 @@ void PhysicsWorld::ProcessPendingBodies() {
         }
 
         // 从 TransformComponent 获取初始位置和旋转
-        glm::quat glmRot = glm::quat(tc->Rotation);
+        const glm::quat &glmRot = tc->Rotation;
         JPH::Vec3 position = ToJoltVec3(tc->Translation);
         JPH::Quat rotation = ToJoltQuat(glmRot);
 
@@ -545,7 +545,8 @@ void PhysicsWorld::SyncBodiesToTransforms() {
 
         auto &tc = view.get<TransformComponent>(entity);
         tc.Translation = ToGlmVec3(pos);
-        tc.Rotation = glm::eulerAngles(ToGlmQuat(rot));
+        // 直接回写四元数，避免 eulerAngles 往返在近万向锁区域引入抖动/跳变
+        tc.Rotation = ToGlmQuat(rot);
     }
 }
 
@@ -565,7 +566,7 @@ void PhysicsWorld::SyncKinematicTransformsToBodies() {
             continue;
 
         auto &tc = view.get<TransformComponent>(entity);
-        glm::quat glmRot = glm::quat(tc.Rotation);
+        const glm::quat &glmRot = tc.Rotation;
 
         bodyInterface.MoveKinematic(
             rbc.RuntimeBodyID,

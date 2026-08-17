@@ -94,8 +94,8 @@ void GizmoController::Render(const Camera &camera, const glm::vec2 &viewportPos,
         float translation[3], rotationDeg[3], scale[3];
         ImGuizmo::DecomposeMatrixToComponents(glm::value_ptr(transform), translation, rotationDeg, scale);
         transformComp.Translation = {translation[0], translation[1], translation[2]};
-        // TransformComponent.Rotation 存弧度，拆出的旋转为角度，需转换
-        transformComp.Rotation = glm::radians(glm::vec3(rotationDeg[0], rotationDeg[1], rotationDeg[2]));
+        // ImGuizmo 拆出欧拉角（角度），在此编辑器边界转成四元数写回
+        transformComp.SetRotationEuler(glm::radians(glm::vec3(rotationDeg[0], rotationDeg[1], rotationDeg[2])));
         transformComp.Scale = {scale[0], scale[1], scale[2]};
     }
 }

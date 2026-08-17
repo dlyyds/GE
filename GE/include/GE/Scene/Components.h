@@ -38,7 +38,9 @@ struct TagComponent {
 
 struct TransformComponent {
     glm::vec3 Translation = {0.0f, 0.0f, 0.0f};
-    glm::vec3 Rotation = {0.0f, 0.0f, 0.0f};
+    // 内部统一存四元数，避免欧拉角万向锁（绕中间轴 ±90° 时自由度丢失）
+    // 需要欧拉角时仅在编辑器显示边界用 Get/SetRotationEuler 转换
+    glm::quat Rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
     glm::vec3 Scale = {1.0f, 1.0f, 1.0f};
 
     TransformComponent() = default;
@@ -49,9 +51,19 @@ struct TransformComponent {
         : Translation(translation) {
     }
 
+    /// @brief 取欧拉角（弧度，GLM 的 XYZ 顺序），仅供编辑器显示使用
+    [[nodiscard]] glm::vec3 GetRotationEuler() const {
+        return glm::eulerAngles(Rotation);
+    }
+
+    /// @brief 用欧拉角（弧度）设置旋转，仅供编辑器写入使用
+    void SetRotationEuler(const glm::vec3 &euler) {
+        Rotation = glm::quat(euler);
+    }
+
     [[nodiscard]] glm::mat4 GetTransform() const {
 
-        const glm::mat4 rotation = glm::toMat4(glm::quat(Rotation));
+        const glm::mat4 rotation = glm::toMat4(Rotation);
 
         return glm::translate(glm::mat4(1.0f), Translation)
                * rotation

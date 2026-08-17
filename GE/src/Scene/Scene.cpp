@@ -143,7 +143,7 @@ void Scene::OnUpdate3D(Timestep ts,
                 // 由 Transform 的旋转推导出方向光方向（前向向量，-Z 轴旋转后为光线射出方向）
                 // 着色器中 dirLightDirection 表示"指向光源的方向"（即从表面指向光源），
                 // 与光线射出方向相反，因此取反
-                glm::quat rot = glm::quat(tc.Rotation);
+                const glm::quat &rot = tc.Rotation;
                 glm::vec3 lightDir = rot * glm::vec3(0.0f, 0.0f, -1.0f);
                 lightParams.dirLightDirection = glm::normalize(-lightDir);
                 lightParams.dirLightColor = dlc.Color;

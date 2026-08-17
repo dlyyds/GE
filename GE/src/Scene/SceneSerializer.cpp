@@ -23,6 +23,7 @@
 
 #include <yaml-cpp/yaml.h>
 #include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>
 
 #include <fstream>
 #include <sstream>
@@ -293,6 +294,17 @@ YAML::Node SerializeVec4(const glm::vec4 &v) {
     return node;
 }
 
+// 四元数序列化为 [w, x, y, z]，便于与旧版 3 元素欧拉角 [x, y, z] 区分
+YAML::Node SerializeQuat(const glm::quat &q) {
+    YAML::Node node;
+    node.SetStyle(YAML::EmitterStyle::Flow);
+    node.push_back(q.w);
+    node.push_back(q.x);
+    node.push_back(q.y);
+    node.push_back(q.z);
+    return node;
+}
+
 // ============================================================
 // YAML → glm 向量解析
 // ============================================================
@@ -325,6 +337,26 @@ glm::vec4 DeserializeVec4(const YAML::Node &node, const glm::vec4 &def = {0.0f, 
         node[2].as<float>(def.z),
         node[3].as<float>(def.w)
     };
+}
+
+// 兼容新版 [w,x,y,z] 四元数与旧版 [x,y,z] 欧拉角（弧度）两种场景文件
+glm::quat DeserializeQuat(const YAML::Node &node, const glm::quat &def = glm::quat(1.0f, 0.0f, 0.0f, 0.0f)) {
+    if (!node || !node.IsSequence())
+        return def;
+
+    if (node.size() == 3) {
+        // 旧版格式：三个元素是欧拉角（弧度），转为四元数
+        return glm::quat(glm::vec3(
+            node[0].as<float>(), node[1].as<float>(), node[2].as<float>()));
+    }
+    if (node.size() >= 4) {
+        return glm::quat(
+            node[0].as<float>(def.w),
+            node[1].as<float>(def.x),
+            node[2].as<float>(def.y),
+            node[3].as<float>(def.z));
+    }
+    return def;
 }
 
 } // anonymous namespace
@@ -380,7 +412,7 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
             const auto &tc = entity.GetComponent<TransformComponent>();
             YAML::Node transformNode = entityNode["Transform"];
             transformNode["Translation"] = SerializeVec3(tc.Translation);
-            transformNode["Rotation"] = SerializeVec3(tc.Rotation);
+            transformNode["Rotation"] = SerializeQuat(tc.Rotation);
             transformNode["Scale"] = SerializeVec3(tc.Scale);
         }
 
@@ -610,7 +642,7 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
             auto &tc = entity.GetComponent<TransformComponent>();
             YAML::Node transformNode = entityNode["Transform"];
             tc.Translation = DeserializeVec3(transformNode["Translation"], {0.0f, 0.0f, 0.0f});
-            tc.Rotation = DeserializeVec3(transformNode["Rotation"], {0.0f, 0.0f, 0.0f});
+            tc.Rotation = DeserializeQuat(transformNode["Rotation"], glm::quat(1.0f, 0.0f, 0.0f, 0.0f));
             tc.Scale = DeserializeVec3(transformNode["Scale"], {1.0f, 1.0f, 1.0f});
         }
 

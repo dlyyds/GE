@@ -69,8 +69,8 @@ void SceneLayer::BuildDefaultSceneFromCode() {
     // 方向光实体（-60° 绕 X 轴：从上前方照下）。强度提至 2.0，给金属提供
     // 一个明显的锐利高光（金属无漫反射，靠高光与环境显形）。
     auto dirLight = m_Context->Scene->CreateEntity("DirectionalLight");
-    dirLight.GetComponent<TransformComponent>().Rotation =
-        glm::vec3(glm::radians(-60.0f), 0.0f, 0.0f);
+    dirLight.GetComponent<TransformComponent>().SetRotationEuler(
+        glm::vec3(glm::radians(-60.0f), 0.0f, 0.0f));
     dirLight.AddComponent<DirectionalLightComponent>(glm::vec4(1.0f, 1.0f, 1.0f, 2.0f));
 
     // 环境光实体

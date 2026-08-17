@@ -356,10 +356,10 @@ bool SceneHierarchyPanel::TryAddComponent(const char *name) {
 void SceneHierarchyPanel::DrawTransformComponent(TransformComponent &component) {
     DrawVec3Control("Translation", component.Translation, 0.0f, 120);
 
-    // 旋转使用角度显示，内部存储弧度
-    glm::vec3 rotationDeg = glm::degrees(component.Rotation);
+    // 旋转用角度显示，内部存四元数；仅在编辑器边界转成欧拉角
+    glm::vec3 rotationDeg = glm::degrees(component.GetRotationEuler());
     DrawVec3Control("Rotation", rotationDeg, 0.0f, 120);
-    component.Rotation = glm::radians(rotationDeg);
+    component.SetRotationEuler(glm::radians(rotationDeg));
 
     DrawVec3Control("Scale", component.Scale, 1.0f, 120);
 }

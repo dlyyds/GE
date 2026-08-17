@@ -46,8 +46,8 @@ public:
 
         // ── 方向光实体（旋转决定照射方向，-60° 绕 X 轴：从上前方照下） ──
         auto dirLight = m_Scene->CreateEntity("DirectionalLight");
-        dirLight.GetComponent<TransformComponent>().Rotation =
-            glm::vec3(glm::radians(-60.0f), 0.0f, 0.0f);
+        dirLight.GetComponent<TransformComponent>().SetRotationEuler(
+            glm::vec3(glm::radians(-60.0f), 0.0f, 0.0f));
         dirLight.AddComponent<DirectionalLightComponent>(glm::vec4(1.0f, 1.0f, 1.0f, 1.0f));
 
         // ── 环境光实体（强度由 ImGui 面板调节） ─────────────────────────
@@ -98,10 +98,11 @@ public:
         m_AmbientEntity.GetComponent<AmbientLightComponent>().Color =
             glm::vec4(m_Ambient, m_Ambient, m_Ambient, 1.0f);
 
-        // ── 三个立方体各自自转 ──────────────────────────────────────────
+        // ── 三个立方体各自绕世界 Y 轴自转（四元数复合，绕开欧拉角） ──
         for (int i = 0; i < 3; i++) {
-            m_CubeEntities[i].GetComponent<TransformComponent>().Rotation.y +=
-                ts.GetSeconds() * 0.5f;
+            auto &tc = m_CubeEntities[i].GetComponent<TransformComponent>();
+            tc.Rotation = glm::angleAxis(ts.GetSeconds() * 0.5f, glm::vec3(0.0f, 1.0f, 0.0f))
+                          * tc.Rotation;
         }
 
         // ── 交给场景系统渲染（光源收集 / 网格子网格绘制） ───────────────

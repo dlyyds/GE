@@ -15,8 +15,9 @@
 |---|---|---|
 | CPU 数据容器 | 格式解析产物 | `m_Vertices` / `m_Indices` / `m_SubMeshes` / `m_MaterialData`（421-424 行） |
 | GPU 资源 | 可渲染资产 | `m_VertexBuffer` / `m_IndexBuffer` / `UploadToGPU` / `SetDebugName` |
-| 异步加载生命周期 | 空壳→就绪状态机 | `AsyncPendingSlot` / `m_Ready` / `InstallAsyncData` / `LoadFromFileAsync` |
-| 文件格式解析 | 磁盘读取 | `LoadFromFile` / `ParseModelData` / `ParseOBJData`（cpp 内） |
+| 异步加载生命周期 | 空壳→就绪状态机 | `AsyncPendingSlot` / `m_Ready` / `InstallAsyncData` / `IsReady`（**保留在 Mesh**，被动状态） |
+| 加载编排 / 几何生成 | 调起加载、提交任务、内置几何 | `LoadFromFile` / `LoadFromFileAsync` / `CreateBuiltin`（**迁出 Mesh** → MeshManager） |
+| 文件格式解析 | 磁盘读取 | `ParseModelData` / `ParseOBJData`（迁出 → OBJLoader / ModelLoader） |
 
 **主要问题**：
 
@@ -38,6 +39,8 @@
 | `GetVertices()` / `GetIndices()` | **无任何外部调用方**，仅 Mesh.cpp 内部（上传、切线） | 上传后不保留，可整体释放 |
 | `GetFilePath()` / `SetFilePath()` | SceneSerializer、编辑器、MeshManager | 保留在 Mesh |
 | `IsReady()` / `InstallAsyncData` / `AsyncPendingSlot` | Renderer3D:312、编辑器、MeshManager（异步链路） | 保留在 Mesh（§4：异步状态机不动） |
+| `LoadFromFile`（同步） | **0 个外部调用方**（死代码，仅注释示例提及） | **删除** |
+| `LoadFromFileAsync` / `CreateBuiltin` | 各 1 个调用方，都在 `MeshManager::Load`（:153 / :133） | 编排/几何生成迁入 MeshManager，Mesh 不再持有 |
 
 **结论**：直接支撑拆分的事实——`GetVertices()`/`GetIndices()` 是「写后读一次的废弃物」，整个 CPU 数组只服务于构建期（上传 + 切线），做完就该扔；Mesh 实际需要的只是**计数 + 子网格 + 材质数据**这类轻量摘要。
 
@@ -69,6 +72,7 @@ public:
     static std::unique_ptr<Mesh> Create(VulkanDevice&, MeshData&&);        // 同步：切线+上传
     static std::unique_ptr<Mesh> CreateFromBuffers(MeshData&&,             // 异步 finalize：接住后台
         std::unique_ptr<VulkanBuffer> vb, std::unique_ptr<VulkanBuffer> ib);// 已上传缓冲，只组装
+    static std::unique_ptr<Mesh> CreateShell(const std::string& filepath); // 造空壳+槽位（编排在 MeshManager）
 
     // 渲染所需
     VulkanBuffer &GetVertexBuffer(); VulkanBuffer &GetIndexBuffer();
@@ -81,15 +85,18 @@ public:
     void SetDebugName(const std::string&);
 
 private:
-    // 成员：只剩 GPU 资产 + 轻量摘要 + 文件路径
+    // 成员：只剩 GPU 资产 + 轻量摘要 + 文件路径 + 被动异步状态
     std::unique_ptr<VulkanBuffer> m_VertexBuffer, m_IndexBuffer;
     std::vector<SubMesh>  m_SubMeshes;      // 渲染范围（含 defaultMaterial 指针）
     std::vector<MaterialData> m_MaterialData; // 材质匹配摘要（MeshManager 读）
     uint32_t m_VertexCount = 0, m_IndexCount = 0;  // 摘要计数（替代整份 CPU 数组）
     std::string m_FilePath;
-    // + 异步状态（IsReady / 空壳机制保留在 Mesh，§4）
+    // 异步状态（IsReady / AsyncPendingSlot / 空壳机制保留在 Mesh，§4）
 };
 ```
+
+> 已从 Mesh 移除：`LoadFromFile`（死代码）、`LoadFromFileAsync` / `CreateBuiltin`（或其几何生成体）
+> → 全部编排迁入 `MeshManager`；`Mesh` 只剩「资源 + 被动生命周期」。
 
 **核心收益**：`m_Vertices`/`m_Indices` 两个数百 MB 的数组从 Mesh 生命周期里消失，只留两个 uint32 计数；
 `MeshData` 是临时传递对象，构建完即析构释放。
@@ -99,24 +106,35 @@ private:
 - `ParseModelData`（分派器）+ `ParseOBJData`（tinyobj）+ `ComputeTangents` 迁出：
   - **先落目标**：`GE/src/Render/OBJLoader.cpp`（`ParseOBJData`）、各格式解析器逐步独立
   - 与阶段 2 的 `GLTFRawLoader`（已在独立文件）同构——**格式解析器一律独立成文件，Mesh.cpp 只留装配**
-- `Mesh.cpp` 收敛为：`MeshData → Mesh` 的装配（切线计算 → 上传 → 摘要提取）+ 异步调度
+- `Mesh.cpp` 收敛为：`MeshData → Mesh` 的装配（切线计算 → 上传 → 摘要提取）+ 被动异步状态；
+  调度/分派/几何生成一律不在 Mesh 内（见 §4）
 - 共享装配 `BuildMesh` 保留，但签名改为吃 `MeshData&&`
 
 ---
 
-## 4. 异步加载生命周期保持不变
+## 4. 异步状态机保留在 Mesh，编排迁入 MeshManager
 
-`LoadFromFileAsync` / `AsyncPendingSlot` / `m_Ready` / `InstallAsyncData` **不拆**：空壳→就绪的状态机
-（AsyncUploadManager 三阶段、MeshManager「返回空壳→轮询注入」、渲染端 `IsReady()` 门控）继续长在 Mesh 里。
+**状态机不动**：空壳→就绪的被动部分（`AsyncPendingSlot` / `m_Ready` / `InstallAsyncData` / `IsReady`）继续长在
+Mesh 里；AsyncUploadManager 三阶段、MeshManager「返回空壳→轮询注入」、渲染端 `IsReady()` 门控的时序**原样不变**。
 
-**本轮只做一件事**：把 CPU 数据容器（`MeshData`）从 Mesh 摘出去，`InstallAsyncData` 改为装 `MeshData` + 缓冲。
-异步控制流一行不改，`IsReady` / 空壳机制原样保留。
+**编排迁出**：`LoadFromFileAsync` 的整段主体（造空壳 → 组装 UploadTask → 提交 → finalize 里 `InstallAsyncData` +
+`onInstalled`）移入 `MeshManager::Load` 文件分支；`Mesh` 只补一个 `CreateShell(filepath)` 负责「造空壳 + 初始化
+槽位」（空壳生命周期仍在 Mesh，故必须保留这个最小工厂）。
 
-> 曾考虑过把空壳/就绪状态机也抽走、做成「完成即产出完整 Mesh」的纯资源级服务——但那是把异步加载的
-> 交互模型连同 AsyncUploadManager 全部消费方一起改一遍，风险大、收益与代价不成比例，**已否决，不排期**。
->
-> 与阶段 2 的关系：阶段 2 只给 Mesh **增加**两个工厂方法（`Create` 重载、`CreateFromBuffers`），
-> 先做本拆分时阶段 2 的工厂直接就是 §3.2 的形态，二者天然对齐；建议**顺序 = 阶段 2 完成 → 再做本拆分**。
+```
+MeshManager::Load(path)
+  ├─ builtin → 生成几何 → Mesh::Create → 注册
+  ├─ 文件   → Mesh::CreateShell（空壳） → 组装 UploadTask（decode/upload/finalize 结构与现在一致）
+  │            finalize → InstallAsyncData(MeshData+缓冲) + onInstalled + 置 m_Ready
+  └─ 注册缓存
+```
+
+**与方案 B 的区别**：B 是把「空壳」概念整个删掉（完成即产出完整 Mesh）；这里空壳概念、`IsReady()` 门控、
+延迟注入全部保留，只是「谁来调起加载」从 Mesh 挪到 MeshManager。**B 仍是否决状态，不排期。**
+
+> 与阶段 2 的关系：阶段 2 只给 Mesh **增加** `Create` 重载 / `CreateFromBuffers`，它们在本拆分后仍是既有形态；
+> 且 glTF 本就不走 `LoadFromFileAsync`（走 `GLTFImporter`），移除它对 glTF 无影响。
+> 建议**顺序 = 阶段 2 完成 → 再做本拆分**。
 
 ---
 
@@ -132,10 +150,14 @@ private:
 2. `GetVertices()` / `GetIndices()` 删除（无外部调用方，已核实）；`GetVertexCount()` 改读计数
 3. 上传内部：`UploadToGPU` 用 `MeshData` 建缓冲后，Mesh 只回收 `m_SubMeshes`/`m_MaterialData`/计数
 
-### 阶段3：解析器搬家，Mesh.cpp 归位
+### 阶段3：解析器搬家 + 加载编排迁出，Mesh.cpp 归位
 1. 新建 `OBJLoader.cpp`：迁入 `ParseOBJData`（含 MTL → MaterialData 捕获），与 `GLTFRawLoader` 对称
-2. `ParseModelData` 分派器移入 `Mesh.cpp` 顶部或独立 `ModelLoader.cpp`（统一入口，还在）
-3. 清理 `Mesh.h`：`LoadFromFile`/`LoadFromFileAsync` 保留（它们是分派入口），`ParseOBJData` 等内部不再出现在 Mesh.cpp
+2. `ParseModelData` 分派器移入 MeshManager 或独立 `ModelLoader.cpp`（统一入口，还在）
+3. `MeshManager::Load` 接管编排：文件分支改为 `Mesh::CreateShell` → 组装 UploadTask → 提交 →
+   finalize 注入；builtin 分支改为内联生成几何（原 `CreateBuiltin` 体）→ `Mesh::Create` → 注册
+4. 清理 `Mesh.h`：删除 `LoadFromFile`（死代码）与 `LoadFromFileAsync`；新增 `CreateShell`；
+   `ParseOBJData` / `CreateBuiltin` 主体不再出现在 Mesh.cpp；`IsBuiltinPath` / `GetBuiltinType`
+   判定逻辑按需移入 MeshManager 或保留为自由函数
 
 ### 阶段4：构建验证
 - 全量走 `build.bat debug`，确认 OBJ 加载 / 异步加载 / 编辑器顶点统计 / 场景序列化行为不变
@@ -147,18 +169,20 @@ private:
 
 | 风险 | 对策 |
 |---|---|
-| 破坏现有异步加载链路 | 阶段 1 只改数据形态不改控制流；`IsReady`/空壳机制原样保留 |
+| 破坏现有异步加载链路 | 状态机/时序不变；编排迁入 MeshManager 时**照搬现状结构**（decode/upload/finalize 逐字对应），唯一变的是代码所在文件 |
 | 编辑器/渲染依赖原始数组 | 已核实无外部读取 `GetVertices()`/`GetIndices()`；计数与子网格访问器保留 |
 | 拆完不能马上验证（用户自行构建） | 按阶段小步走，每阶段是独立可编译快照；建议仅在阶段 3 完成后整体验证一次 |
+| `MeshManager::Load` 变胖 | 可控：它本就是加载的总入口，编排迁入是职责归位而非膨胀；若继续增大再抽 `ModelLoader` |
 | 后续阶段 3 蒙皮需要 CPU 关节数据 | 蒙皮时 `Vertex` 增关节字段，JOINTS/WEIGHTS 属构建期数据，随 `MeshData` 临时持有即可满足，不要求 Mesh 常驻 |
 
 ---
 
 ## 7. 验收标准
 
-- OBJ / 内置几何体加载、异步加载、场景保存加载行为与拆分前完全一致
+- OBJ / 内置几何体加载、异步加载、场景保存加载行为与拆分前完全一致（含 `LoadFromFileAsync` 迁入
+  MeshManager 后空壳/`IsReady` 时序不变）
 - 编辑器网格统计（顶点/索引数）与子网格材质编辑正常
-- `Mesh.h` 公开面缩减 ~1/3：去掉格式解析声明与原始数组访问器，只剩「资源 + 摘要」
+- `Mesh.h` 公开面缩减 ~1/2：去掉格式解析声明、原始数组访问器与加载/几何工厂，只剩「资源 + 摘要 + 被动异步状态」
 - 加载大模型后，Mesh 生命周期内看不到整份 CPU 顶点数组常驻
 
 ---

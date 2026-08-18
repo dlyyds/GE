@@ -1,14 +1,10 @@
 /**
  * @file Mesh.h
- * @brief 网格封装 —— 顶点缓冲 + 索引缓冲，支持从文件加载。
+ * @brief 网格封装 —— 顶点缓冲 + 索引缓冲 + 轻量摘要 + 被动异步状态。
  *
- * 封装 VulkanBuffer（顶点 + 索引），提供：
- * - LoadFromFile()：从模型文件加载网格（按扩展名分派，当前支持 OBJ）
- * - 直接构造：从 CPU 端顶点/索引数组创建网格
- *
- * 内部自动处理：
- * - staging buffer 上传顶点/索引数据到 GPU
- * - 顶点布局为 Position(3) + Normal(3) + TexCoord(2)
+ * 只承载「可渲染资源」所需的全部：GPU 缓冲、渲染范围子网格、材质匹配摘要与
+ * 异步加载生命周期。格式解析（OBJ/glTF）、加载编排（同步/异步分派）与内置几何
+ * 生成已外移到 ModelLoader / OBJLoader / MeshManager，Mesh 不感知任何文件格式。
  */
 
 #pragma once
@@ -22,7 +18,6 @@
 #include <cstdint>
 #include <cstddef>
 #include <cmath>
-#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -31,7 +26,6 @@
 namespace GE {
 
 class Material;
-class AsyncUploadManager;
 
 /**
  * @brief 从 OBJ/MTL 捕获的材质数据（POD，与 tinyobjloader 解耦）。
@@ -78,7 +72,7 @@ struct Vertex {
      * @brief 量化精度：将坐标投影到 1/10000 的均匀网格上。
      *
      * 用于消除浮点精度误差导致的「逻辑相同但位表示不同」的顶点。
-     * 在 LoadFromFile 构造顶点时一次性量化清洗数据，之后 operator==
+     * 在格式解析构造顶点时一次性量化清洗数据，之后 operator==
      * 与 hash 即可安全地对位模式做精确比较。
      */
     static constexpr float kQuantScale = 10000.0f;
@@ -110,7 +104,7 @@ namespace std {
 template <>
 struct hash<GE::Vertex> {
     size_t operator()(const GE::Vertex &v) const {
-        // 顶点已在 LoadFromFile 时量化清洗过，这里直接对位模式精确哈希
+        // 顶点已在格式解析时量化清洗过，这里直接对位模式精确哈希
         size_t h1 = hash<float>()(v.Position.x);
         size_t h2 = hash<float>()(v.Position.y);
         size_t h3 = hash<float>()(v.Position.z);
@@ -153,12 +147,28 @@ struct SubMesh {
 };
 
 /**
- * @brief 网格封装 —— 持有顶点缓冲 + 索引缓冲。
+ * @brief 格式解析器的统一输出（纯 CPU 载荷，构建期传递对象）。
+ *
+ * 所有格式解析器（OBJ / 未来的 glTF / FBX）输出同一种形式。vertices/indices 是
+ * 构建期数据：完成切线计算与 GPU 上传后即随本对象析构释放，Mesh 只保留子网格、
+ * 材质数据与顶点/索引计数等轻量摘要，整份 CPU 顶点副本不常驻内存。
+ */
+struct MeshData {
+    std::vector<Vertex>      vertices;      ///< 已量化 + 去重（构建期用，上传后释放）
+    std::vector<uint32_t>    indices;       ///< 索引数组
+    std::vector<SubMesh>     subMeshes;     ///< 渲染范围 + materialName
+    std::vector<MaterialData> materialData; ///< 材质匹配用（MeshManager 读取）
+};
+
+/**
+ * @brief 网格封装 —— 持有顶点缓冲 + 索引缓冲，只负责可渲染资源与被动异步状态。
  *
  * 使用方式：
  * @code
- *   auto mesh = Mesh::LoadFromFile(device, "assets/models/cube.obj");
- *   if (mesh) {
+ *   // 经 MeshManager / ModelLoader 加载，Mesh 自身不感知文件格式
+ *   auto &meshMgr = Renderer::GetMeshManager();
+ *   Mesh* mesh = meshMgr.GetBuiltin("cube");
+ *   if (mesh && mesh->IsReady()) {
  *       // 绑定顶点缓冲 + 索引缓冲并绘制
  *       vkCmdBindVertexBuffers(cmdBuf, 0, 1, &mesh->GetVertexBuffer().GetHandle(), &offset);
  *       vkCmdBindIndexBuffer(cmdBuf, mesh->GetIndexBuffer().GetHandle(), 0, vk::IndexType::eUint32);
@@ -173,85 +183,29 @@ public:
     // ========================================================================
 
     /**
-     * @brief 从模型文件同步加载网格（按扩展名分派到对应格式解析器）。
+     * @brief 从 CPU 端解析数据（MeshData）同步创建网格。
      *
-     * 当前支持的格式：
-     * - .obj：使用 tinyobjloader 解析
+     * 完成切线计算、GPU 上传与摘要提取（顶点/索引计数、子网格、材质数据），
+     * 创建结果立即就绪（IsReady()==true）。MeshData 为右值引用：其 vertices/indices
+     * 在上传完成后随析构释放，Mesh 不持有整份 CPU 顶点副本。
      *
-     * 扩展名分派集中在 ParseModelData（同步 / 异步共用）；接入 glTF / FBX 等
-     * 新格式时，只需在 ParseModelData 注册一个输出标准数据的解析器，各格式
-     * 解析出的数据统一交给 BuildMesh 完成切线计算 / GPU 上传等格式无关装配。
-     *
-     * @param device    Vulkan 设备
-     * @param filepath  模型文件路径
-     * @return std::unique_ptr<Mesh>  失败或不支持的格式时返回 nullptr
+     * @param device Vulkan 设备
+     * @param data   格式解析/几何生成产出的 CPU 载荷（std::move 入）
+     * @return std::unique_ptr<Mesh>  数据为空或上传失败时返回 nullptr
      */
-    static std::unique_ptr<Mesh> LoadFromFile(VulkanDevice &device,
-                                              const std::string &filepath);
+    static std::unique_ptr<Mesh> Create(VulkanDevice &device, MeshData &&data);
 
     /**
-     * @brief 异步从模型文件加载网格（解析 + GPU 上传全后台）。
+     * @brief 创建异步加载"空壳"网格（带注入槽位，IsReady()==false）。
      *
-     * 立即返回"空壳" Mesh（m_Ready=false，无 CPU 数据与 GPU 缓冲）；后台线程完成
-     * OBJ/MTL 解析、MTL 材质数据捕获、顶点切线计算与顶点/索引缓冲上传后，主线程
-     * AsyncUploadManager::Poll() 回收时经 InstallAsyncData 安装并置就绪。
+     * 造空壳 + 初始化 AsyncPendingSlot 的动作被保留在 Mesh（惰性状态机长在 Mesh），
+     * 加载编排则由 MeshManager 接管：创建空壳后组装 UploadTask 提交后台，主线程
+     * finalize 经槽位门控后调用 InstallAsyncData 注入 + BuildSubMeshMaterials + MarkReady。
      *
-     * @param device       Vulkan 设备
-     * @param upload       异步上传管理器（提交 UploadTask）
-     * @param filepath     模型文件路径
-     * @param onInstalled  数据安装完成后、置就绪前的回调（主线程 finalize 调用，供
-     *                     MeshManager 构建子网格材质；加载失败或空壳已销毁则不会调用）
-     * @return std::unique_ptr<Mesh>  空壳 Mesh（未就绪）；提交失败返回 nullptr
+     * @param filepath 源文件路径（记录到网格，便于序列化）
+     * @return 待注入的空壳 Mesh（不持 GPU 缓冲与 CPU 数据）
      */
-    static std::unique_ptr<Mesh> LoadFromFileAsync(
-        VulkanDevice &device,
-        AsyncUploadManager &upload,
-        const std::string &filepath,
-        std::function<void(Mesh &)> onInstalled = {});
-
-    /**
-     * @brief 从 CPU 端顶点/索引数组创建网格。
-     *
-     * @param device   Vulkan 设备
-     * @param vertices 顶点数组
-     * @param indices  索引数组（uint32_t）
-     * @return std::unique_ptr<Mesh>
-     */
-    static std::unique_ptr<Mesh> Create(VulkanDevice &device,
-                                        const std::vector<Vertex> &vertices,
-                                        const std::vector<uint32_t> &indices);
-
-    /**
-     * @brief 创建内置几何体网格。
-     *
-     * 支持的类型（type 参数）：
-     * - "cube"   : 立方体（边长为 2，中心在原点）
-     * - "plane"  : 平面（XY 平面，边长为 2，中心在原点，法线 +Z）
-     * - "sphere" : 球体（半径为 1，中心在原点）
-     * - "quad"   : 四边形（XY 平面，2×2，中心在原点）
-     *
-     * @param device  Vulkan 设备
-     * @param type    内置几何体类型名称
-     * @return std::unique_ptr<Mesh>  失败（未知类型）返回 nullptr
-     */
-    static std::unique_ptr<Mesh> CreateBuiltin(VulkanDevice &device, const std::string &type);
-
-    /**
-     * @brief 判断路径是否为内置几何体标识（"builtin:" 前缀）。
-     */
-    static bool IsBuiltinPath(const std::string &path) {
-        return path.rfind("builtin:", 0) == 0;
-    }
-
-    /**
-     * @brief 从内置路径中提取类型名（去掉 "builtin:" 前缀）。
-     */
-    static std::string GetBuiltinType(const std::string &path) {
-        if (IsBuiltinPath(path)) {
-            return path.substr(8); // "builtin:" 长度为 8
-        }
-        return {};
-    }
+    static std::unique_ptr<Mesh> CreateShell(const std::string &filepath);
 
     // ========================================================================
     // 析构 / 移动
@@ -265,7 +219,7 @@ public:
     Mesh &operator=(const Mesh &) = delete;
 
     // ========================================================================
-    // 就绪状态 / 注入（异步加载）
+    // 就绪状态 / 注入（异步加载） —— 被动状态机保留在 Mesh
     // ========================================================================
 
     /**
@@ -282,7 +236,7 @@ public:
     };
 
     /**
-     * @brief 网格是否已完全就绪（CPU 数据 + GPU 缓冲 + 子网格材质可用）。
+     * @brief 网格是否已完全就绪（GPU 缓冲 + 子网格材质可用）。
      *
      * 异步工厂返回的空壳网格在后台加载完成、主线程注入前为 false。渲染端绑定前
      * 必须检查：未就绪时跳过绘制。同步工厂 / 内置几何体创建的网格恒为 true。
@@ -290,23 +244,32 @@ public:
     bool IsReady() const { return m_Ready.load(std::memory_order_acquire); }
 
     /**
+     * @brief 主线程置网格为就绪（注入与材质构建完成后调用）。
+     *
+     * 由 MeshManager 的 UploadTask finalize（主线程 Poll()）调用，置于
+     * InstallAsyncData 与 BuildSubMeshMaterials 之后，保证渲染看到就绪网格时
+     * 缓冲与材质均已安装完毕，下帧渲染自动可见。
+     */
+    void MarkReady() { m_Ready.store(true, std::memory_order_release); }
+
+    /**
+     * @brief 获取异步注入槽位（供编排方 finalize 门控，MeshManager 读取）。
+     */
+    std::shared_ptr<AsyncPendingSlot> GetAsyncSlot() const { return m_AsyncSlot; }
+
+    /**
      * @brief 主线程安装后台异步加载完成的数据与 GPU 缓冲。
      *
-     * 仅由异步任务 finalize（主线程 Poll()）调用。注入后由调用方置 m_Ready=true，
-     * 下帧渲染自动可见。若本网格已被销毁（经 AsyncPendingSlot 门控），调用方会跳过
-     * 本方法。
+     * 仅由异步任务 finalize（主线程 Poll()）调用，随后由调用方按序执行
+     * BuildSubMeshMaterials 与 MarkReady。若本网格已被销毁（经 AsyncPendingSlot
+     * 门控），调用方会跳过本方法。MeshData 的 vertices/indices 属构建期数据，
+     * 安装时只回收计数与子网格/材质摘要，原始 CPU 数组随之释放。
      *
-     * @param vertices      顶点数组（接管所有权）
-     * @param indices       索引数组（接管所有权）
-     * @param subMeshes     子网格列表（接管所有权）
-     * @param materialData  MTL 材质数据（接管所有权）
+     * @param data          后台解析的 CPU 载荷（std::move 入，仅取摘要后释放顶点数组）
      * @param vertexBuffer  后台创建的本地顶点缓冲（接管所有权）
      * @param indexBuffer   后台创建的本地索引缓冲（接管所有权）
      */
-    void InstallAsyncData(std::vector<Vertex> vertices,
-                          std::vector<uint32_t> indices,
-                          std::vector<SubMesh> subMeshes,
-                          std::vector<MaterialData> materialData,
+    void InstallAsyncData(MeshData &&data,
                           std::unique_ptr<VulkanBuffer> vertexBuffer,
                           std::unique_ptr<VulkanBuffer> indexBuffer);
 
@@ -320,11 +283,10 @@ public:
     VulkanBuffer &GetIndexBuffer() { return *m_IndexBuffer; }
     const VulkanBuffer &GetIndexBuffer() const { return *m_IndexBuffer; }
 
-    uint32_t GetVertexCount() const { return static_cast<uint32_t>(m_Vertices.size()); }
-    uint32_t GetIndexCount() const { return static_cast<uint32_t>(m_Indices.size()); }
-
-    const std::vector<Vertex> &GetVertices() const { return m_Vertices; }
-    const std::vector<uint32_t> &GetIndices() const { return m_Indices; }
+    /// 顶点数量（摘要计数，Mesh 不持有整份 CPU 顶点数组）
+    uint32_t GetVertexCount() const { return m_VertexCount; }
+    /// 索引数量（摘要计数，Mesh 不持有整份 CPU 索引数组）
+    uint32_t GetIndexCount() const { return m_IndexCount; }
 
     /**
      * @brief 获取子网格列表。
@@ -335,7 +297,7 @@ public:
     const std::vector<SubMesh> &GetSubMeshes() const { return m_SubMeshes; }
 
     /**
-     * @brief 获取从 MTL 捕获的材质数据（LoadFromFile 填充）。
+     * @brief 获取从 MTL 捕获的材质数据（加载时填充）。
      *
      * 供 MeshManager 构建子网格材质时，按 materialName 匹配对应的材质属性。
      * 无 MTL 的网格（内置几何体 / CPU 直建）该列表为空。
@@ -384,45 +346,30 @@ private:
     Mesh() = default;
 
     /**
-     * @brief 从 CPU 端顶点/索引数据创建 GPU 缓冲。
-     */
-    bool UploadToGPU(VulkanDevice &device);
-
-    // ========================================================================
-    // 私有装配（格式解析器为文件内静态函数，经 ParseModelData 统一分派）
-    // ========================================================================
-
-    /**
-     * @brief 由格式解析器产出的几何数据构建最终网格（共享装配路径）。
+     * @brief 由格式解析/几何生成产出的 MeshData 构建最终网格（共享装配路径）。
      *
-     * 完成切线计算、GPU 上传与文件路径记录。OBJ / 未来的 glTF 等
-     * 各格式加载器解析出顶点、索引、子网格与材质数据后统一调用本函数，
-     * 避免每个格式重复装配逻辑。
+     * 完成切线计算、GPU 上传、摘要提取（顶点/索引计数）、文件路径记录。同步路径
+     * （Mesh::Create）与内置几何体共用。异步路径在后台完成解析与上传后经
+     * InstallAsyncData 注入，不走本函数。
      *
-     * @param device        Vulkan 设备
-     * @param vertices      顶点数组（std::move 入）
-     * @param indices       索引数组（std::move 入）
-     * @param subMeshes     子网格列表（std::move 入）
-     * @param materialData  材质数据（std::move 入）
-     * @param filePath      源文件路径（std::move 入）
+     * @param device   Vulkan 设备
+     * @param data     CPU 载荷（std::move 入，上传后释放顶点数组）
+     * @param filePath 源文件路径（std::move 入）
      * @return std::unique_ptr<Mesh>  数据为空或上传失败时返回 nullptr
      */
     static std::unique_ptr<Mesh> BuildMesh(VulkanDevice &device,
-                                           std::vector<Vertex> vertices,
-                                           std::vector<uint32_t> indices,
-                                           std::vector<SubMesh> subMeshes,
-                                           std::vector<MaterialData> materialData,
+                                           MeshData &&data,
                                            std::string filePath);
 
     // ========================================================================
     // 成员
     // ========================================================================
 
-    std::vector<Vertex>   m_Vertices;     ///< CPU 端顶点数据
-    std::vector<uint32_t> m_Indices;      ///< CPU 端索引数据
-    std::vector<SubMesh>  m_SubMeshes;    ///< 子网格列表（空 = 单整体网格）
-    std::vector<MaterialData> m_MaterialData; ///< 从 MTL 捕获的材质数据（LoadFromFile 填充）
-    std::string           m_FilePath;     ///< 源文件路径（LoadFromFile 时有值）
+    std::vector<SubMesh>  m_SubMeshes;      ///< 渲染范围（含 defaultMaterial 指针）
+    std::vector<MaterialData> m_MaterialData; ///< 从 MTL 捕获的材质数据（加载时填充）
+    uint32_t m_VertexCount = 0;             ///< 顶点数量摘要（替代整份 CPU 顶点数组）
+    uint32_t m_IndexCount  = 0;             ///< 索引数量摘要（替代整份 CPU 索引数组）
+    std::string           m_FilePath;       ///< 源文件路径（从文件加载时有值）
 
     std::unique_ptr<VulkanBuffer> m_VertexBuffer; ///< GPU 顶点缓冲
     std::unique_ptr<VulkanBuffer> m_IndexBuffer;  ///< GPU 索引缓冲

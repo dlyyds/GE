@@ -5,18 +5,46 @@
 
 #include "Render/MeshManager.h"
 
+#include "Render/ModelLoader.h"
 #include "Render/AsyncUploadManager.h"
 #include "Render/MaterialManager.h"
 #include "Render/TextureManager.h"
 
 #include "Render/VulkanBase/VulkanDevice.h"
+#include "Render/VulkanBase/VulkanCommandBuffer.h"
 #include "Core/Log.h"
 
 #include <glm/glm.hpp>
 
 #include <filesystem>
+#include <memory>
 
 namespace GE {
+
+// ============================================================================
+// 异步加载共享数据容器（decode / upload / finalize 三阶段间传递）
+// ============================================================================
+
+/**
+ * @brief 网格异步加载共享数据容器（decode / upload / finalize 三阶段间传递）。
+ *
+ * 由主线程组装参数，后台线程写入 decode / upload 结果，最终主线程 finalize 读取。
+ * 经 shared_ptr 在阶段回调间共享，保证后台只产出局部对象（不持 Mesh 裸指针），
+ * 所有写 Mesh 成员的动作都收敛到主线程 finalize。data 在 finalize 注入 Mesh 时
+ * 只回收摘要（子网格/材质数据/计数），vertices/indices 随之释放。
+ */
+struct AsyncMeshLoadData {
+    bool parsed = false; ///< 文件解析是否成功（decode 写入）
+
+    // decode 输出（后台线程写入）
+    MeshData data; ///< 解析/几何产物（已含切线）
+
+    // upload 输出（后台线程写入，主线程 finalize 消费）
+    std::unique_ptr<VulkanBuffer> stagingVB; ///< 顶点 staging buffer（GPU 用完后随桶释放）
+    std::unique_ptr<VulkanBuffer> stagingIB; ///< 索引 staging buffer（GPU 用完后随桶释放）
+    std::unique_ptr<VulkanBuffer> vertexBuffer; ///< 后台创建的本地顶点缓冲
+    std::unique_ptr<VulkanBuffer> indexBuffer; ///< 后台创建的本地索引缓冲
+};
 
 MeshManager::MeshManager(VulkanDevice &device, MaterialManager &materialManager,
                          TextureManager &textureManager, AsyncUploadManager &upload)
@@ -128,13 +156,20 @@ Mesh *MeshManager::Load(const std::string &filepath) {
         return nullptr;
     }
 
-    // 内置几何体：体积小、生成瞬时完成且被编辑器即时消费，保持同步立即就绪
-    if (Mesh::IsBuiltinPath(filepath)) {
-        auto mesh = Mesh::CreateBuiltin(*m_Device, Mesh::GetBuiltinType(filepath));
+    // 内置几何体：体积小、生成瞬时完成且被编辑器即时消费，保持同步立即就绪。
+    // 几何数据由 ModelLoader 生成，装配（切线 + 上传 + 摘要）由 Mesh::Create 完成。
+    if (IsBuiltinPath(filepath)) {
+        MeshData data;
+        if (!GenerateBuiltinMeshData(GetBuiltinType(filepath), data)) {
+            GE_CORE_WARN("MeshManager: 内置网格创建失败: {}", filepath);
+            return nullptr;
+        }
+        auto mesh = Mesh::Create(*m_Device, std::move(data));
         if (!mesh) {
             GE_CORE_WARN("MeshManager: 内置网格创建失败: {}", filepath);
             return nullptr;
         }
+        mesh->SetFilePath(filepath); // "builtin:<type>"
         BuildSubMeshMaterials(*mesh, filepath);
         Mesh *raw = mesh.get();
         m_Meshes[filepath] = std::move(mesh);
@@ -149,15 +184,76 @@ Mesh *MeshManager::Load(const std::string &filepath) {
         return nullptr;
     }
 
-    // 材质构建在数据安装完成后、置就绪前于主线程 finalize 中执行
-    auto shell = Mesh::LoadFromFileAsync(*m_Device, *m_AsyncUpload, filepath,
-                                         [this, filepath](Mesh &mesh) {
-                                             BuildSubMeshMaterials(mesh, filepath);
-                                         });
-    if (!shell) {
-        GE_CORE_WARN("MeshManager: 网格异步加载提交失败: {}", filepath);
-        return nullptr;
-    }
+    // ── 编排：造空壳 → 组装 UploadTask（decode/upload/finalize）→ 提交 → 注册 ──
+    // 状态机 / 时序与拆分前完全一致：后台解析 + 切线 + 上传，主线程 finalize 经
+    // 槽位门控后注入数据、构建子网格材质、置就绪。
+    auto shell = Mesh::CreateShell(filepath);
+    auto bucket = std::make_shared<AsyncMeshLoadData>();
+    auto slot = shell->GetAsyncSlot();
+
+    AsyncUploadManager::UploadTask task;
+    task.decode = [bucket, filepath] {
+        // 后台：按扩展名分派解析（OBJ/MTL 解析 + 材质数据捕获，纯 CPU）
+        bucket->parsed = ParseModelData(filepath, bucket->data);
+        if (!bucket->parsed) {
+            return;
+        }
+        // 切线计算（供法线贴图 TBN 使用），与同步路径 Mesh::Create 共用共享装配
+        ComputeTangents(bucket->data);
+        GE_CORE_TRACE("网格异步解析完成: {0} ({1} 顶点 / {2} 索引)", filepath,
+                      bucket->data.vertices.size(), bucket->data.indices.size());
+    };
+
+    task.upload = [this, bucket](VulkanCommandBuffer &cmd) {
+        // 后台：创建本地顶点/索引缓冲 + staging，录拷贝命令。
+        // 解析失败时跳过创建；finalize 见到空缓冲会跳过注入（与纹理失败行为一致）
+        if (!bucket->parsed || bucket->data.vertices.empty() || bucket->data.indices.empty()) {
+            return;
+        }
+
+        auto recordCopy = [this, &cmd, bucket](
+            vk::BufferUsageFlagBits usage, vk::DeviceSize size, const void *data,
+            std::unique_ptr<VulkanBuffer> &stagingOut,
+            std::unique_ptr<VulkanBuffer> &dstOut) {
+            stagingOut = std::make_unique<VulkanBuffer>(std::move(
+                VulkanBuffer::create_staging_buffer(*m_Device, size, data)));
+            dstOut = VulkanBufferBuilder(size)
+                .with_usage(usage | vk::BufferUsageFlagBits::eTransferDst)
+                .with_vma_usage(VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE)
+                .build_unique(*m_Device);
+            vk::BufferCopy copyRegion{};
+            copyRegion.size = size;
+            cmd.GetHandle().copyBuffer(stagingOut->GetHandle(), dstOut->GetHandle(), copyRegion);
+        };
+
+        recordCopy(vk::BufferUsageFlagBits::eVertexBuffer,
+                   static_cast<vk::DeviceSize>(bucket->data.vertices.size() * sizeof(Vertex)),
+                   bucket->data.vertices.data(), bucket->stagingVB, bucket->vertexBuffer);
+        recordCopy(vk::BufferUsageFlagBits::eIndexBuffer,
+                   static_cast<vk::DeviceSize>(bucket->data.indices.size() * sizeof(uint32_t)),
+                   bucket->data.indices.data(), bucket->stagingIB, bucket->indexBuffer);
+    };
+
+    task.finalize = [this, filepath, slot, bucket] {
+        // 主线程：空壳已销毁或加载失败（无数据/无缓冲）则跳过注入与材质构建
+        if (slot->abandoned || !slot->target) {
+            return;
+        }
+        Mesh *mesh = slot->target;
+        if (!bucket->parsed || !bucket->vertexBuffer || !bucket->indexBuffer) {
+            return; // 解析/上传失败，保持未就绪（与纹理失败行为一致）
+        }
+        mesh->InstallAsyncData(std::move(bucket->data),
+                               std::move(bucket->vertexBuffer), std::move(bucket->indexBuffer));
+        // 先构建子网格材质再置就绪，保证渲染看到就绪网格时材质已绑定
+        BuildSubMeshMaterials(*mesh, filepath);
+        mesh->MarkReady();
+        GE_CORE_INFO("网格异步就绪: {0} ({1} 顶点 / {2} 索引)", filepath,
+                     mesh->GetVertexCount(), mesh->GetIndexCount());
+    };
+
+    m_AsyncUpload->Submit(std::move(task));
+    GE_CORE_INFO("网格异步加载提交: {0}", filepath);
 
     Mesh *raw = shell.get();
     m_Meshes[filepath] = std::move(shell);

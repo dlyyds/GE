@@ -1,20 +1,23 @@
 /**
  * @file AsyncUploadManager.h
- * @brief 异步上传管理器 —— 专职后台线程 + 环形 in-flight 命令池。
+ * @brief 异步上传管理器 —— 专职后台线程（数量可配置）+ in-flight 槽位池。
  *
  * 解决"主线程加载大资源时阻塞"的问题：把资源的解码（CPU）与 GPU 上传都移到
  * 专职后台线程，主线程只在每帧 Poll() 时回收已完成的上传。
  *
  * 线程模型：
- * - 后台线程：执行 decode（文件解析/像素解码）→ upload（在命令缓冲上录 copy/blit
- *   并提交）。后台线程绝不直接写资源对象（Texture/Mesh）的成员。
+ * - 后台线程（数量可配置）：执行 decode（文件解析/像素解码）→ upload（在命令缓冲上录
+ *   copy/blit 并提交）。后台线程绝不直接写资源对象（Texture/Mesh）的成员。
  * - 主线程：每帧调用 Poll()，检查已完成（fence 置位）的上传，执行 finalize
  *   （创建 view/sampler、安装资源成员、置 ready），并释放 staging buffer。
  *
- * 环形 in-flight：
- * - 固定 kMaxInFlight 个槽位，每槽一个命令池 + 一个持久 fence（复用）。
+ * in-flight 槽位：
+ * - 槽位数为 max(worker_count, kMinSlots)，每槽一个命令池 + 一个持久 fence（复用）。
+ *   多工作线程各自独占一个槽位（槽位归属由互斥锁 + 状态机保证），互不串行。
  * - 槽满时后台线程在 m_slotCv 上阻塞（自然背压），主线程 Poll() 回收后放行。
  * - 主线程 Poll() 用 timeout=0 的非阻塞 fence 查询，从不阻塞主线程。
+ *
+ * 限制：GPU 提交仍经单条图形队列串行（per-queue 锁），多线程的收益来自并行 CPU 解码。
  */
 
 #pragma once
@@ -24,7 +27,6 @@
 
 #include <vulkan/vulkan.hpp>
 
-#include <array>
 #include <atomic>
 #include <condition_variable>
 #include <cstdint>
@@ -33,6 +35,7 @@
 #include <memory>
 #include <mutex>
 #include <thread>
+#include <vector>
 
 namespace GE {
 
@@ -43,7 +46,7 @@ class VulkanQueue;
 /**
  * @brief 资源异步上传管理器。
  *
- * 持有专职上传线程与环形 in-flight 命令池，负责后台解码 + GPU 上传，
+ * 持有专职上传线程（数量可配置）与 in-flight 槽位池，负责后台解码 + GPU 上传，
  * 主线程每帧回收。生命周期通常与 Rendere 一致（由 Renderer 持有）。
  */
 class AsyncUploadManager {
@@ -69,10 +72,12 @@ public:
     };
 
     /**
-     * @brief 构造异步上传管理器，启动专职后台线程。
+     * @brief 构造异步上传管理器，启动指定数量的工作线程。
      * @param device Vulkan 设备引用（须在管理器析构前保持存活）。
+     * @param worker_count 后台工作线程数（默认 1）；in-flight 槽位数取
+     *        max(worker_count, kMinSlots)，确保每个线程有可用槽位。
      */
-    explicit AsyncUploadManager(VulkanDevice &device);
+    explicit AsyncUploadManager(VulkanDevice &device, size_t worker_count = 1);
 
     ~AsyncUploadManager();
 
@@ -127,19 +132,19 @@ private:
         SlotState state = SlotState::Idle;
     };
 
-    /// 后台线程主循环。
+    /// 后台线程主循环（每个工作线程各跑一份）。
     void WorkerLoop();
 
     /// 回收指定槽位（block=false 用 timeout=0 非阻塞查询；block=true 阻塞等待）。
     void ReclaimSlot(Slot &slot, bool block);
 
-    /// 环形 in-flight 槽位数量。
-    static constexpr size_t kMaxInFlight = 5;
+    /// in-flight 槽位数下限（实际槽位数 = max(worker_count, kMinSlots)）。
+    static constexpr size_t kMinSlots = 10;
 
     VulkanDevice &m_Device;
     const VulkanQueue *m_GraphicsQueue = nullptr; ///< 提交用的图形队列（由队列族能力选出）
 
-    std::thread m_Thread;
+    std::vector<std::thread> m_Threads; ///< 工作线程集合（数量 = worker_count）
     std::atomic<bool> m_RequestExit{false}; ///< 请求后台线程退出
 
     mutable std::mutex m_Mutex; ///< 保护队列与槽位状态（const 查询方法 GetInFlightCount 需加锁）
@@ -147,7 +152,7 @@ private:
     std::condition_variable m_slotCv; ///< 槽位空闲通知（背压）
 
     std::deque<UploadTask> m_Queue; ///< 待处理任务队列
-    std::array<Slot, kMaxInFlight> m_Slots; ///< 环形 in-flight 槽位
+    std::vector<Slot> m_Slots; ///< in-flight 槽位集合（尺寸 = max(worker_count, kMinSlots)）
 };
 
 } // namespace GE

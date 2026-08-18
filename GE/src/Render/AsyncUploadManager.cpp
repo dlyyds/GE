@@ -9,6 +9,7 @@
 #include "Render/VulkanBase/VulkanDevice.h"
 #include "Core/Log.h"
 
+#include <algorithm>
 #include <utility>
 
 namespace GE {
@@ -17,7 +18,11 @@ namespace GE {
 // 构造 / 析构
 // ============================================================================
 
-AsyncUploadManager::AsyncUploadManager(VulkanDevice &device) : m_Device(device) {
+AsyncUploadManager::AsyncUploadManager(VulkanDevice &device, size_t worker_count) : m_Device(device) {
+    // 至少 1 个工作线程；槽位数取 worker_count 与下限的较大值，保证每 worker 有可用槽位
+    worker_count = std::max<size_t>(1, worker_count);
+    m_Slots.resize(std::max(worker_count, kMinSlots));
+
     // 选择同时支持 Graphics 的队列族创建命令池，并取出该族的一条图形队列用于提交。
     // 若该族有多个同能力队列实例（如 Family 0 常含 16 个），用第 2 个（queue 1）做
     // 上传，与渲染用的 queue 0 是不同 VkQueue，Vulkan 允许并发提交且不争 per-queue
@@ -34,10 +39,12 @@ AsyncUploadManager::AsyncUploadManager(VulkanDevice &device) : m_Device(device) 
         slot.fence = m_Device.GetHandle().createFence(vk::FenceCreateInfo{});
     }
 
-    // 启动专职后台线程
-    m_Thread = std::thread(&AsyncUploadManager::WorkerLoop, this);
+    // 启动后台工作线程
+    for (size_t i = 0; i < worker_count; ++i) {
+        m_Threads.emplace_back(&AsyncUploadManager::WorkerLoop, this);
+    }
 
-    GE_CORE_INFO("AsyncUploadManager: 后台上传线程已启动 (in-flight={0})", kMaxInFlight);
+    GE_CORE_INFO("AsyncUploadManager: {0} 个工作线程已启动 (in-flight={1})", worker_count, m_Slots.size());
 }
 
 AsyncUploadManager::~AsyncUploadManager() {
@@ -134,7 +141,7 @@ void AsyncUploadManager::Submit(UploadTask task) {
         std::unique_lock<std::mutex> lock(m_Mutex);
         m_Queue.push_back(std::move(task));
     }
-    m_CV.notify_one();
+    m_CV.notify_all(); // 唤醒所有空闲工作线程（突发多任务时并行领取）
 }
 
 void AsyncUploadManager::Poll() {
@@ -218,9 +225,13 @@ void AsyncUploadManager::Shutdown() {
     m_CV.notify_all();
     m_slotCv.notify_all();
 
-    if (m_Thread.joinable()) {
-        m_Thread.join();
+    // join 所有工作线程（退出信号 + 队列空后各自 break）
+    for (auto &t : m_Threads) {
+        if (t.joinable()) {
+            t.join();
+        }
     }
+    m_Threads.clear();
 
     // join 后，剩余在飞上传（Submitted / Reclaiming）阻塞等待完成并回收
     for (auto &slot : m_Slots) {

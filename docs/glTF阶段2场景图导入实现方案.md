@@ -51,13 +51,16 @@ Poll 回收）就是本方案异步导入的骨架——把**整个 glTF 文件�
 ## 3. 总体架构
 
 ```
-┌────────────────────────── 资源层（GPU 无关，不碰 Scene）──────────────────────────┐
+┌──────────────────── 资源层（产出可复用资源，不碰 Scene）───────────────────────────┐
 │  GLTFRawLoader  (GE/src/Render/GLTFRawLoader.cpp)                                  │
 │    · 唯一 include tiny_gltf.h 的 TU（声明用；实现由 tiny_gltf.cc 提供）              │
 │    · ParseGLTF()          .gltf/.glb → GLTFRawFile（nodes/meshes/images/materials）│
-│    · BuildGLTFMesh()      一个 glTF mesh → 一个 Mesh（顶点装配 + GPU 上传）          │
-│    · BuildGLTFMaterial()  一个 glTF 材质 → 一个 Material（含内嵌贴图、linear 纯色）    │
+│                          纯 CPU：解析 + 顶点装配 + 贴图像素解码，无 GPU 依赖        │
+│    · BuildGLTFMesh()      一个 glTF mesh → 一个 Mesh（顶点装配 + GPU 上传，需 device）│
+│    · BuildGLTFMaterial()  一个 glTF 材质 → 一个 Material（含内嵌贴图、linear 纯色，   │
+│                          经 TextureManager 触发贴图加载上传，需 texMgr）            │
 │    · AssignGLTFSubMeshMaterials()  把材质挂到 Mesh 各子网格 defaultMaterial          │
+│    注：分层按「是否碰 Scene」划分，并非不碰 GPU——建 Mesh/Material 必然上 GPU。       │
 └───────────────────────────────────────────────────────────────────────────────────┘
                             ▲                            ▲
                 ImportAsync(decode/upload 调用)      MeshManager::Load("#mesh{n}") 调用

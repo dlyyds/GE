@@ -129,6 +129,36 @@ MeshManager::Load(path)
   └─ 注册缓存
 ```
 
+#### 4.1 为什么必须保留 CreateShell
+
+`Mesh` 的构造函数是私有的（`Mesh() = default` 在 `private:` 下），`AsyncPendingSlot` 成员也只有 Mesh 自己
+能初始化。现在造空壳的代码藏在 `LoadFromFileAsync` 内部：
+
+```cpp
+// 现状（Mesh.cpp 内部，随 LoadFromFileAsync 一起搬走）：
+auto mesh = std::unique_ptr<Mesh>(new Mesh());
+mesh->m_AsyncSlot = std::make_shared<AsyncPendingSlot>();
+mesh->m_AsyncSlot->target = mesh.get();      // 槽位指向自己，finalize 据此安全注入
+```
+
+编排迁入 MeshManager 后，MeshManager **不是 Mesh，调不到私有构造**。所以 Mesh 必须开一个小门，
+把「造壳 + 初始化槽位」封装成公开工厂，让外部也能合法得到带好槽位的空壳：
+
+```cpp
+// Mesh.h，公开工厂
+static std::unique_ptr<Mesh> CreateShell(const std::string &filepath) {
+    auto mesh = std::unique_ptr<Mesh>(new Mesh());       // 私有构造，只能在 Mesh 内部写
+    mesh->m_FilePath = filepath;
+    mesh->m_AsyncSlot = std::make_shared<AsyncPendingSlot>();
+    mesh->m_AsyncSlot->target = mesh.get();
+    return mesh;                                          // 返回的空壳：IsReady()==false
+}
+```
+
+然后再由 MeshManager 组装任务、注册、立刻返回给渲染端（`IsReady()` 为 false 期间渲染跳过）。
+**CreateShell 不是给 Mesh 加新职责**——只是把原来藏在 `LoadFromFileAsync` 里的「造壳」动作留在它该在的
+Mesh，好让搬走编排的 MeshManager 也能合法调用。这是「状态机留在 Mesh」决策的必然配套。
+
 **与方案 B 的区别**：B 是把「空壳」概念整个删掉（完成即产出完整 Mesh）；这里空壳概念、`IsReady()` 门控、
 延迟注入全部保留，只是「谁来调起加载」从 Mesh 挪到 MeshManager。**B 仍是否决状态，不排期。**
 

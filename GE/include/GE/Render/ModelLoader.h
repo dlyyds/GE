@@ -1,13 +1,13 @@
 /**
  * @file ModelLoader.h
- * @brief 模型加载统一入口 —— 格式分派、内置几何生成与共享 CPU 装配。
+ * @brief 模型加载统一入口 —— 格式分派与共享 CPU 装配。
  *
  * 承载从 Mesh 拆出的「加载编排 / 几何生成」职责：
  * - ParseModelData：按扩展名把模型解析分派到各格式解析器（OBJ / 未来的 glTF / FBX），
  *   所有解析器统一输出 MeshData。
  * - ParseOBJData：OBJ 格式解析器（实现在 OBJLoader.cpp）。
- * - GenerateBuiltinMeshData：内置几何体（cube / plane / quad / sphere）CPU 数据生成。
  * - ComputeTangents：格式无关的切线计算（同步装配与异步 decode 共享）。
+ *   （内置几何生成 GenerateBuiltinMeshData 已归 MeshManager。）
  *
  * 消费者的分工：
  * - MeshManager::Load 负责编排（选路、造空壳、组装后台上传任务、finalize 注入）。
@@ -43,18 +43,6 @@ bool ParseModelData(const std::string &filepath, MeshData &out);
  * @return 解析成功且含有效几何数据返回 true
  */
 bool ParseOBJData(const std::string &filepath, MeshData &out);
-
-/**
- * @brief 生成内置几何体 CPU 数据（cube / plane / quad / sphere）。
- *
- * 只产出 vertices / indices（不产出子网格）；Mesh::Create 会确保至少有一个覆盖
- * 全部索引的统一子网格。几何体创建后 SetFilePath("builtin:<type>") 由调用方标记。
- *
- * @param type 内置几何体类型名称
- * @param out  输出（MeshData，仅填充 vertices / indices）
- * @return 未知类型返回 false
- */
-bool GenerateBuiltinMeshData(const std::string &type, MeshData &out);
 
 /**
  * @brief 根据三角形 (位置, UV) 计算每个顶点的切线向量（析取 MeshData 的顶点/索引）。

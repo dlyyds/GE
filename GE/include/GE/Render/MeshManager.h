@@ -149,6 +149,18 @@ private:
      */
     void BuildSubMeshMaterials(Mesh &mesh, const std::string &filepath);
 
+    /**
+     * @brief 生成内置几何体 CPU 数据（cube / plane / quad / sphere）。
+     *
+     * 只产出 vertices / indices（不产出子网格）；Mesh::Create 会确保至少有一个覆盖
+     * 全部索引的统一子网格。几何体创建后 SetFilePath("builtin:<type>") 由调用方标记。
+     *
+     * @param type 内置几何体类型名称
+     * @param out  输出（MeshData，仅填充 vertices / indices）
+     * @return 未知类型返回 false
+     */
+    bool GenerateBuiltinMeshData(const std::string &type, MeshData &out);
+
     VulkanDevice   *m_Device   = nullptr;  ///< Vulkan 设备（不拥有）
     MaterialManager *m_Materials = nullptr; ///< 材质管理器（不拥有）
     TextureManager *m_Textures = nullptr;   ///< 纹理管理器（不拥有）

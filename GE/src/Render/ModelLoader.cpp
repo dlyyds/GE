@@ -4,6 +4,7 @@
  */
 
 #include "Render/ModelLoader.h"
+#include "Render/GEMeshLoader.h"
 
 #include "Core/Log.h"
 
@@ -77,9 +78,43 @@ bool ModelLoader::Parse(const std::string &filepath, MeshData &out) {
     if (ext == ".obj") {
         return ParseOBJ(filepath, out);
     }
+    if (ext == ".gemesh") {
+        return ParseGEMesh(filepath, out);
+    }
 
     GE_CORE_ERROR("[Mesh] 不支持的模型格式 '{}': {}", ext, filepath);
     return false;
+}
+
+// ============================================================================
+// 导出工具：源模型 → .gemesh（解析 + 切线 + 包围盒 + 序列化）
+// ============================================================================
+
+bool ModelLoader::ConvertToGEMesh(const std::string &srcPath, const std::string &outPath,
+                                  std::string *err) {
+    MeshData data;
+    if (!Parse(srcPath, data)) {
+        if (err) {
+            *err = "源模型解析失败: " + srcPath;
+        }
+        return false;
+    }
+
+    // 切线计算（供法线贴图 TBN 使用），保证与运行时加载结果逐字节一致
+    ComputeTangents(data);
+
+    // 计算包围盒（导出器填 META chunk）
+    GEMeshMeta meta;
+    if (!data.vertices.empty()) {
+        meta.aabbMin = meta.aabbMax = data.vertices[0].Position;
+        for (const auto &v : data.vertices) {
+            meta.aabbMin = glm::min(meta.aabbMin, v.Position);
+            meta.aabbMax = glm::max(meta.aabbMax, v.Position);
+        }
+    }
+    meta.sourceAsset = srcPath;
+
+    return SerializeGEMesh(outPath, data, meta, err);
 }
 
 } // namespace GE

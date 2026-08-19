@@ -1,9 +1,14 @@
 # Mesh 引擎内置格式（.gemesh）方案
 
-> 状态：**方案设计（待评审）**
+> 状态：**代码实现中（2026-08-19 起）**
 > 目标：为 Mesh 提供一种**引擎原生二进制格式**，一线加载（CPU 解析与 GPU 上传）最快、内存占用最小，
 > 与现有 `MeshData → Mesh` 装配流水线零摩擦对接，并作为 OBJ / glTF 的**离线烘焙导出目标**。
 > 前置依赖：`Mesh类拆分重构方案.md`（已完成，`MeshData` / `ModelLoader` 分派已就位）
+>
+> 已落地（实现进度，见 §12）：
+> - `GEMeshLoader`（SerializeGEMesh / ParseGEMesh）chunk 托盘编解码
+> - `ModelLoader::Parse` 注册 `.gemesh`，异步链路零改动复用
+> - `ModelLoader::ConvertToGEMesh` 离线导出工具（.obj → .gemesh）
 
 ---
 
@@ -266,3 +271,24 @@ bool SerializeGEMeshData(const std::string &outPath, const MeshData &data,
 - `glTF导入与骨骼动画实施方案.md`：glTF 加载器（`GLTFRawLoader`）可作为导出器输入端之一；骨骼 chunk 与 glTF 蒙皮字段对齐。
 - `Model作为加载唯一入口重构方案.md`：`.gemesh` 遵循统一 `AssetManager::LoadMesh` 入口，不另开加载链路。
 - `异步上传方案.md`：`.gemesh` 异步路径复用 `AsyncUploadManager`，无需改动。
+
+---
+
+## 12. 实现进度
+
+### 已落地（2026-08-19）
+
+| 项 | 文件 | 说明 |
+|---|---|---|
+| 编解码 | `GE/src/Render/GEMeshLoader.cpp` / `GEMeshLoader.h` | `ParseGEMesh`（.gemesh→MeshData）+ `SerializeGEMesh`（MeshData→.gemesh）。chunk 托盘：VERTICES/INDICES/SUBMESHES/MATERIALS/META，字符串池 + 逐处边界校验 |
+| 接入分派 | `ModelLoader.cpp` | `ModelLoader::Parse` 增加 `ext==".gemesh"` → `ParseGEMesh`；`MeshManager::Load` 异步链路零改动 |
+| 导出工具 | `ModelLoader.cpp` | `ModelLoader::ConvertToGEMesh(src, out)`：Parse → ComputeTangents → 包围盒 → SerializeGEMesh |
+
+### 待办
+
+- **构建验证**（用户执行）：`build.bat` 全量；产出 `cube.gemesh` 后 `LoadMesh` 与 `LoadMesh(cube.obj)` 结果比对
+- **编辑器 UI**：`SceneHierarchyPanel.cpp` 的「加载模型文件」文件对话框过滤器加 `*.gemesh` 项
+- **Magic 嗅探**（可选加固）：`ModelLoader::Parse` 当前按扩展名分派；需更强健可改为头部 magic 嗅探
+
+> 格式细节以 `GEMeshLoader.cpp` 头常量与 `SerializeGEMesh`/`ParseGEMesh` 实现为准（v1 固定 little-endian，
+> `Vertex` 48B 直落，字符串池 -1=空）。

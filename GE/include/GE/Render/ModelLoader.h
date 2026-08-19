@@ -50,6 +50,20 @@ public:
      */
     static void ComputeTangents(MeshData &data);
 
+    /**
+     * @brief 把源模型（当前支持 .obj）离线烘焙为 .gemesh（导出工具）。
+     *
+     * 流程：Parse 解析源 → ComputeTangents 计算切线 → 计算包围盒 → SerializeGEMesh。
+     * 产物可直接被 LoadMesh("x.gemesh") 加载（需 .gemesh 已接入 ModelLoader::Parse）。
+     *
+     * @param srcPath  源模型路径（.obj）
+     * @param outPath  输出 .gemesh 路径
+     * @param err      非空时回填错误描述
+     * @return 转换成功返回 true
+     */
+    static bool ConvertToGEMesh(const std::string &srcPath, const std::string &outPath,
+                                std::string *err = nullptr);
+
 private:
     /**
      * @brief OBJ 格式解析器（tinyobjloader），实现在 OBJLoader.cpp。

@@ -68,7 +68,7 @@ std::unique_ptr<Mesh> Mesh::BuildMesh(VulkanDevice &device,
     mesh->m_IndexCount = static_cast<uint32_t>(data.indices.size());
 
     // 计算顶点切线（法线贴图需要），与异步 decode 共用 ModelLoader 的共享装配
-    ComputeTangents(data);
+    ModelLoader::ComputeTangents(data);
 
     mesh->m_VertexBuffer = UploadBuffer(device,
                                         vk::BufferUsageFlagBits::eVertexBuffer,

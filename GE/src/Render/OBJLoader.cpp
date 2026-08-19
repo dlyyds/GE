@@ -3,7 +3,7 @@
  * @brief OBJ 格式解析器（tinyobjloader）—— 独立于 Mesh 的格式加载文件。
  *
  * 与未来 glTF 的 GLTFRawLoader 同构：格式解析器一律独立成文件，统一输出 MeshData，
- * 由 ModelLoader::ParseModelData 按扩展名分派。Mesh 不感知 OBJ/tinyobj 的任何细节。
+ * 由 ModelLoader::Parse 按扩展名分派。Mesh 不感知 OBJ/tinyobj 的任何细节。
  */
 
 #include "Render/ModelLoader.h"
@@ -20,7 +20,7 @@ namespace GE {
 // OBJ 解析器：tinyobj 解析 + 顶点装配/量化/去重 + 子网格拆分 + MTL → MaterialData
 // ============================================================================
 
-bool ParseOBJData(const std::string &filepath, MeshData &out) {
+bool ModelLoader::ParseOBJ(const std::string &filepath, MeshData &out) {
     auto &vertices = out.vertices;
     auto &indices = out.indices;
     auto &subMeshes = out.subMeshes;

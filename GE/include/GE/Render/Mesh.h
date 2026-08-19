@@ -30,7 +30,7 @@ class Material;
 /**
  * @brief 从 OBJ/MTL 捕获的材质数据（POD，与 tinyobjloader 解耦）。
  *
- * 在 ParseOBJData 解析 MTL 时填充（同步 / 异步路径共用），供 MeshManager 按子网格的
+ * 在 ModelLoader::ParseOBJ 解析 MTL 时填充（同步 / 异步路径共用），供 MeshManager 按子网格的
  * materialName 匹配后构建真正的 Material（含纹理加载）。纹理路径已
  * 在此处解析为绝对路径（相对 OBJ 所在目录）。
  */

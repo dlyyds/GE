@@ -323,12 +323,12 @@ Mesh *MeshManager::Load(const std::string &filepath) {
     AsyncUploadManager::UploadTask task;
     task.decode = [bucket, filepath] {
         // 后台：按扩展名分派解析（OBJ/MTL 解析 + 材质数据捕获，纯 CPU）
-        bucket->parsed = ParseModelData(filepath, bucket->data);
+        bucket->parsed = ModelLoader::Parse(filepath, bucket->data);
         if (!bucket->parsed) {
             return;
         }
         // 切线计算（供法线贴图 TBN 使用），与同步路径 Mesh::Create 共用共享装配
-        ComputeTangents(bucket->data);
+        ModelLoader::ComputeTangents(bucket->data);
         GE_CORE_TRACE("网格异步解析完成: {0} ({1} 顶点 / {2} 索引)", filepath,
                       bucket->data.vertices.size(), bucket->data.indices.size());
     };

@@ -17,7 +17,7 @@ namespace GE {
 // 共享装配：计算顶点切线（法线贴图需要 TBN 切线空间）
 // ============================================================================
 
-void ComputeTangents(MeshData &data) {
+void ModelLoader::ComputeTangents(MeshData &data) {
     auto &vertices = data.vertices;
     const auto &indices = data.indices;
 
@@ -65,7 +65,7 @@ void ComputeTangents(MeshData &data) {
 // 解析总入口：按扩展名分派到各格式解析器（同步 / 异步共用）
 // ============================================================================
 
-bool ParseModelData(const std::string &filepath, MeshData &out) {
+bool ModelLoader::Parse(const std::string &filepath, MeshData &out) {
     // 文件扩展名统一转小写，避免 ".OBJ" 之类的混合大小写漏匹配
     std::string ext = std::filesystem::path(filepath).extension().string();
     for (char &c : ext) {
@@ -75,7 +75,7 @@ bool ParseModelData(const std::string &filepath, MeshData &out) {
     }
 
     if (ext == ".obj") {
-        return ParseOBJData(filepath, out);
+        return ParseOBJ(filepath, out);
     }
 
     GE_CORE_ERROR("[Mesh] 不支持的模型格式 '{}': {}", ext, filepath);

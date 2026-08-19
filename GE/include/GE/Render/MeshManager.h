@@ -161,6 +161,19 @@ private:
      */
     bool GenerateBuiltinMeshData(const std::string &type, MeshData &out);
 
+    /** @brief 判断路径是否为内置几何体标识（"builtin:" 前缀）。 */
+    static inline bool IsBuiltinPath(const std::string &path) {
+        return path.rfind("builtin:", 0) == 0;
+    }
+
+    /** @brief 从内置路径中提取类型名（去掉 "builtin:" 前缀）。 */
+    static inline std::string GetBuiltinType(const std::string &path) {
+        if (IsBuiltinPath(path)) {
+            return path.substr(8); // "builtin:" 长度为 8
+        }
+        return {};
+    }
+
     VulkanDevice   *m_Device   = nullptr;  ///< Vulkan 设备（不拥有）
     MaterialManager *m_Materials = nullptr; ///< 材质管理器（不拥有）
     TextureManager *m_Textures = nullptr;   ///< 纹理管理器（不拥有）

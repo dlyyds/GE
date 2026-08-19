@@ -7,7 +7,8 @@
  *   所有解析器统一输出 MeshData。
  * - ParseOBJData：OBJ 格式解析器（实现在 OBJLoader.cpp）。
  * - ComputeTangents：格式无关的切线计算（同步装配与异步 decode 共享）。
- *   （内置几何生成 GenerateBuiltinMeshData 已归 MeshManager。）
+ *   （内置几何生成 GenerateBuiltinMeshData 与 builtin 路径判定 IsBuiltinPath /
+ *   GetBuiltinType 均已归 MeshManager。）
  *
  * 消费者的分工：
  * - MeshManager::Load 负责编排（选路、造空壳、组装后台上传任务、finalize 注入）。
@@ -55,22 +56,5 @@ bool ParseOBJData(const std::string &filepath, MeshData &out);
  * @param data 顶点/索引数据（就地修改 Tangent 字段）
  */
 void ComputeTangents(MeshData &data);
-
-/**
- * @brief 判断路径是否为内置几何体标识（"builtin:" 前缀）。
- */
-inline bool IsBuiltinPath(const std::string &path) {
-    return path.rfind("builtin:", 0) == 0;
-}
-
-/**
- * @brief 从内置路径中提取类型名（去掉 "builtin:" 前缀）。
- */
-inline std::string GetBuiltinType(const std::string &path) {
-    if (IsBuiltinPath(path)) {
-        return path.substr(8); // "builtin:" 长度为 8
-    }
-    return {};
-}
 
 } // namespace GE

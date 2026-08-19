@@ -226,5 +226,18 @@ target_include_directories(${Editor_NAME} PRIVATE
 
 target_link_libraries(${Editor_NAME} PRIVATE ${GE_NAME})
 
+#gemesh CLI（.obj → .gemesh 离线导出工具）
+# ==============================================
+set(GEMeshTools_SRC
+        ${CMAKE_SOURCE_DIR}/tools/gemesh/gemesh_main.cpp
+)
+
+add_executable(gemesh ${GEMeshTools_SRC})
+target_include_directories(gemesh PRIVATE
+        ${CMAKE_SOURCE_DIR}/GE/include
+)
+
+target_link_libraries(gemesh PRIVATE ${GE_NAME})
+
 #共享着色器（GLSL → SPIR-V），Sandbox 与 GE_Editor 均依赖
 add_subdirectory(assets/shaders/glsl)

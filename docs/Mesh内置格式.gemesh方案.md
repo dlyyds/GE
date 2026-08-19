@@ -283,6 +283,7 @@ bool SerializeGEMeshData(const std::string &outPath, const MeshData &data,
 | 编解码 | `GE/src/Render/GEMeshLoader.cpp` / `GEMeshLoader.h` | `ParseGEMesh`（.gemesh→MeshData）+ `SerializeGEMesh`（MeshData→.gemesh）。chunk 托盘：VERTICES/INDICES/SUBMESHES/MATERIALS/META，字符串池 + 逐处边界校验 |
 | 接入分派 | `ModelLoader.cpp` | `ModelLoader::Parse` 增加 `ext==".gemesh"` → `ParseGEMesh`；`MeshManager::Load` 异步链路零改动 |
 | 导出工具 | `ModelLoader.cpp` | `ModelLoader::ConvertToGEMesh(src, out)`：Parse → ComputeTangents → 包围盒 → SerializeGEMesh |
+| CLI 导出器 | `tools/gemesh/gemesh_main.cpp` + 根 `CMakeLists.txt` | `gemesh <src.obj> [out.gemesh]` 独立可执行，链接 GE 复用 ConvertToGEMesh，纯 CPU 无窗口 |
 
 ### 待办
 
@@ -292,3 +293,5 @@ bool SerializeGEMeshData(const std::string &outPath, const MeshData &data,
 
 > 格式细节以 `GEMeshLoader.cpp` 头常量与 `SerializeGEMesh`/`ParseGEMesh` 实现为准（v1 固定 little-endian，
 > `Vertex` 48B 直落，字符串池 -1=空）。
+>
+> 构建后 CLI 位于 `bin/gemesh.exe`，用法：`gemesh models/foo.obj` → 生成 `models/foo.gemesh`。

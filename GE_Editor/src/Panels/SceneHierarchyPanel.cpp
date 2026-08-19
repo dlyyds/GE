@@ -757,10 +757,13 @@ void SceneHierarchyPanel::DrawMeshRendererComponent(MeshRendererComponent &compo
         ImGui::EndCombo();
     }
 
-    // ---- 加载模型文件（.obj）----
-    if (ImGui::Button("加载模型文件 (OBJ)...")) {
+    // ---- 加载模型文件（.obj / .gemesh）----
+    if (ImGui::Button("加载模型文件 (OBJ / GEMESH)...")) {
         std::string path = FileDialogs::OpenFile(
-            "Wavefront OBJ (*.obj)\0*.obj\0All Files (*.*)\0*.*\0");
+            "模型文件 (*.obj;*.gemesh)\0*.obj;*.gemesh\0"
+            "Wavefront OBJ (*.obj)\0*.obj\0"
+            ".gemesh 内置格式 (*.gemesh)\0*.gemesh\0"
+            "All Files (*.*)\0*.*\0");
         if (!path.empty()) {
             Mesh *mesh = meshMgr.Load(path);
             if (mesh) {
@@ -773,7 +776,7 @@ void SceneHierarchyPanel::DrawMeshRendererComponent(MeshRendererComponent &compo
     }
     // 加载失败提示
     if (ImGui::BeginPopup("MeshLoadFailed")) {
-        ImGui::Text("网格加载失败（请确认是合法的 .obj 文件）");
+        ImGui::Text("网格加载失败（请确认是合法的 .obj 或 .gemesh 文件）");
         if (ImGui::Button("OK")) {
             ImGui::CloseCurrentPopup();
         }

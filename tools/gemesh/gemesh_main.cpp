@@ -14,6 +14,7 @@
  */
 
 #include "Render/ModelLoader.h"
+#include "Core/Log.h"
 
 #include <iostream>
 #include <string>
@@ -40,6 +41,9 @@ void PrintVersion() {
 } // namespace
 
 int main(int argc, char **argv) {
+    // 初始化 spdlog logger（GE_CORE_* 宏依赖），否则序列化收尾日志空指针崩溃
+    GE::Log::Init();
+
     std::string src, out;
 
     for (int i = 1; i < argc; ++i) {

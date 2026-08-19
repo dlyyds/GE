@@ -125,6 +125,33 @@ MeshManager::Load("foo.gemesh")
 - 实现很轻：`ParseModelData` 顶部读 8 字节，`memcmp` 前 5 字节等于 `"GEMSH"` 即进入 `.gemesh` 分支，
   否则落到 RGB 分派。
 
+### 4.2.1 场景序列化（零改动）
+
+**结论：场景序列化不需要任何改动**，`.gemesh` 自动无缝接入。
+
+原因：`SceneSerializer` 对网格只做一件事——存/取**文件路径字符串**：
+
+```cpp
+// 序列化（SceneSerializer.cpp:455-457）：只落盘路径
+if (mc.MeshPtr && !mc.MeshPtr->GetFilePath().empty()) {
+    meshNode["Mesh"] = mc.MeshPtr->GetFilePath();          // 存 "foo.gemesh"
+}
+
+// 反序列化（SceneSerializer.cpp:713-716）：按路径交给统一入口
+if (meshNode["Mesh"]) {
+    std::string meshPath = meshNode["Mesh"].as<std::string>("");
+    mc.MeshPtr = Renderer::GetAssetManager().LoadMesh(meshPath);  // LoadMesh("foo.gemesh")
+}
+```
+
+`LoadMesh` → `MeshManager::Load`（按路径去重）→ `ParseModelData` 分派。只要 `.gemesh`
+完成了 §4 的 magic 嗅探接线，`LoadMesh("foo.gemesh")` 自然命中新解析器，**路径本身就是格式的
+身份标识**，序列化代码对 `.gemesh` 和 `.obj` 一视同仁，无需 fork。
+
+需要确认的**唯一约束**：`Mesh` 的 `GetFilePath()` 返回的必须是与加载时一致的 `.gemesh` 路径。
+`ModelLoader` 的 `ParseModelData` 在解析时用入参 `filepath` 回填到 `Mesh::SetFilePath`（与 OBJ 相同逻辑），
+因此烘焙出的 `.gemesh` 路径即为落盘值，天然一致，无需额外处理。
+
 ### 4.3 错误语义
 
 - 文件不存在 / 无 GEMSH magic / chunk 表越界 / 字符串池越界 → 返回 `false`，沿用现有 `nullptr` 失败语义。

@@ -8,6 +8,7 @@
 #include "Scene/GLTFSceneImporter.h"
 
 #include "Scene/Scene.h"
+#include "Scene/Entity.h"
 #include "Scene/Components.h"
 #include "Render/GLTFLoader.h"
 #include "Render/MeshManager.h"
@@ -105,7 +106,9 @@ bool GLTFSceneImporter::Import(Scene &scene, MeshManager &meshManager,
     }
 
     // DFS：递归建实体树（parent 为空 = 根）
-    std::function<Entity(int, Entity)> buildNode = [&](int nodeIdx, Entity parent) -> Entity {
+    // 先声明后赋值的 std::function，规避 MSVC 对「自引用 lambda 与声明同处一行」的解析问题
+    std::function<Entity(int, Entity)> buildNode;
+    buildNode = [&](int nodeIdx, Entity parent) -> Entity {
         if (nodeIdx < 0 || nodeIdx >= static_cast<int>(model.nodes.size())) {
             return Entity{};
         }

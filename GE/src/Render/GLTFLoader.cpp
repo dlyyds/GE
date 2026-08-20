@@ -18,7 +18,7 @@
 #include "Render/Mesh.h"
 #include "Core/Log.h"
 
-#include "tiny_gltf.h"
+#include "tinygltf/tiny_gltf.h"
 
 #include <filesystem>
 #include <vector>

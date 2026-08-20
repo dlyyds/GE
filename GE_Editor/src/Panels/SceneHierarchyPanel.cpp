@@ -317,7 +317,7 @@ void SceneHierarchyPanel::DrawComponents(Entity entity) {
         [](auto &c) { DrawCameraComponent(c); });
 
     DrawComponent<MeshRendererComponent>("Mesh Renderer", entity,
-        [](auto &c) { DrawMeshRendererComponent(c); });
+        [this](auto &c) { DrawMeshRendererComponent(c, m_Context); });
 
     DrawComponent<SpriteRendererComponent>("Sprite Renderer", entity,
         [](auto &c) { DrawSpriteRendererComponent(c); });
@@ -702,7 +702,8 @@ static void DrawSubMeshMaterialEditor(MeshRendererComponent &comp, size_t index,
     }
 }
 
-void SceneHierarchyPanel::DrawMeshRendererComponent(MeshRendererComponent &component) {
+void SceneHierarchyPanel::DrawMeshRendererComponent(MeshRendererComponent &component,
+                                                    Scene *scene) {
     ImGui::ColorEdit4("Color", glm::value_ptr(component.Color));
 
     // ---- 网格选择下拉框 ----
@@ -792,7 +793,7 @@ void SceneHierarchyPanel::DrawMeshRendererComponent(MeshRendererComponent &compo
             "glTF 场景 (*.gltf;*.glb)\0*.gltf;*.glb\0"
             "All Files (*.*)\0*.*\0");
         if (!path.empty()) {
-            if (!GLTFSceneImporter::Import(*m_Context, meshMgr, path)) {
+            if (scene && !GLTFSceneImporter::Import(*scene, meshMgr, path)) {
                 GE_CORE_WARN("SceneHierarchyPanel: glTF 场景导入失败: {0}", path);
                 ImGui::OpenPopup("GLTFImportFailed");
             }

@@ -81,6 +81,10 @@ bool ModelLoader::Parse(const std::string &filepath, MeshData &out) {
     if (ext == ".gemesh") {
         return ParseGEMesh(filepath, out);
     }
+    if (ext == ".gltf" || ext == ".glb") {
+        // 默认解析第 0 个 mesh（单一网格资源语义）；多 mesh 由上层按 meshIndex 逐个取
+        return ParseGLTF(filepath, 0, out);
+    }
 
     GE_CORE_ERROR("[Mesh] 不支持的模型格式 '{}': {}", ext, filepath);
     return false;

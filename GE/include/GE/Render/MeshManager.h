@@ -78,6 +78,20 @@ public:
     Mesh *Load(const std::string &filepath);
 
     /**
+     * @brief 同步加载 glTF（.gltf/.glb）指定 mesh 并缓存。
+     *
+     * 与 Load 不同：本方法同步解析 + 上传，返回立即就绪的 Mesh，供 glTF 场景导入器
+     * （GLTFSceneImporter）按 mesh 粒度复用 / 去重缓存。缓存键规则：
+     *   - mesh 0 → 文件路径本身（与 Load("foo.gltf") 共享同一份，避免 GPU 重复）
+     *   - mesh N>0 → "foo.gltf#N" 复合键
+     *
+     * @param filepath  glTF 文件路径
+     * @param meshIndex 目标 mesh 索引
+     * @return 网格指针（就绪），失败返回 nullptr
+     */
+    Mesh *LoadGLTFMesh(const std::string &filepath, size_t meshIndex);
+
+    /**
      * @brief 获取已加载的网格（不触发加载）。
      *
      * @param filepath 内置标识或模型文件路径

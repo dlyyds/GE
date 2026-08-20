@@ -51,6 +51,29 @@ public:
     static void ComputeTangents(MeshData &data);
 
     /**
+     * @brief 解析 glTF 文件（.gltf / .glb）中的第 meshIndex 个 mesh 为一份 MeshData。
+     *
+     * 一个 tinygltf::Mesh 对应一份 MeshData，其多个 primitive 各自装配为一段连续
+     * 子网格区间（firstVertex/vertexCount 指向段起点）。顶点量化/去重复用现有工具，
+     * 缺 TANGENT 时补 ComputeTangents。材质按 metallic-roughness 映射为 MaterialData，
+     * 贴图 URI 相对 glTF 所在目录解析为绝对路径。
+     *
+     * @param filepath  glTF 文件路径
+     * @param meshIndex 要解析的 mesh 索引（0 起始）
+     * @param out       解析输出（MeshData）
+     * @return 解析成功且含有效几何数据返回 true
+     */
+    static bool ParseGLTF(const std::string &filepath, size_t meshIndex, MeshData &out);
+
+    /**
+     * @brief 读取 glTF 文件的 mesh 数量（多 mesh 遍历 / 校验用）。
+     *
+     * @param filepath glTF 文件路径
+     * @return mesh 数量，文件非 glTF 或加载失败返回 0
+     */
+    static size_t GetGLTFMeshCount(const std::string &filepath);
+
+    /**
      * @brief 把源模型（当前支持 .obj）离线烘焙为 .gemesh（导出工具）。
      *
      * 流程：Parse 解析源 → ComputeTangents 计算切线 → 计算包围盒 → SerializeGEMesh。

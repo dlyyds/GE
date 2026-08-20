@@ -19,6 +19,7 @@
 #include "GE/Render/Renderer.h"
 #include "GE/Render/Mesh.h"
 #include "GE/Render/MeshManager.h"
+#include "GE/Scene/GLTFSceneImporter.h"
 #include "GE/Utils/PlatformUtils.h"
 
 #include <glm/gtc/type_ptr.hpp>
@@ -757,12 +758,13 @@ void SceneHierarchyPanel::DrawMeshRendererComponent(MeshRendererComponent &compo
         ImGui::EndCombo();
     }
 
-    // ---- 加载模型文件（.obj / .gemesh）----
-    if (ImGui::Button("加载模型文件 (OBJ / GEMESH)...")) {
+    // ---- 加载模型文件（.obj / .gemesh / .gltf / .glb）----
+    if (ImGui::Button("加载模型文件 (OBJ / GEMESH / GLTF)...")) {
         std::string path = FileDialogs::OpenFile(
-            "模型文件 (*.obj;*.gemesh)\0*.obj;*.gemesh\0"
+            "模型文件 (*.obj;*.gemesh;*.gltf;*.glb)\0*.obj;*.gemesh;*.gltf;*.glb\0"
             "Wavefront OBJ (*.obj)\0*.obj\0"
             ".gemesh 内置格式 (*.gemesh)\0*.gemesh\0"
+            "glTF (*.gltf;*.glb)\0*.gltf;*.glb\0"
             "All Files (*.*)\0*.*\0");
         if (!path.empty()) {
             Mesh *mesh = meshMgr.Load(path);
@@ -776,7 +778,28 @@ void SceneHierarchyPanel::DrawMeshRendererComponent(MeshRendererComponent &compo
     }
     // 加载失败提示
     if (ImGui::BeginPopup("MeshLoadFailed")) {
-        ImGui::Text("网格加载失败（请确认是合法的 .obj 或 .gemesh 文件）");
+        ImGui::Text("网格加载失败（请确认是合法的 .obj / .gemesh / .gltf / .glb 文件）");
+        if (ImGui::Button("OK")) {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+
+    // ---- 导入 glTF 场景（保留 node 层级与变换，挂到当前选中实体下）----
+    ImGui::Separator();
+    if (ImGui::Button("导入 glTF 场景...")) {
+        std::string path = FileDialogs::OpenFile(
+            "glTF 场景 (*.gltf;*.glb)\0*.gltf;*.glb\0"
+            "All Files (*.*)\0*.*\0");
+        if (!path.empty()) {
+            if (!GLTFSceneImporter::Import(*m_Context, meshMgr, path)) {
+                GE_CORE_WARN("SceneHierarchyPanel: glTF 场景导入失败: {0}", path);
+                ImGui::OpenPopup("GLTFImportFailed");
+            }
+        }
+    }
+    if (ImGui::BeginPopup("GLTFImportFailed")) {
+        ImGui::Text("glTF 场景导入失败（请确认是合法的 .gltf / .glb 文件）");
         if (ImGui::Button("OK")) {
             ImGui::CloseCurrentPopup();
         }

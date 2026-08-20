@@ -6,6 +6,7 @@
 #include "Render/MeshManager.h"
 
 #include "Render/ModelLoader.h"
+#include "Render/GLTFLoader.h"
 #include "Render/AsyncUploadManager.h"
 #include "Render/MaterialManager.h"
 #include "Render/TextureManager.h"
@@ -387,6 +388,42 @@ Mesh *MeshManager::Load(const std::string &filepath) {
     Mesh *raw = shell.get();
     m_Meshes[filepath] = std::move(shell);
     return raw;
+}
+
+// ============================================================================
+// 同步加载 glTF 指定 mesh（场景导入器按 mesh 粒度复用 / 去重）
+// ============================================================================
+
+Mesh *MeshManager::LoadGLTFMesh(const std::string &filepath, size_t meshIndex) {
+    if (!m_Device || !m_Materials || !m_Textures) {
+        GE_CORE_WARN("MeshManager: 无法加载 glTF mesh {}（缺少渲染子系统）", filepath);
+        return nullptr;
+    }
+
+    // mesh 0 复用文件路径本身为键（与 Load("foo.gltf") 共享一份 GPU 网格）；
+    // mesh N>0 用 "foo.gltf#N" 复合键，供多 mesh 场景导入去重。
+    const std::string key = (meshIndex == 0)
+        ? filepath
+        : (filepath + "#" + std::to_string(meshIndex));
+
+    if (Mesh *existing = Get(key)) {
+        return existing;
+    }
+
+    MeshData data;
+    if (!GLTF::BuildMeshData(filepath, meshIndex, data)) {
+        GE_CORE_WARN("MeshManager: glTF mesh 解析失败: {}#{}", filepath, meshIndex);
+        return nullptr;
+    }
+
+    auto mesh = Mesh::Create(*m_Device, std::move(data)); // BuildMesh 内部统一 ComputeTangents
+    if (!mesh) {
+        GE_CORE_WARN("MeshManager: glTF mesh 创建失败: {}", key);
+        return nullptr;
+    }
+    mesh->SetFilePath(key);
+    BuildSubMeshMaterials(*mesh, key);
+    return Register(key, std::move(mesh));
 }
 
 // ============================================================================

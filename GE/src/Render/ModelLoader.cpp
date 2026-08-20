@@ -26,6 +26,12 @@ void ModelLoader::ComputeTangents(MeshData &data) {
     std::vector<glm::vec3> tan2(vertices.size(), glm::vec3(0.0f));
 
     for (size_t i = 0; i + 2 < indices.size(); i += 3) {
+        // 防御：索引越界（损坏的源模型 / 解析器 bug）时跳过该三角形，避免越界崩溃
+        if (indices[i + 0] >= vertices.size() ||
+            indices[i + 1] >= vertices.size() ||
+            indices[i + 2] >= vertices.size()) {
+            continue;
+        }
         const auto &v0 = vertices[indices[i + 0]];
         const auto &v1 = vertices[indices[i + 1]];
         const auto &v2 = vertices[indices[i + 2]];
@@ -35,7 +41,12 @@ void ModelLoader::ComputeTangents(MeshData &data) {
         glm::vec2 duv1 = v1.TexCoord - v0.TexCoord;
         glm::vec2 duv2 = v2.TexCoord - v0.TexCoord;
 
-        float r = 1.0f / (duv1.x * duv2.y - duv2.x * duv1.y);
+        // 退化三角形（UV 共线 / 面积为零）会导致除零 → NaN，切线失稳但不应崩溃
+        float denom = duv1.x * duv2.y - duv2.x * duv1.y;
+        if (denom == 0.0f) {
+            continue;
+        }
+        float r = 1.0f / denom;
         glm::vec3 tangent = (edge1 * duv2.y - edge2 * duv1.y) * r;
         glm::vec3 bitangent = (edge2 * duv1.x - edge1 * duv2.x) * r;
 

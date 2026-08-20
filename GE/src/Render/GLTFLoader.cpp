@@ -48,7 +48,16 @@ const uint8_t *AccessorBasePtr(const tinygltf::Model &m, const tinygltf::Accesso
     }
     const auto &buf = m.buffers[bv.buffer];
     const size_t off = bv.byteOffset + acc.byteOffset;
-    if (off >= buf.data.size()) {
+    // 校验元素区整体落在 buffer 内（base + count*stride），而非只查起点。
+    // bufferView 的 byteLength 可能小于 count*stride（sparse / 被钳制的 accessor），
+    // 仅查起点会导致读越界、把垃圾数据喂给后续索引/顶点装配，最终越界崩溃。
+    // ByteStride 在 byteStride==0 时按紧排返回元素字节大小，等效元素步长恒有值。
+    const int byteStride = acc.ByteStride(bv);
+    if (byteStride <= 0) {
+        return nullptr;
+    }
+    if (off >= buf.data.size() ||
+        acc.count > (buf.data.size() - off) / static_cast<size_t>(byteStride)) {
         return nullptr;
     }
     return buf.data.data() + off;
@@ -304,6 +313,11 @@ bool BuildMesh(const tinygltf::Model &m, size_t mi, const std::string &filepath,
         for (size_t i = 0; i < idxCount; ++i) {
             uint32_t src = (prim.indices >= 0) ? ReadIndex(m, prim.indices, i)
                                                : static_cast<uint32_t>(i);
+            // 钳制越界索引（sparse / 损坏的 accessor 会给出 >= vertexCnt 的垃圾值），
+            // 防止 localIdx[src] 越界——越界值会经索引数组传导到 ComputeTangents 崩溃。
+            if (src >= localIdx.size()) {
+                src = 0;
+            }
             out.indices.push_back(firstVertex + localIdx[src]);
         }
 

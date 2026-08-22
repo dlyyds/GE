@@ -22,10 +22,19 @@ set(GE_NAME GE)
 set(Sandbox_NAME Sandbox)
 set(Editor_NAME GE_Editor)
 
+# AddressSanitizer 开关（仅 MSVC 有效）
+# ON 时对 GE/可执行目标 /fsanitize=address 编译+链接，必须关增量链接。
+# 用法: cmake -B bin-int-msvc -DGE_ENABLE_ASAN=ON ...
+option(GE_ENABLE_ASAN "Enable AddressSanitizer (MSVC)" OFF)
+
 if (MSVC)
     add_compile_options(/Zc:__cplusplus)
     add_compile_options(/Zc:preprocessor)
     add_compile_options(/EHsc)
+    if (GE_ENABLE_ASAN)
+        add_compile_options(/fsanitize=address)
+        add_link_options(/fsanitize=address /INCREMENTAL:NO)
+    endif ()
 endif ()
 
 

@@ -22,19 +22,14 @@ set(GE_NAME GE)
 set(Sandbox_NAME Sandbox)
 set(Editor_NAME GE_Editor)
 
-# AddressSanitizer 开关（仅 MSVC 有效）
-# ON 时对 GE/可执行目标 /fsanitize=address 编译+链接，必须关增量链接。
-# 用法: cmake -B bin-int-msvc -DGE_ENABLE_ASAN=ON ...
-option(GE_ENABLE_ASAN "Enable AddressSanitizer (MSVC)" OFF)
 
 if (MSVC)
     add_compile_options(/Zc:__cplusplus)
     add_compile_options(/Zc:preprocessor)
     add_compile_options(/EHsc)
-    if (GE_ENABLE_ASAN)
-        add_compile_options(/fsanitize=address)
-        add_link_options(/fsanitize=address /INCREMENTAL:NO)
-    endif ()
+    add_compile_options(/fsanitize=address)
+    add_link_options(/fsanitize=address /INCREMENTAL:NO)
+
 endif ()
 
 
@@ -46,6 +41,21 @@ add_subdirectory(GE/third_party/ImGuizmo)
 
 
 add_subdirectory(GE/third_party/tracy)
+
+# SPIRV-Cross（源码编译，替代 Vulkan SDK 预编译库）
+# 引擎只用 CompilerGLSL，因此仅启用 GLSL，关闭 HLSL/MSL/CPP/C-API/CLI/测试加速构建。
+set(SPIRV_CROSS_SHARED OFF CACHE BOOL "" FORCE)
+set(SPIRV_CROSS_STATIC ON CACHE BOOL "" FORCE)
+set(SPIRV_CROSS_CLI OFF CACHE BOOL "" FORCE)
+set(SPIRV_CROSS_SKIP_INSTALL ON CACHE BOOL "" FORCE)
+set(SPIRV_CROSS_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
+set(SPIRV_CROSS_ENABLE_HLSL OFF CACHE BOOL "" FORCE)
+set(SPIRV_CROSS_ENABLE_MSL OFF CACHE BOOL "" FORCE)
+set(SPIRV_CROSS_ENABLE_CPP OFF CACHE BOOL "" FORCE)
+set(SPIRV_CROSS_ENABLE_REFLECT OFF CACHE BOOL "" FORCE)
+set(SPIRV_CROSS_ENABLE_C_API OFF CACHE BOOL "" FORCE)
+set(SPIRV_CROSS_ENABLE_UTIL OFF CACHE BOOL "" FORCE)
+add_subdirectory(GE/third_party/SPIRV-Cross)
 
 # GE 层 Profiler 开关（控制 GE_PROFILE_* 宏，独立于 Tracy 的 TRACY_ENABLE）
 # ON 时向编译定义传入 GE_PROFILE_ENABLE=1，OFF 时传入 =0。
@@ -125,7 +135,7 @@ target_include_directories(${GE_NAME} PUBLIC
         ${CMAKE_SOURCE_DIR}/GE/third_party/stb
         ${CMAKE_SOURCE_DIR}/GE/third_party/tinyobjloader
         ${Vulkan_INCLUDE_DIRS}
-        ${Vulkan_INCLUDE_DIRS}/spirv_cross
+        ${CMAKE_SOURCE_DIR}/GE/third_party/SPIRV-Cross
 )
 
 target_compile_definitions(${GE_NAME} PUBLIC
@@ -152,15 +162,9 @@ target_link_libraries(${GE_NAME} PUBLIC
         ${Vulkan_LIBRARIES}
         Jolt
         ktx
+        spirv-cross-glsl
+        spirv-cross-core
 )
-
-# 链接 Vulkan SDK 自带的 SPIRV-Cross 预编译库
-if (DEFINED ENV{VULKAN_SDK})
-    target_link_libraries(${GE_NAME} PUBLIC
-            "$ENV{VULKAN_SDK}/Lib/spirv-cross-glsl$<$<CONFIG:Debug>:d>.lib"
-            "$ENV{VULKAN_SDK}/Lib/spirv-cross-core$<$<CONFIG:Debug>:d>.lib"
-    )
-endif ()
 
 
 # 开启预编译头 PCH

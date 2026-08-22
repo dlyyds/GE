@@ -292,7 +292,9 @@ bool BuildMesh(const tinygltf::Model &m, size_t mi, const std::string &filepath,
             auto tIt = prim.attributes.find("TEXCOORD_0");
             if (tIt != prim.attributes.end()) {
                 ReadFloatAttr(m, tIt->second, i, v.TexCoord);
-                v.TexCoord.y = 1.0f - v.TexCoord.y; // glTF UV 左上原点 → 引擎习惯
+                // glTF UV 原点在左上（V=0 顶部），引擎 stb + Vulkan 上传保持
+                // 顶部原点（无 flip_vertically + 像素首行=图片顶部），故不翻转；
+                // OBJ 的 v 在底部才需要 1-y（见 OBJLoader）。
             }
             auto gIt = prim.attributes.find("TANGENT");
             if (gIt != prim.attributes.end()) {

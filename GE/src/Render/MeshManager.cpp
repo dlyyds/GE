@@ -123,9 +123,15 @@ static void ApplyMaterialData(Material &mat, const MaterialData &md,
         }
     }
 
-    // 金属-粗糙度贴图：OBJ 的 map_Pm / map_Pr 是两张独立灰度图，无法直接
-    // 合并进 glTF 惯例的 MR 纹理（B=金属度, G=粗糙度），此处暂不加载，
-    // 仅用标量 metallic/roughness（已在上方设置）。
+    // 金属-粗糙度贴图：glTF 惯例合并贴图（B=金属度, G=粗糙度，Unorm 数据不解码）。
+    // 有 MR 贴图则绑定；无则保留槽位为空，Renderer 侧绑定默认 (G=1,B=1) 纹理
+    // 回退到标量 metallic/roughness。OBJ 的 map_Pm/map_Pr 是两张独立灰度图，
+    // 无法直接合并进 glTF 惯例的 MR 纹理，此处暂不加载（仅用标量）。
+    if (!md.metallicRoughnessMap.empty()) {
+        if (Texture *t = texMgr.LoadAsync(md.metallicRoughnessMap)) {
+            mat.SetTexture(Material::MetallicRoughness, t);
+        }
+    }
     (void)md.metallicMap;
     (void)md.roughnessMap;
 }

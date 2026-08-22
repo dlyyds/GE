@@ -48,8 +48,9 @@ struct MaterialData {
     std::string albedoMap;    ///< 漫反射贴图（map_Kd，绝对路径）
     std::string normalMap;    ///< 法线贴图（map_bump / norm，绝对路径）
     std::string emissiveMap;  ///< 自发光贴图（map_Ke，绝对路径）
-    std::string metallicMap;  ///< 金属度贴图（map_Pm，绝对路径）
-    std::string roughnessMap; ///< 粗糙度贴图（map_Pr，绝对路径）
+    std::string metallicMap;  ///< 金属度贴图（map_Pm，OBJ 独立灰度图，绝对路径）
+    std::string roughnessMap; ///< 粗糙度贴图（map_Pr，OBJ 独立灰度图，绝对路径）
+    std::string metallicRoughnessMap; ///< 金属-粗糙度合并贴图（glTF 惯例：B=金属度, G=粗糙度，绝对路径）
 };
 
 /**

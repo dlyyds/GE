@@ -210,6 +210,7 @@ static void AppendGLTFMaterial(const tinygltf::Model &m, int materialIdx,
     md.albedoMap   = resTex(albedoTexIdx);
     md.normalMap   = resTex(mat.normalTexture.index);
     md.emissiveMap = resTex(mat.emissiveTexture.index);
+    md.metallicRoughnessMap = resTex(pbr.metallicRoughnessTexture.index);
 
     out.push_back(std::move(md));
 }

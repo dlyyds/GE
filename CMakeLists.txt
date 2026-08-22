@@ -27,8 +27,8 @@ if (MSVC)
     add_compile_options(/Zc:__cplusplus)
     add_compile_options(/Zc:preprocessor)
     add_compile_options(/EHsc)
-    add_compile_options(/fsanitize=address)
-    add_link_options(/fsanitize=address /INCREMENTAL:NO)
+    # add_compile_options(/fsanitize=address)
+    # add_link_options(/fsanitize=address /INCREMENTAL:NO)
 
 endif ()
 
@@ -148,6 +148,10 @@ target_compile_definitions(${GE_NAME} PUBLIC
         VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1
         VULKAN_HPP_NO_STRUCT_CONSTRUCTORS
         VMA_DYNAMIC_VULKAN_FUNCTIONS=1
+        # tinygltf：不把图像解码成 RGBA 像素内存（引擎 glTF 贴图加载由纹理子系统单独做）
+        TINYGLTF_NO_STB_IMAGE
+        # tinygltf：不读磁盘上的外部 .png/.jpg，仅保留 glb 内嵌 buffer 图像二进制块
+        TINYGLTF_NO_EXTERNAL_IMAGE
         GE_PROFILE_ENABLE=$<IF:$<BOOL:${GE_PROFILE_ENABLE}>,1,0>
 )
 

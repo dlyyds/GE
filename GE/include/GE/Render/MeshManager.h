@@ -29,6 +29,9 @@
 #include <memory>
 #include <vector>
 
+// 前向声明，避免头文件引入完整 tinygltf（重载仅按引用透传，.cpp 内部使用）
+namespace tinygltf { struct Model; }
+
 namespace GE {
 
 class VulkanDevice;
@@ -90,6 +93,21 @@ public:
      * @return 网格指针（就绪），失败返回 nullptr
      */
     Mesh *LoadGLTFMesh(const std::string &filepath, size_t meshIndex);
+
+    /**
+     * @brief 同步加载 glTF 指定 mesh（复用已解析的 tinygltf::Model，避免重复读盘）。
+     *
+     * 场景导入器（GLTFSceneImporter）已 LoadModel 过一次拿到整棵 model，再逐 mesh
+     * 调用本重载可实现只读一次文件、逐 mesh 装配，消除「场景图 + 每个 mesh」的
+     * M+1 次重复解析。缓存键与去重规则与上面的重载完全一致。
+     *
+     * @param filepath  glTF 文件路径
+     * @param meshIndex 目标 mesh 索引
+     * @param model     已解析的 tinygltf::Model（调用方持有完整生命周期）
+     * @return 网格指针（就绪），失败返回 nullptr
+     */
+    Mesh *LoadGLTFMesh(const std::string &filepath, size_t meshIndex,
+                       const tinygltf::Model &model);
 
     /**
      * @brief 获取已加载的网格（不触发加载）。
@@ -187,6 +205,20 @@ private:
         }
         return {};
     }
+
+    /**
+     * @brief 两个 LoadGLTFMesh 重载的共用收尾：算缓存键 → 命中检查 → 创建 → 注册。
+     *
+     * 解析（LoadModel/BuildMesh）由调用重载各自完成，本方法只处理与解析无关的
+     * 键计算与资源装配，保证两条路径行为一致。
+     *
+     * @param filepath  glTF 文件路径
+     * @param meshIndex 目标 mesh 索引
+     * @param data      已解析的 MeshData（std::move 入）
+     * @return 网格指针（就绪），失败返回 nullptr
+     */
+    Mesh *FinalizeGLTFMesh(const std::string &filepath, size_t meshIndex,
+                           MeshData &&data);
 
     VulkanDevice   *m_Device   = nullptr;  ///< Vulkan 设备（不拥有）
     MaterialManager *m_Materials = nullptr; ///< 材质管理器（不拥有）

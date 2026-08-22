@@ -123,7 +123,8 @@ bool GLTFSceneImporter::Import(Scene &scene, MeshManager &meshManager,
         }
 
         if (node.mesh >= 0) {
-            Mesh *mesh = meshManager.LoadGLTFMesh(filepath, static_cast<size_t>(node.mesh));
+            // 复用本函数顶部已 LoadModel 的 model，避免每个 mesh 重新读盘解析
+            Mesh *mesh = meshManager.LoadGLTFMesh(filepath, static_cast<size_t>(node.mesh), model);
             if (mesh) {
                 entity.AddComponent<MeshRendererComponent>(mesh);
             } else {

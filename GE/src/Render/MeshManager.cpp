@@ -394,12 +394,8 @@ Mesh *MeshManager::Load(const std::string &filepath) {
 // 同步加载 glTF 指定 mesh（场景导入器按 mesh 粒度复用 / 去重）
 // ============================================================================
 
-Mesh *MeshManager::LoadGLTFMesh(const std::string &filepath, size_t meshIndex) {
-    if (!m_Device || !m_Materials || !m_Textures) {
-        GE_CORE_WARN("MeshManager: 无法加载 glTF mesh {}（缺少渲染子系统）", filepath);
-        return nullptr;
-    }
-
+Mesh *MeshManager::FinalizeGLTFMesh(const std::string &filepath, size_t meshIndex,
+                                    MeshData &&data) {
     // mesh 0 复用文件路径本身为键（与 Load("foo.gltf") 共享一份 GPU 网格）；
     // mesh N>0 用 "foo.gltf#N" 复合键，供多 mesh 场景导入去重。
     const std::string key = (meshIndex == 0)
@@ -410,12 +406,6 @@ Mesh *MeshManager::LoadGLTFMesh(const std::string &filepath, size_t meshIndex) {
         return existing;
     }
 
-    MeshData data;
-    if (!GLTF::BuildMeshData(filepath, meshIndex, data)) {
-        GE_CORE_WARN("MeshManager: glTF mesh 解析失败: {}#{}", filepath, meshIndex);
-        return nullptr;
-    }
-
     auto mesh = Mesh::Create(*m_Device, std::move(data)); // BuildMesh 内部统一 ComputeTangents
     if (!mesh) {
         GE_CORE_WARN("MeshManager: glTF mesh 创建失败: {}", key);
@@ -424,6 +414,36 @@ Mesh *MeshManager::LoadGLTFMesh(const std::string &filepath, size_t meshIndex) {
     mesh->SetFilePath(key);
     BuildSubMeshMaterials(*mesh, key);
     return Register(key, std::move(mesh));
+}
+
+Mesh *MeshManager::LoadGLTFMesh(const std::string &filepath, size_t meshIndex) {
+    if (!m_Device || !m_Materials || !m_Textures) {
+        GE_CORE_WARN("MeshManager: 无法加载 glTF mesh {}（缺少渲染子系统）", filepath);
+        return nullptr;
+    }
+
+    MeshData data;
+    if (!GLTF::BuildMeshData(filepath, meshIndex, data)) {
+        GE_CORE_WARN("MeshManager: glTF mesh 解析失败: {}#{}", filepath, meshIndex);
+        return nullptr;
+    }
+    return FinalizeGLTFMesh(filepath, meshIndex, std::move(data));
+}
+
+Mesh *MeshManager::LoadGLTFMesh(const std::string &filepath, size_t meshIndex,
+                                const tinygltf::Model &model) {
+    if (!m_Device || !m_Materials || !m_Textures) {
+        GE_CORE_WARN("MeshManager: 无法加载 glTF mesh {}（缺少渲染子系统）", filepath);
+        return nullptr;
+    }
+
+    // 复用调用方已解析的 model，跳过再一次 LoadModel 的磁盘 IO + 整文件解析
+    MeshData data;
+    if (!GLTF::BuildMesh(model, meshIndex, filepath, data)) {
+        GE_CORE_WARN("MeshManager: glTF mesh 解析失败: {}#{}", filepath, meshIndex);
+        return nullptr;
+    }
+    return FinalizeGLTFMesh(filepath, meshIndex, std::move(data));
 }
 
 // ============================================================================

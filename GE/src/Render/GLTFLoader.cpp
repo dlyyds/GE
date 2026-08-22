@@ -194,7 +194,20 @@ static void AppendGLTFMaterial(const tinygltf::Model &m, int materialIdx,
         return (std::filesystem::path(filepath).parent_path() / uri)
             .lexically_normal().string();
     };
-    md.albedoMap   = resTex(pbr.baseColorTexture.index);
+    // 贴图索引：优先 Metallic-Roughness 的 baseColorTexture；无效时回退
+    // KHR_materials_pbrSpecularGlossiness 扩展的 diffuseTexture（Blender/旧导出器
+    // 产物，albedo 存在扩展而非 baseColorTexture，如 adamHead 系列模型）。
+    int albedoTexIdx = pbr.baseColorTexture.index;
+    if (albedoTexIdx < 0) {
+        const auto sgIt = mat.extensions.find("KHR_materials_pbrSpecularGlossiness");
+        if (sgIt != mat.extensions.end()) {
+            const auto &diffuse = sgIt->second.Get("diffuseTexture");
+            if (diffuse.IsObject()) {
+                albedoTexIdx = diffuse.Get("index").GetNumberAsInt();
+            }
+        }
+    }
+    md.albedoMap   = resTex(albedoTexIdx);
     md.normalMap   = resTex(mat.normalTexture.index);
     md.emissiveMap = resTex(mat.emissiveTexture.index);
 

@@ -169,6 +169,28 @@ struct AABB {
     bool IsValid() const {
         return min.x <= max.x && min.y <= max.y && min.z <= max.z;
     }
+
+    /**
+     * @brief 将本地（模型）空间 AABB 变换为世界空间 AABB。
+     *
+     * center/extent 法：用矩阵上三角 3x3（旋转缩放）逐列取绝对值加权 extent，
+     * 再叠加平移，正确包住旋转 + 非均匀缩放后的盒子（法向翻转被绝对值吸收）。
+     * 用于视锥剔除等需要世界空间包围盒的场景。
+     *
+     * @param m 模型/世界变换矩阵（列主序）
+     */
+    AABB Transformed(const glm::mat4 &m) const {
+        const glm::mat3 m3 = glm::mat3(m);
+        const glm::vec3 center = (min + max) * 0.5f;
+        const glm::vec3 extent = (max - min) * 0.5f;
+        const glm::vec3 e0{std::fabs(m3[0].x), std::fabs(m3[0].y), std::fabs(m3[0].z)};
+        const glm::vec3 e1{std::fabs(m3[1].x), std::fabs(m3[1].y), std::fabs(m3[1].z)};
+        const glm::vec3 e2{std::fabs(m3[2].x), std::fabs(m3[2].y), std::fabs(m3[2].z)};
+        AABB out;
+        out.min = glm::vec3(m[3]) + m3 * center - (e0 * extent.x + e1 * extent.y + e2 * extent.z);
+        out.max = glm::vec3(m[3]) + m3 * center + (e0 * extent.x + e1 * extent.y + e2 * extent.z);
+        return out;
+    }
 };
 
 /**

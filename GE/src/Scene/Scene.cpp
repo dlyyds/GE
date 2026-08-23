@@ -10,6 +10,7 @@
 #include "Render/Renderer2D.h"
 #include "Render/Renderer3D.h"
 #include "Render/Material.h"
+#include "Render/Frustum.h"
 #include "Render/Mesh.h"
 #include "Render/EnvironmentMap.h"
 #include "Render/VulkanBase/VulkanDevice.h"
@@ -410,12 +411,23 @@ void Scene::RenderMeshes3D(const glm::mat4 &view, const glm::mat4 &projection,
     auto &r3d = Renderer::Get3DRenderer();
     r3d.BeginScene(view, projection, viewPos, clearColor);
 
+    // 视锥剔除：由 viewProjection 提取 6 平面，逐实体以世界空间 AABB 判外。
+    // 完全在视锥外的实体跳过绘制（保守：AABB 无效或与任一平面相交均保留）。
+    const Frustum frustum = Frustum::FromViewProjection(projection * view);
+
     auto meshView = m_Registry.view<TransformComponent, MeshRendererComponent>();
     for (auto entity : meshView) {
         auto &tc = meshView.get<TransformComponent>(entity);
         auto &mc = meshView.get<MeshRendererComponent>(entity);
 
         if (!mc.MeshPtr) {
+            continue;
+        }
+
+        // 世界空间包围盒 = 模型空间 AABB × 世界矩阵（含旋转缩放）。
+        // 无效包围盒（如异步网格尚未注入）保守不剔除，避免瞬态误剔。
+        const AABB &aabb = mc.MeshPtr->GetAABB();
+        if (aabb.IsValid() && !frustum.IsVisible(aabb.Transformed(tc.GetWorldMatrix()))) {
             continue;
         }
 

@@ -18,6 +18,7 @@
 #include <cstdint>
 #include <cstddef>
 #include <cmath>
+#include <limits>
 #include <memory>
 #include <string>
 #include <vector>
@@ -145,6 +146,29 @@ struct SubMesh {
     uint32_t  indexCount  = 0;   ///< 索引数量
     std::string materialName;    ///< 源材质名（加载期填充，用于创建/查找材质）
     Material *defaultMaterial = nullptr; ///< 默认材质（MeshManager 填充，MaterialManager 持有）
+};
+
+/**
+ * @brief 轴对齐包围盒（AABB），以最小/最大角表示。
+ *
+ * 网格装配（BuildMesh / InstallAsyncData）时从顶点位置一次性算出，作为轻量摘要
+ * 随 Mesh 常驻，Mesh 自身不持有整份 CPU 顶点数组。初始为「空盒」状态
+ * （min 极大 / max 极小，IsValid()==false），未并入任何点前表示无效。
+ */
+struct AABB {
+    glm::vec3 min{std::numeric_limits<float>::max()};  ///< 最小角
+    glm::vec3 max{-std::numeric_limits<float>::max()}; ///< 最大角
+
+    /// 将坐标点并入包围盒（逐分量取 min/max）
+    void Expand(const glm::vec3 &p) {
+        min = glm::min(min, p);
+        max = glm::max(max, p);
+    }
+
+    /// 包围盒是否有效（至少并入过一个点）
+    bool IsValid() const {
+        return min.x <= max.x && min.y <= max.y && min.z <= max.z;
+    }
 };
 
 /**
@@ -289,6 +313,9 @@ public:
     /// 索引数量（摘要计数，Mesh 不持有整份 CPU 索引数组）
     uint32_t GetIndexCount() const { return m_IndexCount; }
 
+    /// 轴对齐包围盒（模型空间，装配时从顶点位置算出）
+    const AABB &GetAABB() const { return m_AABB; }
+
     /**
      * @brief 获取子网格列表。
      *
@@ -370,6 +397,7 @@ private:
     std::vector<MaterialData> m_MaterialData; ///< 从 MTL 捕获的材质数据（加载时填充）
     uint32_t m_VertexCount = 0;             ///< 顶点数量摘要（替代整份 CPU 顶点数组）
     uint32_t m_IndexCount  = 0;             ///< 索引数量摘要（替代整份 CPU 索引数组）
+    AABB     m_AABB;                        ///< 模型空间轴对齐包围盒（装配时从顶点算出）
     std::string           m_FilePath;       ///< 源文件路径（从文件加载时有值）
 
     std::unique_ptr<VulkanBuffer> m_VertexBuffer; ///< GPU 顶点缓冲

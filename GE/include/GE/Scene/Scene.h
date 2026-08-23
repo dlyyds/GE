@@ -116,6 +116,25 @@ public:
     Entity GetPrimaryCameraEntity();
 
 private:
+    /// 每帧脚本更新（OnUpdate3D 子步骤）
+    void UpdateScripts(Timestep ts);
+
+    /// 物理步进（OnUpdate3D 子步骤）
+    void StepPhysics(Timestep ts);
+
+    /// 收集场景光源（方向光 / 环境光 / 点光源）到渲染器（OnUpdate3D 子步骤）
+    void UpdateLightParams();
+
+    /// 依据环境组件驱动天空盒 + IBL（OnUpdate3D 子步骤）
+    void UpdateEnvironment();
+
+    /// 提交 3D 网格渲染（BeginScene + 子网格绘制 + EndScene）
+    void RenderMeshes3D(const glm::mat4 &view, const glm::mat4 &projection,
+                        const glm::vec3 &viewPos, const glm::vec4 &clearColor);
+
+    /// 提交 2D 精灵渲染（世界空间批 + UI 空间批）
+    void RenderSprites2D(const glm::mat4 &view, const glm::mat4 &projection);
+
     /// 每帧渲染前重建世界矩阵缓存（DFS：扫描 + 跳过非根，从根递归下钻）
     void UpdateWorldTransforms();
 

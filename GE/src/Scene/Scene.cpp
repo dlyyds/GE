@@ -278,116 +278,136 @@ void Scene::OnUpdate3D(Timestep ts,
                        const glm::mat4 &projection,
                        const glm::vec3 &viewPos,
                        const glm::vec4 &clearColor) {
-    // ── 脚本更新 ────────────────────────────────────────────────────────
-    {
-        auto scriptView = m_Registry.view<ScriptComponent>();
-        for (auto entityHandle : scriptView) {
-            auto &sc = scriptView.get<ScriptComponent>(entityHandle);
-            if (sc.Enabled && sc.OnUpdate) {
-                Entity entity{entityHandle, this};
-                sc.OnUpdate(ts, entity);
-            }
-        }
-    }
+    // ── 脚本更新 ──
+    UpdateScripts(ts);
 
-    // ── 物理步进 ────────────────────────────────────────────────────────
-    if (m_PhysicsWorld) {
-        m_PhysicsWorld->Step(ts);
-    }
+    // ── 物理步进 ──
+    StepPhysics(ts);
 
     // ── 世界矩阵缓存重建（每帧一次 DFS）───────────────────────────────
     // 放在物理步进之后、光源收集/渲染之前：物理刚回写完局部 TRS，
     // 此处重算让本帧渲染即使用最新世界矩阵。
     UpdateWorldTransforms();
 
-    // ── 3D 网格渲染 ────────────────────────────────────────────────────
+    // ── 光源收集 ──
+    UpdateLightParams();
+
+    // ── 环境驱动 ──
+    UpdateEnvironment();
+
+    // ── 3D 网格渲染 ──
+    RenderMeshes3D(view, projection, viewPos, clearColor);
+
+    // ── 2D 精灵渲染 ──
+    RenderSprites2D(view, projection);
+
+}
+
+void Scene::UpdateScripts(Timestep ts) {
+    auto scriptView = m_Registry.view<ScriptComponent>();
+    for (auto entityHandle : scriptView) {
+        auto &sc = scriptView.get<ScriptComponent>(entityHandle);
+        if (sc.Enabled && sc.OnUpdate) {
+            Entity entity{entityHandle, this};
+            sc.OnUpdate(ts, entity);
+        }
+    }
+}
+
+void Scene::StepPhysics(Timestep ts) {
+    if (m_PhysicsWorld) {
+        m_PhysicsWorld->Step(ts);
+    }
+}
+
+void Scene::UpdateLightParams() {
     auto &r3d = Renderer::Get3DRenderer();
+    auto &lightParams = r3d.GetLightParams();
 
-    // ── 收集场景中的光源（方向光 / 环境光 / 点光源） ─────────────────
+    // ---- 方向光：取场景中第一个方向光组件 ----
     {
-        auto &lightParams = r3d.GetLightParams();
+        auto dirLightView = m_Registry.view<TransformComponent, DirectionalLightComponent>();
+        if (dirLightView.begin() != dirLightView.end()) {
+            auto entity = *dirLightView.begin();
+            auto &tc = dirLightView.get<TransformComponent>(entity);
+            auto &dlc = dirLightView.get<DirectionalLightComponent>(entity);
 
-        // ---- 方向光：取场景中第一个方向光组件 ----
-        {
-            auto dirLightView = m_Registry.view<TransformComponent, DirectionalLightComponent>();
-            if (dirLightView.begin() != dirLightView.end()) {
-                auto entity = *dirLightView.begin();
-                auto &tc = dirLightView.get<TransformComponent>(entity);
-                auto &dlc = dirLightView.get<DirectionalLightComponent>(entity);
-
-                // 由世界矩阵的旋转部分推导出方向光方向（前向向量，-Z 轴旋转后为光线射出方向）。
-                // 读世界矩阵而非局部 Rotation：挂在父子层级下时父级旋转一并作用于照射方向。
-                // 缩放会乘进 mat3 的三列，先逐列归一化消除后再转四元数（uniform/非 uniform 缩放均安全）。
-                // 着色器中 dirLightDirection 表示"指向光源的方向"（即从表面指向光源），
-                // 与光线射出方向相反，因此取反
-                const glm::mat3 rot3 = glm::mat3(tc.GetWorldMatrix());
-                const glm::mat3 normalizedRot(
-                    glm::normalize(rot3[0]), glm::normalize(rot3[1]), glm::normalize(rot3[2]));
-                const glm::quat worldRot = glm::quat_cast(normalizedRot);
-                glm::vec3 lightDir = worldRot * glm::vec3(0.0f, 0.0f, -1.0f);
-                lightParams.dirLightDirection = glm::normalize(-lightDir);
-                lightParams.dirLightColor = dlc.Color;
-            } else {
-                // 场景中无方向光组件时，使用默认值（斜向下的白色方向光）
-                lightParams.dirLightDirection = {0.0f, -1.0f, 0.0f};
-                lightParams.dirLightColor = {1.0f, 1.0f, 1.0f, 1.0f};
-            }
-        }
-
-        // ---- 环境光：取场景中第一个环境光组件 ----
-        {
-            auto ambientView = m_Registry.view<AmbientLightComponent>();
-            if (ambientView.begin() != ambientView.end()) {
-                auto entity = *ambientView.begin();
-                auto &alc = ambientView.get<AmbientLightComponent>(entity);
-                lightParams.ambient = alc.Color;
-            } else {
-                // 场景中无环境光组件时，使用默认值保证可见性
-                lightParams.ambient = {0.3f, 0.3f, 0.3f, 1.0f};
-            }
-        }
-
-        // ---- 点光源（SSBO 无编译期上限，收集全部点光源）----
-        lightParams.pointLights.clear();
-        auto pointLightView = m_Registry.view<TransformComponent, PointLightComponent>();
-        for (auto entity : pointLightView) {
-            auto &tc = pointLightView.get<TransformComponent>(entity);
-            auto &plc = pointLightView.get<PointLightComponent>(entity);
-
-            Renderer3D::PointLight pl;
-            // 读世界矩阵的平移列：子层级下的点光源位置随父实体整体联动
-            pl.position = glm::vec3(tc.GetWorldMatrix()[3]);
-            pl.color = plc.Color;
-            pl.radiusInv = plc.RadiusInv;
-            lightParams.pointLights.push_back(pl);
+            // 由世界矩阵的旋转部分推导出方向光方向（前向向量，-Z 轴旋转后为光线射出方向）。
+            // 读世界矩阵而非局部 Rotation：挂在父子层级下时父级旋转一并作用于照射方向。
+            // 缩放会乘进 mat3 的三列，先逐列归一化消除后再转四元数（uniform/非 uniform 缩放均安全）。
+            // 着色器中 dirLightDirection 表示"指向光源的方向"（即从表面指向光源），
+            // 与光线射出方向相反，因此取反
+            const glm::mat3 rot3 = glm::mat3(tc.GetWorldMatrix());
+            const glm::mat3 normalizedRot(
+                glm::normalize(rot3[0]), glm::normalize(rot3[1]), glm::normalize(rot3[2]));
+            const glm::quat worldRot = glm::quat_cast(normalizedRot);
+            glm::vec3 lightDir = worldRot * glm::vec3(0.0f, 0.0f, -1.0f);
+            lightParams.dirLightDirection = glm::normalize(-lightDir);
+            lightParams.dirLightColor = dlc.Color;
+        } else {
+            // 场景中无方向光组件时，使用默认值（斜向下的白色方向光）
+            lightParams.dirLightDirection = {0.0f, -1.0f, 0.0f};
+            lightParams.dirLightColor = {1.0f, 1.0f, 1.0f, 1.0f};
         }
     }
 
-    // ── 环境：取场景中第一个 EnvironmentComponent，驱动天空盒 + IBL ──
-    //    只把环境名交给渲染器（内部按命名约定加载三张图），这里控制开关：
-    //    Enabled 总开关（关则天空盒 + IBL 一并关）、SkyboxEnabled 天空盒、
-    //    IBLEnabled 环境光。
+    // ---- 环境光：取场景中第一个环境光组件 ----
     {
-        auto envView = m_Registry.view<EnvironmentComponent>();
-        if (envView.begin() != envView.end()) {
-            const auto &ec = envView.get<EnvironmentComponent>(*envView.begin());
-
-            if (ec.Enabled) {
-                r3d.SetEnvironment(ec.Name);
-                r3d.SetSkyboxEnabled(ec.SkyboxEnabled);
-                r3d.SetIBLEnabled(ec.IBLEnabled);
-            } else {
-                // 环境总开关关闭：天空盒 + IBL 一并关闭
-                r3d.SetSkyboxEnabled(false);
-                r3d.SetIBLEnabled(false);
-            }
+        auto ambientView = m_Registry.view<AmbientLightComponent>();
+        if (ambientView.begin() != ambientView.end()) {
+            auto entity = *ambientView.begin();
+            auto &alc = ambientView.get<AmbientLightComponent>(entity);
+            lightParams.ambient = alc.Color;
         } else {
-            // 无环境组件：天空盒 + IBL 一并关闭
+            // 场景中无环境光组件时，使用默认值保证可见性
+            lightParams.ambient = {0.3f, 0.3f, 0.3f, 1.0f};
+        }
+    }
+
+    // ---- 点光源（SSBO 无编译期上限，收集全部点光源）----
+    lightParams.pointLights.clear();
+    auto pointLightView = m_Registry.view<TransformComponent, PointLightComponent>();
+    for (auto entity : pointLightView) {
+        auto &tc = pointLightView.get<TransformComponent>(entity);
+        auto &plc = pointLightView.get<PointLightComponent>(entity);
+
+        Renderer3D::PointLight pl;
+        // 读世界矩阵的平移列：子层级下的点光源位置随父实体整体联动
+        pl.position = glm::vec3(tc.GetWorldMatrix()[3]);
+        pl.color = plc.Color;
+        pl.radiusInv = plc.RadiusInv;
+        lightParams.pointLights.push_back(pl);
+    }
+}
+
+void Scene::UpdateEnvironment() {
+    auto &r3d = Renderer::Get3DRenderer();
+
+    // 只把环境名交给渲染器（内部按命名约定加载三张图），这里控制开关：
+    // Enabled 总开关（关则天空盒 + IBL 一并关）、SkyboxEnabled 天空盒、IBLEnabled 环境光。
+    auto envView = m_Registry.view<EnvironmentComponent>();
+    if (envView.begin() != envView.end()) {
+        const auto &ec = envView.get<EnvironmentComponent>(*envView.begin());
+
+        if (ec.Enabled) {
+            r3d.SetEnvironment(ec.Name);
+            r3d.SetSkyboxEnabled(ec.SkyboxEnabled);
+            r3d.SetIBLEnabled(ec.IBLEnabled);
+        } else {
+            // 环境总开关关闭：天空盒 + IBL 一并关闭
             r3d.SetSkyboxEnabled(false);
             r3d.SetIBLEnabled(false);
         }
+    } else {
+        // 无环境组件：天空盒 + IBL 一并关闭
+        r3d.SetSkyboxEnabled(false);
+        r3d.SetIBLEnabled(false);
     }
+}
 
+void Scene::RenderMeshes3D(const glm::mat4 &view, const glm::mat4 &projection,
+                           const glm::vec3 &viewPos, const glm::vec4 &clearColor) {
+    auto &r3d = Renderer::Get3DRenderer();
     r3d.BeginScene(view, projection, viewPos, clearColor);
 
     auto meshView = m_Registry.view<TransformComponent, MeshRendererComponent>();
@@ -416,10 +436,9 @@ void Scene::OnUpdate3D(Timestep ts,
     }
 
     r3d.EndScene();
+}
 
-    // ── 2D 精灵渲染：分世界空间 + UI 空间两批 ─────────────────────────
-    glm::mat4 viewProjection = projection * view;
-
+void Scene::RenderSprites2D(const glm::mat4 &view, const glm::mat4 &projection) {
     auto &r2d = Renderer::Get2DRenderer();
     auto spriteView = m_Registry.view<TransformComponent, SpriteRendererComponent>();
 
@@ -443,7 +462,7 @@ void Scene::OnUpdate3D(Timestep ts,
                 tc.GetWorldMatrix(),
                 sc.SpriteTexture,
                 sc.Color
-                );
+            );
         }
         r2d.EndScene();
     }
@@ -480,11 +499,12 @@ void Scene::OnUpdate3D(Timestep ts,
                 sp.tc->GetWorldMatrix(),
                 sp.sc->SpriteTexture,
                 sp.sc->Color
-                );
+            );
         }
         r2d.EndScene();
     }
 }
+
 
 
 void Scene::OnEvent(Event &e) {

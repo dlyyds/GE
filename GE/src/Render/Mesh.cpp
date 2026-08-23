@@ -66,9 +66,12 @@ std::unique_ptr<Mesh> Mesh::BuildMesh(VulkanDevice &device,
     // 摘要计数：上传后整份 CPU 顶点/索引数组随 data 析构释放，Mesh 不常驻
     mesh->m_VertexCount = static_cast<uint32_t>(data.vertices.size());
     mesh->m_IndexCount = static_cast<uint32_t>(data.indices.size());
-    // 模型空间包围盒摘要（遍历顶点位置并入，幂等计算）
-    for (const auto &v : data.vertices) {
-        mesh->m_AABB.Expand(v.Position);
+    // 模型空间包围盒摘要：优先复用解析器预计算（如 .gemesh META 回填），缺失则现算兜底
+    mesh->m_AABB = data.aabb;
+    if (!mesh->m_AABB.IsValid()) {
+        for (const auto &v : data.vertices) {
+            mesh->m_AABB.Expand(v.Position);
+        }
     }
 
     // 计算顶点切线（法线贴图需要），与异步 decode 共用 ModelLoader 的共享装配
@@ -178,9 +181,12 @@ void Mesh::InstallAsyncData(MeshData &&data,
     m_MaterialData = std::move(data.materialData);
     m_VertexCount = static_cast<uint32_t>(data.vertices.size());
     m_IndexCount = static_cast<uint32_t>(data.indices.size());
-    // 模型空间包围盒摘要（遍历顶点位置并入，与同步装配路径幂等一致）
-    for (const auto &v : data.vertices) {
-        m_AABB.Expand(v.Position);
+    // 模型空间包围盒摘要：优先复用解析器预计算（如 .gemesh META 回填），缺失则现算兜底
+    m_AABB = data.aabb;
+    if (!m_AABB.IsValid()) {
+        for (const auto &v : data.vertices) {
+            m_AABB.Expand(v.Position);
+        }
     }
     m_VertexBuffer = std::move(vertexBuffer);
     m_IndexBuffer = std::move(indexBuffer);

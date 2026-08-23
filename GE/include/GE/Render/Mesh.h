@@ -183,6 +183,7 @@ struct MeshData {
     std::vector<uint32_t>    indices;       ///< 索引数组
     std::vector<SubMesh>     subMeshes;     ///< 渲染范围 + materialName
     std::vector<MaterialData> materialData; ///< 材质匹配用（MeshManager 读取）
+    AABB  aabb;                            ///< 模型空间包围盒（解析器可选预计算，.gemesh 从 META 回填；未填时装配现算兜底）
 };
 
 /**

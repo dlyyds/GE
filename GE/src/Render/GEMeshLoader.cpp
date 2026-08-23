@@ -565,16 +565,20 @@ bool ParseGEMesh(const std::string &filepath, MeshData &out, GEMeshMeta *outMeta
     }
 
     // ---- META ----
-    if (outMeta) {
-        if (const Entry *e = findChunk(kChunkMeta)) {
-            Reader r(buf, e->offset, e->size);
-            if (!r.Vec3(outMeta->aabbMin) || !r.Vec3(outMeta->aabbMax)) {
-                return false;
-            }
-            std::vector<std::string> strPool;
-            if (!r.ReadStrPool(strPool)) {
-                return false;
-            }
+    // 包围盒始终回填到 MeshData（供 Mesh 装配直接复用，避免重复遍历顶点）；
+    // sourceAsset 等追溯信息仅在需求方传 outMeta 时读取。
+    if (const Entry *e = findChunk(kChunkMeta)) {
+        Reader r(buf, e->offset, e->size);
+        if (!r.Vec3(out.aabb.min) || !r.Vec3(out.aabb.max)) {
+            return false;
+        }
+        std::vector<std::string> strPool;
+        if (!r.ReadStrPool(strPool)) {
+            return false;
+        }
+        if (outMeta) {
+            outMeta->aabbMin = out.aabb.min;
+            outMeta->aabbMax = out.aabb.max;
             int32_t srcIdx = 0;
             if (r.I32(srcIdx) && srcIdx >= 0 && static_cast<size_t>(srcIdx) < strPool.size()) {
                 outMeta->sourceAsset = strPool[static_cast<size_t>(srcIdx)];

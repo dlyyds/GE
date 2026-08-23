@@ -402,9 +402,14 @@ void Renderer3D::EndScene() {
     // 销毁上一帧切换环境时退休的旧环境（安全点，见 FlushRetiredEnvironments）
     FlushRetiredEnvironments();
 
-    // 没有网格也没有天空盒时，直接返回（仅天空盒时仍需走完渲染流程）
-    if (m_Meshes.empty() && !m_SkyboxEnabled) {
-        return;
+    // 无网格时，仅当天空盒也无法绘制（开关未开或环境图未就绪）才整帧返回；
+    // 否则仍需走完渲染流程，仅绘制天空盒。
+    if (m_Meshes.empty()) {
+        const bool hasSkybox = m_SkyboxEnabled
+            && m_EnvironmentMap && m_EnvironmentMap->IsReady();
+        if (!hasSkybox) {
+            return;
+        }
     }
 
     // 使同材质同 mesh 的实例连续排列（管线/纹理切换最少 + instancing 合批），

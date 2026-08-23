@@ -23,6 +23,7 @@
 #pragma once
 
 #include "Core/Base.h"
+#include "Render/BufferPool.h"
 #include "Render/Material.h"
 #include "Render/Mesh.h"
 #include "Render/EnvironmentMap.h"
@@ -39,6 +40,8 @@ namespace GE {
 
 class VulkanPipelineLayout;
 class VulkanShaderModule;
+class VulkanCommandBuffer;
+class VulkanRenderFrame;
 class RenderTarget;
 
 /**
@@ -329,6 +332,51 @@ private:
     // ========================================================================
     // 内部工具方法
     // ========================================================================
+
+    // ---------- EndScene 子步骤（拆分大函数，按渲染阶段） ----------
+
+    /// 按排序键排序网格实例（材质 → mesh → 子网格 → 深度），使可合批实例连续
+    void SortMeshes();
+
+    /// 分配并上传帧级 UBO（投影 / 视图 / 相机位置 / 光照 / IBL 参数）
+    BufferAllocation UploadFrameUBO(VulkanRenderFrame &frame);
+
+    /// 单趟扫描把 (mesh, 子网格, material) 相等且连续的实例归成批次，
+    /// 同时收集每个实例的 per-instance 数据（model + color）
+    void CollectBatches(std::vector<InstanceData> &instances,
+                        std::vector<RenderBatch> &batches) const;
+
+    /// 分配并上传全局 per-instance SSBO（所有批次共享同一缓冲）
+    BufferAllocation UploadInstanceBuffer(VulkanRenderFrame &frame,
+                                          const std::vector<InstanceData> &instances);
+
+    /// 分配并上传点光源 SSBO（无光源时分配 1 字节占位避免空缓冲）
+    BufferAllocation UploadLightBuffer(VulkanRenderFrame &frame);
+
+    /// 构建颜色 + 深度附件（按 m_ClearColor 决定 loadOp）并开始动态渲染
+    void BeginDynamicRendering(VulkanCommandBuffer &cmd, RenderTarget &renderTarget);
+
+    /// 绘制天空盒（全屏三角形背景，关闭深度测试/写入，先于网格）
+    void DrawSkybox(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame,
+                    RenderTarget &renderTarget);
+
+    /// 配置网格管线状态（附件格式 / 混合 / 顶点输入 / 光栅化 / 动态状态 / 视口剪刀）
+    void ConfigureMeshPipeline(VulkanCommandBuffer &cmd, RenderTarget &renderTarget);
+
+    /// 绑定网格共享描述符（Frame UBO + 点光源 SSBO，set 0）
+    void BindSharedUniforms(VulkanCommandBuffer &cmd,
+                            const BufferAllocation &frameUbo,
+                            const BufferAllocation &lightBuffer);
+
+    /// 逐批次 instanced 绘制（含管线路由 / 纹理材质绑定 / 材质 UBO）
+    void DrawMeshInstances(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame,
+                           const std::vector<RenderBatch> &batches,
+                           const BufferAllocation &instanceBuffer,
+                           const BufferAllocation &frameUbo,
+                           const BufferAllocation &lightBuffer);
+
+    /// 统计 draw call 与三角形数量（draw call = 批次数量）
+    void RecordStats(const std::vector<RenderBatch> &batches);
 
     /**
      * @brief 提交一个网格实例（内部实现，按索引范围绘制）。

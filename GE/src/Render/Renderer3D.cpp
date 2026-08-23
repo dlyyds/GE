@@ -407,6 +407,43 @@ void Renderer3D::EndScene() {
         return;
     }
 
+    // 使同材质同 mesh 的实例连续排列（管线/纹理切换最少 + instancing 合批），
+    // 深度从前往后，利用 early-z 减少过绘制。
+    SortMeshes();
+
+    auto &cmd = Renderer::GetFrameCmd();
+    auto vkCmd = cmd.GetHandle();
+    auto &frame = Renderer::GetRenderContext().GetActiveFrame();
+
+    // 有效渲染目标：优先外部离屏目标，否则当前帧 swapchain 目标（视口/格式/附件均取自该目标）
+    auto &renderTarget = m_RenderTargetOverride ? *m_RenderTargetOverride
+                                                : frame.GetRenderTarget();
+
+    // ── 共享描述符数据上传：Frame UBO / per-instance SSBO / 点光源 SSBO ──
+    BufferAllocation frameUboAlloc = UploadFrameUBO(frame);
+
+    std::vector<InstanceData> instances;
+    std::vector<RenderBatch> batches;
+    CollectBatches(instances, batches);
+    BufferAllocation instanceBuffer = UploadInstanceBuffer(frame, instances);
+
+    BufferAllocation lightBuffer = UploadLightBuffer(frame);
+
+    // ── 渲染：开始动态渲染 → 天空盒背景 → 网格批次（管线 + 描述符 + 绘制） ──
+    BeginDynamicRendering(cmd, renderTarget);
+    DrawSkybox(cmd, frame, renderTarget);
+    ConfigureMeshPipeline(cmd, renderTarget);
+    BindSharedUniforms(cmd, frameUboAlloc, lightBuffer);
+    DrawMeshInstances(cmd, frame, batches, instanceBuffer);
+
+    // ── 统计 draw call 与三角形数量 ──
+    RecordStats(batches);
+
+    // ── 7. 结束渲染 ───────────────────────────────────────────────────
+    VulkanRenderingInfo::End(vkCmd);
+}
+
+void Renderer3D::SortMeshes() {
     // ── 0. 按排序键排序（材质 → mesh → 深度） ─────────────────────────
     //    使同材质同 mesh 的实例连续排列，既减少管线/纹理切换，又便于
     //    instancing 合批；深度从前往后，利用 early-z 减少过绘制。
@@ -415,16 +452,9 @@ void Renderer3D::EndScene() {
                   return a.sortKey < b.sortKey;
               });
 
-    auto &cmd = Renderer::GetFrameCmd();
-    auto vkCmd = cmd.GetHandle();
-    auto &frame = Renderer::GetRenderContext().GetActiveFrame();
+}
 
-    // 有效渲染目标：优先使用外部指定的目标（离屏），否则使用当前帧的 swapchain 目标。
-    // 视口/渲染区域/颜色格式/颜色附件均取自该目标，便于把场景渲染进离屏纹理。
-    auto &renderTarget = m_RenderTargetOverride ? *m_RenderTargetOverride
-                                                : frame.GetRenderTarget();
-    auto extent = renderTarget.GetExtent();
-
+void Renderer3D::UploadFrameUBO(VulkanRenderFrame &frame) {
     // ── 1. 分配 Frame UBO（所有网格共享） ─────────────────────────────
     FrameUBO frameUBO{};
     frameUBO.projection = m_Projection;
@@ -449,14 +479,19 @@ void Renderer3D::EndScene() {
         vk::BufferUsageFlagBits::eUniformBuffer, sizeof(FrameUBO));
     frameUboAlloc.update(frameUBO);
 
+    return frameUboAlloc;
+}
+
+void Renderer3D::CollectBatches(std::vector<InstanceData> &instances,
+                                 std::vector<RenderBatch> &batches) const {
     // ── 2. 阶段3：按 (mesh, material) 分组合批，构建 per-instance SSBO ──
     //    排序键已保证同材质同 mesh 的实例连续。单趟扫描把 (mesh, material)
     //    指针相等且连续的实例归为一个 RenderBatch，并把每个实例的 (model,
     //    color) 收集进 instances 数组，最终一次性上传到全局 storage buffer。
-    std::vector<InstanceData> instances;
+    instances.clear();
     instances.reserve(m_Meshes.size());
 
-    std::vector<RenderBatch> batches;
+    batches.clear();
     batches.reserve(m_Meshes.size());
 
     for (size_t i = 0; i < m_Meshes.size();) {
@@ -489,13 +524,19 @@ void Renderer3D::EndScene() {
             mesh, firstIndex, indexCount, mat, firstInstance,
             static_cast<uint32_t>(i - runStart)});
     }
+}
 
+BufferAllocation Renderer3D::UploadInstanceBuffer(VulkanRenderFrame &frame,
+                                                   const std::vector<InstanceData> &instances) {
     // 分配全局实例 SSBO 并一次性上传（所有批次共享）
-    BufferAllocation instanceBuffer = frame.AllocateBuffer(
+    BufferAllocation alloc = frame.AllocateBuffer(
         vk::BufferUsageFlagBits::eStorageBuffer,
         instances.size() * sizeof(InstanceData));
-    instanceBuffer.update(instances);
+    alloc.update(instances);
+    return alloc;
+}
 
+BufferAllocation Renderer3D::UploadLightBuffer(VulkanRenderFrame &frame) {
     // 点光源 SSBO（set 0, binding 1）——无上界动态数组，解除编译期数量上限。
     // 从 LightParams 收集全部点光源，转为 GPU 布局（2 个 vec4）一次性上传。
     // 无光源时分配 1 字节占位避免空缓冲；shader 循环 0 次不受影响。
@@ -504,13 +545,17 @@ void Renderer3D::EndScene() {
     for (const auto &pl : m_LightParams.pointLights) {
         lights.push_back(LightGPU{glm::vec4(pl.position, pl.radiusInv), pl.color});
     }
-    BufferAllocation lightBuffer = frame.AllocateBuffer(
+    BufferAllocation alloc = frame.AllocateBuffer(
         vk::BufferUsageFlagBits::eStorageBuffer,
         lights.empty() ? 1 : lights.size() * sizeof(LightGPU));
     if (!lights.empty()) {
-        lightBuffer.update(lights);
+        alloc.update(lights);
     }
+    return alloc;
+}
 
+void Renderer3D::BeginDynamicRendering(VulkanCommandBuffer &cmd, RenderTarget &renderTarget) {
+    const auto extent = renderTarget.GetExtent();
     // ── 3. 开始动态渲染 ───────────────────────────────────────────────
     //    使用 FromRenderTarget 自动构建颜色 + 深度附件
     VulkanRenderingInfo renderInfo = VulkanRenderingInfo::FromRenderTarget(renderTarget);
@@ -558,8 +603,12 @@ void Renderer3D::EndScene() {
         }
     }
 
-    renderInfo.Begin(vkCmd);
+    renderInfo.Begin(cmd.GetHandle());
+}
 
+void Renderer3D::DrawSkybox(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame,
+                             RenderTarget &renderTarget) {
+    const auto extent = renderTarget.GetExtent();
     // ====================================================================
     // 3b. 天空盒绘制（自包含块，先于网格，作为背景）
     // ====================================================================
@@ -641,7 +690,10 @@ void Renderer3D::EndScene() {
                       skyTex->GetSampler(), 0, 1);
         cmd.Draw(3, 1, 0, 0);
     }
+}
 
+void Renderer3D::ConfigureMeshPipeline(VulkanCommandBuffer &cmd, RenderTarget &renderTarget) {
+    const auto extent = renderTarget.GetExtent();
     // ====================================================================
     // 4. 配置管线状态
     // ====================================================================
@@ -710,15 +762,23 @@ void Renderer3D::EndScene() {
     scissor.extent.width = extent.width;
     scissor.extent.height = extent.height;
     cmd.SetScissor(0, {scissor});
+}
 
+void Renderer3D::BindSharedUniforms(VulkanCommandBuffer &cmd,
+                                    const BufferAllocation &frameUbo,
+                                    const BufferAllocation &lightBuffer) {
     // ── 5. 绑定 Frame UBO（set 0, binding 0，所有网格共享） ───────────
-    cmd.BindBuffer(frameUboAlloc.get_buffer(), frameUboAlloc.get_offset(),
-                   frameUboAlloc.get_size(), 0, 0);
+    cmd.BindBuffer(frameUbo.get_buffer(), frameUbo.get_offset(),
+                   frameUbo.get_size(), 0, 0);
 
     // 绑定点光源 SSBO（set 0, binding 1）——所有网格共享
     cmd.BindBuffer(lightBuffer.get_buffer(), lightBuffer.get_offset(),
                    lightBuffer.get_size(), 0, 1);
+}
 
+void Renderer3D::DrawMeshInstances(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame,
+                                    const std::vector<RenderBatch> &batches,
+                                    const BufferAllocation &instanceBuffer) {
     // ── 6. 逐批次 instanced 绘制 ─────────────────────────────────────
     vk::DeviceSize vertexOffset = 0;
 
@@ -846,7 +906,9 @@ void Renderer3D::EndScene() {
         cmd.DrawIndexed(batch.indexCount, batch.instanceCount,
                         batch.firstIndex, 0, batch.firstInstance);
     }
+}
 
+void Renderer3D::RecordStats(const std::vector<RenderBatch> &batches) {
     // ── 6b. 统计 draw call 与三角形数量（draw call = 批次数量） ───────
     uint32_t triangles = 0;
     for (const auto &instance : m_Meshes) {
@@ -857,9 +919,7 @@ void Renderer3D::EndScene() {
     // 统计 instancing 批次数量（相同 mesh + 相同材质分一组），
     // 用于观察合批收益：批次数越少 → draw call 越少
     Renderer::Get().AddBatches3D(static_cast<uint32_t>(batches.size()));
-
-    // ── 7. 结束渲染 ───────────────────────────────────────────────────
-    VulkanRenderingInfo::End(vkCmd);
 }
+
 
 } // namespace GE

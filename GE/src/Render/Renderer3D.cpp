@@ -402,16 +402,6 @@ void Renderer3D::EndScene() {
     // 销毁上一帧切换环境时退休的旧环境（安全点，见 FlushRetiredEnvironments）
     FlushRetiredEnvironments();
 
-    // 无网格时，仅当天空盒也无法绘制（开关未开或环境图未就绪）才整帧返回；
-    // 否则仍需走完渲染流程，仅绘制天空盒。
-    if (m_Meshes.empty()) {
-        const bool hasSkybox = m_SkyboxEnabled
-            && m_EnvironmentMap && m_EnvironmentMap->IsReady();
-        if (!hasSkybox) {
-            return;
-        }
-    }
-
     // 使同材质同 mesh 的实例连续排列（管线/纹理切换最少 + instancing 合批），
     // 深度从前往后，利用 early-z 减少过绘制。
     SortMeshes();
@@ -436,10 +426,19 @@ void Renderer3D::EndScene() {
 
     // ── 渲染：开始动态渲染 → 天空盒背景 → 网格批次（管线 + 描述符 + 绘制） ──
     BeginDynamicRendering(cmd, renderTarget);
-    DrawSkybox(cmd, frame, renderTarget);
+
+    // 天空盒：由"有无天空盒"控制（仅开关开启时提交；纹理是否就绪由 DrawSkybox 内部再判定）
+    if (m_SkyboxEnabled) {
+        DrawSkybox(cmd, frame, renderTarget);
+    }
+
     ConfigureMeshPipeline(cmd, renderTarget);
     BindSharedUniforms(cmd, frameUboAlloc, lightBuffer);
-    DrawMeshInstances(cmd, frame, batches, instanceBuffer);
+
+    // 网格：由"有无批次"控制（无网格时整个实例循环无事可做）
+    if (!batches.empty()) {
+        DrawMeshInstances(cmd, frame, batches, instanceBuffer);
+    }
 
     // ── 统计 draw call 与三角形数量 ──
     RecordStats(batches);
@@ -533,10 +532,11 @@ void Renderer3D::CollectBatches(std::vector<InstanceData> &instances,
 
 BufferAllocation Renderer3D::UploadInstanceBuffer(VulkanRenderFrame &frame,
                                                    const std::vector<InstanceData> &instances) {
-    // 分配全局实例 SSBO 并一次性上传（所有批次共享）
+    // 分配全局实例 SSBO 并一次性上传（所有批次共享）。无网格时分配 1 字节占位
+    // 避免空缓冲（批次为空则不会被绑定，shader 不受影响）。
     BufferAllocation alloc = frame.AllocateBuffer(
         vk::BufferUsageFlagBits::eStorageBuffer,
-        instances.size() * sizeof(InstanceData));
+        instances.empty() ? 1 : instances.size() * sizeof(InstanceData));
     alloc.update(instances);
     return alloc;
 }

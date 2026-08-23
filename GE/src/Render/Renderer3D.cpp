@@ -454,7 +454,7 @@ void Renderer3D::SortMeshes() {
 
 }
 
-void Renderer3D::UploadFrameUBO(VulkanRenderFrame &frame) {
+BufferAllocation Renderer3D::UploadFrameUBO(VulkanRenderFrame &frame) {
     // ── 1. 分配 Frame UBO（所有网格共享） ─────────────────────────────
     FrameUBO frameUBO{};
     frameUBO.projection = m_Projection;

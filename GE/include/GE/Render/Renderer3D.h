@@ -371,9 +371,7 @@ private:
     /// 逐批次 instanced 绘制（含管线路由 / 纹理材质绑定 / 材质 UBO）
     void DrawMeshInstances(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame,
                            const std::vector<RenderBatch> &batches,
-                           const BufferAllocation &instanceBuffer,
-                           const BufferAllocation &frameUbo,
-                           const BufferAllocation &lightBuffer);
+                           const BufferAllocation &instanceBuffer);
 
     /// 统计 draw call 与三角形数量（draw call = 批次数量）
     void RecordStats(const std::vector<RenderBatch> &batches);

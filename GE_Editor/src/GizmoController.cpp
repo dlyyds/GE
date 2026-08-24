@@ -95,7 +95,7 @@ void GizmoController::Render(const Camera &camera, const glm::vec2 &viewportPos,
             if (aabb.IsValid()) {
                 const AABB worldAabb = aabb.Transformed(transform);
                 const glm::vec3 center = (worldAabb.min + worldAabb.max) * 0.5f;
-                gizmoMatrix = glm::translate(center) * glm::mat4(glm::mat3(transform));
+                gizmoMatrix = glm::translate(glm::mat4(1.0f), center) * glm::mat4(glm::mat3(transform));
             }
         }
     }

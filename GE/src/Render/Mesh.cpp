@@ -50,6 +50,37 @@ static std::unique_ptr<VulkanBuffer> UploadBuffer(
 }
 
 // ============================================================================
+// 辅助：为缺失包围盒的子网格现算兜底（遍历索引范围，取实际引用的顶点位置）。
+//
+// 子网格实际用到的几何只能从索引范围精确推导：OBJ 子网格 firstVertex 恒 0、
+// vertexCount 为累积总数（顶点跨子网格共享），glTF 段内去重后顶点范围与索引
+// 范围一致但非精确。故统一按 [firstIndex, firstIndex+indexCount) 遍历索引，
+// 对每条索引引用的顶点并入包围盒。
+// ============================================================================
+
+static void FillSubMeshAABBs(const std::vector<Vertex> &vertices,
+                             const std::vector<uint32_t> &indices,
+                             std::vector<SubMesh> &subMeshes) {
+    for (auto &sm : subMeshes) {
+        if (sm.aabb.IsValid()) {
+            continue; // 解析器已预存（如 .gemesh 回填），不重复现算
+        }
+        const size_t begin = sm.firstIndex;
+        if (begin >= indices.size()) {
+            continue; // 越界子网格（损坏数据），无法推导包围盒
+        }
+        const size_t end = (begin + sm.indexCount < indices.size())
+            ? (begin + sm.indexCount) : indices.size();
+        for (size_t i = begin; i < end; ++i) {
+            const uint32_t vi = indices[i];
+            if (vi < vertices.size()) {
+                sm.aabb.Expand(vertices[vi].Position);
+            }
+        }
+    }
+}
+
+// ============================================================================
 // 私有装配：由格式解析/几何生成产出的 MeshData 构建最终网格（各来源共享路径）
 // ============================================================================
 
@@ -73,6 +104,8 @@ std::unique_ptr<Mesh> Mesh::BuildMesh(VulkanDevice &device,
             mesh->m_AABB.Expand(v.Position);
         }
     }
+    // 子网格本地包围盒摘要：先复用解析器预存，缺失则按各自索引范围现算兜底
+    FillSubMeshAABBs(data.vertices, data.indices, mesh->m_SubMeshes);
 
     // 计算顶点切线（法线贴图需要），与异步 decode 共用 ModelLoader 的共享装配
     ModelLoader::ComputeTangents(data);
@@ -188,6 +221,8 @@ void Mesh::InstallAsyncData(MeshData &&data,
             m_AABB.Expand(v.Position);
         }
     }
+    // 子网格本地包围盒摘要：与同步路径一致，先复用预存，缺失则按索引范围现算兜底
+    FillSubMeshAABBs(data.vertices, data.indices, m_SubMeshes);
     m_VertexBuffer = std::move(vertexBuffer);
     m_IndexBuffer = std::move(indexBuffer);
 }

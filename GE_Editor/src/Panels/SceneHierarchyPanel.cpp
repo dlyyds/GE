@@ -518,23 +518,27 @@ static bool DrawTextureSlot(const char *label, Material *material, Material::Tex
     bool changed = false;
     std::string comboLabel = std::string(label) + "##slot_" + std::to_string(slot);
     if (ImGui::BeginCombo(comboLabel.c_str(), currentPreview.c_str())) {
-        // None 选项
+        // None 选项。独立压栈避免与某个 key 恰好为 "(none)" 的纹理撞 ID。
+        ImGui::PushID("none");
         if (ImGui::Selectable("(none)", currentTex == nullptr)) {
             material->SetTexture(slot, nullptr);
             changed = true;
         }
+        ImGui::PopID();
         if (currentTex == nullptr) {
             ImGui::SetItemDefaultFocus();
         }
 
-        // 列出所有已加载纹理
+        // 列出所有已加载纹理；按 key（唯一）压栈隔离，杜绝同名项 ID 冲突
         for (const auto &key : allKeys) {
             Texture *tex = texMgr.Get(key);
             bool isSelected = (tex == currentTex);
+            ImGui::PushID(key.c_str());
             if (ImGui::Selectable(key.c_str(), isSelected)) {
                 material->SetTexture(slot, tex);
                 changed = true;
             }
+            ImGui::PopID();
             if (isSelected) {
                 ImGui::SetItemDefaultFocus();
             }
@@ -665,15 +669,21 @@ static void DrawSubMeshMaterialEditor(MeshRendererComponent &comp, size_t index,
 
     std::string label = "Material##sub_" + std::to_string(index);
     if (ImGui::BeginCombo(label.c_str(), currentName.c_str())) {
-        // 使用默认（清除覆写）
+        // 使用默认（清除覆写）。独立压栈避免与某个恰好叫 "(use default)"
+        // 的材质显示名撞 ID。
+        ImGui::PushID("use_default");
         if (ImGui::Selectable("(use default)", override == nullptr)) {
             comp.materialOverrides.erase(static_cast<uint32_t>(index));
         }
+        ImGui::PopID();
         if (override == nullptr) {
             ImGui::SetItemDefaultFocus();
         }
 
-        // 列出 MaterialManager 中所有已加载材质（显示名 GetName，选即生成覆写）
+        // 列出 MaterialManager 中所有已加载材质（显示名 GetName，选即生成覆写）。
+        // 同一显示名会对应多个材质对象（如内置几何 / 无 MTL 网格都叫 "default"）：
+        // 若直接以显示名作标签，弹窗内会出现多条同名 Selectable → ID 冲突。
+        // 故每条按注册 key（唯一）PushID 隔离，显示名重复也不撞 ID。
         for (const auto &name : allMats) {
             Material *mat = matMgr.Get(name);
             bool isSelected = (mat == effective);
@@ -681,9 +691,11 @@ static void DrawSubMeshMaterialEditor(MeshRendererComponent &comp, size_t index,
             if (displayName.empty()) {
                 displayName = name;  // 兜底：无显示名时退回 key
             }
+            ImGui::PushID(name.c_str());
             if (ImGui::Selectable(displayName.c_str(), isSelected)) {
                 comp.materialOverrides[static_cast<uint32_t>(index)] = mat;
             }
+            ImGui::PopID();
             if (isSelected) {
                 ImGui::SetItemDefaultFocus();
             }

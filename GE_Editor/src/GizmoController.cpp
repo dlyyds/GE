@@ -6,8 +6,10 @@
 
 #include "HierarchyLayer.h"
 #include "GE/Scene/Components.h"
+#include "GE/Render/Mesh.h"
 
 #include <glm/gtc/type_ptr.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 namespace GE {
 
@@ -80,6 +82,25 @@ void GizmoController::Render(const Camera &camera, const glm::vec2 &viewportPos,
         }
     }
 
+    // ---- 手柄矩阵：默认在实体局部原点；有网格时定位到网格世界空间包围盒中心 ----
+    // 模型原点往往不在几何正中间（DCC 导出锚点、组合模型），手柄应出现在物体
+    // 正中间而非原点。做法：gizmo 传入「平移=包围盒中心、旋转/缩放=原世界矩阵」
+    // 的手柄矩阵，ImGuizmo 绕此中心旋转/缩放（物体原点不变、几何跟随）；
+    // 平移操作产生中心位移（delta），该位移叠加回物体原平移，见写回处。
+    glm::mat4 gizmoMatrix = transform;
+    if (selected.HasComponent<MeshRendererComponent>()) {
+        Mesh *mesh = selected.GetComponent<MeshRendererComponent>().MeshPtr;
+        if (mesh) {
+            const AABB &aabb = mesh->GetAABB();
+            if (aabb.IsValid()) {
+                const AABB worldAabb = aabb.Transformed(transform);
+                const glm::vec3 center = (worldAabb.min + worldAabb.max) * 0.5f;
+                gizmoMatrix = glm::translate(center) * glm::mat4(glm::mat3(transform));
+            }
+        }
+    }
+    const glm::vec3 gizmoCenterBefore = glm::vec3(gizmoMatrix[3]);
+
     ImGuizmo::SetRect(viewportPos.x, viewportPos.y, viewportSize.x, viewportSize.y);
 
     // ---- 吸附参数（按操作类型取对应步长）----
@@ -97,14 +118,25 @@ void GizmoController::Render(const Camera &camera, const glm::vec2 &viewportPos,
         glm::value_ptr(camera.GetView()),
         glm::value_ptr(proj),
         m_Operation, m_Mode,
-        glm::value_ptr(transform),
+        glm::value_ptr(gizmoMatrix),
         nullptr, // deltaMatrix：无需输出增量矩阵
         snap);   // snap：吸附步长（第 7 参）
 
     if (changed && ImGuizmo::IsUsing()) {
-        // gizmo 更新的是世界矩阵，先乘父世界矩阵的逆还原为局部矩阵，再拆回 平移/旋转(度)/缩放。
+        // gizmo 更新的是「手柄矩阵」：返回矩阵平移位于手柄位置（新中心）。
+        // 旋转/缩放绕中心时中心不变（delta=0，物体原点不动、几何绕中心旋转/缩放）；
+        // 平移操作才产生中心位移（delta≠0）。把中心位移叠加到物体原平移（原点），
+        // 使几何随手柄移动。
+        const glm::vec3 centerDelta = glm::vec3(gizmoMatrix[3]) - gizmoCenterBefore;
+
+        // 新世界矩阵 = gizmo 结果的旋转/缩放 + 「原平移 + 中心位移」。
+        // 无网格回退时中心即原点，centerDelta 即完整平移增量，结果与原逻辑一致。
+        glm::mat4 worldMatrix = glm::mat4(glm::mat3(gizmoMatrix));
+        worldMatrix[3] = glm::vec4(glm::vec3(transform[3]) + centerDelta, 1.0f);
+
+        // gizmo 输出的是世界矩阵，先乘父世界矩阵的逆还原为局部矩阵，再拆回 平移/旋转(度)/缩放。
         // （根实体 parentWorld 为恒等，换算无影响；子实体则把父级位移/旋转/缩放一并剥离）
-        glm::mat4 localMatrix = glm::inverse(parentWorld) * transform;
+        glm::mat4 localMatrix = glm::inverse(parentWorld) * worldMatrix;
 
         // 从 gizmo 更新后的局部矩阵拆回 平移/旋转(度)/缩放 写回组件
         float translation[3], rotationDeg[3], scale[3];

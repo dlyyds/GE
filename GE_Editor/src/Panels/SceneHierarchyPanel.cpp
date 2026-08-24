@@ -828,8 +828,14 @@ void SceneHierarchyPanel::DrawMeshRendererComponent(MeshRendererComponent &compo
                 std::string header = "SubMesh " + std::to_string(i) +
                                      " (" + std::to_string(subMeshes[i].indexCount) + " indices)";
                 if (ImGui::CollapsingHeader(header.c_str())) {
+                    // CollapsingHeader 带 NoTreePushOnOpen，内容不会推入 ID 栈：若不在
+                    // 这里按子网格索引 PushID，各子网格材质编辑器内同名的 Combo/Slider/
+                    // InputText（如 Albedo##slot_0）在 Properties 窗口共享同一 ID 作用域，
+                    // 会产生大量「ID 已被占用」的告警。故此处显式按索引开作用域。
                     ImGui::Indent();
+                    ImGui::PushID(static_cast<int>(i));
                     DrawSubMeshMaterialEditor(component, i, subMeshes[i]);
+                    ImGui::PopID();
                     ImGui::Unindent();
                 }
             }

@@ -20,6 +20,9 @@
 #include "Render/AssetManager.h"
 #include "Core/Log.h"
 #include "Render/TextureManager.h"
+#include "Render/GEMeshLoader.h"
+#include "Render/ModelLoader.h"
+#include "Render/GLTFLoader.h"
 
 #include <yaml-cpp/yaml.h>
 #include <glm/glm.hpp>
@@ -360,6 +363,211 @@ glm::quat DeserializeQuat(const YAML::Node &node, const glm::quat &def = glm::qu
     return def;
 }
 
+// ============================================================
+// .gemesh 烘焙辅助 —— 场景保存时自动把非 .gemesh 来源转为引擎内置格式
+// ============================================================
+
+/// 扩展名是否为 .gemesh（大小写不敏感）
+bool IsGemeshPath(const std::string &path) {
+    std::string ext = std::filesystem::path(path).extension().string();
+    for (char &c : ext) {
+        if (c >= 'A' && c <= 'Z') {
+            c += static_cast<char>('a' - 'A');
+        }
+    }
+    return ext == ".gemesh";
+}
+
+/**
+ * @brief 拆分 glTF 多 mesh 复合键（"foo.gltf#N"）为<基础文件, mesh 索引>。
+ *
+ * 仅当源路径扩展名是 .gltf/.glb 且 # 之后全为数字时才当 mesh 索引解析；
+ * 其余情形（普通文件名里恰好含 #、OBJ 等）原样当作整条路径、索引为 0。
+ */
+void SplitGLTFMeshKey(const std::string &srcKey, std::string &filePath, size_t &meshIndex) {
+    filePath  = srcKey;
+    meshIndex = 0;
+
+    const size_t hashPos = srcKey.rfind('#');
+    if (hashPos == std::string::npos) {
+        return;
+    }
+    const std::string suffix = srcKey.substr(hashPos + 1);
+    const bool allDigit = !suffix.empty()
+        && std::all_of(suffix.begin(), suffix.end(),
+                       [](char c) { return c >= '0' && c <= '9'; });
+    if (!allDigit) {
+        return;
+    }
+
+    const std::string base = srcKey.substr(0, hashPos);
+    std::string baseExt = std::filesystem::path(base).extension().string();
+    for (char &c : baseExt) {
+        if (c >= 'A' && c <= 'Z') {
+            c += static_cast<char>('a' - 'A');
+        }
+    }
+    if (baseExt != ".gltf" && baseExt != ".glb") {
+        return;
+    }
+
+    filePath  = base;
+    meshIndex = static_cast<size_t>(std::stoul(suffix));
+}
+
+/**
+ * @brief 由来源标识派生烘焙输出路径（与源文件同目录）。
+ *
+ *   foo.obj / foo.gltf    -> <同目录>/foo.gemesh
+ *   foo.gltf#N（N>0）     -> <同目录>/foo_N.gemesh（与 #0 的裸路径区分）
+ */
+std::string DeriveGemeshOutPath(const std::string &srcKey) {
+    std::string filePath;
+    size_t meshIndex = 0;
+    SplitGLTFMeshKey(srcKey, filePath, meshIndex);
+
+    const std::filesystem::path src(filePath);
+    if (meshIndex > 0) {
+        return (src.parent_path() /
+                (src.stem().string() + "_" + std::to_string(meshIndex) + ".gemesh")).string();
+    }
+    return (src.parent_path() / (src.stem().string() + ".gemesh")).string();
+}
+
+/**
+ * @brief 把源资产烘焙为 .gemesh（重读源文件重建 MeshData → 切线 → 包围盒 → 序列化）。
+ *
+ * Mesh 上传 GPU 后不保留 CPU 顶点/索引副本（Mesh.cpp），故此处要按来源重新解析：
+ *   - .gltf/.glb（含 #N 复合键）→ GLTF::BuildMeshData(filePath, index, out)
+ *   - .obj                      → ModelLoader::Parse(filePath, out)
+ * 输出文件已存在时跳过烘焙直接视为成功（避免每次保存都重解析大模型）。
+ *
+ * @param srcKey  来源标识（文件路径，可为 "foo.gltf#N"）
+ * @param outPath 输出 .gemesh 路径
+ * @param err     非空时回填错误描述
+ * @return 成功（或产物已存在）返回 true
+ */
+bool BakeSourceToGemesh(const std::string &srcKey, const std::string &outPath,
+                        std::string &err) {
+    if (std::filesystem::exists(outPath)) {
+        return true;
+    }
+
+    std::string filePath;
+    size_t meshIndex = 0;
+    SplitGLTFMeshKey(srcKey, filePath, meshIndex);
+
+    // 重建 CPU 载荷（Mesh 不持有顶点数组，需重读源资产）
+    MeshData data;
+    std::string ext = std::filesystem::path(filePath).extension().string();
+    for (char &c : ext) {
+        if (c >= 'A' && c <= 'Z') {
+            c += static_cast<char>('a' - 'A');
+        }
+    }
+
+    bool parsed = false;
+    if (ext == ".gltf" || ext == ".glb") {
+        parsed = GLTF::BuildMeshData(filePath, meshIndex, data);
+    } else if (ext == ".obj") {
+        parsed = ModelLoader::Parse(filePath, data);
+    } else {
+        err = "不支持的来源格式: " + srcKey;
+        return false;
+    }
+    if (!parsed || data.vertices.empty() || data.indices.empty()) {
+        err = "源资产解析失败: " + srcKey;
+        return false;
+    }
+
+    // 切线计算，保证与运行时加载路径（MeshManager 异步 decode）逐字节一致
+    ModelLoader::ComputeTangents(data);
+
+    // 未产出子网格的源（防御）补一个全覆盖子网格，镜像 Mesh::Create 的行为
+    if (data.subMeshes.empty()) {
+        data.subMeshes.push_back(SubMesh{0, static_cast<uint32_t>(data.vertices.size()),
+                                         0, static_cast<uint32_t>(data.indices.size()),
+                                         {}, nullptr});
+    }
+
+    // 包围盒 + 源资产追溯信息
+    GEMeshMeta meta;
+    meta.aabbMin = meta.aabbMax = data.vertices[0].Position;
+    for (const auto &v : data.vertices) {
+        meta.aabbMin = glm::min(meta.aabbMin, v.Position);
+        meta.aabbMax = glm::max(meta.aabbMax, v.Position);
+    }
+    meta.sourceAsset = srcKey;
+
+    return SerializeGEMesh(outPath, data, meta, &err);
+}
+
+/**
+ * @brief 把一个 mesh 引用解析为应写入场景 YAML 的路径。
+ *
+ *   - 空路径                → 空（不写 Mesh 字段）
+ *   - "builtin:*" 前缀       → 原样（内置几何体无文件依赖，不烘焙）
+ *   - ".gemesh" 后缀         → 原样（已是引擎内置格式）
+ *   - 其它                   → 烘焙为 .gemesh 后返回产物路径；烘焙失败回退原路径并告警
+ *
+ * @param src        网格来源标识（GetFilePath() 返回值）
+ * @param bakedCache <源路径 → 烘焙产物路径>，同源只烘焙一次（含碰撞去重的反查）
+ * @return 应写入场景的路径（空 = 不写 Mesh 字段）
+ */
+std::string ResolveMeshSerializedPath(
+    const std::string &src,
+    std::unordered_map<std::string, std::string> &bakedCache) {
+    if (src.empty()) {
+        return {};
+    }
+    // 内置几何体 / 已烘焙格式原样保留
+    if (src.rfind("builtin:", 0) == 0 || IsGemeshPath(src)) {
+        return src;
+    }
+
+    // 同源（场景中多处引用同一模型）只烘焙一次
+    const auto cached = bakedCache.find(src);
+    if (cached != bakedCache.end()) {
+        return cached->second;
+    }
+
+    std::string outPath = DeriveGemeshOutPath(src);
+    if (outPath.empty()) {
+        GE_CORE_WARN("SceneSerializer: 无法为网格 {0} 推导烘焙输出路径，回退原路径", src);
+        bakedCache[src] = src;
+        return src;
+    }
+
+    // 碰撞兜底：产物路径已被其它来源占用（如 foo#1 与真实 foo_1.obj）时追加 _2/_3 区分
+    for (int n = 2;; ++n) {
+        bool collision = false;
+        for (const auto &kv : bakedCache) {
+            if (kv.second == outPath && kv.first != src) {
+                collision = true;
+                break;
+            }
+        }
+        if (!collision) {
+            break;
+        }
+        const std::filesystem::path p(outPath);
+        outPath = (p.parent_path() /
+                   (p.stem().string() + "_" + std::to_string(n) + ".gemesh")).string();
+    }
+
+    std::string err;
+    if (!BakeSourceToGemesh(src, outPath, err)) {
+        // 单个网格烘焙失败不中断整场景保存，回退原路径保证场景仍可加载
+        GE_CORE_WARN("SceneSerializer: 网格 {0} 烘焙失败（{1}），回退原路径", src, err);
+        bakedCache[src] = src;
+        return src;
+    }
+
+    bakedCache[src] = outPath;
+    GE_CORE_INFO("SceneSerializer: 网格 {0} 已烘焙为 {1}", src, outPath);
+    return outPath;
+}
+
 } // anonymous namespace
 
 // ============================================================
@@ -392,6 +600,9 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
     auto view = reg.view<entt::entity>();
 
     size_t entityCount = 0;
+
+    // 烘焙去重缓存：<网格来源路径 → 烘焙 .gemesh 产物路径>，同源只烘焙一次
+    std::unordered_map<std::string, std::string> bakedGemeshCache;
 
     for (auto entityHandle : view) {
         entityCount++;
@@ -451,9 +662,13 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
             YAML::Node meshNode = entityNode["MeshRenderer"];
             meshNode["Color"] = SerializeVec4(mc.Color);
 
-            // 网格路径
-            if (mc.MeshPtr && !mc.MeshPtr->GetFilePath().empty()) {
-                meshNode["Mesh"] = mc.MeshPtr->GetFilePath();
+            // 网格路径：非 .gemesh 来源自动烘焙为 .gemesh（内置几何体原样保留）
+            if (mc.MeshPtr) {
+                const std::string meshPath =
+                    ResolveMeshSerializedPath(mc.MeshPtr->GetFilePath(), bakedGemeshCache);
+                if (!meshPath.empty()) {
+                    meshNode["Mesh"] = meshPath;
+                }
             }
 
             // 子网格材质覆写表（每实体独立）：<子网格索引, 材质内容>

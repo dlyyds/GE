@@ -101,6 +101,25 @@ public:
     /// 实际的相机输入路由在 Scene 内部完成。
     void SetProcessCameraInput(bool enabled) { m_ProcessCameraInput = enabled; }
 
+    /**
+     * @brief 视锥剔除粒度。
+     *
+     * Mesh    = 仅整网格级剔除（默认，保留现有行为）：整实体完全在视锥外才跳过。
+     * SubMesh = 先做网格级粗筛（整实体完全在外直接跳过），再基于 SubMesh::aabb
+     *           做子网格级细剔除，仅跳过完全在视锥外的子网格。
+     * 两种模式均保守：AABB 无效或与任一平面相交都保留，避免误剔。
+     */
+    enum class CullingMode : uint8_t {
+        Mesh = 0,    ///< 仅整网格级剔除（默认，现有行为）
+        SubMesh = 1, ///< 网格级粗筛 + 子网格级细剔除
+    };
+
+    /// 设置视锥剔除粒度（Mesh / SubMesh）。
+    void SetCullingMode(CullingMode mode) { m_CullingMode = mode; }
+
+    /// 当前视锥剔除粒度。
+    CullingMode GetCullingMode() const { return m_CullingMode; }
+
     void OnViewportResize(uint32_t width, uint32_t height);
 
     /** @brief 获取物理世界指针（可能为 nullptr，如果物理系统未启用） */
@@ -160,6 +179,9 @@ private:
 
     /// 是否将输入路由给主相机（由编辑器设置）
     bool m_ProcessCameraInput = false;
+
+    /// 视锥剔除粒度（默认仅网格级，保留现有行为）
+    CullingMode m_CullingMode = CullingMode::Mesh;
 
     template <typename T>
     void OnComponentAdded(Entity entity, T &component);

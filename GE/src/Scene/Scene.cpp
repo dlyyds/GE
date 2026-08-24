@@ -411,9 +411,13 @@ void Scene::RenderMeshes3D(const glm::mat4 &view, const glm::mat4 &projection,
     auto &r3d = Renderer::Get3DRenderer();
     r3d.BeginScene(view, projection, viewPos, clearColor);
 
-    // 视锥剔除：由 viewProjection 提取 6 平面，逐实体以世界空间 AABB 判外。
-    // 完全在视锥外的实体跳过绘制（保守：AABB 无效或与任一平面相交均保留）。
+    // 视锥剔除：由 viewProjection 提取 6 平面。
+    //   Mesh    模式：逐实体以世界空间整网格 AABB 判外，整实体完全在外才跳过。
+    //   SubMesh 模式：先做网格级粗筛（整实体完全在外直接跳过，免逐子网格重复判定），
+    //                再基于 SubMesh::aabb 逐子网格判外，仅跳过完全在视锥外的子网格。
+    // 两种模式均保守：AABB 无效或与任一平面相交都保留，避免误剔。
     const Frustum frustum = Frustum::FromViewProjection(projection * view);
+    const bool cullSubMesh = (m_CullingMode == CullingMode::SubMesh);
 
     auto meshView = m_Registry.view<TransformComponent, MeshRendererComponent>();
     for (auto entity : meshView) {
@@ -424,10 +428,12 @@ void Scene::RenderMeshes3D(const glm::mat4 &view, const glm::mat4 &projection,
             continue;
         }
 
-        // 世界空间包围盒 = 模型空间 AABB × 世界矩阵（含旋转缩放）。
-        // 无效包围盒（如异步网格尚未注入）保守不剔除，避免瞬态误剔。
-        const AABB &aabb = mc.MeshPtr->GetAABB();
-        if (aabb.IsValid() && !frustum.IsVisible(aabb.Transformed(tc.GetWorldMatrix()))) {
+        // 网格级粗筛（两种模式共用）：世界空间包围盒 = 模型空间 AABB × 世界矩阵
+        // （含旋转缩放）。无效包围盒（如异步网格尚未注入）保守不剔除，避免瞬态误剔。
+        const AABB &meshAabb = mc.MeshPtr->GetAABB();
+        const bool meshVisible = !meshAabb.IsValid()
+            || frustum.IsVisible(meshAabb.Transformed(tc.GetWorldMatrix()));
+        if (!meshVisible) {
             continue;
         }
 
@@ -436,6 +442,14 @@ void Scene::RenderMeshes3D(const glm::mat4 &view, const glm::mat4 &projection,
         const auto &subMeshes = mc.MeshPtr->GetSubMeshes();
         for (size_t i = 0; i < subMeshes.size(); ++i) {
             const SubMesh &sub = subMeshes[i];
+
+            // 子网格级细剔除（仅 SubMesh 模式）：基于 SubMesh::aabb 逐子网格判外。
+            // 无效包围盒（如加载期数据异常）保守保留，保证不误剔。
+            if (cullSubMesh && sub.aabb.IsValid()
+                && !frustum.IsVisible(sub.aabb.Transformed(tc.GetWorldMatrix()))) {
+                continue;
+            }
+
             Material *mat = nullptr;
             auto it = mc.materialOverrides.find(static_cast<uint32_t>(i));
             if (it != mc.materialOverrides.end()) {

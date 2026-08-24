@@ -259,6 +259,15 @@ void SceneLayer::OnImGuiRender() {
         ImGui::Text("3D 实体数：%zu", meshView.size());
         ImGui::Text("点光源数：%zu", lightView.size());
         ImGui::Text("FPS：%.1f", Application::Get().GetFPS());
+
+        ImGui::Separator();
+        // 视锥剔除粒度开关：整网格级 / 子网格级（基于 SubMesh::aabb 细剔除）
+        const char *kCullingNames[] = {"整网格（Mesh）", "子网格（SubMesh）"};
+        int cull = static_cast<int>(m_Context->Scene->GetCullingMode());
+        if (ImGui::Combo("视锥剔除", &cull, kCullingNames, IM_ARRAYSIZE(kCullingNames))) {
+            m_Context->Scene->SetCullingMode(static_cast<Scene::CullingMode>(cull));
+        }
+
         ImGui::TextDisabled("提示：先在左侧 Hierarchy/Properties 中调整实体，再保存/加载验证");
     }
 

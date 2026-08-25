@@ -35,7 +35,7 @@ void PrintUsage() {
 }
 
 void PrintVersion() {
-    std::cout << "gemesh 0.1.0（.gemesh 格式版本 1）\n";
+    std::cout << "gemesh 0.1.1（.gemesh 格式版本 2，Vertex 80B 含蒙皮字段）\n";
 }
 
 } // namespace

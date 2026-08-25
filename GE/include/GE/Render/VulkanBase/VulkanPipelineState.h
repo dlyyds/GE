@@ -133,10 +133,15 @@ public:
     /// @param vertShader 顶点阶段的 VulkanShaderModule（需已完成反射）
     /// @param binding    顶点缓冲绑定点（默认 0）
     /// @param rate       顶点/实例速率（默认 eVertex）
+    /// @param strideHint 顶点缓冲 stride（字节数），>0 时优先于反射求和的
+    ///                   stride（C++ 顶点结构体尺寸权威；`.gemesh` 场景等
+    ///                   着色器只声明前几个 location、结构与 shader 不相等时必填），
+    ///                   0=从反射的 location 紧密打包求和
     /// @return 单个顶点的 stride（字节数）
     uint32_t setVertexInputFromShader(const VulkanShaderModule &vertShader,
                                       uint32_t           binding = 0,
-                                      vk::VertexInputRate rate   = vk::VertexInputRate::eVertex);
+                                      vk::VertexInputRate rate   = vk::VertexInputRate::eVertex,
+                                      uint32_t           strideHint = 0);
 
     /// 设置顶点绑定描述
     VulkanPipelineState &setVertexBindings(const std::vector<vk::VertexInputBindingDescription> &bindings);

@@ -18,6 +18,7 @@
 #include <cstdint>
 #include <cstddef>
 #include <cmath>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <string>
@@ -55,20 +56,27 @@ struct MaterialData {
 };
 
 /**
- * @brief 顶点数据结构：位置 + 法线 + 纹理坐标 + 切线。
+ * @brief 顶点数据结构：位置 + 法线 + 纹理坐标 + 切线 + 骨骼蒙皮字段。
  *
  * 内存布局必须与顶点着色器的输入 location 顺序一致（由着色器反射紧密打包）：
- *   location 0: Position (vec3, 12B)
- *   location 1: Normal   (vec3, 12B)
- *   location 2: TexCoord (vec2,  8B)
- *   location 3: Tangent  (vec4, 16B) —— xyz=切线方向，w=手性符号(+1/-1)
- * 总大小 48B。
+ *   location 0: Position  (vec3,  12B)
+ *   location 1: Normal    (vec3,  12B)
+ *   location 2: TexCoord  (vec2,   8B)
+ *   location 3: Tangent   (vec4,  16B) —— xyz=切线方向，w=手性符号(+1/-1)
+ *   location 4: JointIdx  (uvec4, 16B) —— 骨骼蒙皮的 4 个关节索引(0..N-1)
+ *   location 5: Weight    (vec4,  16B) —— 与 JointIdx 对应的 4 个权重（和≈1）
+ * 总大小 80B。
+ *
+ * 静态网格（无蒙皮）的 JointIdx 保持 {0,0,0,0}、Weight 保持 {0,0,0,0}，
+ * 蒙皮顶点着色器在权重全 0 时退化为恒等（见 mesh_skinned.vert 归一化处理）。
  */
 struct Vertex {
     glm::vec3 Position{0.0f};   ///< 位置
     glm::vec3 Normal{0.0f};     ///< 法线
     glm::vec2 TexCoord{0.0f};   ///< 纹理坐标
-    glm::vec4 Tangent{0.0f, 0.0f, 0.0f, 1.0f}; ///< 切线(xyz) + 手性符号(w)
+    glm::vec4 Tangent{0.0f, 0.0f, 0.0f, 1.0f};   ///< 切线(xyz) + 手性符号(w)
+    glm::uvec4 JointIdx{0u, 0u, 0u, 0u}; ///< 蒙皮关节索引（4 个，0..N-1；静态网格恒 0）
+    glm::vec4  Weight{0.0f, 0.0f, 0.0f, 0.0f}; ///< 蒙皮权重（与 JointIdx 对应，和≈1；静态网格恒 0）
 
     /**
      * @brief 量化精度：将坐标投影到 1/10000 的均匀网格上。
@@ -95,7 +103,9 @@ struct Vertex {
         return Position == other.Position
             && Normal == other.Normal
             && TexCoord == other.TexCoord
-            && Tangent == other.Tangent;
+            && Tangent == other.Tangent
+            && JointIdx == other.JointIdx
+            && Weight == other.Weight;
     }
 };
 
@@ -119,9 +129,19 @@ struct hash<GE::Vertex> {
         size_t h10 = hash<float>()(v.Tangent.y);
         size_t h11 = hash<float>()(v.Tangent.z);
         size_t h12 = hash<float>()(v.Tangent.w);
+        size_t h13 = hash<uint32_t>()(v.JointIdx.x);
+        size_t h14 = hash<uint32_t>()(v.JointIdx.y);
+        size_t h15 = hash<uint32_t>()(v.JointIdx.z);
+        size_t h16 = hash<uint32_t>()(v.JointIdx.w);
+        size_t h17 = hash<float>()(v.Weight.x);
+        size_t h18 = hash<float>()(v.Weight.y);
+        size_t h19 = hash<float>()(v.Weight.z);
+        size_t h20 = hash<float>()(v.Weight.w);
         // 简易组合哈希
         return h1 ^ (h2 << 1) ^ (h3 << 2) ^ (h4 << 3) ^ (h5 << 4) ^ (h6 << 5) ^ (h7 << 6) ^ (h8 << 7)
-             ^ (h9 << 8) ^ (h10 << 9) ^ (h11 << 10) ^ (h12 << 11);
+             ^ (h9 << 8) ^ (h10 << 9) ^ (h11 << 10) ^ (h12 << 11)
+             ^ (h13 << 12) ^ (h14 << 13) ^ (h15 << 14) ^ (h16 << 15)
+             ^ (h17 << 16) ^ (h18 << 17) ^ (h19 << 18) ^ (h20 << 19);
     }
 };
 } // namespace std
@@ -218,6 +238,7 @@ struct MeshData {
     std::vector<SubMesh>     subMeshes;     ///< 渲染范围 + materialName
     std::vector<MaterialData> materialData; ///< 材质匹配用（MeshManager 读取）
     AABB  aabb;                            ///< 模型空间包围盒（解析器可选预计算，.gemesh 从 META 回填；未填时装配现算兜底）
+    int   skinIndex = -1;                  ///< 该 mesh 是否被皮肤（骨骼）驱动：-1=静态，>=0= glTF 皮肤索引（顶点带 JOINTS_0/WEIGHTS_0）
 };
 
 /**

@@ -111,7 +111,8 @@ VulkanPipelineState &VulkanPipelineState::setVertexAttributes(const std::vector<
 
 uint32_t VulkanPipelineState::setVertexInputFromShader(const VulkanShaderModule &vertShader,
                                                        uint32_t binding,
-                                                       vk::VertexInputRate rate) {
+                                                       vk::VertexInputRate rate,
+                                                       uint32_t strideHint) {
     // 1. 收集所有 Input 资源
     std::vector<const ShaderResource *> inputs;
     for (const auto &res : vertShader.get_resources()) {
@@ -144,17 +145,20 @@ uint32_t VulkanPipelineState::setVertexInputFromShader(const VulkanShaderModule 
         offset += GetVertexFormatSize(res->format) * res->array_size;
     }
 
-    // 4. 设置到 pipeline state
+    // 4. 设置到 pipeline state。
+    //     stride 优先取调用方传入的 strideHint（C++ 顶点结构体尺寸权威）；
+    //     未传（0）时退回反射属性紧密打包求和。
+    const uint32_t stride = (strideHint > 0) ? strideHint : offset;
     m_VertexBindings = std::vector<vk::VertexInputBindingDescription>{
         vk::VertexInputBindingDescription{
             .binding = binding,
-            .stride = offset,
+            .stride = stride,
             .inputRate = rate,
         }
     };
     m_VertexAttributes = std::move(attrs);
 
-    return offset; // stride
+    return stride;
 }
 
 // ============================================================================

@@ -20,9 +20,11 @@
 
 #include "tinygltf/tiny_gltf.h"
 
+#include <algorithm>
 #include <filesystem>
 #include <vector>
 #include <cstring>
+#include <limits>
 #include <glm/glm.hpp>
 
 namespace GE {
@@ -66,8 +68,10 @@ const uint8_t *AccessorBasePtr(const tinygltf::Model &m, const tinygltf::Accesso
 /**
  * @brief 读取 accessor 第 i 个元素的前 n 个 float 分量到 out。
  *
- * 阶段 1 仅支持 TINYGLTF_COMPONENT_TYPE_FLOAT；其他类型（int16/uint8 量化、
- * normalized）清空输出并留 switch 分支待阶段 2 扩展。
+ * 支持 FLOAT 直读，以及 UNSIGNED_BYTE / UNSIGNED_SHORT 的 normalized（量化）解码
+ * （glTF 常把 NORMAL / TEXCOORD / WEIGHTS 存为 8/16 位定点，按
+ * value / (2^bits - 1) 归一化）。int16 带符号量化在项目内不产出，仅当出现
+ * 非法分量类型时清空输出兜底。
  */
 template <typename OutVec>
 static void ReadFloatAttr(const tinygltf::Model &m, int accessorIdx, size_t i, OutVec &out) {
@@ -85,15 +89,32 @@ static void ReadFloatAttr(const tinygltf::Model &m, int accessorIdx, size_t i, O
         std::memset(dst, 0, kN * sizeof(float));
         return;
     }
+    const uint8_t *p = base + i * static_cast<size_t>(stride);
     switch (acc.componentType) {
         case TINYGLTF_COMPONENT_TYPE_FLOAT: {
-            const float *src = reinterpret_cast<const float *>(base + i * static_cast<size_t>(stride));
+            const float *src = reinterpret_cast<const float *>(p);
             for (int c = 0; c < kN; ++c) {
                 dst[c] = src[c];
             }
             break;
         }
-        // 阶段 2：int16/uint8 量化、normalized 在此分支解码
+        // 整数分量：仅当 accessor.normalized 时按 glTF 语义归一化到 [0,1]，
+        // 否则按原始整数值读取（罕见，但必须尊重标志位，否则会把原始值当 0..1）。
+        case TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE: {
+            for (int c = 0; c < kN; ++c) {
+                dst[c] = acc.normalized ? p[c] / 255.0f : static_cast<float>(p[c]);
+            }
+            break;
+        }
+        case TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT: {
+            uint16_t s;
+            for (int c = 0; c < kN; ++c) {
+                std::memcpy(&s, p + c * sizeof(uint16_t), sizeof(uint16_t));
+                dst[c] = acc.normalized ? s / 65535.0f : static_cast<float>(s);
+            }
+            break;
+        }
+        // int16 带符号量化、非法类型：清空输出兜底
         default:
             std::memset(dst, 0, kN * sizeof(float));
             break;
@@ -132,6 +153,42 @@ static uint32_t ReadIndex(const tinygltf::Model &m, int accessorIdx, size_t i) {
         }
         default:
             return 0;
+    }
+}
+
+/**
+ * @brief 读取蒙皮关节索引 accessor 第 i 个元素的前 4 个分量到 out（uvec4）。
+ *
+ * glTF JOINTS_0 为 VEC4，componentType 取 UNSIGNED_BYTE / UNSIGNED_SHORT。
+ * 分量宽度按 componentType 决定（分量本身在 stride 内连续，padding 在尾部），
+ * 越界 / 非法 / 缺失时整组清零（与 ReadIndex 越界兜底一致）。
+ */
+static void ReadJoints(const tinygltf::Model &m, int accessorIdx, size_t i, glm::uvec4 &out) {
+    out = glm::uvec4(0u);
+    if (accessorIdx < 0 || accessorIdx >= static_cast<int>(m.accessors.size())) {
+        return;
+    }
+    const auto &acc = m.accessors[accessorIdx];
+    const uint8_t *base = AccessorBasePtr(m, acc);
+    int stride = acc.bufferView >= 0
+        ? acc.ByteStride(m.bufferViews[acc.bufferView]) : -1;
+    if (!base || stride < 0 || acc.type != TINYGLTF_TYPE_VEC4) {
+        return;
+    }
+    const uint8_t *p = base + i * static_cast<size_t>(stride);
+    switch (acc.componentType) {
+        case TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE:
+            out = {static_cast<uint32_t>(p[0]), static_cast<uint32_t>(p[1]),
+                   static_cast<uint32_t>(p[2]), static_cast<uint32_t>(p[3])};
+            break;
+        case TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT: {
+            uint16_t v[4];
+            std::memcpy(v, p, sizeof(v));
+            out = {v[0], v[1], v[2], v[3]};
+            break;
+        }
+        default:
+            break; // 其他分量类型非法，保持清零
     }
 }
 
@@ -262,6 +319,9 @@ bool BuildMesh(const tinygltf::Model &m, size_t mi, const std::string &filepath,
         return false;
     }
     const tinygltf::Mesh &mesh = m.meshes[mi];
+    bool hasSkinning = false; // 本 mesh 是否含蒙皮属性流（JOINTS_0+WEIGHTS_0）
+    float weightSumMin = std::numeric_limits<float>::max();
+    float weightSumMax = -std::numeric_limits<float>::max();
 
     for (const auto &prim : mesh.primitives) {
         if (prim.mode != TINYGLTF_MODE_TRIANGLES) {
@@ -283,6 +343,14 @@ bool BuildMesh(const tinygltf::Model &m, size_t mi, const std::string &filepath,
         std::vector<uint32_t> localIdx;
         localIdx.reserve(vertexCnt);
 
+        // 蒙皮属性 JOINTS_0 / WEIGHTS_0 须成对存在才按蒙皮顶点读取；
+        // 缺一即按静态顶点（JointIdx 保持 0、Weight 保持 0）。
+        bool primSkinned = prim.attributes.count("JOINTS_0") > 0
+                        && prim.attributes.count("WEIGHTS_0") > 0;
+        if (primSkinned) {
+            hasSkinning = true;
+        }
+
         for (size_t i = 0; i < vertexCnt; ++i) {
             Vertex v{};
             ReadFloatAttr(m, posIt->second, i, v.Position);
@@ -303,12 +371,24 @@ bool BuildMesh(const tinygltf::Model &m, size_t mi, const std::string &filepath,
             }
             // 缺 TANGENT / NORMAL 时不在此补算：Mesh::Create 装配路径经
             // Mesh::BuildMesh 统一 ComputeTangents，单一来源不重复计算。
+            // 蒙皮属性 JOINTS_0 / WEIGHTS_0（须成对存在才读取；缺一即按静态顶点，
+            // JointIdx 保持 0、Weight 保持 0，蒙皮越界索引在 ReadJoints 已清零兜底）。
+            if (primSkinned) {
+                ReadJoints(m, prim.attributes.find("JOINTS_0")->second, i, v.JointIdx);
+                ReadFloatAttr(m, prim.attributes.find("WEIGHTS_0")->second, i, v.Weight);
+                // A 阶段验证：追踪蒙皮权重和（应为 [0,1] 分量且和≈1）
+                weightSumMin = std::min(weightSumMin,
+                                        v.Weight.x + v.Weight.y + v.Weight.z + v.Weight.w);
+                weightSumMax = std::max(weightSumMax,
+                                        v.Weight.x + v.Weight.y + v.Weight.z + v.Weight.w);
+            }
 
             // 一次性量化清洗，使去重的精确比较 / 哈希正确判定
             v.Position = Vertex::Quantize(v.Position);
             v.Normal   = Vertex::Quantize(v.Normal);
             v.TexCoord = Vertex::Quantize(v.TexCoord);
             v.Tangent  = Vertex::Quantize(v.Tangent);
+            v.Weight   = Vertex::Quantize(v.Weight);
 
             auto it = local.find(v);
             uint32_t idx;
@@ -348,6 +428,21 @@ bool BuildMesh(const tinygltf::Model &m, size_t mi, const std::string &filepath,
         });
 
         AppendGLTFMaterial(m, prim.material, filepath, out.materialData);
+    }
+
+    // 本 mesh 含蒙皮属性流 → 标记为被皮肤驱动的网格（具体关联的皮肤索引，
+    // 及 IBM 等数据，由 GLTFSceneImporter 在 node 层解析并挂 SkinComponent）。
+    if (hasSkinning) {
+        out.skinIndex = 0;
+        // A 阶段验证日志：权重和的合法范围（分量 ∈[0,1]，正常应和≈1）
+        if (weightSumMin < 0.5f || weightSumMax > 1.5f) {
+            GE_CORE_WARN("[Mesh] glTF mesh {} 蒙皮权重异常: 和范围 [{}, {}] "
+                         "(mesh {}, 权重应在 [0,1] 且和≈1)",
+                         mi, weightSumMin, weightSumMax, mesh.name);
+        } else {
+            GE_CORE_INFO("[Mesh] glTF mesh {} 蒙皮加载: {} 顶点, JOINTS_0 权重和范围 [{}, {}]",
+                         mi, out.vertices.size(), weightSumMin, weightSumMax);
+        }
     }
 
     if (out.vertices.empty() || out.indices.empty()) {

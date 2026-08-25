@@ -735,7 +735,13 @@ void Renderer3D::ConfigureMeshPipeline(VulkanCommandBuffer &cmd, RenderTarget &r
     ps.setColorBlendAttachments({blendState});
 
     // —— 4c. 顶点输入（从顶点着色器反射自动生成）——
-    ps.setVertexInputFromShader(*m_VertShader);
+    //     stride 以 C++ Vertex 结构体尺寸为权威：mesh.vert 仅声明 location 0-3
+    //     （忽略蒙皮字段），反射求和会得到 48B 的错误 stride，故显式传入
+    //     sizeof(Vertex)（80B）覆盖；属性 offset 仍由反射紧密打包（前 4 字段
+    //     与结构体前 48B 一一对应）。蒙皮管线 mesh_skinned.vert 声明全部
+    //     location 后无需额外覆盖，但保持一致做法无害。
+    ps.setVertexInputFromShader(*m_VertShader, 0, vk::VertexInputRate::eVertex,
+                                static_cast<uint32_t>(sizeof(Vertex)));
 
     // —— 4d. 光栅化 + 深度/模板（默认值，同时作为动态状态初始值）——
     ps.setInputAssembly(vk::PrimitiveTopology::eTriangleList)

@@ -22,7 +22,7 @@ namespace {
 // ============================================================================
 
 constexpr char      kMagic[5] = {'G', 'E', 'M', 'S', 'H'};
-constexpr uint16_t  kVersion  = 1;
+constexpr uint16_t  kVersion  = 2; ///< v2：Vertex 扩到 80B（新增蒙皮字段），v1(48B) 文件不再兼容
 constexpr uint32_t  kAlign    = 4; ///< chunk 起点对齐字节数
 
 // chunk id
@@ -36,7 +36,17 @@ constexpr uint32_t kChunkMeta      = 5;
 constexpr int32_t kNoString = -1;
 
 static_assert(sizeof(glm::vec3) == 12, "glm::vec3 尺寸与格式不符");
-static_assert(sizeof(Vertex) == 48, "Vertex 布局非 48B，.gemesh 顶点流编码失效");
+static_assert(sizeof(Vertex) == 80, "Vertex 布局非 80B，.gemesh 顶点流编码失效");
+
+/// v1 遗留顶点（48B，无蒙皮字段）。读 v1 文件时先把旧布局读入此结构，
+/// 再升格为 80B Vertex（JointIdx/Weight 补 0），兼容既有 .gemesh 资产。
+struct LegacyVertexV1 {
+    glm::vec3 Position{0.0f};
+    glm::vec3 Normal{0.0f};
+    glm::vec2 TexCoord{0.0f};
+    glm::vec4 Tangent{0.0f, 0.0f, 0.0f, 1.0f};
+};
+static_assert(sizeof(LegacyVertexV1) == 48, "v1 遗留顶点必须有 48B");
 
 // ============================================================================
 // Writer：顺序字节流，支持对齐补齐与整型/浮点写入（固定 little-endian 需逐字节）
@@ -425,7 +435,10 @@ bool ParseGEMesh(const std::string &filepath, MeshData &out, GEMeshMeta *outMeta
     }
     Reader head(buf, 5, buf.size() - 5);
     uint16_t version = 0;
-    if (!head.U16(version) || version > kVersion) {
+    // 兼容 v1（48B 顶点，无蒙皮字段）：读端把旧顶点流升格为 80B Vertex
+    // （JointIdx/Weight 补 0），避免既有 .gemesh 资产作废需重烘焙。
+    // v2 起顶点流为 80B。版本在此只允许这两个值。
+    if (!head.U16(version) || (version != 1 && version != static_cast<uint16_t>(kVersion))) {
         GE_CORE_ERROR("[GEMesh] 版本不支持: {0} (文件 {1}, 当前 {2})", filepath, version, kVersion);
         return false;
     }
@@ -470,12 +483,31 @@ bool ParseGEMesh(const std::string &filepath, MeshData &out, GEMeshMeta *outMeta
     if (const Entry *e = findChunk(kChunkVertices)) {
         Reader r(buf, e->offset, e->size);
         uint32_t count = 0;
-        if (!r.U32(count) || !r.InRange(static_cast<size_t>(count) * sizeof(Vertex))) {
-            GE_CORE_ERROR("[GEMesh] VERTICES chunk 越界: {0}", filepath);
-            return false;
+        if (version == 1) {
+            // v1：48B 遗留顶点流，读入后升格为 80B Vertex（补蒙皮字段 0）
+            if (!r.U32(count)
+                || !r.InRange(static_cast<size_t>(count) * sizeof(LegacyVertexV1))) {
+                GE_CORE_ERROR("[GEMesh] VERTICES chunk 越界: {0}", filepath);
+                return false;
+            }
+            out.vertices.resize(count);
+            std::vector<LegacyVertexV1> legacy(count);
+            r.Raw(legacy.data(), static_cast<size_t>(count) * sizeof(LegacyVertexV1));
+            for (size_t i = 0; i < count; ++i) {
+                out.vertices[i].Position = legacy[i].Position;
+                out.vertices[i].Normal   = legacy[i].Normal;
+                out.vertices[i].TexCoord = legacy[i].TexCoord;
+                out.vertices[i].Tangent  = legacy[i].Tangent;
+            }
+        } else {
+            // v2+：80B 顶点流（含蒙皮字段），直接整块读取
+            if (!r.U32(count) || !r.InRange(static_cast<size_t>(count) * sizeof(Vertex))) {
+                GE_CORE_ERROR("[GEMesh] VERTICES chunk 越界: {0}", filepath);
+                return false;
+            }
+            out.vertices.resize(count);
+            r.Raw(out.vertices.data(), static_cast<size_t>(count) * sizeof(Vertex));
         }
-        out.vertices.resize(count);
-        r.Raw(out.vertices.data(), static_cast<size_t>(count) * sizeof(Vertex));
     }
 
     // ---- INDICES ----

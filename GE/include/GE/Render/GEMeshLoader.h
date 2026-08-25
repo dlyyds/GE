@@ -10,10 +10,12 @@
  * 复用。SerializeGEMesh 供离线导出器使用，不在运行时加载路径上。
  *
  * 文件布局（chunk 托盘，见方案书 §3）：
- *   Magic "GEMSH"(5B) + version(u16=1)
+ *   Magic "GEMSH"(5B) + version(u16，v1=48B 顶点 / v2=80B 顶点含蒙皮字段)
  *   ChunkTable: count(u32) + 每项{ id(u32), offset(u64), size(u64) }
  *   Chunk VERTICES / INDICES / SUBMESHES / MATERIALS / META
  *   变长字符串（子网格 materialName / 材质贴图路径）经各 chunk 尾部字符串池偏移引用。
+ *   版本兼容：v2 起 VERTICES 顶点流为 80B（新增 JOINTS/WEIGHTS 蒙皮字段）；
+ *   读端对 v1（48B）文件做升格读取（蒙皮字段补 0）以兼容既有资产，写端恒写 v2。
  */
 
 #pragma once

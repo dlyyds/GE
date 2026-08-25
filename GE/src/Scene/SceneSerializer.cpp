@@ -1249,7 +1249,7 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
     }
 
     // 回填：给每个带 Skin 引用的实体挂上共享 SkinDef（+ 可选 MeshPtr 供面板展示）
-    for (const auto &p : pendingSkins) {
+    for (auto &p : pendingSkins) {
         auto &sc = p.entity.AddComponent<SkinComponent>();
         auto it = idToSkinDef.find(p.skinId);
         if (it != idToSkinDef.end()) {

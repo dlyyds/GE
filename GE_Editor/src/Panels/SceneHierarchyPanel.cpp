@@ -299,7 +299,7 @@ void SceneHierarchyPanel::DrawSkinComponent(SkinComponent &component) {
     ImGui::Text("IBM 数量: %d", static_cast<int>(component.inverseBindMatrices.size()));
     ImGui::Text("关联网格: %s", component.MeshPtr ? "有" : "无");
 
-    // 关节实体列表（只读）：逐个显示对应实体的 Tag，便于确认骨架链
+    // 关节实体列表（可点击选中对应实体，便于定位骨骼/后续驱动某根骨头）
     if (!component.joints.empty()) {
         const std::string header = "关节实体列表(" + std::to_string(component.joints.size()) + ")";
         if (ImGui::TreeNode(header.c_str())) {
@@ -307,6 +307,7 @@ void SceneHierarchyPanel::DrawSkinComponent(SkinComponent &component) {
             for (size_t i = 0; i < component.joints.size(); ++i) {
                 std::string label = "[" + std::to_string(i) + "] ";
                 const entt::entity handle = component.joints[i];
+                Entity jointEntity{handle, m_Context};
                 if (reg.valid(handle)) {
                     if (const auto *tag = reg.try_get<TagComponent>(handle)) {
                         label += tag->Tag;
@@ -316,7 +317,10 @@ void SceneHierarchyPanel::DrawSkinComponent(SkinComponent &component) {
                 } else {
                     label += "(无效句柄)";
                 }
-                ImGui::TextUnformatted(label.c_str());
+                const bool selected = (m_SelectionContext == jointEntity);
+                if (ImGui::Selectable(label.c_str(), selected)) {
+                    m_SelectionContext = jointEntity;
+                }
             }
             ImGui::TreePop();
         }

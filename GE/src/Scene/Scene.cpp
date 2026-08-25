@@ -19,6 +19,7 @@
 #include "Render/AssetManager.h"
 
 #include <algorithm>
+#include <unordered_set>
 #include <glm/glm.hpp>
 
 namespace GE {
@@ -464,6 +465,16 @@ void Scene::RenderMeshes3D(const glm::mat4 &view, const glm::mat4 &projection,
     auto &r3d = Renderer::Get3DRenderer();
     r3d.BeginScene(view, projection, viewPos, clearColor);
 
+    // 注册本帧各皮肤的关节矩阵缓冲（UpdateSkins 已算好并上传到帧池）。
+    // 只有成功上传的皮肤实体才走蒙皮绘制；被跳过（关节缺失/失效）的皮肤
+    // 本帧退化为静态网格，且不会触发渲染器缺缓冲告警。
+    std::unordered_set<entt::entity> activeSkins;
+    activeSkins.reserve(m_SkinJointUploads.size());
+    for (const auto &upload : m_SkinJointUploads) {
+        activeSkins.insert(upload.skinEntity);
+        r3d.SetSkinJointBuffer(upload.skinEntity, upload.jointBuffer);
+    }
+
     // 视锥剔除：由 viewProjection 提取 6 平面。
     //   Mesh    模式：逐实体以世界空间整网格 AABB 判外，整实体完全在外才跳过。
     //   SubMesh 模式：先做网格级粗筛（整实体完全在外直接跳过，免逐子网格重复判定），
@@ -492,6 +503,9 @@ void Scene::RenderMeshes3D(const glm::mat4 &view, const glm::mat4 &projection,
 
         // 统一子网格路径：材质 = 实体覆写（materialOverrides）优先，否则子网格
         // 默认材质（defaultMaterial）。material == nullptr 时渲染器以白色兜底。
+        // 蒙皮实体（本帧 UpdateSkins 有效上传）走蒙皮管线，否则走静态管线。
+        const bool isSkinned = (m_Registry.try_get<SkinComponent>(entity) != nullptr)
+                            && activeSkins.count(entity) > 0;
         const auto &subMeshes = mc.MeshPtr->GetSubMeshes();
         for (size_t i = 0; i < subMeshes.size(); ++i) {
             const SubMesh &sub = subMeshes[i];
@@ -510,7 +524,11 @@ void Scene::RenderMeshes3D(const glm::mat4 &view, const glm::mat4 &projection,
             } else {
                 mat = sub.defaultMaterial;
             }
-            r3d.DrawSubMesh(tc.GetWorldMatrix(), mc.MeshPtr, sub, mat, mc.Color);
+            if (isSkinned) {
+                r3d.DrawSkinnedSubMesh(tc.GetWorldMatrix(), mc.MeshPtr, sub, mat, mc.Color, entity);
+            } else {
+                r3d.DrawSubMesh(tc.GetWorldMatrix(), mc.MeshPtr, sub, mat, mc.Color);
+            }
         }
     }
 

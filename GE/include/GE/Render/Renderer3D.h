@@ -28,6 +28,8 @@
 #include "Render/Mesh.h"
 #include "Render/EnvironmentMap.h"
 
+#include "entt.hpp"
+
 #include <glm/glm.hpp>
 
 #include <vector>
@@ -35,6 +37,7 @@
 #include <memory>
 #include <cstdint>
 #include <functional>
+#include <unordered_map>
 
 namespace GE {
 
@@ -53,6 +56,7 @@ class RenderTarget;
  *   Set 1, Binding 0/1/3: samplerColor（主纹理）/ samplerNormal（法线贴图）/ samplerEmissive（自发光贴图）
  *   Set 1, Binding 2: MaterialUBO（材质标量参数，如 shininess，按批次绑定）
  *   Set 2, Binding 0: InstanceData（SSBO，model + color，按实例）
+ *   Set 2, Binding 1: JointBuffer（SSBO，每个皮肤一段连续关节矩阵，仅蒙皮肤管线使用）
  */
 class Renderer3D {
 public:
@@ -238,6 +242,40 @@ public:
                      const glm::vec4 &color = {1.0f, 1.0f, 1.0f, 1.0f});
 
     /**
+     * @brief 提交一个被皮肤驱动的 3D 子网格（蒙皮管线，顶点着色器做骨骼加权变形）。
+     *
+     * 与 DrawSubMesh 唯一区别是 skinKey：非空（entt::null 之外）时本实例标记为
+     * 蒙皮，EndScene 路由到 mesh_skinned 管线并绑定该皮肤的关节矩阵 SSBO（set 2,
+     * binding 1），顶点按 JOINTS/WEIGHTS 加权变形。
+     *
+     * @param transform  模型变换矩阵
+     * @param mesh       网格资源（不能为空）
+     * @param submesh    子网格（firstIndex / indexCount 划定索引范围）
+     * @param material   材质（可为 nullptr，nullptr 时使用纯白色 fallback）
+     * @param color      叠加颜色（tint），默认白色
+     * @param skinKey    驱动本子网格的皮肤实体句柄（须配合 Scene 侧 SetSkinJointBuffer
+     *                   注册的关节矩阵缓冲；entt::null = 退化为静态路径）
+     */
+    void DrawSkinnedSubMesh(const glm::mat4 &transform,
+                            Mesh *mesh,
+                            const SubMesh &submesh,
+                            Material *material,
+                            const glm::vec4 &color,
+                            entt::entity skinKey);
+
+    /**
+     * @brief 注册本帧一个皮肤的关节矩阵 SSBO（EndScene 绑定用）。
+     *
+     * Scene 每帧在 BeginScene 之后、EndScene 之前调用，为本帧存在的每个
+     * SkinComponent 提交其关节矩阵分配（由 UpdateSkins 计算上传）。同一皮肤
+     * 的多个子网格绘制共享同一块缓冲，按 skinKey 寻址。
+     */
+    void SetSkinJointBuffer(entt::entity skinKey, const BufferAllocation &jointBuffer);
+
+    /// 清空本帧皮肤关节矩阵注册表（BeginScene 时自动调用，Scene 亦可显式重置）。
+    void ResetSkinJointBuffers();
+
+    /**
      * @brief 结束场景：将所有提交的网格提交到 GPU 绘制。
      *
      * 内部流程：
@@ -317,6 +355,7 @@ private:
         Material *material;    ///< 材质（可为 nullptr，nullptr 时使用白色 fallback）
         glm::vec4 color;       ///< 叠加颜色
         SortKey   sortKey;     ///< 排序键（EndScene 绘制前按此排序）
+        entt::entity skinKey = entt::null; ///< 驱动本实例的皮肤实体（null = 静态网格，走非蒙皮管线）
     };
 
     /// 阶段3：一个 instancing 绘制批次（相同 mesh + 相同子网格 + 相同材质）
@@ -327,6 +366,7 @@ private:
         Material *material;      ///< 材质
         uint32_t  firstInstance; ///< 该批次在全局实例缓冲中的起始实例索引
         uint32_t  instanceCount; ///< 实例数量
+        entt::entity skinKey = entt::null; ///< 驱动本批次的皮肤实体（null = 静态）
     };
 
     // ========================================================================
@@ -379,28 +419,31 @@ private:
     /**
      * @brief 提交一个网格实例（内部实现，按索引范围绘制）。
      *
-     * DrawMesh / DrawSubMesh 均委托到此，统一走实例队列 + 排序键。
+     * DrawMesh / DrawSubMesh / DrawSkinnedSubMesh 均委托到此，统一走实例队列 + 排序键。
+     * skinKey 非 null 时实例标记为蒙皮，参与蒙皮肤管线分组。
      */
     void DrawSubMeshImpl(const glm::mat4 &transform,
                          Mesh *mesh,
                          uint32_t firstIndex,
                          uint32_t indexCount,
                          Material *material,
-                         const glm::vec4 &color);
+                         const glm::vec4 &color,
+                         entt::entity skinKey = entt::null);
 
     /**
      * @brief 计算某个网格实例的排序键。
      *
      * 由当前视图矩阵、变换矩阵、材质和网格计算：
-     * pipeline（恒 0）→ 材质 → mesh → view 空间深度。
+     * pipeline（含蒙皮位）→ 材质 → mesh → view 空间深度。
      *
      * @param material 材质（可为 nullptr，nullptr 时材质 id 为 0）
      * @param mesh     网格（用于排序分组，使同材质同 mesh 的实例连续）
      * @param transform 模型变换矩阵
+     * @param skinned  是否蒙皮（true 时 pipelineId 置蒙皮位，与其他蒙皮批次连续）
      */
     SortKey ComputeSortKey(const Material *material, const Mesh *mesh,
                            uint32_t firstIndex, uint32_t indexCount,
-                           const glm::mat4 &transform) const;
+                           const glm::mat4 &transform, bool skinned) const;
 
     /**
      * @brief 解析材质对应的有效纹理。
@@ -475,6 +518,15 @@ private:
     /// PBR-IBL 管线布局（set 1 含 binding 5/6/7 的 IBL 采样器，由全局资源缓存管理，不拥有）
     VulkanPipelineLayout *m_PipelineLayoutPBR_IBL = nullptr;
 
+    /// 蒙皮顶点着色器（mesh_skinned.vert，声明 location 4/5 + set2 binding1 关节矩阵，
+    /// 由全局资源缓存管理，不拥有）
+    VulkanShaderModule   *m_VertShaderSkinned = nullptr;
+
+    /// 蒙皮肤管线布局（mesh_skinned.vert + 三种片元，由全局资源缓存管理，不拥有）
+    VulkanPipelineLayout *m_PipelineLayoutSkinned = nullptr;
+    VulkanPipelineLayout *m_PipelineLayoutSkinnedPBR = nullptr;
+    VulkanPipelineLayout *m_PipelineLayoutSkinnedPBR_IBL = nullptr;
+
     /// 天空盒顶点着色器（由全局资源缓存管理，不拥有）
     VulkanShaderModule   *m_SkyboxVert = nullptr;
 
@@ -533,6 +585,10 @@ private:
 
     /// 待绘制的网格列表
     std::vector<MeshInstance> m_Meshes;
+
+    /// 本帧皮肤实体 → 关节矩阵 SSBO 分配（Scene 在 RenderMeshes1D 注册，EndScene 绑定用）。
+    /// 仅本帧有效（帧池每帧重置），BeginScene 清空。
+    std::unordered_map<entt::entity, BufferAllocation> m_SkinJointBuffers;
 
     /// 是否在 BeginScene / EndScene 之间
     bool m_InScene = false;

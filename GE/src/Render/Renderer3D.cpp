@@ -28,6 +28,12 @@
 
 namespace GE {
 
+namespace {
+/// pipelineId 蒙皮位（阶段 C）：低位 0 = 材质（0 Blinn / 1 PBR），
+/// 叠加本高位（值 2）后为蒙皮肤管线（2 Blinn 蒙皮 / 3 PBR 蒙皮）。
+constexpr uint8_t kSkinPipelineBit = 0x02;
+} // namespace
+
 // ============================================================================
 // 构造 / 析构
 // ============================================================================
@@ -87,6 +93,29 @@ Renderer3D::Renderer3D() {
     m_PipelineLayoutPBR_IBL = &cache.RequestPipelineLayout(
         {m_VertShader, m_FragShaderPBR_IBL});
     m_PipelineLayoutPBR_IBL->SetDebugName("Mesh3D_PipelineLayout_PBR_IBL");
+
+    // ── 3a. 蒙皮肤管线（阶段 C）：mesh_skinned.vert + 三种片元 ─────────
+    //    蒙皮顶点着色器声明 location 4/5（关节索引/权重）与 set2 binding1
+    //    （关节矩阵 SSBO），反射自动生成 80B 顶点输入与扩展描述符布局。
+    //    pipelineId 蒙皮位（2/3）路由到这里，静态路径不受影响。
+    m_VertShaderSkinned = &cache.RequestShaderModule(
+        vk::ShaderStageFlagBits::eVertex,
+        ShaderSource(Renderer::GetAssetManager()
+                         .ResolvePath(std::string(AssetPaths::Shaders) + "/mesh_skinned.vert.spv")
+                         .string()),
+        "main", ShaderVariant{});
+
+    m_PipelineLayoutSkinned = &cache.RequestPipelineLayout(
+        {m_VertShaderSkinned, m_FragShader});
+    m_PipelineLayoutSkinned->SetDebugName("Mesh3D_PipelineLayout_Skinned");
+
+    m_PipelineLayoutSkinnedPBR = &cache.RequestPipelineLayout(
+        {m_VertShaderSkinned, m_FragShaderPBR});
+    m_PipelineLayoutSkinnedPBR->SetDebugName("Mesh3D_PipelineLayout_Skinned_PBR");
+
+    m_PipelineLayoutSkinnedPBR_IBL = &cache.RequestPipelineLayout(
+        {m_VertShaderSkinned, m_FragShaderPBR_IBL});
+    m_PipelineLayoutSkinnedPBR_IBL->SetDebugName("Mesh3D_PipelineLayout_Skinned_PBR_IBL");
 
     // ── 2b. 天空盒着色器 + 管线布局 ─────────────────────────────────
     //    等距柱状投影天空盒：全屏三角形 + 反投影重建视线 + 采样全景图。
@@ -273,6 +302,18 @@ void Renderer3D::BeginScene(const glm::mat4 &view,
 
     // 清空上一帧的网格列表
     m_Meshes.clear();
+
+    // 清空上一帧的皮肤关节矩阵注册表（本帧由 Scene 重新注册）
+    m_SkinJointBuffers.clear();
+}
+
+void Renderer3D::ResetSkinJointBuffers() {
+    m_SkinJointBuffers.clear();
+}
+
+void Renderer3D::SetSkinJointBuffer(entt::entity skinKey,
+                                    const BufferAllocation &jointBuffer) {
+    m_SkinJointBuffers[skinKey] = jointBuffer;
 }
 
 void Renderer3D::DrawMesh(const glm::mat4 &transform,
@@ -296,12 +337,23 @@ void Renderer3D::DrawSubMesh(const glm::mat4 &transform,
                     submesh.firstIndex, submesh.indexCount, material, color);
 }
 
+void Renderer3D::DrawSkinnedSubMesh(const glm::mat4 &transform,
+                                    Mesh *mesh,
+                                    const SubMesh &submesh,
+                                    Material *material,
+                                    const glm::vec4 &color,
+                                    entt::entity skinKey) {
+    DrawSubMeshImpl(transform, mesh,
+                    submesh.firstIndex, submesh.indexCount, material, color, skinKey);
+}
+
 void Renderer3D::DrawSubMeshImpl(const glm::mat4 &transform,
                                  Mesh *mesh,
                                  uint32_t firstIndex,
                                  uint32_t indexCount,
                                  Material *material,
-                                 const glm::vec4 &color) {
+                                 const glm::vec4 &color,
+                                 entt::entity skinKey) {
     GE_CORE_ASSERT(m_InScene, "DrawMesh called outside BeginScene/EndScene!");
 
     if (!mesh || indexCount == 0) {
@@ -314,10 +366,12 @@ void Renderer3D::DrawSubMeshImpl(const glm::mat4 &transform,
     }
 
     // 计算排序键（pipeline → 材质 → mesh → 子网格 → view 空间深度），用于 EndScene
-    // 前分组排序，使同材质同 mesh 同子网格的实例连续，便于 instancing 合批
-    SortKey sortKey = ComputeSortKey(material, mesh, firstIndex, indexCount, transform);
+    // 前分组排序，使同材质同 mesh 同子网格的实例连续，便于 instancing 合批。
+    // 蒙皮实例的 pipelineId 带蒙皮位，与静态实例分组隔离（管线不同不可合批）。
+    const bool skinned = (skinKey != entt::null);
+    SortKey sortKey = ComputeSortKey(material, mesh, firstIndex, indexCount, transform, skinned);
 
-    m_Meshes.push_back({transform, mesh, firstIndex, indexCount, material, color, sortKey});
+    m_Meshes.push_back({transform, mesh, firstIndex, indexCount, material, color, sortKey, skinKey});
 }
 
 // ============================================================================
@@ -362,11 +416,11 @@ uint8_t Renderer3D::GetPipelineId(const Material *material) const {
 
 Renderer3D::SortKey Renderer3D::ComputeSortKey(const Material *material, const Mesh *mesh,
                                                uint32_t firstIndex, uint32_t indexCount,
-                                               const glm::mat4 &transform) const {
-    // pipeline：按材质类型路由（BlinnPhong=0 / PBR=1），使同类型连续，
-    // 减少管线切换（管线切换最贵）。
+                                               const glm::mat4 &transform, bool skinned) const {
+    // pipeline 位高2 = 蒙皮（值 2/3），低1 = 材质（0 Blinn / 1 PBR），
+    // 使蒙皮与静态批次分组隔离（管线不同不可合批）。
     SortKey key;
-    key.pipelineId = GetPipelineId(material);
+    key.pipelineId = static_cast<uint8_t>(GetPipelineId(material) | (skinned ? kSkinPipelineBit : 0u));
 
     // 材质分组：用材质指针值（进程内唯一）作分组 id，使同材质实例连续，
     // 减少管线/纹理切换。材质完整决定渲染状态（纹理组合、着色器类型、混合等）。
@@ -504,14 +558,17 @@ void Renderer3D::CollectBatches(std::vector<InstanceData> &instances,
         Mesh *mesh = first.mesh;
         uint32_t firstIndex = first.firstIndex;
         uint32_t indexCount = first.indexCount;
+        entt::entity skinKey = first.skinKey;
 
-        // 找同 (mesh, 子网格, material) 的连续区间
+        // 找同 (mesh, 子网格, material, skin) 的连续区间。
+        // skin 也参与分桶：不同皮肤不可合批（关节矩阵不同），且蒙皮/静态亦分离。
         size_t runStart = i;
         while (i < m_Meshes.size()
                && m_Meshes[i].material == mat
                && m_Meshes[i].mesh == mesh
                && m_Meshes[i].firstIndex == firstIndex
-               && m_Meshes[i].indexCount == indexCount) {
+               && m_Meshes[i].indexCount == indexCount
+               && m_Meshes[i].skinKey == skinKey) {
             ++i;
         }
 
@@ -526,7 +583,7 @@ void Renderer3D::CollectBatches(std::vector<InstanceData> &instances,
 
         batches.push_back(RenderBatch{
             mesh, firstIndex, indexCount, mat, firstInstance,
-            static_cast<uint32_t>(i - runStart)});
+            static_cast<uint32_t>(i - runStart), skinKey});
     }
 }
 
@@ -803,23 +860,47 @@ void Renderer3D::DrawMeshInstances(VulkanCommandBuffer &cmd, VulkanRenderFrame &
     // 排序键已按 pipelineId 分组，故同类型批次连续，切换频率最低。
     uint8_t currentPipelineId = 0;
     for (const auto &batch : batches) {
-        // —— 管线路由：材质类型变化时切换管线布局（进而切换管线 / 片元着色器）。
-        //    PBR 批次按 useIbl 分流到 IBL 变体或无 IBL 变体管线。——
-        uint8_t pipelineId = GetPipelineId(batch.material);
+        // —— 管线路由：pipelineId 由「材质(PBR 位) + 是否蒙皮(蒙皮位)」决定。
+        //    batch.skinKey 非 null ⇒ 蒙皮实例，走 mesh_skinned 管线并含蒙皮位。
+        //    切换时同时按对应顶点着色器反射重设顶点输入（蒙皮肤管线有 location
+        //    4/5，静态管线没有），否则蒙皮字段会被静态顶点输入丢弃。
+        const bool skinned = (batch.skinKey != entt::null);
+        const uint8_t pipelineId = static_cast<uint8_t>(
+            GetPipelineId(batch.material) | (skinned ? kSkinPipelineBit : 0u));
+        const bool pbr = ((pipelineId & 0x01u) != 0);
+
         if (pipelineId != currentPipelineId) {
             VulkanPipelineLayout *targetLayout = m_PipelineLayout;
-            if (pipelineId == 1) {
-                targetLayout = useIbl ? m_PipelineLayoutPBR_IBL
-                                      : m_PipelineLayoutPBR;
+            if (skinned) {
+                targetLayout = pbr
+                    ? (useIbl ? m_PipelineLayoutSkinnedPBR_IBL
+                              : m_PipelineLayoutSkinnedPBR)
+                    : m_PipelineLayoutSkinned;
+            } else {
+                targetLayout = pbr
+                    ? (useIbl ? m_PipelineLayoutPBR_IBL : m_PipelineLayoutPBR)
+                    : m_PipelineLayout;
             }
+
+            auto &ps = cmd.GetPipelineState();
+            if (skinned) {
+                ps.setVertexInputFromShader(*m_VertShaderSkinned, 0,
+                                            vk::VertexInputRate::eVertex,
+                                            static_cast<uint32_t>(sizeof(Vertex)));
+            } else {
+                ps.setVertexInputFromShader(*m_VertShader, 0,
+                                            vk::VertexInputRate::eVertex,
+                                            static_cast<uint32_t>(sizeof(Vertex)));
+            }
+
             cmd.BindPipelineLayout(*targetLayout);
             currentPipelineId = pipelineId;
 
             // 路由到 PBR-IBL 时绑定 IBL 三件套（set 1, binding 5/6/7）。
-            // 排序保证 Blinn 批次在前、PBR 批次在后且连续，故只在首次切换到
-            // PBR-IBL 时绑一次；Blinn 批次（set 1 布局无这些 binding）不会读到。
+            // 排序保证同管线批次连续，故只在首次切换时绑一次；非 IBL 布局
+            // （含 Blinn）的 set 1 无这些 binding，不会读到。
             // 辐照度复用预滤波 cubemap（漫反射采样其最高 mip）。
-            if (pipelineId == 1 && useIbl) {
+            if (pbr && useIbl) {
                 auto &ibl = *m_EnvironmentMap;
                 cmd.BindImage(ibl.GetPrefilter().GetImageView(),
                               ibl.GetPrefilter().GetSampler(), 1, 5); // 辐照度
@@ -861,8 +942,8 @@ void Renderer3D::DrawMeshInstances(VulkanCommandBuffer &cmd, VulkanRenderFrame &
         // 金属-粗糙度贴图（set 1, binding 4）：仅 PBR 材质使用。无 MR 贴图时
         // 绑定默认 (G=1, B=1) 纹理，回退到标量 metallic/roughness。
         // Blinn-Phong 批次不绑定（其 set 1 布局无 binding 4，绑了也会被过滤，
-        // 这里显式判断更清晰，避免多余绑定）。
-        if (pipelineId == 1) {
+        // 这里显式判断更清晰，避免多余绑定）。PBR 蒙皮肤也一样要绑。
+        if (pbr) {
             Texture *mrTex = GetEffectiveMetallicRoughnessTexture(batch.material);
             if (mrTex) {
                 cmd.BindImage(mrTex->GetImageView(),
@@ -904,6 +985,23 @@ void Renderer3D::DrawMeshInstances(VulkanCommandBuffer &cmd, VulkanRenderFrame &
         // 绑定全局实例 SSBO（set 2, binding 0）——所有批次共享同一缓冲
         cmd.BindBuffer(instanceBuffer.get_buffer(), instanceBuffer.get_offset(),
                        instanceBuffer.get_size(), 2, 0);
+
+        // 蒙皮批次：绑定该皮肤的关节矩阵 SSBO（set 2, binding 1）。
+        // 每个皮肤一段连续区间（Scene 每帧 UpdateSkins 上传、此处按 skinKey 查出），
+        // 顶点着色器以顶点关节索引直接寻址（baseJoint ≡ 0）。
+        if (skinned) {
+            auto it = m_SkinJointBuffers.find(batch.skinKey);
+            if (it != m_SkinJointBuffers.end()) {
+                const BufferAllocation &joint = it->second;
+                cmd.BindBuffer(joint.get_buffer(), joint.get_offset(),
+                               joint.get_size(), 2, 1);
+            } else {
+                // 皮肤未注册（关节实体被删等）：跳过绘制，避免读到脏矩阵
+                GE_CORE_WARN("蒙皮批次缺少关节矩阵缓冲（皮肤 {} 未注册或已失效），跳过",
+                             static_cast<uint32_t>(batch.skinKey));
+                continue;
+            }
+        }
 
         // 绑定顶点缓冲 + 索引缓冲
         cmd.BindVertexBuffers(0,

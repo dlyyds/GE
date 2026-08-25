@@ -300,23 +300,26 @@ void SceneHierarchyPanel::DrawSkinComponent(SkinComponent &component) {
     ImGui::Text("关联网格: %s", component.MeshPtr ? "有" : "无");
 
     // 关节实体列表（只读）：逐个显示对应实体的 Tag，便于确认骨架链
-    if (!component.joints.empty() && ImGui::TreeNode("关节实体列表(%d)", static_cast<int>(component.joints.size()))) {
-        auto &reg = m_Context->Reg();
-        for (size_t i = 0; i < component.joints.size(); ++i) {
-            std::string label = "[" + std::to_string(i) + "] ";
-            const entt::entity handle = component.joints[i];
-            if (reg.valid(handle)) {
-                if (const auto *tag = reg.try_get<TagComponent>(handle)) {
-                    label += tag->Tag;
+    if (!component.joints.empty()) {
+        const std::string header = "关节实体列表(" + std::to_string(component.joints.size()) + ")";
+        if (ImGui::TreeNode(header.c_str())) {
+            auto &reg = m_Context->Reg();
+            for (size_t i = 0; i < component.joints.size(); ++i) {
+                std::string label = "[" + std::to_string(i) + "] ";
+                const entt::entity handle = component.joints[i];
+                if (reg.valid(handle)) {
+                    if (const auto *tag = reg.try_get<TagComponent>(handle)) {
+                        label += tag->Tag;
+                    } else {
+                        label += "(无 Tag)";
+                    }
                 } else {
-                    label += "(无 Tag)";
+                    label += "(无效句柄)";
                 }
-            } else {
-                label += "(无效句柄)";
+                ImGui::TextUnformatted(label.c_str());
             }
-            ImGui::TextUnformatted(label.c_str());
+            ImGui::TreePop();
         }
-        ImGui::TreePop();
     }
 
     ImGui::Checkbox("需重传关节矩阵", &component.RequiresJointUpload);

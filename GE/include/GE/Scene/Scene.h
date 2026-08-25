@@ -179,11 +179,11 @@ private:
     /// 层级变更只走 SetParent 单一入口同步两处；可用 RebuildChildrenIndex 全量重建兜底。
     std::unordered_map<entt::entity, std::vector<entt::entity>> m_ChildrenOf;
 
-    /// 一个 SkinComponent 每帧上传的关节矩阵记录（供渲染/调试读取）。
+    /// 一条皮肤每帧上传的关节矩阵记录（SkinDef 去重，同皮肤多 node 共享一条）。
     struct SkinJointUpload {
-        entt::entity     skinEntity = entt::null; ///< 皮肤所在实体
-        uint32_t         jointCount = 0;          ///< 关节数量
-        BufferAllocation jointBuffer;             ///< 关节矩阵 SSBO 分配（仅本帧有效，帧结束池重置）
+        const void     *skinDef = nullptr;         ///< 共享皮肤定义（SkinDef*，去重键）
+        uint32_t        jointCount = 0;            ///< 关节数量
+        BufferAllocation jointBuffer;              ///< 关节矩阵 SSBO 分配（仅本帧有效，帧结束池重置）
     };
 
     /// 本帧所有 SkinComponent 的关节矩阵上传记录（UpdateSkins 填充，渲染读用）。

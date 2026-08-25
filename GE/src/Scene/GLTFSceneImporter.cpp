@@ -247,7 +247,14 @@ bool GLTFSceneImporter::Import(Scene &scene, MeshManager &meshManager,
                          jointHandles.size(), skin.joints.size());
         }
 
-        // 回填所有引用本皮肤节点的 SkinComponent（joints 与 IBM 各拷一份）
+        // 创建共享皮肤定义：同一条 glTF skin 只建一份 SkinDef，
+        // 后续所有引用本皮肤的 node 的 SkinComponent 共享同一 shared_ptr，
+        // 关节链与 IBM 只存一份，运行时也只需算一次上传一次。
+        auto skinDef = std::make_shared<SkinDef>();
+        skinDef->joints = std::move(jointHandles);
+        skinDef->inverseBindMatrices = std::move(ibm);
+
+        // 回填所有引用本皮肤节点的 SkinComponent（共享同一 SkinDef）
         for (const auto &[nodeIdx, skinIdx] : skinNodes) {
             if (skinIdx != static_cast<int>(sk)) {
                 continue;
@@ -257,11 +264,10 @@ bool GLTFSceneImporter::Import(Scene &scene, MeshManager &meshManager,
                 continue;
             }
             auto &sc = nit->second.GetComponent<SkinComponent>();
-            sc.joints = jointHandles;
-            sc.inverseBindMatrices = ibm;
+            sc.skin = skinDef;
             sc.RequiresJointUpload = true;
             GE_CORE_INFO("[GLTF] skin[{}] 已接入：{} 个关节, 网格 = {}",
-                         sk, jointHandles.size(),
+                         sk, skinDef->joints.size(),
                          sc.MeshPtr ? "mesh" : "无");
         }
     }

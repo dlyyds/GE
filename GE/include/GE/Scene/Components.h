@@ -11,6 +11,7 @@
 #include <unordered_map>
 #include <random>
 #include <cstdint>
+#include <memory>
 #include <glm/gtx/quaternion.hpp>
 
 #include "entt.hpp"
@@ -275,23 +276,51 @@ struct JointComponent {
 };
 
 /**
- * @brief 皮肤组件 —— 挂在「带 mesh 且被骨骼驱动的 node」实体上。
+ * @brief 一条 glTF skin 的定义（关节链 + 逆绑定矩阵）。
  *
- * 记录驱动该网格的关节链 + 逆绑定矩阵 + 关联网格。加载期由 GLTFSceneImporter
- * 填充，运行时 Scene::UpdateSkins 每帧据此计算 jointMatrix = world × IBM 并上传 GPU。
+ * 同一条 skin 可被多个 node 引用（如整车多块蒙皮共享一骨架，valhalla 107 个
+ * node 共用 skin[0]）。各 SkinComponent 以 shared_ptr 共享同一份 SkinDef，
+ * 数据只存一份；Scene::UpdateSkins 每帧按 SkinDef 去重，仅计算并上传一次
+ * 关节矩阵，多 node 复用同一结果，避免逐组件重复计算/上传。
  *
  * joints 存原始 entt::entity 句柄（与 TransformComponent::parent 一致），避免
  * Components.h 里 Entity 类型不完整而无法整存 std::vector<Entity> 的问题。
  * inverseBindMatrices 是常量（绑定姿态快照），与 joints 一一对应。
  */
-struct SkinComponent {
+struct SkinDef {
     std::vector<entt::entity> joints;           ///< 关节实体句柄（有序，索引 = skin.joints 序）
     std::vector<glm::mat4>    inverseBindMatrices; ///< 逆绑定矩阵（与 joints 一一对应）
+};
+
+/**
+ * @brief 皮肤组件 —— 挂在「带 mesh 且被骨骼驱动的 node」实体上。
+ *
+ * 记录驱动该网格的共享皮肤定义（SkinDef）+ 关联网格。加载期由 GLTFSceneImporter
+ * 填充，运行时 Scene::UpdateSkins 每帧据此计算 jointMatrix = world × IBM 并上传 GPU。
+ *
+ * skin 为空（nullptr）表示未接入皮肤定义（如手动 Add Component、或导入时皮肤
+ * 被跳过），绘制时按静态网格处理。joints()/inverseBindMatrices() 便捷访问器在
+ * skin 为空时返回空表，保证读取安全。
+ */
+struct SkinComponent {
+    std::shared_ptr<SkinDef> skin;              ///< 共享皮肤定义（同 glTF skin 各 node 共享；null = 未接入）
     Mesh    *MeshPtr = nullptr;                 ///< 被本皮肤驱动的网格（可选，可从绘制时取）
     bool     RequiresJointUpload = true;        ///< 脏标记：需重新上传关节矩阵（首版每帧重算，暂未用）
 
     SkinComponent() = default;
     SkinComponent(const SkinComponent &) = default;
+
+    /// @brief 共享关节表（skin 为空时返回空表，读取安全）
+    [[nodiscard]] const std::vector<entt::entity> &joints() const {
+        static const std::vector<entt::entity> empty;
+        return skin ? skin->joints : empty;
+    }
+
+    /// @brief 共享逆绑定矩阵（skin 为空时返回空表，读取安全）
+    [[nodiscard]] const std::vector<glm::mat4> &inverseBindMatrices() const {
+        static const std::vector<glm::mat4> empty;
+        return skin ? skin->inverseBindMatrices : empty;
+    }
 };
 
 

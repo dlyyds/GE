@@ -295,18 +295,28 @@ void SceneHierarchyPanel::DrawJointComponent(JointComponent &component) {
 }
 
 void SceneHierarchyPanel::DrawSkinComponent(SkinComponent &component) {
-    ImGui::Text("关节数量: %d", static_cast<int>(component.joints.size()));
-    ImGui::Text("IBM 数量: %d", static_cast<int>(component.inverseBindMatrices.size()));
     ImGui::Text("关联网格: %s", component.MeshPtr ? "有" : "无");
 
-    // 关节实体列表（可点击选中对应实体，便于定位骨骼/后续驱动某根骨头）
-    if (!component.joints.empty()) {
-        const std::string header = "关节实体列表(" + std::to_string(component.joints.size()) + ")";
+    // 未接入皮肤定义（手动 Add Component / 导入期皮肤被跳过）：展示占位
+    if (!component.skin) {
+        ImGui::TextWrapped("未关联皮肤定义（导入期由 GLTFSceneImporter 填充）");
+        return;
+    }
+
+    const auto &joints = component.joints();
+    const auto &ibm = component.inverseBindMatrices();
+    ImGui::Text("关节数量: %d", static_cast<int>(joints.size()));
+    ImGui::Text("IBM 数量: %d", static_cast<int>(ibm.size()));
+
+    // 关节实体列表（可点击选中对应实体，便于定位骨骼/后续驱动某根骨头）。
+    // 同一条 glTF skin 被多 node 引用时共享同一关节表（SkinDef），各面板展示一致。
+    if (!joints.empty()) {
+        const std::string header = "关节实体列表(" + std::to_string(joints.size()) + ")";
         if (ImGui::TreeNode(header.c_str())) {
             auto &reg = m_Context->Reg();
-            for (size_t i = 0; i < component.joints.size(); ++i) {
+            for (size_t i = 0; i < joints.size(); ++i) {
                 std::string label = "[" + std::to_string(i) + "] ";
-                const entt::entity handle = component.joints[i];
+                const entt::entity handle = joints[i];
                 Entity jointEntity{handle, m_Context};
                 if (reg.valid(handle)) {
                     if (const auto *tag = reg.try_get<TagComponent>(handle)) {

@@ -249,11 +249,25 @@ void Scene::UpdateSkins() {
 
     auto &frame = Renderer::GetRenderContext().GetActiveFrame();
 
+    // 同一条 glTF skin 被多个 node 引用时，各 SkinComponent 共享同一 SkinDef
+    //（shared_ptr）。只对去重后的每个 SkinDef 算一遍、传一块 SSBO——比如整车
+    // 107 块蒙皮共享一骨架时，从 107 次计算/上传降到 1 次，多 node 复用同结果。
+    std::unordered_set<const void *> handled;
     for (auto entity : skinView) {
-        auto &skin = skinView.get<SkinComponent>(entity);
-        const size_t jointCount = skin.joints.size();
+        const auto &skin = skinView.get<SkinComponent>(entity);
+        if (!skin.skin) {
+            continue;
+        }
+        const void *def = skin.skin.get();
+        if (!handled.insert(def).second) {
+            continue; // 本帧该皮肤已计算上传过
+        }
+
+        const auto &joints = skin.joints();
+        const auto &ibm = skin.inverseBindMatrices();
+        const size_t jointCount = joints.size();
         // joints 与 IBM 必须一一对应（导入期已校验，此处兜底）
-        if (jointCount == 0 || skin.inverseBindMatrices.size() != jointCount) {
+        if (jointCount == 0 || ibm.size() != jointCount) {
             continue;
         }
 
@@ -263,12 +277,12 @@ void Scene::UpdateSkins() {
         std::vector<glm::mat4> jointMatrices(jointCount);
         bool valid = true;
         for (size_t i = 0; i < jointCount; ++i) {
-            auto *tc = m_Registry.try_get<TransformComponent>(skin.joints[i]);
+            auto *tc = m_Registry.try_get<TransformComponent>(joints[i]);
             if (!tc) {
                 valid = false;
                 break;
             }
-            jointMatrices[i] = tc->GetWorldMatrix() * skin.inverseBindMatrices[i];
+            jointMatrices[i] = tc->GetWorldMatrix() * ibm[i];
         }
         if (!valid) {
             // 关节实体已销毁等洞况：跳过本皮肤，画面上退化为静态
@@ -282,7 +296,7 @@ void Scene::UpdateSkins() {
         alloc.update(jointMatrices);
 
         m_SkinJointUploads.push_back(SkinJointUpload{
-            entity, static_cast<uint32_t>(jointCount), alloc});
+            def, static_cast<uint32_t>(jointCount), alloc});
     }
 }
 
@@ -466,13 +480,14 @@ void Scene::RenderMeshes3D(const glm::mat4 &view, const glm::mat4 &projection,
     r3d.BeginScene(view, projection, viewPos, clearColor);
 
     // 注册本帧各皮肤的关节矩阵缓冲（UpdateSkins 已算好并上传到帧池）。
+    // 键是共享 SkinDef 指针：同一条皮肤被多 node 引用时共用一个缓冲。
     // 只有成功上传的皮肤实体才走蒙皮绘制；被跳过（关节缺失/失效）的皮肤
     // 本帧退化为静态网格，且不会触发渲染器缺缓冲告警。
-    std::unordered_set<entt::entity> activeSkins;
+    std::unordered_set<const void *> activeSkins;
     activeSkins.reserve(m_SkinJointUploads.size());
     for (const auto &upload : m_SkinJointUploads) {
-        activeSkins.insert(upload.skinEntity);
-        r3d.SetSkinJointBuffer(upload.skinEntity, upload.jointBuffer);
+        activeSkins.insert(upload.skinDef);
+        r3d.SetSkinJointBuffer(upload.skinDef, upload.jointBuffer);
     }
 
     // 视锥剔除：由 viewProjection 提取 6 平面。
@@ -504,8 +519,10 @@ void Scene::RenderMeshes3D(const glm::mat4 &view, const glm::mat4 &projection,
         // 统一子网格路径：材质 = 实体覆写（materialOverrides）优先，否则子网格
         // 默认材质（defaultMaterial）。material == nullptr 时渲染器以白色兜底。
         // 蒙皮实体（本帧 UpdateSkins 有效上传）走蒙皮管线，否则走静态管线。
-        const bool isSkinned = (m_Registry.try_get<SkinComponent>(entity) != nullptr)
-                            && activeSkins.count(entity) > 0;
+        // 带皮肤节点的多个网格共享同一 SkinDef 指针，共用同一共享关节矩阵。
+        const auto *skinC = m_Registry.try_get<SkinComponent>(entity);
+        const void *skinDef = (skinC && skinC->skin) ? skinC->skin.get() : nullptr;
+        const bool isSkinned = (skinDef != nullptr) && activeSkins.count(skinDef) > 0;
         const auto &subMeshes = mc.MeshPtr->GetSubMeshes();
         for (size_t i = 0; i < subMeshes.size(); ++i) {
             const SubMesh &sub = subMeshes[i];
@@ -525,7 +542,7 @@ void Scene::RenderMeshes3D(const glm::mat4 &view, const glm::mat4 &projection,
                 mat = sub.defaultMaterial;
             }
             if (isSkinned) {
-                r3d.DrawSkinnedSubMesh(tc.GetWorldMatrix(), mc.MeshPtr, sub, mat, mc.Color, entity);
+                r3d.DrawSkinnedSubMesh(tc.GetWorldMatrix(), mc.MeshPtr, sub, mat, mc.Color, skinDef);
             } else {
                 r3d.DrawSubMesh(tc.GetWorldMatrix(), mc.MeshPtr, sub, mat, mc.Color);
             }

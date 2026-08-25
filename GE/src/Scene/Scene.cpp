@@ -14,6 +14,7 @@
 #include "Render/Mesh.h"
 #include "Render/EnvironmentMap.h"
 #include "Render/VulkanBase/VulkanDevice.h"
+#include "Render/VulkanBase/VulkanRenderFrame.h"
 #include "Core/Log.h"
 #include "Render/AssetManager.h"
 
@@ -236,6 +237,54 @@ void Scene::UpdateWorldTransformsRecursive(entt::entity entity, const glm::mat4 
     }
 }
 
+void Scene::UpdateSkins() {
+    // 上一帧皮肤上传记录已随帧池重置失效，本帧从头重算
+    m_SkinJointUploads.clear();
+
+    auto skinView = m_Registry.view<SkinComponent>();
+    if (skinView.empty()) {
+        return;
+    }
+
+    auto &frame = Renderer::GetRenderContext().GetActiveFrame();
+
+    for (auto entity : skinView) {
+        auto &skin = skinView.get<SkinComponent>(entity);
+        const size_t jointCount = skin.joints.size();
+        // joints 与 IBM 必须一一对应（导入期已校验，此处兜底）
+        if (jointCount == 0 || skin.inverseBindMatrices.size() != jointCount) {
+            continue;
+        }
+
+        // 关节矩阵 = 关节当前世界矩阵 × 逆绑定矩阵。
+        // world 由本帧 UpdateWorldTransforms 的 DFS 刚算好（本帧最新）；
+        // IBM 是绑定姿态常量，导入后不再变，两者相乘即蒙皮变换矩阵。
+        std::vector<glm::mat4> jointMatrices(jointCount);
+        bool valid = true;
+        for (size_t i = 0; i < jointCount; ++i) {
+            auto *tc = m_Registry.try_get<TransformComponent>(skin.joints[i]);
+            if (!tc) {
+                valid = false;
+                break;
+            }
+            jointMatrices[i] = tc->GetWorldMatrix() * skin.inverseBindMatrices[i];
+        }
+        if (!valid) {
+            // 关节实体已销毁等洞况：跳过本皮肤，画面上退化为静态
+            continue;
+        }
+
+        // 从本帧 BufferPool 分配一段关节矩阵 SSBO 并上传（帧池每帧重置，下帧覆盖写）
+        BufferAllocation alloc = frame.AllocateBuffer(
+            vk::BufferUsageFlagBits::eStorageBuffer,
+            jointMatrices.size() * sizeof(glm::mat4));
+        alloc.update(jointMatrices);
+
+        m_SkinJointUploads.push_back(SkinJointUpload{
+            entity, static_cast<uint32_t>(jointCount), alloc});
+    }
+}
+
 
 void Scene::OnUpdate(Timestep ts,
                      const glm::mat4 &viewProjection,
@@ -289,6 +338,10 @@ void Scene::OnUpdate3D(Timestep ts,
     // 放在物理步进之后、光源收集/渲染之前：物理刚回写完局部 TRS，
     // 此处重算让本帧渲染即使用最新世界矩阵。
     UpdateWorldTransforms();
+
+    // ── 蒙皮更新：基于本帧刚算好的关节 world，算 jointMatrix = world × IBM ──
+    // 并上传关节 SSBO。必须先于渲染、且紧跟 UpdateWorldTransforms。
+    UpdateSkins();
 
     // ── 光源收集 ──
     UpdateLightParams();
@@ -690,6 +743,14 @@ void Scene::OnComponentAdded<ScriptComponent>(Entity entity, ScriptComponent &co
 
 template <>
 void Scene::OnComponentAdded<MeshRendererComponent>(Entity entity, MeshRendererComponent &component) {
+}
+
+template <>
+void Scene::OnComponentAdded<JointComponent>(Entity entity, JointComponent &component) {
+}
+
+template <>
+void Scene::OnComponentAdded<SkinComponent>(Entity entity, SkinComponent &component) {
 }
 
 template <>

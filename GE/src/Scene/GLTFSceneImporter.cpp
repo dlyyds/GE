@@ -19,6 +19,9 @@
 
 #include <glm/gtx/matrix_decompose.hpp>
 
+#include <cstring>
+#include <unordered_map>
+
 namespace GE {
 
 namespace {
@@ -67,6 +70,51 @@ void FillTransform(TransformComponent &tc, const tinygltf::Node &node) {
     }
 }
 
+/**
+ * @brief 读取 skin 的逆绑定矩阵（FLOAT mat4 accessor）。
+ *
+ * glTF IBM accessor 为 MAT4/FLOAT，每元素 16 个 float（列主序），与 glm::mat4
+ * 内存布局一致，可直接 memcpy。bufferView/buffer 越界、类型不符或 stride 异常
+ * 时返回空向量，调用方容错跳过该皮肤。
+ */
+std::vector<glm::mat4> ReadInverseBindMatrices(const tinygltf::Model &model, int accessorIdx) {
+    std::vector<glm::mat4> out;
+    if (accessorIdx < 0 || accessorIdx >= static_cast<int>(model.accessors.size())) {
+        return out;
+    }
+    const tinygltf::Accessor &acc = model.accessors[static_cast<size_t>(accessorIdx)];
+    if (acc.type != TINYGLTF_TYPE_MAT4 || acc.componentType != TINYGLTF_COMPONENT_TYPE_FLOAT) {
+        GE_CORE_WARN("[GLTF] 逆绑定矩阵 accessor 类型必须为 MAT4/FLOAT");
+        return out;
+    }
+    if (acc.bufferView < 0 || acc.bufferView >= static_cast<int>(model.bufferViews.size())) {
+        return out;
+    }
+    const tinygltf::BufferView &bv = model.bufferViews[static_cast<size_t>(acc.bufferView)];
+    if (bv.buffer < 0 || bv.buffer >= static_cast<int>(model.buffers.size())) {
+        return out;
+    }
+    const auto &buf = model.buffers[static_cast<size_t>(bv.buffer)];
+    const int byteStride = acc.ByteStride(bv);
+    if (byteStride < static_cast<int>(sizeof(float) * 4)) {
+        // 一个 mat4 至少 64 字节，stride 异常视为数据损坏
+        return out;
+    }
+    const size_t base = static_cast<size_t>(bv.byteOffset) + static_cast<size_t>(acc.byteOffset);
+    if (base >= buf.data.size() ||
+        acc.count > (buf.data.size() - base) / static_cast<size_t>(byteStride)) {
+        return out;
+    }
+    out.reserve(acc.count);
+    for (size_t i = 0; i < acc.count; ++i) {
+        glm::mat4 m(1.0f);
+        std::memcpy(&m, buf.data.data() + base + i * static_cast<size_t>(byteStride),
+                    sizeof(glm::mat4));
+        out.push_back(m);
+    }
+    return out;
+}
+
 } // namespace
 
 bool GLTFSceneImporter::Import(Scene &scene, MeshManager &meshManager,
@@ -107,6 +155,10 @@ bool GLTFSceneImporter::Import(Scene &scene, MeshManager &meshManager,
 
     // DFS：递归建实体树（parent 为空 = 根）
     // 先声明后赋值的 std::function，规避 MSVC 对「自引用 lambda 与声明同处一行」的解析问题
+    // nodeEntities：node 索引 → 实体，供第二遍把 skin.joints 的 node 解析成关节实体句柄
+    // skinNodes：带 skin 的 node（node 索引, skin 索引），供第二遍回填 SkinComponent
+    std::unordered_map<int, Entity> nodeEntities;
+    std::vector<std::pair<int, int>> skinNodes;
     std::function<Entity(int, Entity)> buildNode;
     buildNode = [&](int nodeIdx, Entity parent) -> Entity {
         if (nodeIdx < 0 || nodeIdx >= static_cast<int>(model.nodes.size())) {
@@ -117,6 +169,7 @@ bool GLTFSceneImporter::Import(Scene &scene, MeshManager &meshManager,
         const std::string name = node.name.empty()
             ? ("glTFNode_" + std::to_string(nodeIdx)) : node.name;
         Entity entity = scene.CreateEntity(name);
+        nodeEntities[nodeIdx] = entity;
         FillTransform(entity.GetComponent<TransformComponent>(), node);
         if (parent) {
             scene.SetParent(entity, parent);
@@ -127,6 +180,13 @@ bool GLTFSceneImporter::Import(Scene &scene, MeshManager &meshManager,
             Mesh *mesh = meshManager.LoadGLTFMesh(filepath, static_cast<size_t>(node.mesh), model);
             if (mesh) {
                 entity.AddComponent<MeshRendererComponent>(mesh);
+                // 带 mesh + skin 的 node：挂 SkinComponent（joints/IBM 在第二遍回填），
+                // MeshPtr 在此即席填好，便于第二遍与绘制时定位网格。
+                if (node.skin >= 0) {
+                    auto &sc = entity.AddComponent<SkinComponent>();
+                    sc.MeshPtr = mesh;
+                    skinNodes.emplace_back(nodeIdx, node.skin);
+                }
             } else {
                 GE_CORE_WARN("[GLTF] node '{}' 的 mesh {} 加载失败", name, node.mesh);
             }
@@ -145,6 +205,64 @@ bool GLTFSceneImporter::Import(Scene &scene, MeshManager &meshManager,
         }
         if (buildNode(r, Entity{})) {
             anyCreated = true;
+        }
+    }
+
+    // ── 第二遍：回填蒙皮引用（必须在全部实体建成、层级接好后才能接句柄） ──
+    //   否则关节实体可能还没建出来、句柄无效。分两遍是硬性顺序约束。
+    for (size_t sk = 0; sk < model.skins.size(); ++sk) {
+        const tinygltf::Skin &skin = model.skins[sk];
+        if (skin.joints.empty()) {
+            continue;
+        }
+
+        // 解析 IBM（常量，配合 joints 使用，与 joints 一一对应）
+        std::vector<glm::mat4> ibm = ReadInverseBindMatrices(model, skin.inverseBindMatrices);
+        if (ibm.size() != skin.joints.size()) {
+            GE_CORE_WARN("[GLTF] skin[{}] 的逆绑定矩阵数量({}) 与关节数({}) 不一致，跳过",
+                         sk, ibm.size(), skin.joints.size());
+            continue;
+        }
+
+        // 把 skin.joints 各 node 解析为实体句柄 + 给关节实体挂 JointComponent
+        std::vector<entt::entity> jointHandles;
+        jointHandles.reserve(skin.joints.size());
+        for (size_t j = 0; j < skin.joints.size(); ++j) {
+            const int jointNodeIdx = skin.joints[j];
+            auto it = nodeEntities.find(jointNodeIdx);
+            if (it == nodeEntities.end() || !it->second) {
+                // 空洞校验：关节 node 找不到实体时容错跳过（该关节不参与驱动）
+                GE_CORE_WARN("[GLTF] skin[{}] 关节 node {} 未找到实体，跳过", sk, jointNodeIdx);
+                continue;
+            }
+            Entity jointEntity = it->second;
+            // 同一关节 node 可能被多个 skin 引用：只允许挂一次 JointComponent
+            if (!jointEntity.HasComponent<JointComponent>()) {
+                jointEntity.AddComponent<JointComponent>(static_cast<int>(j));
+            }
+            jointHandles.push_back(static_cast<entt::entity>(jointEntity));
+        }
+        if (jointHandles.size() != skin.joints.size()) {
+            GE_CORE_WARN("[GLTF] skin[{}] 有效关节 {} / {} 个，部分空洞，按缺省处理", sk,
+                         jointHandles.size(), skin.joints.size());
+        }
+
+        // 回填所有引用本皮肤节点的 SkinComponent（joints 与 IBM 各拷一份）
+        for (const auto &[nodeIdx, skinIdx] : skinNodes) {
+            if (skinIdx != static_cast<int>(sk)) {
+                continue;
+            }
+            auto nit = nodeEntities.find(nodeIdx);
+            if (nit == nodeEntities.end() || !nit->second) {
+                continue;
+            }
+            auto &sc = nit->second.GetComponent<SkinComponent>();
+            sc.joints = jointHandles;
+            sc.inverseBindMatrices = ibm;
+            sc.RequiresJointUpload = true;
+            GE_CORE_INFO("[GLTF] skin[{}] 已接入：{} 个关节, 网格 = {}",
+                         sk, jointHandles.size(),
+                         sc.MeshPtr ? "mesh" : "无");
         }
     }
 

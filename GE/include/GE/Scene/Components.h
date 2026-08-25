@@ -261,6 +261,41 @@ struct MeshRendererComponent {
 
 
 /**
+ * @brief 关节标记组件 —— 挂在 glTF 关节 node 对应的实体上，标出它是骨骼关节。
+ *
+ * 关节实体本身是普通实体（带 TransformComponent，位于骨架层级中），由
+ * SkinComponent.joints 引用；jointIndex 是该关节在 skin.joints 里的序号（0..N-1）。
+ * 关节的 world 变换每帧由 Scene::UpdateWorldTransforms DFS 计算，蒙皮据此变形。
+ */
+struct JointComponent {
+    int jointIndex = 0; ///< 该关节在 skin.joints 里的索引（0..N-1）
+
+    JointComponent() = default;
+    explicit JointComponent(int idx) : jointIndex(idx) {}
+};
+
+/**
+ * @brief 皮肤组件 —— 挂在「带 mesh 且被骨骼驱动的 node」实体上。
+ *
+ * 记录驱动该网格的关节链 + 逆绑定矩阵 + 关联网格。加载期由 GLTFSceneImporter
+ * 填充，运行时 Scene::UpdateSkins 每帧据此计算 jointMatrix = world × IBM 并上传 GPU。
+ *
+ * joints 存原始 entt::entity 句柄（与 TransformComponent::parent 一致），避免
+ * Components.h 里 Entity 类型不完整而无法整存 std::vector<Entity> 的问题。
+ * inverseBindMatrices 是常量（绑定姿态快照），与 joints 一一对应。
+ */
+struct SkinComponent {
+    std::vector<entt::entity> joints;           ///< 关节实体句柄（有序，索引 = skin.joints 序）
+    std::vector<glm::mat4>    inverseBindMatrices; ///< 逆绑定矩阵（与 joints 一一对应）
+    Mesh    *MeshPtr = nullptr;                 ///< 被本皮肤驱动的网格（可选，可从绘制时取）
+    bool     RequiresJointUpload = true;        ///< 脏标记：需重新上传关节矩阵（首版每帧重算，暂未用）
+
+    SkinComponent() = default;
+    SkinComponent(const SkinComponent &) = default;
+};
+
+
+/**
  * @brief 相机组件 —— 挂载到实体上的相机，用于 3D 场景渲染。
  *
  * 包含一个完整的 Camera 实例，支持 Orbit（轨道）和 FPS（第一人称）两种模式。

@@ -4,6 +4,7 @@
 
 
 #include "Core/Timestep.h"
+#include "Render/BufferPool.h"
 #include <glm/glm.hpp>
 #include <memory>
 #include <string>
@@ -160,6 +161,10 @@ private:
     /// DFS 递归体：写自己 world = parentWorld × local，再以下钻传递
     void UpdateWorldTransformsRecursive(entt::entity entity, const glm::mat4 &parentWorld);
 
+    /// 每帧蒙皮更新：对每个 SkinComponent 计算 jointMatrix = world × IBM 并上传 SSBO。
+    /// 必须在 UpdateWorldTransforms（DFS 算好全部关节 world）之后调用。
+    void UpdateSkins();
+
     /// 将输入事件分发给所有 ScriptComponent
     void DispatchInputEventToScripts(Event &e);
 
@@ -173,6 +178,16 @@ private:
     /// 派生缓存：唯一真相在组件 TransformComponent::parent，
     /// 层级变更只走 SetParent 单一入口同步两处；可用 RebuildChildrenIndex 全量重建兜底。
     std::unordered_map<entt::entity, std::vector<entt::entity>> m_ChildrenOf;
+
+    /// 一个 SkinComponent 每帧上传的关节矩阵记录（供渲染/调试读取）。
+    struct SkinJointUpload {
+        entt::entity     skinEntity = entt::null; ///< 皮肤所在实体
+        uint32_t         jointCount = 0;          ///< 关节数量
+        BufferAllocation jointBuffer;             ///< 关节矩阵 SSBO 分配（仅本帧有效，帧结束池重置）
+    };
+
+    /// 本帧所有 SkinComponent 的关节矩阵上传记录（UpdateSkins 填充，渲染读用）。
+    std::vector<SkinJointUpload> m_SkinJointUploads;
 
     /// 物理世界（每个 Scene 一个实例）
     std::unique_ptr<Physics::PhysicsWorld> m_PhysicsWorld;

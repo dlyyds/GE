@@ -287,6 +287,42 @@ static void DrawComponent(const char *name, Entity entity, UIFunction uiFunction
 }
 
 // ============================================================
+// Joint / Skin 组件（骨骼蒙皮阶段 B 新增）
+// ============================================================
+void SceneHierarchyPanel::DrawJointComponent(JointComponent &component) {
+    // 关节序号由导入器按 skin.joints 顺序写入，手改无意义，只读展示
+    ImGui::Text("关节索引: %d", component.jointIndex);
+}
+
+void SceneHierarchyPanel::DrawSkinComponent(SkinComponent &component) {
+    ImGui::Text("关节数量: %d", static_cast<int>(component.joints.size()));
+    ImGui::Text("IBM 数量: %d", static_cast<int>(component.inverseBindMatrices.size()));
+    ImGui::Text("关联网格: %s", component.MeshPtr ? "有" : "无");
+
+    // 关节实体列表（只读）：逐个显示对应实体的 Tag，便于确认骨架链
+    if (!component.joints.empty() && ImGui::TreeNode("关节实体列表(%d)", static_cast<int>(component.joints.size()))) {
+        auto &reg = m_Context->Reg();
+        for (size_t i = 0; i < component.joints.size(); ++i) {
+            std::string label = "[" + std::to_string(i) + "] ";
+            const entt::entity handle = component.joints[i];
+            if (reg.valid(handle)) {
+                if (const auto *tag = reg.try_get<TagComponent>(handle)) {
+                    label += tag->Tag;
+                } else {
+                    label += "(无 Tag)";
+                }
+            } else {
+                label += "(无效句柄)";
+            }
+            ImGui::TextUnformatted(label.c_str());
+        }
+        ImGui::TreePop();
+    }
+
+    ImGui::Checkbox("需重传关节矩阵", &component.RequiresJointUpload);
+}
+
+// ============================================================
 // 绘制选中实体的所有组件（顶层编排函数）
 // ============================================================
 void SceneHierarchyPanel::DrawComponents(Entity entity) {
@@ -318,6 +354,12 @@ void SceneHierarchyPanel::DrawComponents(Entity entity) {
 
     DrawComponent<MeshRendererComponent>("Mesh Renderer", entity,
         [this](auto &c) { DrawMeshRendererComponent(c, m_Context); });
+
+    DrawComponent<JointComponent>("Joint", entity,
+        [](auto &c) { DrawJointComponent(c); });
+
+    DrawComponent<SkinComponent>("Skin", entity,
+        [this](auto &c) { DrawSkinComponent(c); });
 
     DrawComponent<SpriteRendererComponent>("Sprite Renderer", entity,
         [](auto &c) { DrawSpriteRendererComponent(c); });
@@ -360,6 +402,8 @@ void SceneHierarchyPanel::DrawAddComponentPopup() {
     // 每种组件一行：重复的 "判重 + 添加 + 警告 + 关闭弹窗" 模板收敛到 TryAddComponent
     TryAddComponent<CameraComponent>("Camera");
     TryAddComponent<MeshRendererComponent>("Mesh Renderer");
+    TryAddComponent<JointComponent>("Joint");
+    TryAddComponent<SkinComponent>("Skin");
     TryAddComponent<SpriteRendererComponent>("Sprite Renderer");
     TryAddComponent<PointLightComponent>("Point Light");
     TryAddComponent<DirectionalLightComponent>("Directional Light");

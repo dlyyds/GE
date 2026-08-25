@@ -69,6 +69,12 @@ private:
     /// 绘制 Mesh Renderer 组件属性（scene 供「导入 glTF 场景」落实体树，静态函数无法访问 m_Context）
     static void DrawMeshRendererComponent(MeshRendererComponent &component, Scene *scene);
 
+    /// 绘制 Joint（骨骼关节）组件属性
+    static void DrawJointComponent(JointComponent &component);
+
+    /// 绘制 Skin（皮肤）组件属性（需访问场景解析关节实体 Tag）
+    void DrawSkinComponent(SkinComponent &component);
+
     /// 绘制 SpriteRenderer 组件属性
     static void DrawSpriteRendererComponent(SpriteRendererComponent &component);
 

@@ -35,6 +35,7 @@
 #include <algorithm>
 #include <vector>
 #include <unordered_map>
+#include <unordered_set>
 #include <filesystem>
 #include <algorithm>
 #include <vector>
@@ -604,6 +605,29 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
     // 烘焙去重缓存：<网格来源路径 → 烘焙 .gemesh 产物路径>，同源只烘焙一次
     std::unordered_map<std::string, std::string> bakedGemeshCache;
 
+    // 先收集 distinct 皮肤定义：同一条 glTF skin 被多 node 引用时共享同一 SkinDef，
+    // 每份去重后只写一个全局 Skins 表条目，实体侧只存 skinId 引用（避免 107 份重复）。
+    // skinDefToId：SkinDef* → 生成的文件内 uuid（实体侧引用）；skinTableOrder：保写入序。
+    std::unordered_map<const SkinDef *, std::string> skinDefToId;
+    std::vector<std::pair<std::string, const SkinDef *>> skinTableOrder;
+    {
+        std::unordered_set<const SkinDef *> seenSkinDef;
+        auto skinCompView = reg.view<SkinComponent>();
+        for (auto e : skinCompView) {
+            const auto &sc = skinCompView.get<SkinComponent>(e);
+            if (!sc.skin) {
+                continue;
+            }
+            const SkinDef *def = sc.skin.get();
+            if (!seenSkinDef.insert(def).second) {
+                continue;
+            }
+            const std::string sid = GenerateUUID();
+            skinDefToId[def] = sid;
+            skinTableOrder.emplace_back(sid, def);
+        }
+    }
+
     for (auto entityHandle : view) {
         entityCount++;
         Entity entity(entityHandle, m_Scene);
@@ -786,10 +810,74 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
             sphereNode["Offset"] = SerializeVec3(scc.Offset);
         }
 
+        // ---- JointComponent（骨骼关节标记）----
+        // 关节序号是导入器按 skin.joints 写入的皮肤内索引，不落盘则骨架链丢失。
+        if (entity.HasComponent<JointComponent>()) {
+            entityNode["Joint"]["JointIndex"] = entity.GetComponent<JointComponent>().jointIndex;
+        }
+
+        // ---- SkinComponent（皮肤引用）----
+        // 全场景皮肤定义集中在顶层 Skins 表（按 SkinDef 去重），此处仅存引用：
+        //   Skin.Id      — Skins 表条目的 uuid（反序列化按它接回共享 SkinDef）
+        //   Skin.Mesh    — 关联网格序列化路径（可选，供面板展示；非 .gemesh 自动烘焙）
+        if (entity.HasComponent<SkinComponent>()) {
+            const auto &sc = entity.GetComponent<SkinComponent>();
+            if (sc.skin) {
+                auto it = skinDefToId.find(sc.skin.get());
+                if (it != skinDefToId.end()) {
+                    entityNode["Skin"]["Id"] = it->second;
+                    if (sc.MeshPtr) {
+                        const std::string skinMeshPath =
+                            ResolveMeshSerializedPath(sc.MeshPtr->GetFilePath(), bakedGemeshCache);
+                        if (!skinMeshPath.empty()) {
+                            entityNode["Skin"]["Mesh"] = skinMeshPath;
+                        }
+                    }
+                }
+            }
+        }
+
         // ---- ScriptComponent ----
         // 不序列化：std::function 无法持久化
 
         entitiesNode.push_back(entityNode);
+    }
+
+    // ---- 全局皮肤定义表（Skins）：每个 distinct SkinDef 一个条目 ----
+    //   Id          — 文件内唯一 uuid（实体 Skin.Id 引用）
+    //   Joints       — 关节实体的 UUID 列表（跨文件稳定，按皮肤关节序）
+    //   InverseBindMatrices — 每关节一个 16 元素浮点展开（列主序，与 glm::mat4 一致）
+    if (!skinTableOrder.empty()) {
+        YAML::Node skinsNode = sceneNode["Skins"];
+        skinsNode.SetStyle(YAML::EmitterStyle::Block);
+        for (const auto &[sid, def] : skinTableOrder) {
+            YAML::Node skinNode;
+            skinNode["Id"] = sid;
+
+            YAML::Node jointsNode = skinNode["Joints"];
+            jointsNode.SetStyle(YAML::EmitterStyle::Flow);
+            for (entt::entity jh : def->joints) {
+                if (const auto *idc = reg.try_get<IDComponent>(jh)) {
+                    jointsNode.push_back(idc->UUID);
+                } else {
+                    jointsNode.push_back(""); // 空洞：实体已销毁，反序列化端跳过
+                }
+            }
+
+            YAML::Node ibmNode = skinNode["InverseBindMatrices"];
+            for (const auto &m : def->inverseBindMatrices) {
+                YAML::Node row;
+                row.SetStyle(YAML::EmitterStyle::Flow);
+                for (int col = 0; col < 4; ++col) {
+                    for (int r = 0; r < 4; ++r) {
+                        row.push_back(m[col][r]);
+                    }
+                }
+                ibmNode.push_back(row);
+            }
+
+            skinsNode.push_back(skinNode);
+        }
     }
 
     // 写入文件
@@ -862,6 +950,15 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
         std::string parentId;
     };
     std::vector<PendingParentLink> pendingParentLinks;
+
+    // 皮肤引用延迟回填：SkinComponent 需要 Skins 表（其 Joints 是实体 UUID）在全部
+    // 实体建成后才能解析，故第一遍只记待回填记录，Skins 表重建后再逐个挂上共享 SkinDef。
+    struct PendingSkinComponent {
+        Entity entity;
+        std::string skinId;
+        std::string meshPath;
+    };
+    std::vector<PendingSkinComponent> pendingSkins;
 
     for (const auto &entityNode : entitiesNode) {
         // ---- 实体名称 ----
@@ -1060,6 +1157,25 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
             scc.Offset = DeserializeVec3(sphereNode["Offset"], {0.0f, 0.0f, 0.0f});
         }
 
+        // ---- JointComponent（骨骼关节标记）----
+        if (entityNode["Joint"]) {
+            const int jointIndex = entityNode["Joint"]["JointIndex"]
+                                       ? entityNode["Joint"]["JointIndex"].as<int>(0)
+                                       : 0;
+            entity.AddComponent<JointComponent>(jointIndex);
+        }
+
+        // ---- SkinComponent：延迟到 Skins 表重建后回填共享 SkinDef ----
+        if (entityNode["Skin"]) {
+            PendingSkinComponent p;
+            p.entity = entity;
+            p.skinId = entityNode["Skin"]["Id"] ? entityNode["Skin"]["Id"].as<std::string>("")
+                                                : std::string();
+            p.meshPath = entityNode["Skin"]["Mesh"] ? entityNode["Skin"]["Mesh"].as<std::string>("")
+                                                    : std::string();
+            pendingSkins.push_back(p);
+        }
+
         // ---- ScriptComponent ----
         // 不反序列化：无法恢复回调函数
 
@@ -1078,6 +1194,72 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
             GE_CORE_WARN("SceneSerializer: 设置父子关系失败（{0} -> {1}），可能构成环引用",
                          link.child.GetComponent<TagComponent>().Tag,
                          it->second.GetComponent<TagComponent>().Tag);
+        }
+    }
+
+    // ---- 第三遍：重建全局皮肤定义表（Skins）+ 回填各实体 SkinComponent ----
+    // 皮肤表 Joints 是实体 UUID，需全部实体建成（idToEntity 齐全）后解析为句柄；
+    // 共享 SkinDef 重建后，引用同一皮肤的多实体重新共享同一 shared_ptr（共享保持）。
+    std::unordered_map<std::string, std::shared_ptr<SkinDef>> idToSkinDef;
+    YAML::Node skinsNode = sceneNode["Skins"];
+    if (skinsNode && skinsNode.IsSequence()) {
+        for (const auto &skinNode : skinsNode) {
+            const std::string sid = skinNode["Id"] ? skinNode["Id"].as<std::string>("")
+                                                   : std::string();
+            if (sid.empty()) {
+                continue;
+            }
+            auto skinDef = std::make_shared<SkinDef>();
+
+            if (skinNode["Joints"] && skinNode["Joints"].IsSequence()) {
+                for (const auto &ju : skinNode["Joints"]) {
+                    const std::string juid = ju.as<std::string>();
+                    auto it = idToEntity.find(juid);
+                    if (it == idToEntity.end()) {
+                        GE_CORE_WARN("SceneSerializer: 皮肤 {} 关节实体 {} 找不到，已跳过", sid, juid);
+                        continue;
+                    }
+                    skinDef->joints.push_back(static_cast<entt::entity>(it->second));
+                }
+            }
+
+            if (skinNode["InverseBindMatrices"] && skinNode["InverseBindMatrices"].IsSequence()) {
+                for (const auto &rowNode : skinNode["InverseBindMatrices"]) {
+                    if (!rowNode.IsSequence() || rowNode.size() < 16) {
+                        GE_CORE_WARN("SceneSerializer: 皮肤 {} 的 IBM 行尺寸不足 16，已跳过", sid);
+                        continue;
+                    }
+                    glm::mat4 m(1.0f);
+                    int k = 0;
+                    for (int col = 0; col < 4; ++col) {
+                        for (int row = 0; row < 4; ++row) {
+                            m[col][row] = rowNode[static_cast<size_t>(k++)].as<float>();
+                        }
+                    }
+                    skinDef->inverseBindMatrices.push_back(m);
+                }
+            }
+
+            if (skinDef->inverseBindMatrices.size() != skinDef->joints.size()) {
+                GE_CORE_WARN("SceneSerializer: 皮肤 {} 关节数({})与 IBM 数({})不一致，加载后退化为静态",
+                             sid, skinDef->joints.size(), skinDef->inverseBindMatrices.size());
+            }
+            idToSkinDef[sid] = skinDef;
+        }
+    }
+
+    // 回填：给每个带 Skin 引用的实体挂上共享 SkinDef（+ 可选 MeshPtr 供面板展示）
+    for (const auto &p : pendingSkins) {
+        auto &sc = p.entity.AddComponent<SkinComponent>();
+        auto it = idToSkinDef.find(p.skinId);
+        if (it != idToSkinDef.end()) {
+            sc.skin = it->second;
+        } else {
+            GE_CORE_WARN("SceneSerializer: 实体 {} 引用的皮肤 {} 未定义",
+                         p.entity.GetComponent<TagComponent>().Tag, p.skinId);
+        }
+        if (!p.meshPath.empty()) {
+            sc.MeshPtr = Renderer::GetAssetManager().LoadMesh(p.meshPath);
         }
     }
 

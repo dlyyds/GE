@@ -22,6 +22,7 @@
 
 #include <cstring>
 #include <unordered_map>
+#include <cmath>
 
 namespace GE {
 
@@ -160,6 +161,7 @@ bool GLTFSceneImporter::Import(Scene &scene, MeshManager &meshManager,
     // skinNodes：带 skin 的 node（node 索引, skin 索引），供第二遍回填 SkinComponent
     std::unordered_map<int, Entity> nodeEntities;
     std::vector<std::pair<int, int>> skinNodes;
+    std::vector<entt::entity> meshNodeEntities; // 本导入带网格的实体（供世界尺度归一化）
     entt::entity firstSkinHost = entt::null; // 本导入首个带皮肤宿主实体（动画挂载点）
     std::function<Entity(int, Entity)> buildNode;
     buildNode = [&](int nodeIdx, Entity parent) -> Entity {
@@ -182,6 +184,7 @@ bool GLTFSceneImporter::Import(Scene &scene, MeshManager &meshManager,
             Mesh *mesh = meshManager.LoadGLTFMesh(filepath, static_cast<size_t>(node.mesh), model);
             if (mesh) {
                 entity.AddComponent<MeshRendererComponent>(mesh);
+                meshNodeEntities.push_back(static_cast<entt::entity>(entity));
                 // 带 mesh + skin 的 node：挂 SkinComponent（joints/IBM 在第二遍回填），
                 // MeshPtr 在此即席填好，便于第二遍与绘制时定位网格。
                 if (node.skin >= 0) {
@@ -210,6 +213,42 @@ bool GLTFSceneImporter::Import(Scene &scene, MeshManager &meshManager,
         }
         if (buildNode(r, Entity{})) {
             anyCreated = true;
+        }
+    }
+
+    // ── 世界尺度归一化：抵消导出残留的整体缩放 ──
+    // 有些 Sketchfab/旧 DCC 导出会在节点链上带一个大统一缩放（如 lacrimosa 全链
+    // 109.7 倍），角色被放大到约 90 世界单位、默认相机（轨道距离 8）陷入几何体内部，
+    // 背面剔除全灭 → 完全不可见。此处对每个网格实体：取其世界矩阵 3×3 行列式的
+    // 立方根作为统一缩放 S，S 明显 ≠ 1 时把该实体局部 Scale ÷ S，使世界尺度归一到 ≈1。
+    // 只改网格实体自身、不动关节链：蒙皮 sx = jointWorld × IBM 对全局统一缩放不变，
+    // 静态网格 / 蒙皮 / 动画都不受影响；mint / valhalla 等 S=1 的模型完全不变。
+    if (!meshNodeEntities.empty()) {
+        // 导入期 worldMatrix 缓存未就绪，自旋走 parent 链合成世界矩阵
+        auto worldOf = [&](entt::entity e) {
+            glm::mat4 w(1.0f);
+            entt::entity cur = e;
+            while (cur != entt::null) {
+                auto *tc = scene.Reg().try_get<TransformComponent>(cur);
+                if (!tc) {
+                    break;
+                }
+                w = tc->GetLocalMatrix() * w;
+                cur = tc->parent;
+            }
+            return w;
+        };
+        for (entt::entity e : meshNodeEntities) {
+            auto *tc = scene.Reg().try_get<TransformComponent>(e);
+            if (!tc) {
+                continue;
+            }
+            const float det = glm::determinant(worldOf(e)); // 3×3 行列式（镜像为负）
+            const float scale = std::cbrt(std::fabs(det));   // 等比统一缩放倍数
+            if (scale > 1e-6f && std::fabs(scale - 1.0f) > 0.001f) {
+                tc->Scale *= (1.0f / scale);
+                GE_CORE_INFO("[GLTF] 网格实体世界缩放 {:.4f} × → 归一化到 1", scale);
+            }
         }
     }
 

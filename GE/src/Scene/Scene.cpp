@@ -925,6 +925,10 @@ void Scene::OnComponentAdded<SkinComponent>(Entity entity, SkinComponent &compon
 }
 
 template <>
+void Scene::OnComponentAdded<AnimationComponent>(Entity entity, AnimationComponent &component) {
+}
+
+template <>
 void Scene::OnComponentAdded<CameraComponent>(Entity entity, CameraComponent &component) {
 }
 

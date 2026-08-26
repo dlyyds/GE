@@ -11,6 +11,7 @@
 #include "Scene/Entity.h"
 #include "Scene/Components.h"
 #include "Render/GLTFLoader.h"
+#include "Render/AnimationClipManager.h"
 #include "Render/MeshManager.h"
 #include "Render/Mesh.h"
 #include "Core/Log.h"
@@ -159,6 +160,7 @@ bool GLTFSceneImporter::Import(Scene &scene, MeshManager &meshManager,
     // skinNodes：带 skin 的 node（node 索引, skin 索引），供第二遍回填 SkinComponent
     std::unordered_map<int, Entity> nodeEntities;
     std::vector<std::pair<int, int>> skinNodes;
+    entt::entity firstSkinHost = entt::null; // 本导入首个带皮肤宿主实体（动画挂载点）
     std::function<Entity(int, Entity)> buildNode;
     buildNode = [&](int nodeIdx, Entity parent) -> Entity {
         if (nodeIdx < 0 || nodeIdx >= static_cast<int>(model.nodes.size())) {
@@ -185,6 +187,9 @@ bool GLTFSceneImporter::Import(Scene &scene, MeshManager &meshManager,
                 if (node.skin >= 0) {
                     auto &sc = entity.AddComponent<SkinComponent>();
                     sc.MeshPtr = mesh;
+                    if (firstSkinHost == entt::null) {
+                        firstSkinHost = static_cast<entt::entity>(entity);
+                    }
                     skinNodes.emplace_back(nodeIdx, node.skin);
                 }
             } else {
@@ -272,49 +277,46 @@ bool GLTFSceneImporter::Import(Scene &scene, MeshManager &meshManager,
         }
     }
 
-    // ── 阶段 A 临时验证：打印动画数据概览 ──
-    //   阶段 B 将把本块替换为「挂 AnimationComponent + 解析 channelTargets」，
-    //   当前只读不改，用于验收「1 条动画 / ~980 channel / 时长 24.1s / 全 LINEAR」。
+    // ── 第三遍：动画接入（实体树建成 + 层级接好后才能解析目标节点句柄） ──
+    //   规则（计划书 §4 阶段 B1）：v1 仅支持有皮肤的角色动画——宿主取本导入首个带
+    //   SkinComponent 的实体（mint 多块蒙皮共享同一骨架，挂一个即可：动画写目标节点
+    //   局部 TRS，经 DFS 传播到子树全部关节，蒙皮跟随）；无皮肤的对象动画列阶段 D。
     if (!model.animations.empty()) {
-        GE_CORE_INFO("[Anim] {} 含 {} 条动画, 共 {} node / {} skin",
-                     filepath, model.animations.size(), model.nodes.size(), model.skins.size());
-        for (size_t ai = 0; ai < model.animations.size(); ++ai) {
-            AnimationClip clip;
-            std::string aerr;
-            if (!GLTF::BuildAnimations(model, ai, clip, &aerr)) {
-                GE_CORE_ERROR("[Anim] 动画[{}] 解析失败: {}", ai, aerr);
-                continue;
-            }
-            // 统计插值分布与键帧总量
-            size_t nLinear = 0, nStep = 0, nCubic = 0, keyTotal = 0;
-            for (const auto &c : clip.channels) {
-                switch (c.interp) {
-                case AnimationChannel::Interp::Step: nStep++; break;
-                case AnimationChannel::Interp::CubicSpline: nCubic++; break;
-                default: nLinear++; break;
+        if (firstSkinHost == entt::null) {
+            GE_CORE_WARN("[Anim] {} 含动画但无皮肤宿主（对象动画列入阶段 D），跳过",
+                         filepath);
+        } else {
+            Entity hostEntity{firstSkinHost, &scene};
+            if (!hostEntity.HasComponent<AnimationComponent>()) { // 防重复导入叠加
+                auto &animComp = hostEntity.AddComponent<AnimationComponent>();
+                for (size_t ai = 0; ai < model.animations.size(); ++ai) {
+                    std::shared_ptr<AnimationClip> clip =
+                        AnimationClipManager::Get().Load(filepath, ai, model);
+                    if (!clip) { // 无合法 channel（解析失败 / 全被跳过）
+                        continue;
+                    }
+                    ClipInstance inst;
+                    inst.clip = clip;
+                    inst.channelTargets.reserve(clip->channels.size());
+                    size_t validTargets = 0;
+                    // 逐 channel 把目标 node 解析为实体句柄：目标未导入或无 Transform
+                    // 则洞掉（该通道不驱动，该部位退化为绑定姿态），与皮肤回填同法容错。
+                    for (const auto &ch : clip->channels) {
+                        auto it = nodeEntities.find(ch.nodeIndex);
+                        if (it != nodeEntities.end() && it->second
+                            && it->second.HasComponent<TransformComponent>()) {
+                            inst.channelTargets.push_back(static_cast<entt::entity>(it->second));
+                            ++validTargets;
+                        } else {
+                            inst.channelTargets.push_back(entt::null);
+                        }
+                    }
+                    animComp.clips.push_back(std::move(inst));
+                    GE_CORE_INFO("[Anim] 动画[{}] '{}' 已接入: {} channel, 时长 {:.3f}s, "
+                                 "有效目标 {} 个",
+                                 ai, clip->name, clip->channels.size(), clip->duration,
+                                 validTargets);
                 }
-                keyTotal += c.times.size();
-            }
-            GE_CORE_INFO("[Anim]   动画[{}] '{}': channels={}, 时长={:.3f}s, "
-                         "插值 LINEAR={} STEP={} CUBIC={}, 键帧总数={}",
-                         ai, clip.name, clip.channels.size(), clip.duration,
-                         nLinear, nStep, nCubic, keyTotal);
-            // 抽查首条合法 channel 的时间轴首尾与插值类型
-            for (const auto &c : clip.channels) {
-                if (c.times.size() < 2) {
-                    continue;
-                }
-                const char *pathStr = (c.path == AnimationChannel::Path::Translation) ? "translation"
-                                    : (c.path == AnimationChannel::Path::Rotation) ? "rotation"
-                                    : "scale";
-                const char *interpStr = (c.interp == AnimationChannel::Interp::Linear) ? "LINEAR"
-                                      : (c.interp == AnimationChannel::Interp::Step) ? "STEP"
-                                      : "CUBICSPLINE";
-                GE_CORE_INFO("[Anim]     抽查 channel: node={} path={} interp={} 键帧={}, "
-                             "时间轴 [{:.3f}, {:.3f}]",
-                             c.nodeIndex, pathStr, interpStr, c.times.size(),
-                             c.times.front(), c.times.back());
-                break;
             }
         }
     }

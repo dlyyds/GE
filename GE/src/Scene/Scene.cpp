@@ -20,9 +20,87 @@
 
 #include <algorithm>
 #include <unordered_set>
+#include <cmath>
 #include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>
 
 namespace GE {
+
+namespace {
+
+// ============================================================================
+// 动画键帧采样助手（计划书 §4 阶段 B2）
+// ============================================================================
+
+/**
+ * @brief CUBICSPLINE 通道仅一次警告：v1 按 LINEAR 近似采样，完整 Hermite 留阶段 D。
+ */
+void WarnCubicSplineOnce() {
+    static bool warned = false;
+    if (!warned) {
+        warned = true;
+        GE_CORE_WARN("[Anim] CUBICSPLINE 通道按 LINEAR 近似采样（完整 Hermite 留阶段 D）");
+    }
+}
+
+/**
+ * @brief 定位时间 t 所在的键帧区间左端 k0。
+ *
+ * k0 = 最后一个 times[i] <= t 的索引（upper_bound - 1）。
+ * 在 t 于首尾两键之间时调用；t 恰在某键上时 k0 指向该键（STEP 取该键值、LINEAR 该点 t01=0）。
+ */
+size_t FindActiveKey(const std::vector<float> &times, float t) {
+    return static_cast<size_t>(std::upper_bound(times.begin(), times.end(), t)
+                               - times.begin()) - 1u;
+}
+
+/// vec3 通道采样：LINEAR 线性插值；STEP 取前一键值；CUBICSPLINE 按 LINEAR 近似。
+glm::vec3 SampleVec3Channel(const AnimationChannel &ch, float t) {
+    const size_t n = ch.times.size();
+    if (n == 0) {
+        return glm::vec3(0.0f);
+    }
+    if (t <= ch.times.front()) {
+        return ch.vecKeys.front();
+    }
+    if (t >= ch.times.back()) {
+        return ch.vecKeys.back();
+    }
+    const size_t k0 = FindActiveKey(ch.times, t);
+    if (ch.interp == AnimationChannel::Interp::Step) {
+        return ch.vecKeys[k0]; // STEP：保持前一键值
+    }
+    if (ch.interp == AnimationChannel::Interp::CubicSpline) {
+        WarnCubicSplineOnce();
+    }
+    const float t01 = (t - ch.times[k0]) / (ch.times[k0 + 1] - ch.times[k0]);
+    return glm::mix(ch.vecKeys[k0], ch.vecKeys[k0 + 1], t01);
+}
+
+/// quat 通道采样：LINEAR 用 slerp；STEP 取前一键值；CUBICSPLINE 近似 slerp。
+glm::quat SampleQuatChannel(const AnimationChannel &ch, float t) {
+    const size_t n = ch.times.size();
+    if (n == 0) {
+        return glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
+    }
+    if (t <= ch.times.front()) {
+        return ch.quatKeys.front();
+    }
+    if (t >= ch.times.back()) {
+        return ch.quatKeys.back();
+    }
+    const size_t k0 = FindActiveKey(ch.times, t);
+    if (ch.interp == AnimationChannel::Interp::Step) {
+        return ch.quatKeys[k0];
+    }
+    if (ch.interp == AnimationChannel::Interp::CubicSpline) {
+        WarnCubicSplineOnce();
+    }
+    const float t01 = (t - ch.times[k0]) / (ch.times[k0 + 1] - ch.times[k0]);
+    return glm::slerp(ch.quatKeys[k0], ch.quatKeys[k0 + 1], t01);
+}
+
+} // namespace
 
 
 Scene::Scene() {
@@ -300,6 +378,59 @@ void Scene::UpdateSkins() {
     }
 }
 
+void Scene::UpdateAnimations(Timestep ts) {
+    auto view = m_Registry.view<AnimationComponent>();
+    for (auto entity : view) {
+        auto &ac = view.get<AnimationComponent>(entity);
+        if (!ac.playing || ac.clips.empty()) {
+            continue;
+        }
+        const AnimationClip *clip = ac.activeClip();
+        if (!clip || clip->channels.empty()) {
+            continue;
+        }
+
+        // 推进时间轴：秒 × 倍速（速率为负 = 倒放）
+        ac.time += ts.GetSeconds() * ac.speed;
+        if (clip->duration > 0.0f) {
+            if (ac.loop) {
+                ac.time = std::fmod(ac.time, clip->duration);
+                if (ac.time < 0.0f) {
+                    ac.time += clip->duration;
+                }
+            } else {
+                ac.time = std::clamp(ac.time, 0.0f, clip->duration);
+            }
+        }
+
+        // 逐通道采样 → 写目标实体的局部 TRS（局部字段，随后的 DFS 重算 world；
+        // 目标节点可能是皮肤关节的祖先/结构节点，经 DFS 传播子树全部关节）
+        const auto &targets = ac.clips[ac.active].channelTargets; // active 已由 activeClip 校验
+        const auto &channels = clip->channels;
+        for (size_t ci = 0; ci < channels.size(); ++ci) {
+            const auto &ch = channels[ci];
+            if (ci >= targets.size() || targets[ci] == entt::null) {
+                continue; // 空洞目标：该通道不驱动（该部位退化为绑定姿态）
+            }
+            auto *tc = m_Registry.try_get<TransformComponent>(targets[ci]);
+            if (!tc) {
+                continue;
+            }
+            switch (ch.path) {
+            case AnimationChannel::Path::Translation:
+                tc->Translation = SampleVec3Channel(ch, ac.time);
+                break;
+            case AnimationChannel::Path::Rotation:
+                tc->Rotation = SampleQuatChannel(ch, ac.time);
+                break;
+            case AnimationChannel::Path::Scale:
+                tc->Scale = SampleVec3Channel(ch, ac.time);
+                break;
+            }
+        }
+    }
+}
+
 
 void Scene::OnUpdate(Timestep ts,
                      const glm::mat4 &viewProjection,
@@ -348,6 +479,11 @@ void Scene::OnUpdate3D(Timestep ts,
 
     // ── 物理步进 ──
     StepPhysics(ts);
+
+    // ── 动画更新：采样键帧写目标实体的局部 TRS ────────────────────────
+    // 放在物理之后、UpdateWorldTransforms 之前：动画写的是局部 TRS，稍后 DFS
+    // 重算 world，蒙皮随之拿到最新关节矩阵（时序见计划书 §10）。
+    UpdateAnimations(ts);
 
     // ── 世界矩阵缓存重建（每帧一次 DFS）───────────────────────────────
     // 放在物理步进之后、光源收集/渲染之前：物理刚回写完局部 TRS，

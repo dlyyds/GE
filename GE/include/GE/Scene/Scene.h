@@ -165,6 +165,10 @@ private:
     /// 必须在 UpdateWorldTransforms（DFS 算好全部关节 world）之后调用。
     void UpdateSkins();
 
+    /// 每帧动画更新：采样当前 clip 键帧写目标实体的局部 TRS。
+    /// 必须在 UpdateWorldTransforms（DFS 据此重算 world）之前调用。
+    void UpdateAnimations(Timestep ts);
+
     /// 将输入事件分发给所有 ScriptComponent
     void DispatchInputEventToScripts(Event &e);
 

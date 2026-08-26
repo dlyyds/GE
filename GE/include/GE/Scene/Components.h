@@ -8,6 +8,7 @@
 
 #define GLM_ENABLE_EXPERIMENTAL
 #include <string>
+#include <vector>
 #include <unordered_map>
 #include <random>
 #include <cstdint>
@@ -320,6 +321,56 @@ struct SkinComponent {
     [[nodiscard]] const std::vector<glm::mat4> &inverseBindMatrices() const {
         static const std::vector<glm::mat4> empty;
         return skin ? skin->inverseBindMatrices : empty;
+    }
+};
+
+
+// ============================================================
+// 动画组件（数据层，详见 docs/骨骼动画实现计划书.md §4 阶段 A）
+// ============================================================
+
+/// 一条动画通道：动某个节点的某条路径（TRS）
+struct AnimationChannel {
+    enum class Interp : uint8_t { Linear = 0, Step = 1, CubicSpline = 2 };
+    enum class Path : uint8_t { Translation = 0, Rotation = 1, Scale = 2 };
+
+    int         nodeIndex = -1;    ///< glTF 目标节点索引（导入期解析成实体）
+    Path        path = Path::Translation;
+    Interp      interp = Interp::Linear;
+    // 键帧（按路径类型分存，避免每帧类型转换；rotation 已转 glm::quat 内存序）
+    std::vector<float>     times;           ///< 键帧时间（秒，单调递增）
+    std::vector<glm::vec3> vecKeys;         ///< translation / scale 值（每键帧一个）
+    std::vector<glm::quat> quatKeys;        ///< rotation 值（每键帧一个，wxyz 序）
+};
+
+/// 动画片段（模型级共享资源：与 SkinDef 同构，跨实体按 "path#N" 去重）
+struct AnimationClip {
+    std::string                     name;
+    float                           duration = 0.0f;
+    std::vector<AnimationChannel>   channels;
+};
+
+/// 绑定到场景的动画实例：clip（共享键帧）+ 本次解析的目标实体
+struct ClipInstance {
+    std::shared_ptr<AnimationClip> clip;
+    std::vector<entt::entity>      channelTargets;  ///< 与 clip->channels 一一对应（未解析为 null）
+};
+
+/// 动画组件：挂在带骨架的角色实体上（与 SkinComponent 同实体）
+struct AnimationComponent {
+    std::vector<ClipInstance> clips;   ///< 模型全部动画（mint 1 条）
+    size_t  active = 0;                 ///< 当前播放 clip 索引
+    float   time = 0.0f;                ///< 播放时间（秒）
+    float   speed = 1.0f;               ///< 播放倍速
+    bool    playing = true;             ///< 是否在播
+    bool    loop = true;                ///< 是否循环
+
+    AnimationComponent() = default;
+    AnimationComponent(const AnimationComponent &) = default;
+
+    /// 便捷访问当前 clip（无动画返回 nullptr）
+    [[nodiscard]] const AnimationClip *activeClip() const {
+        return (active < clips.size()) ? clips[active].clip.get() : nullptr;
     }
 };
 

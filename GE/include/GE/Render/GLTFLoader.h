@@ -19,6 +19,7 @@
 namespace tinygltf { struct Model; }
 namespace GE {
 struct MeshData;
+struct AnimationClip; // 定义于 Scene/Components.h
 }
 
 namespace GE {
@@ -60,6 +61,24 @@ bool BuildMesh(const tinygltf::Model &model, size_t meshIndex,
  * @return 成功且含有效几何数据返回 true
  */
 bool BuildMeshData(const std::string &filepath, size_t meshIndex, MeshData &out);
+
+/**
+ * @brief 把 model.animations[animIdx] 解码为 AnimationClip（共享键帧资源）。
+ *
+ * 遍历全部 channel：经 sampler 读时间轴（SCALAR/FLOAT）与采样值
+ * （translation/scale=VEC3、rotation=VEC4），rotation 由 glTF [x,y,z,w] 转为
+ * glm::quat(w,x,y,z)（与导入器 FillTransform 同款换序）。LINEAR/STEP 直接解码；
+ * CUBICSPLINE 仅取每键帧中的「值」（跳过入/出切线）并标记插值类型，完整 Hermite
+ * 采样留待后续阶段。weights 通道跳过。单 channel 失败始终容错跳过，不中断整体。
+ *
+ * @param model   已载入的 tinygltf::Model（须先 LoadModel）
+ * @param animIdx 目标 animation 索引
+ * @param out     输出（AnimationClip，与材质无关）
+ * @param err     非空时回填错误描述（仅整体失败用；单 channel 跳过走 WARN 日志）
+ * @return 成功返回 true（允许 clip 为空——无合法 channel 时，调用方自行判断）
+ */
+bool BuildAnimations(const tinygltf::Model &model, size_t animIdx,
+                     AnimationClip &out, std::string *err = nullptr);
 
 } // namespace GLTF
 } // namespace GE

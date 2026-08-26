@@ -16,6 +16,7 @@
 
 #include "Render/ModelLoader.h"
 #include "Render/Mesh.h"
+#include "Scene/Components.h"
 #include "Core/Log.h"
 
 #include "tinygltf/tiny_gltf.h"
@@ -190,6 +191,88 @@ static void ReadJoints(const tinygltf::Model &m, int accessorIdx, size_t i, glm:
         default:
             break; // 其他分量类型非法，保持清零
     }
+}
+
+// ============================================================================
+// 动画采样 accessor 读取（阶段 A：动画键帧解码的数据路径）
+// ============================================================================
+
+/**
+ * @brief 读取动画时间轴 accessor（SCALAR/FLOAT）整列到 out。
+ *
+ * 时间轴是浮点标量数组（秒）。componentType 非 FLOAT 或类型非 SCALAR 时返回
+ * false，调用方容错跳过该 channel。
+ */
+static bool ReadAnimTimes(const tinygltf::Model &m, int accessorIdx,
+                          std::vector<float> &out) {
+    if (accessorIdx < 0 || accessorIdx >= static_cast<int>(m.accessors.size())) {
+        return false;
+    }
+    const auto &acc = m.accessors[static_cast<size_t>(accessorIdx)];
+    if (acc.type != TINYGLTF_TYPE_SCALAR || acc.componentType != TINYGLTF_COMPONENT_TYPE_FLOAT) {
+        return false;
+    }
+    const uint8_t *base = AccessorBasePtr(m, acc);
+    int stride = acc.bufferView >= 0 ? acc.ByteStride(m.bufferViews[acc.bufferView]) : -1;
+    if (!base || stride < 0) {
+        return false;
+    }
+    out.clear();
+    out.reserve(acc.count);
+    for (size_t i = 0; i < acc.count; ++i) {
+        const uint8_t *p = base + i * static_cast<size_t>(stride);
+        out.push_back(*reinterpret_cast<const float *>(p));
+    }
+    return true;
+}
+
+/**
+ * @brief 读取动画输出 accessor 每个键帧的「值」到 out（跳过 CUBICSPLINE 的切线）。
+ *
+ * @param valueElemPerKey LINEAR/STEP 为 1；CUBICSPLINE 为 3（入切线/值/出切线），
+ *                        此时每键帧取中间的「值」元素，切线留待 Hermite 采样阶段。
+ * @param compCount       每元素 float 分量数（translation/scale=3，rotation=4）
+ * @param keyCount        键帧数（时间轴长度），out 长度 = keyCount × compCount
+ */
+static bool ReadAnimValues(const tinygltf::Model &m, int accessorIdx,
+                           size_t valueElemPerKey, int compCount, size_t keyCount,
+                           std::vector<float> &out) {
+    if (accessorIdx < 0 || accessorIdx >= static_cast<int>(m.accessors.size())) {
+        return false;
+    }
+    const auto &acc = m.accessors[static_cast<size_t>(accessorIdx)];
+    if (acc.componentType != TINYGLTF_COMPONENT_TYPE_FLOAT) {
+        return false;
+    }
+    // 按 accessor 类型校验分量数（VEC3=3 / VEC4=4），与调用方期望一致才读
+    const int typeComp = (acc.type == TINYGLTF_TYPE_VEC4 ? 4
+                        : acc.type == TINYGLTF_TYPE_VEC3 ? 3
+                        : 0);
+    if (typeComp != compCount) {
+        return false;
+    }
+    const uint8_t *base = AccessorBasePtr(m, acc);
+    int stride = acc.bufferView >= 0 ? acc.ByteStride(m.bufferViews[acc.bufferView]) : -1;
+    if (!base || stride < 0) {
+        return false;
+    }
+    // 元素数须覆盖 valueElemPerKey × keyCount（CUBICSPLINE 输出 = 3 × 键帧数）
+    if (acc.count < valueElemPerKey * keyCount) {
+        return false;
+    }
+    out.clear();
+    out.reserve(keyCount * static_cast<size_t>(compCount));
+    // CUBICSPLINE 每键帧 3 个元素（入切线/值/出切线），值在第 2 个（跳过切线）
+    const size_t valueElemInKey = (valueElemPerKey == 3) ? 1 : 0;
+    for (size_t k = 0; k < keyCount; ++k) {
+        const size_t elem = k * valueElemPerKey + valueElemInKey;
+        const uint8_t *p = base + elem * static_cast<size_t>(stride);
+        const float *src = reinterpret_cast<const float *>(p);
+        for (int c = 0; c < compCount; ++c) {
+            out.push_back(src[c]);
+        }
+    }
+    return true;
 }
 
 // ============================================================================
@@ -464,6 +547,98 @@ bool BuildMeshData(const std::string &filepath, size_t meshIndex, MeshData &out)
         return false;
     }
     return BuildMesh(model, meshIndex, filepath, out);
+}
+
+// ============================================================================
+// 动画解析：animation → AnimationClip（阶段 A：只读键帧，不触及场景/渲染）
+// ============================================================================
+
+bool BuildAnimations(const tinygltf::Model &m, size_t animIdx,
+                     AnimationClip &out, std::string *err) {
+    if (animIdx >= m.animations.size()) {
+        if (err) {
+            *err = "animation 索引越界";
+        }
+        GE_CORE_ERROR("[Anim] animation 索引越界 {}", animIdx);
+        return false;
+    }
+
+    const tinygltf::Animation &anim = m.animations[animIdx];
+    out.name = anim.name;
+    out.duration = 0.0f;
+    out.channels.clear();
+
+    for (const auto &ch : anim.channels) {
+        // 目标路径：translation / rotation / scale；weights（morph）本计划不支撑
+        AnimationChannel chan;
+        if (ch.target_path == "translation") {
+            chan.path = AnimationChannel::Path::Translation;
+        } else if (ch.target_path == "rotation") {
+            chan.path = AnimationChannel::Path::Rotation;
+        } else if (ch.target_path == "scale") {
+            chan.path = AnimationChannel::Path::Scale;
+        } else {
+            GE_CORE_WARN("[Anim] 跳过不支持的 channel 路径 '{}'", ch.target_path);
+            continue;
+        }
+        chan.nodeIndex = ch.target_node;
+
+        // sampler 与插值类型
+        if (ch.sampler < 0 || ch.sampler >= static_cast<int>(anim.samplers.size())) {
+            GE_CORE_WARN("[Anim] channel(path={}) 的 sampler 索引越界 {}", ch.target_path, ch.sampler);
+            continue;
+        }
+        const tinygltf::AnimationSampler &sam = anim.samplers[static_cast<size_t>(ch.sampler)];
+        if (sam.interpolation == "STEP") {
+            chan.interp = AnimationChannel::Interp::Step;
+        } else if (sam.interpolation == "CUBICSPLINE") {
+            chan.interp = AnimationChannel::Interp::CubicSpline;
+        } else if (sam.interpolation != "LINEAR") {
+            // 未知插值容错按 LINEAR（既不会崩，也不会误当 STEP/CUBIC 走样）
+            chan.interp = AnimationChannel::Interp::Linear;
+            GE_CORE_WARN("[Anim] 未知插值 '{}' 按 LINEAR 处理", sam.interpolation);
+        }
+
+        // 时间轴（SCALAR/FLOAT）
+        if (!ReadAnimTimes(m, sam.input, chan.times) || chan.times.empty()) {
+            GE_CORE_WARN("[Anim] 时间轴读取失败, path={}", ch.target_path);
+            continue;
+        }
+        const size_t keyCount = chan.times.size();
+        const size_t valueElemPerKey =
+            (chan.interp == AnimationChannel::Interp::CubicSpline) ? 3 : 1;
+
+        // 采样值 → 按路径分存（rotation 换序进 quatKeys，其余进 vecKeys）
+        std::vector<float> vals;
+        if (chan.path == AnimationChannel::Path::Rotation) {
+            if (!ReadAnimValues(m, sam.output, valueElemPerKey, 4, keyCount, vals)) {
+                GE_CORE_WARN("[Anim] rotation 采样值读取失败, node={}", chan.nodeIndex);
+                continue;
+            }
+            chan.quatKeys.reserve(keyCount);
+            for (size_t k = 0; k < keyCount; ++k) {
+                const float *q = vals.data() + k * 4;
+                // glTF 四元数 [x,y,z,w] → glm::quat(w,x,y,z)
+                chan.quatKeys.emplace_back(q[3], q[0], q[1], q[2]);
+            }
+        } else {
+            if (!ReadAnimValues(m, sam.output, valueElemPerKey, 3, keyCount, vals)) {
+                GE_CORE_WARN("[Anim] translation/scale 采样值读取失败, node={}", chan.nodeIndex);
+                continue;
+            }
+            chan.vecKeys.reserve(keyCount);
+            for (size_t k = 0; k < keyCount; ++k) {
+                const float *v = vals.data() + k * 3;
+                chan.vecKeys.emplace_back(v[0], v[1], v[2]);
+            }
+        }
+
+        // clip 时长为全部 channel 时间轴末尾的最大值
+        out.duration = std::max(out.duration, chan.times.back());
+        out.channels.push_back(std::move(chan));
+    }
+
+    return true;
 }
 
 } // namespace GLTF

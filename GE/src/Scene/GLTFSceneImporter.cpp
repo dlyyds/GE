@@ -272,6 +272,53 @@ bool GLTFSceneImporter::Import(Scene &scene, MeshManager &meshManager,
         }
     }
 
+    // ── 阶段 A 临时验证：打印动画数据概览 ──
+    //   阶段 B 将把本块替换为「挂 AnimationComponent + 解析 channelTargets」，
+    //   当前只读不改，用于验收「1 条动画 / ~980 channel / 时长 24.1s / 全 LINEAR」。
+    if (!model.animations.empty()) {
+        GE_CORE_INFO("[Anim] {} 含 {} 条动画, 共 {} node / {} skin",
+                     filepath, model.animations.size(), model.nodes.size(), model.skins.size());
+        for (size_t ai = 0; ai < model.animations.size(); ++ai) {
+            AnimationClip clip;
+            std::string aerr;
+            if (!GLTF::BuildAnimations(model, ai, clip, &aerr)) {
+                GE_CORE_ERROR("[Anim] 动画[{}] 解析失败: {}", ai, aerr);
+                continue;
+            }
+            // 统计插值分布与键帧总量
+            size_t nLinear = 0, nStep = 0, nCubic = 0, keyTotal = 0;
+            for (const auto &c : clip.channels) {
+                switch (c.interp) {
+                case AnimationChannel::Interp::Step: nStep++; break;
+                case AnimationChannel::Interp::CubicSpline: nCubic++; break;
+                default: nLinear++; break;
+                }
+                keyTotal += c.times.size();
+            }
+            GE_CORE_INFO("[Anim]   动画[{}] '{}': channels={}, 时长={:.3f}s, "
+                         "插值 LINEAR={} STEP={} CUBIC={}, 键帧总数={}",
+                         ai, clip.name, clip.channels.size(), clip.duration,
+                         nLinear, nStep, nCubic, keyTotal);
+            // 抽查首条合法 channel 的时间轴首尾与插值类型
+            for (const auto &c : clip.channels) {
+                if (c.times.size() < 2) {
+                    continue;
+                }
+                const char *pathStr = (c.path == AnimationChannel::Path::Translation) ? "translation"
+                                    : (c.path == AnimationChannel::Path::Rotation) ? "rotation"
+                                    : "scale";
+                const char *interpStr = (c.interp == AnimationChannel::Interp::Linear) ? "LINEAR"
+                                      : (c.interp == AnimationChannel::Interp::Step) ? "STEP"
+                                      : "CUBICSPLINE";
+                GE_CORE_INFO("[Anim]     抽查 channel: node={} path={} interp={} 键帧={}, "
+                             "时间轴 [{:.3f}, {:.3f}]",
+                             c.nodeIndex, pathStr, interpStr, c.times.size(),
+                             c.times.front(), c.times.back());
+                break;
+            }
+        }
+    }
+
     if (!anyCreated) {
         GE_CORE_WARN("[GLTF] 未创建任何实体: {}", filepath);
         return false;

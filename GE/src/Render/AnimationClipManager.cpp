@@ -1,6 +1,6 @@
 /**
  * @file AnimationClipManager.cpp
- * @brief 动画片段管理器实现 —— weak_ptr 缓存 + GLTF::BuildAnimations 构建。
+ * @brief 动画片段管理器实现 —— weak_ptr 缓存 + 烘焙小文件优先 + GLTF 兜底构建。
  */
 
 #include "pch.h"
@@ -8,9 +8,12 @@
 #include "Render/AnimationClipManager.h"
 
 #include "Render/GLTFLoader.h"
+#include "Render/AnimationClipLoader.h"
 #include "Core/Log.h"
 
 #include "tinygltf/tiny_gltf.h"
+
+#include <filesystem>
 
 namespace GE {
 
@@ -35,9 +38,21 @@ std::shared_ptr<AnimationClip> AnimationClipManager::BuildAndCache(
         return nullptr;
     }
     clip.source = MakeKey(filepath, animIdx); // 持久化回读用的源键
+    BakeIfNotExists(clip);                    // 写一次 .geanim，以后免读整份大 glTF
     auto shared = std::make_shared<AnimationClip>(std::move(clip));
     m_Clips[MakeKey(filepath, animIdx)] = shared;
     return shared;
+}
+
+void AnimationClipManager::BakeIfNotExists(const AnimationClip &clip) {
+    const std::string bakePath = DeriveAnimationBakePath(clip.source);
+    if (std::filesystem::exists(bakePath)) {
+        return; // 已烘焙：跳过（与 .gemesh「产物已存在则跳过」同约定）
+    }
+    std::string err;
+    if (!SerializeAnimationClip(bakePath, clip, &err)) {
+        GE_CORE_WARN("[Anim] clip '{}' 烘焙 .geanim 失败: {}", clip.source, err);
+    }
 }
 
 std::shared_ptr<AnimationClip> AnimationClipManager::Load(const std::string &filepath,
@@ -65,6 +80,24 @@ std::shared_ptr<AnimationClip> AnimationClipManager::Load(const std::string &fil
         m_Clips.erase(it);
     }
 
+    // 优先读取烘焙小文件：反序列化动画时避免主线程搬整份大 glTF（如 lacrimosa 135MB）
+    const std::string bakePath = DeriveAnimationBakePath(key);
+    if (std::filesystem::exists(bakePath)) {
+        AnimationClip clip;
+        std::string err;
+        if (ParseAnimationClip(bakePath, clip, &err)) {
+            clip.source = key; // 与 BuildAndCache 一致，保证回读后源键可用
+            auto shared = std::make_shared<AnimationClip>(std::move(clip));
+            m_Clips[key] = shared;
+            return shared;
+        }
+        // 烘焙文件损坏：删掉让下方 BuildAndCache 重烘焙自愈，避免每次都回退读大源文件
+        GE_CORE_WARN("[Anim] clip '{}' 烘焙文件损坏，重烘焙: {}", key, err);
+        std::error_code ec;
+        std::filesystem::remove(bakePath, ec);
+    }
+
+    // 兜底：读源 glTF（一次性；读完后 BuildAndCache 会再次烘焙写盘）
     tinygltf::Model model;
     std::string err;
     if (!GLTF::LoadModel(filepath, model, &err)) {

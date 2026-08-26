@@ -73,6 +73,9 @@ private:
     std::shared_ptr<AnimationClip> BuildAndCache(const std::string &filepath, size_t animIdx,
                                                  const tinygltf::Model &model);
 
+    /// 把 clip 烘焙为 .geanim 小文件（写一次免读大 glTF；产物存在则跳过，失败仅告警）
+    void BakeIfNotExists(const AnimationClip &clip);
+
     /// 缓存：键 -> 弱引用（无实体持有即释放，重建后回归缓存）
     std::unordered_map<std::string, std::weak_ptr<AnimationClip>> m_Clips;
 };

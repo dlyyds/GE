@@ -278,15 +278,25 @@ bool GLTFSceneImporter::Import(Scene &scene, MeshManager &meshManager,
     }
 
     // ── 第三遍：动画接入（实体树建成 + 层级接好后才能解析目标节点句柄） ──
-    //   规则（计划书 §4 阶段 B1）：v1 仅支持有皮肤的角色动画——宿主取本导入首个带
-    //   SkinComponent 的实体（mint 多块蒙皮共享同一骨架，挂一个即可：动画写目标节点
-    //   局部 TRS，经 DFS 传播到子树全部关节，蒙皮跟随）；无皮肤的对象动画列阶段 D。
+    //   规则（计划书 §4 阶段 B1）：v1 仅支持有皮肤的角色动画——宿主取本导入首个
+    //   带 SkinComponent 的实体，再沿 parent 链上溯到角色子树根（顶层祖先），把
+    //   AnimationComponent 挂在根上（层级面板更好找）；驱动仍经 channelTargets 打
+    //   目标节点局部 TRS，经 DFS 传播到子树全部关节，挂载点不影响动画（§9.3）。
+    //   无皮肤的对象动画列阶段 D。
     if (!model.animations.empty()) {
         if (firstSkinHost == entt::null) {
             GE_CORE_WARN("[Anim] {} 含动画但无皮肤宿主（对象动画列入阶段 D），跳过",
                          filepath);
         } else {
             Entity hostEntity{firstSkinHost, &scene};
+            // 向上追溯本导入子树根：停在 parent 为空（glTF scene 根）为止
+            {
+                Entity ancestor = hostEntity;
+                while (Entity parent = scene.GetParent(ancestor)) {
+                    ancestor = parent;
+                }
+                hostEntity = ancestor;
+            }
             if (!hostEntity.HasComponent<AnimationComponent>()) { // 防重复导入叠加
                 auto &animComp = hostEntity.AddComponent<AnimationComponent>();
                 for (size_t ai = 0; ai < model.animations.size(); ++ai) {

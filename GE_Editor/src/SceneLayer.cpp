@@ -10,6 +10,7 @@
 #include "GE/Render/Renderer.h"
 #include "GE/Render/AssetManager.h"
 #include "GE/Render/MeshManager.h"
+#include "GE/Render/Mesh.h"
 #include "GE/Scene/Components.h"
 #include "GE/Scene/SceneSerializer.h"
 #include "GE/Utils/PlatformUtils.h"
@@ -28,6 +29,31 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 namespace GE {
+
+namespace {
+
+/**
+ * @brief 世界坐标 → 视口屏幕坐标（ImGui 像素，Y 向下）。
+ *
+ * 与 GizmoController 同约定：传入 OpenGL 语义投影（投影 [1][1] 未做 Vulkan 翻转），
+ * 屏幕映射 sy = (0.5 - ndc.y*0.5)*h 与 ImGuizmo worldToPos 的 y=1-y 一致，
+ * 保证包围盒线与画面 / gizmo 精确对齐。
+ *
+ * @return false = 角点在相机背面（clip.w<=0），调用方按边跳过，避免投影发散
+ */
+bool ProjectWorldToScreen(const glm::mat4 &viewProjGL, const glm::vec3 &world,
+                          const glm::vec2 &origin, const glm::vec2 &size, glm::vec2 &out) {
+    const glm::vec4 clip = viewProjGL * glm::vec4(world, 1.0f);
+    if (clip.w <= 0.0f) {
+        return false; // 相机背面
+    }
+    const glm::vec2 ndc{clip.x / clip.w, clip.y / clip.w};
+    out = glm::vec2(origin.x + (0.5f + ndc.x * 0.5f) * size.x,
+                    origin.y + (0.5f - ndc.y * 0.5f) * size.y);
+    return true;
+}
+
+} // namespace
 
 SceneLayer::SceneLayer(std::shared_ptr<EditorContext> context) : Layer("SceneLayer"), m_Context(std::move(context)) {
 }
@@ -231,15 +257,22 @@ void SceneLayer::OnImGuiRender() {
         // 显示离屏渲染结果
         if (m_Viewport && m_Viewport->GetImGuiDescriptorSet() != VK_NULL_HANDLE) {
             ImGui::Image(m_Viewport->GetImGuiDescriptorSet(), avail);
-        }
 
-        // 在 Scene 窗口绘制范围内叠加变换 gizmo（ImGuizmo 须在此窗口内调用）。
-        // 用 GetItemRectMin() 取图像自身的屏幕左上角 —— 它精确落在 Scene 窗口
-        // 内容区（标题栏下方），若用 GetWindowPos() 会因标题栏偏移使 gizmo 偏高。
-        if (m_Gizmo && m_Context->CameraEntity) {
-            auto &cameraComp = m_Context->CameraEntity.GetComponent<CameraComponent>();
+            // 屏幕原点 = 视口图像左上角（gizmo 与包围盒叠加共用；须图像已绘制）
             const ImVec2 imagePos = ImGui::GetItemRectMin();
-            m_Gizmo->Render(cameraComp.CameraInstance, glm::vec2(imagePos.x, imagePos.y), m_ViewportSize);
+
+            // 变换 gizmo（ImGuizmo 须在此窗口内调用）。用 GetItemRectMin() 取图像
+            // 自身的屏幕左上角 —— 精确落在 Scene 窗口内容区（标题栏下方），若用
+            // GetWindowPos() 会因标题栏偏移使 gizmo 偏高。
+            if (m_Gizmo && m_Context->CameraEntity) {
+                auto &cameraComp = m_Context->CameraEntity.GetComponent<CameraComponent>();
+                m_Gizmo->Render(cameraComp.CameraInstance, glm::vec2(imagePos.x, imagePos.y), m_ViewportSize);
+            }
+
+            // 包围盒线框叠加：世界 AABB（静态盒 + 蒙皮绑定盒，与视锥剔除用同一盒）
+            if (m_ShowBounds && m_Context->CameraEntity) {
+                DrawWorldBounds(glm::vec2(imagePos.x, imagePos.y));
+            }
         }
     }
     ImGui::End();
@@ -268,6 +301,9 @@ void SceneLayer::OnImGuiRender() {
             m_Context->Scene->SetCullingMode(static_cast<Scene::CullingMode>(cull));
         }
 
+        // 包围盒线框调试开关（叠加在视口上：静态盒灰、蒙皮绑定盒红）
+        ImGui::Checkbox("显示包围盒", &m_ShowBounds);
+
         ImGui::TextDisabled("提示：先在左侧 Hierarchy/Properties 中调整实体，再保存/加载验证");
     }
 
@@ -277,6 +313,77 @@ void SceneLayer::OnImGuiRender() {
 // ============================================================
 // 场景文件操作：保存 / 加载 / 新建
 // ============================================================
+
+void SceneLayer::DrawWorldBounds(const glm::vec2 &imagePos) {
+    if (!m_Context->Scene || !m_Context->CameraEntity) {
+        return;
+    }
+    auto &cc = m_Context->CameraEntity.GetComponent<CameraComponent>();
+    const Camera &camera = cc.CameraInstance;
+
+    // 还原 OpenGL 投影（渲染/剔除用 Vulkan Y 翻转投影；ImGuizmo 同款还原保证对齐）
+    glm::mat4 projGL = camera.GetProj();
+    projGL[1][1] *= -1.0f;
+    const glm::mat4 viewProjGL = projGL * camera.GetView();
+
+    const glm::vec2 origin{imagePos.x, imagePos.y};
+    const glm::vec2 size{m_ViewportSize.x, m_ViewportSize.y};
+    ImDrawList *dl = ImGui::GetWindowDrawList();
+
+    // 立方体 12 条边：0/1/2/3 = z=min 面，4/5/6/7 = z=max 面
+    static const int kEdges[12][2] = {
+        {0, 1}, {1, 3}, {3, 2}, {2, 0},
+        {4, 5}, {5, 7}, {7, 6}, {6, 4},
+        {0, 4}, {1, 5}, {2, 6}, {3, 7},
+    };
+
+    auto meshView = m_Context->Scene->Reg().view<TransformComponent, MeshRendererComponent>();
+    for (auto entity : meshView) {
+        const auto &tc = meshView.get<TransformComponent>(entity);
+        const auto &mc = meshView.get<MeshRendererComponent>(entity);
+        if (!mc.MeshPtr) {
+            continue;
+        }
+        const AABB &local = mc.MeshPtr->GetAABB();
+        if (!local.IsValid()) {
+            continue;
+        }
+        // 与视锥剔除用同一个盒：世界 AABB = 本地（绑定）盒 × 世界矩阵
+        const AABB world = local.Transformed(tc.GetWorldMatrix());
+        const glm::vec3 c[8] = {
+            {world.min.x, world.min.y, world.min.z},
+            {world.max.x, world.min.y, world.min.z},
+            {world.min.x, world.max.y, world.min.z},
+            {world.max.x, world.max.y, world.min.z},
+            {world.min.x, world.min.y, world.max.z},
+            {world.max.x, world.min.y, world.max.z},
+            {world.min.x, world.max.y, world.max.z},
+            {world.max.x, world.max.y, world.max.z},
+        };
+
+        // 蒙皮实体（绑定盒覆盖不了动画变形）用红，静态盒用灰蓝
+        bool skinned = false;
+        if (auto *skinC = m_Context->Scene->Reg().try_get<SkinComponent>(entity)) {
+            skinned = (skinC->skin != nullptr);
+        }
+        const ImU32 color = ImGui::ColorConvertFloat4ToU32(
+            skinned ? ImVec4(0.95f, 0.30f, 0.25f, 1.0f)
+                    : ImVec4(0.55f, 0.60f, 0.70f, 1.0f));
+
+        glm::vec2 scr[8];
+        bool front[8] = {};
+        for (int i = 0; i < 8; ++i) {
+            front[i] = ProjectWorldToScreen(viewProjGL, c[i], origin, size, scr[i]);
+        }
+        for (int e = 0; e < 12; ++e) {
+            const int a = kEdges[e][0], b = kEdges[e][1];
+            // 边跨相机背面则不画（避免投影发散）；两端都在正面才连线
+            if (front[a] && front[b]) {
+                dl->AddLine(ImVec2(scr[a].x, scr[a].y), ImVec2(scr[b].x, scr[b].y), color, 1.2f);
+            }
+        }
+    }
+}
 
 void SceneLayer::SetGizmoController(std::unique_ptr<GizmoController> gizmo) {
     m_Gizmo = std::move(gizmo);

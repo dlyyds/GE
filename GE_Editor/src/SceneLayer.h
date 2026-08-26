@@ -72,6 +72,13 @@ private:
     /// 用于把「拖出视口后松开」的释放事件仍回传相机，避免相机按键状态卡住。
     uint32_t m_ViewportCapturedButtons = 0;
 
+    /// 在 Scene 视口内叠加绘制网格世界包围盒线框（调试剔除/蒙皮用）。
+    /// 与 GizmoController 同一套 OpenGL 投影 + 屏幕映射，保证线与画面/gizmo 对齐。
+    void DrawWorldBounds(const glm::vec2 &imagePos);
+
+    /// 视口是否叠加包围盒线框（静态盒白灰、蒙皮绑定盒红）
+    bool m_ShowBounds = true;
+
     /// 从文件加载场景（会重建场景并重新绑定相机）
     bool LoadSceneFromFile(std::string_view filepath);
 

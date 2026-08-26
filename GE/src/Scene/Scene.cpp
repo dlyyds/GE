@@ -643,10 +643,20 @@ void Scene::RenderMeshes3D(const glm::mat4 &view, const glm::mat4 &projection,
             continue;
         }
 
+        // 蒙皮实体判定提前：本帧有有效关节上传的蒙皮网格，渲染几何随动画变形，
+        // 其绑定姿态静态 AABB 无法覆盖变形后的顶点范围——对蒙皮实体保守跳过视锥
+        // 剔除，避免角色动画中可见部位被陈旧绑定盒误剔（如肢体摆向相机/屏幕边缘）。
+        // 带皮肤节点的多个网格共享同一 SkinDef 指针，共用同一共享关节矩阵。
+        const auto *skinC = m_Registry.try_get<SkinComponent>(entity);
+        const void *skinDef = (skinC && skinC->skin) ? skinC->skin.get() : nullptr;
+        const bool isSkinned = (skinDef != nullptr) && activeSkins.count(skinDef) > 0;
+
         // 网格级粗筛（两种模式共用）：世界空间包围盒 = 模型空间 AABB × 世界矩阵
-        // （含旋转缩放）。无效包围盒（如异步网格尚未注入）保守不剔除，避免瞬态误剔。
+        // （含旋转缩放）。蒙皮实体跳过（绑定盒追不上变形）；无效包围盒（如异步
+        // 网格尚未注入）保守不剔除，避免瞬态误剔。
         const AABB &meshAabb = mc.MeshPtr->GetAABB();
-        const bool meshVisible = !meshAabb.IsValid()
+        const bool meshVisible = isSkinned
+            || !meshAabb.IsValid()
             || frustum.IsVisible(meshAabb.Transformed(tc.GetWorldMatrix()));
         if (!meshVisible) {
             continue;
@@ -654,18 +664,14 @@ void Scene::RenderMeshes3D(const glm::mat4 &view, const glm::mat4 &projection,
 
         // 统一子网格路径：材质 = 实体覆写（materialOverrides）优先，否则子网格
         // 默认材质（defaultMaterial）。material == nullptr 时渲染器以白色兜底。
-        // 蒙皮实体（本帧 UpdateSkins 有效上传）走蒙皮管线，否则走静态管线。
-        // 带皮肤节点的多个网格共享同一 SkinDef 指针，共用同一共享关节矩阵。
-        const auto *skinC = m_Registry.try_get<SkinComponent>(entity);
-        const void *skinDef = (skinC && skinC->skin) ? skinC->skin.get() : nullptr;
-        const bool isSkinned = (skinDef != nullptr) && activeSkins.count(skinDef) > 0;
         const auto &subMeshes = mc.MeshPtr->GetSubMeshes();
         for (size_t i = 0; i < subMeshes.size(); ++i) {
             const SubMesh &sub = subMeshes[i];
 
             // 子网格级细剔除（仅 SubMesh 模式）：基于 SubMesh::aabb 逐子网格判外。
-            // 无效包围盒（如加载期数据异常）保守保留，保证不误剔。
-            if (cullSubMesh && sub.aabb.IsValid()
+            // 静态网格按绑定盒剔除；蒙皮实体跳过（理由同网格级粗筛）。无效包围盒
+            // （如加载期数据异常）保守保留，保证不误剔。
+            if (cullSubMesh && !isSkinned && sub.aabb.IsValid()
                 && !frustum.IsVisible(sub.aabb.Transformed(tc.GetWorldMatrix()))) {
                 continue;
             }

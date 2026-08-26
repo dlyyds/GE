@@ -346,6 +346,7 @@ struct AnimationChannel {
 /// 动画片段（模型级共享资源：与 SkinDef 同构，跨实体按 "path#N" 去重）
 struct AnimationClip {
     std::string                     name;
+    std::string                     source;   ///< 源键 "path#N"（加载期由 AnimationClipManager 填，序列化回读用）
     float                           duration = 0.0f;
     std::vector<AnimationChannel>   channels;
 };

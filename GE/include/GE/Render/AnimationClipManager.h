@@ -58,6 +58,14 @@ public:
      */
     std::shared_ptr<AnimationClip> Load(const std::string &filepath, size_t animIdx);
 
+    /**
+     * @brief 按完整源键 "path#N" 加载（拆出 filepath + animIdx 后走 Load）。
+     *
+     * 供 SceneSerializer 反序列化按剪贴板 Clip 键回取共享 clip；键格式不合法
+     * / 源文件不存在 / 无合法 channel 时返回 nullptr，调用方容错跳过。
+     */
+    std::shared_ptr<AnimationClip> LoadByKey(const std::string &key);
+
 private:
     AnimationClipManager() = default;
 

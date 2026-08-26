@@ -75,6 +75,9 @@ private:
     /// 绘制 Skin（皮肤）组件属性（需访问场景解析关节实体 Tag）
     void DrawSkinComponent(SkinComponent &component);
 
+    /// 绘制 Animation（骨骼动画）组件属性
+    static void DrawAnimationComponent(AnimationComponent &component);
+
     /// 绘制 SpriteRenderer 组件属性
     static void DrawSpriteRendererComponent(SpriteRendererComponent &component);
 

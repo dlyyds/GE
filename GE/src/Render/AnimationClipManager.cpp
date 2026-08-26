@@ -34,6 +34,7 @@ std::shared_ptr<AnimationClip> AnimationClipManager::BuildAndCache(
         }
         return nullptr;
     }
+    clip.source = MakeKey(filepath, animIdx); // 持久化回读用的源键
     auto shared = std::make_shared<AnimationClip>(std::move(clip));
     m_Clips[MakeKey(filepath, animIdx)] = shared;
     return shared;
@@ -71,6 +72,24 @@ std::shared_ptr<AnimationClip> AnimationClipManager::Load(const std::string &fil
         return nullptr;
     }
     return BuildAndCache(filepath, animIdx, model);
+}
+
+std::shared_ptr<AnimationClip> AnimationClipManager::LoadByKey(const std::string &key) {
+    // 源键格式 "path#N"：从最后的 '#' 拆出文件路径与动画索引
+    const size_t hashPos = key.rfind('#');
+    if (hashPos == std::string::npos) {
+        GE_CORE_WARN("[Anim] clip 源键 '{}' 缺少 '#' 分隔", key);
+        return nullptr;
+    }
+    const std::string filepath = key.substr(0, hashPos);
+    size_t animIdx = 0;
+    try {
+        animIdx = static_cast<size_t>(std::stoull(key.substr(hashPos + 1)));
+    } catch (...) {
+        GE_CORE_WARN("[Anim] clip 源键 '{}' 动画索引非法", key);
+        return nullptr;
+    }
+    return Load(filepath, animIdx);
 }
 
 } // namespace GE

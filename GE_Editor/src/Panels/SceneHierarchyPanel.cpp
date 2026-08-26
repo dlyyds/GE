@@ -340,6 +340,67 @@ void SceneHierarchyPanel::DrawSkinComponent(SkinComponent &component) {
 }
 
 // ============================================================
+// Animation 组件（骨骼动画阶段 B/C 新增）
+// ============================================================
+void SceneHierarchyPanel::DrawAnimationComponent(AnimationComponent &component) {
+    const AnimationClip *clip = component.activeClip();
+
+    // 无动画片段（手动 Add Component / 空组件）：占位说明
+    if (component.clips.empty() || !clip) {
+        ImGui::TextWrapped("无动画片段（导入带骨骼动画的 glTF 角色会自动挂载）");
+        return;
+    }
+
+    ImGui::Text("片段源: %s", clip->source.c_str());
+
+    // 多 clip 下拉切换（单片段时隐藏，Active 指向唯一 clip）
+    if (component.clips.size() > 1) {
+        const std::string preview = component.clips[component.active].clip
+            ? component.clips[component.active].clip->name
+            : ("Clip " + std::to_string(component.active));
+        if (ImGui::BeginCombo("播放片段", preview.c_str())) {
+            for (size_t i = 0; i < component.clips.size(); ++i) {
+                const bool selected = (i == component.active);
+                const std::string label = component.clips[i].clip
+                    ? component.clips[i].clip->name
+                    : ("Clip " + std::to_string(i));
+                if (ImGui::Selectable(label.c_str(), selected)) {
+                    component.active = i;
+                    component.time = 0.0f; // 切换后从头播放
+                }
+                if (selected) {
+                    ImGui::SetItemDefaultFocus();
+                }
+            }
+            ImGui::EndCombo();
+        }
+    }
+
+    // 播放控制行：播放/暂停按钮 + 循环开关
+    if (ImGui::Button(component.playing ? "暂停" : "播放")) {
+        component.playing = !component.playing;
+    }
+    ImGui::SameLine();
+    ImGui::Checkbox("循环", &component.loop);
+
+    // 速度滑条（0~3x，允许负速倒放需要输入框，此处滑条取正向）
+    float speed = component.speed;
+    if (ImGui::SliderFloat("速度", &speed, 0.0f, 3.0f, "%.2fx")) {
+        component.speed = speed;
+    }
+
+    // 时间轴 Scrubber：手动拖动即设播放时间（便于逐帧/定点验证姿态），
+    // 播放状态不受拖动影响，后续帧从该时间继续推进。
+    const float duration = (clip->duration > 0.0f) ? clip->duration : 1.0f;
+    float time = component.time;
+    if (ImGui::SliderFloat("时间", &time, 0.0f, duration, "%.3fs")) {
+        component.time = time;
+    }
+    ImGui::Text("时长: %.3fs, channel 数: %d",
+                clip->duration, static_cast<int>(clip->channels.size()));
+}
+
+// ============================================================
 // 绘制选中实体的所有组件（顶层编排函数）
 // ============================================================
 void SceneHierarchyPanel::DrawComponents(Entity entity) {
@@ -377,6 +438,9 @@ void SceneHierarchyPanel::DrawComponents(Entity entity) {
 
     DrawComponent<SkinComponent>("Skin", entity,
         [this](auto &c) { DrawSkinComponent(c); });
+
+    DrawComponent<AnimationComponent>("Animation", entity,
+        [](auto &c) { DrawAnimationComponent(c); });
 
     DrawComponent<SpriteRendererComponent>("Sprite Renderer", entity,
         [](auto &c) { DrawSpriteRendererComponent(c); });
@@ -421,6 +485,7 @@ void SceneHierarchyPanel::DrawAddComponentPopup() {
     TryAddComponent<MeshRendererComponent>("Mesh Renderer");
     TryAddComponent<JointComponent>("Joint");
     TryAddComponent<SkinComponent>("Skin");
+    TryAddComponent<AnimationComponent>("Animation");
     TryAddComponent<SpriteRendererComponent>("Sprite Renderer");
     TryAddComponent<PointLightComponent>("Point Light");
     TryAddComponent<DirectionalLightComponent>("Directional Light");

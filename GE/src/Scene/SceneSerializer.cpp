@@ -23,6 +23,7 @@
 #include "Render/GEMeshLoader.h"
 #include "Render/ModelLoader.h"
 #include "Render/GLTFLoader.h"
+#include "Render/AnimationClipManager.h"
 
 #include <yaml-cpp/yaml.h>
 #include <glm/glm.hpp>
@@ -840,6 +841,41 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
         // ---- ScriptComponent ----
         // 不序列化：std::function 无法持久化
 
+        // ---- AnimationComponent（骨骼动画驱动）----
+        // 结构中各 clip 是共享键帧（模型级不变量），此处只持久化引用与实例状态：
+        //   Clips[].Clip    — 动画片段源键 "path#N"（反序列化经 AnimationClipManager 取共享 clip）
+        //   Clips[].Targets — clip.channels 一一对应的目标实体 UUID 列表（跨文件稳定引用）
+        //   Active/Time/Speed/Playing/Loop — 播放状态
+        // world 矩阵与键帧本体都不落盘（键帧随源模型重建，播放状态随组件走）。
+        if (entity.HasComponent<AnimationComponent>()) {
+            const auto &ac = entity.GetComponent<AnimationComponent>();
+            YAML::Node animNode = entityNode["Animation"];
+            animNode["Active"] = ac.active;
+            animNode["Time"] = ac.time;
+            animNode["Speed"] = ac.speed;
+            animNode["Playing"] = ac.playing;
+            animNode["Loop"] = ac.loop;
+
+            if (!ac.clips.empty()) {
+                YAML::Node clipsNode = animNode["Clips"];
+                clipsNode.SetStyle(YAML::EmitterStyle::Block);
+                for (const auto &inst : ac.clips) {
+                    if (!inst.clip) {
+                        continue;
+                    }
+                    YAML::Node clipNode;
+                    clipNode["Clip"] = inst.clip->source;
+                    YAML::Node targetsNode = clipNode["Targets"];
+                    targetsNode.SetStyle(YAML::EmitterStyle::Flow);
+                    for (entt::entity t : inst.channelTargets) {
+                        const auto *idc = reg.try_get<IDComponent>(t);
+                        targetsNode.push_back(idc ? idc->UUID : "");
+                    }
+                    clipsNode.push_back(clipNode);
+                }
+            }
+        }
+
         entitiesNode.push_back(entityNode);
     }
 
@@ -959,6 +995,21 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
         std::string meshPath;
     };
     std::vector<PendingSkinComponent> pendingSkins;
+
+    // 动画回填：AnimationComponent 需要 clip 源键 + 目标实体 UUID，在全部实体建成后
+    // 才能把 UUID 解析为句柄（与皮肤同理），故第一遍只记待回填记录。
+    struct PendingAnimationClip {
+        std::string clipKey;               ///< 动画片段源键 "path#N"
+        std::vector<std::string> targetIds; ///< 与 clip.channels 一一对应的目标实体 UUID
+    };
+    struct PendingAnimation {
+        Entity entity;
+        std::vector<PendingAnimationClip> clips;
+        size_t active = 0;
+        float time = 0.0f, speed = 1.0f;
+        bool playing = true, loop = true;
+    };
+    std::vector<PendingAnimation> pendingAnimations;
 
     for (const auto &entityNode : entitiesNode) {
         // ---- 实体名称 ----
@@ -1176,6 +1227,36 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
             pendingSkins.push_back(p);
         }
 
+        // ---- AnimationComponent：延迟到全部实体建成后回填 channelTargets ----
+        if (entityNode["Animation"]) {
+            PendingAnimation p;
+            p.entity = entity;
+            p.active = entityNode["Animation"]["Active"]
+                           ? entityNode["Animation"]["Active"].as<size_t>(0) : 0;
+            p.time = entityNode["Animation"]["Time"]
+                         ? entityNode["Animation"]["Time"].as<float>(0.0f) : 0.0f;
+            p.speed = entityNode["Animation"]["Speed"]
+                          ? entityNode["Animation"]["Speed"].as<float>(1.0f) : 1.0f;
+            p.playing = entityNode["Animation"]["Playing"]
+                            ? entityNode["Animation"]["Playing"].as<bool>(true) : true;
+            p.loop = entityNode["Animation"]["Loop"]
+                         ? entityNode["Animation"]["Loop"].as<bool>(true) : true;
+            if (entityNode["Animation"]["Clips"] && entityNode["Animation"]["Clips"].IsSequence()) {
+                for (const auto &clipNode : entityNode["Animation"]["Clips"]) {
+                    PendingAnimationClip pc;
+                    pc.clipKey = clipNode["Clip"] ? clipNode["Clip"].as<std::string>("")
+                                                  : std::string();
+                    if (clipNode["Targets"] && clipNode["Targets"].IsSequence()) {
+                        for (const auto &tu : clipNode["Targets"]) {
+                            pc.targetIds.push_back(tu.as<std::string>());
+                        }
+                    }
+                    p.clips.push_back(std::move(pc));
+                }
+            }
+            pendingAnimations.push_back(std::move(p));
+        }
+
         // ---- ScriptComponent ----
         // 不反序列化：无法恢复回调函数
 
@@ -1261,6 +1342,37 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
         if (!p.meshPath.empty()) {
             sc.MeshPtr = Renderer::GetAssetManager().LoadMesh(p.meshPath);
         }
+    }
+
+    // ---- 回填动画：经 AnimationClipManager 取共享 clip，Targets UUID → 实体句柄 ----
+    // Clip 源键缺失（旧场景文件）/ 源文件缺失 / 无合法 channel 时跳过该动画，
+    // 所在骨架退化为绑定姿态，不崩溃（兼容规则见计划书 §4 阶段 C1）。
+    for (auto &p : pendingAnimations) {
+        auto &ac = p.entity.AddComponent<AnimationComponent>();
+        for (const auto &pc : p.clips) {
+            std::shared_ptr<AnimationClip> clip =
+                pc.clipKey.empty() ? nullptr : AnimationClipManager::Get().LoadByKey(pc.clipKey);
+            if (!clip) {
+                GE_CORE_WARN("SceneSerializer: 实体 {} 动画 clip '{}' 加载失败，跳过（退化为绑定姿态）",
+                             p.entity.GetComponent<TagComponent>().Tag, pc.clipKey);
+                continue;
+            }
+            ClipInstance inst;
+            inst.clip = clip;
+            inst.channelTargets.reserve(pc.targetIds.size());
+            for (const auto &tid : pc.targetIds) {
+                auto it = idToEntity.find(tid);
+                inst.channelTargets.push_back(it != idToEntity.end()
+                                                  ? static_cast<entt::entity>(it->second)
+                                                  : entt::null);
+            }
+            ac.clips.push_back(std::move(inst));
+        }
+        ac.active = (p.active < ac.clips.size()) ? p.active : 0;
+        ac.time = p.time;
+        ac.speed = p.speed;
+        ac.playing = p.playing;
+        ac.loop = p.loop;
     }
 
     GE_CORE_INFO("SceneSerializer: 场景已从 {} 加载（{} 个实体）",

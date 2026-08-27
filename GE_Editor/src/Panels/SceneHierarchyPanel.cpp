@@ -62,16 +62,29 @@ void SceneHierarchyPanel::OnImGuiRender() {
     ImGui::SetNextWindowDockID(m_DockSpaceID, ImGuiCond_FirstUseEver);
     ImGui::Begin("Scene Hierarchy");
 
-    // 遍历所有根实体（parent 为空的实体），逐层递归绘制子树
-    // 注意：view<TransformComponent> 的 each() 会对单参 lambda 传组件而非实体句柄，
-    // 故用显式范围 for 取实体句柄（解引用即 entt::entity）
-    for (auto entityID : m_Context->Reg().view<TransformComponent>()) {
-        const Entity entity{entityID, m_Context};
-        const auto &tc = m_Context->Reg().get<TransformComponent>(entityID);
-        // 有父者由父的递归绘制；父已失效（异常状态）按根处理，避免实体从树上消失
-        if (tc.parent != entt::null && m_Context->Reg().valid(tc.parent))
+    // 遍历所有根实体（parent 为空的实体），逐层递归绘制子树。
+    // 注意一：view<TransformComponent> 的 each() 会对单参 lambda 传组件而非实体句柄，
+    //         故用显式范围 for 取实体句柄（解引用即 entt::entity）。
+    // 注意二：树内右键「删除实体」会级联 DestroyEntity 销毁整个子树，直接改写 registry
+    //         的 packed 数组；若一边画一边对 view 做范围 for，销毁当前帧的实体后迭代器
+    //         随即指向越界下标（debug 下在 vector::operator[] 断言，此前删除首个带子
+    //         实体的根必现崩溃）。故先快照全部根句柄，画树期间遍历独立副本。
+    std::vector<entt::entity> rootSnapshot;
+    {
+        auto view = m_Context->Reg().view<TransformComponent>();
+        for (auto entityID : view) {
+            const auto &tc = view.get<TransformComponent>(entityID);
+            // 有父者由父的递归绘制；父已失效（异常状态）按根处理，避免实体从树上消失
+            if (tc.parent != entt::null && m_Context->Reg().valid(tc.parent))
+                continue;
+            rootSnapshot.push_back(entityID);
+        }
+    }
+    for (const entt::entity entityID : rootSnapshot) {
+        // 防御性兜底：同帧内先前节点删除若波及本根（正常级联不会），跳过已失效句柄
+        if (!m_Context->Reg().valid(entityID))
             continue;
-        DrawEntityNode(entity);
+        DrawEntityNode(Entity{entityID, m_Context});
     }
 
     // 点击空白处取消选中

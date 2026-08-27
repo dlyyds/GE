@@ -803,6 +803,14 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
             boxNode["Offset"] = SerializeVec3(bcc.Offset);
         }
 
+        // ---- BoundingBoxComponent（实体级粗剔除盒，编辑器 gizmo 手动摆放）----
+        if (entity.HasComponent<BoundingBoxComponent>()) {
+            const auto &bb = entity.GetComponent<BoundingBoxComponent>();
+            YAML::Node bbNode = entityNode["BoundingBox"];
+            bbNode["Center"] = SerializeVec3(bb.Center);
+            bbNode["Size"] = SerializeVec3(bb.Size);
+        }
+
         // ---- SphereColliderComponent ----
         if (entity.HasComponent<SphereColliderComponent>()) {
             const auto &scc = entity.GetComponent<SphereColliderComponent>();
@@ -1197,6 +1205,15 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
 
             bcc.HalfExtents = DeserializeVec3(boxNode["HalfExtents"], {0.5f, 0.5f, 0.5f});
             bcc.Offset = DeserializeVec3(boxNode["Offset"], {0.0f, 0.0f, 0.0f});
+        }
+
+        // ---- BoundingBoxComponent ----
+        if (entityNode["BoundingBox"]) {
+            YAML::Node bbNode = entityNode["BoundingBox"];
+            auto &bb = entity.AddComponent<BoundingBoxComponent>();
+
+            bb.Center = DeserializeVec3(bbNode["Center"], {0.0f, 0.0f, 0.0f});
+            bb.Size = DeserializeVec3(bbNode["Size"], {0.0f, 0.0f, 0.0f});
         }
 
         // ---- SphereColliderComponent ----

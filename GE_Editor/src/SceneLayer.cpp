@@ -337,19 +337,8 @@ void SceneLayer::DrawWorldBounds(const glm::vec2 &imagePos) {
         {0, 4}, {1, 5}, {2, 6}, {3, 7},
     };
 
-    auto meshView = m_Context->Scene->Reg().view<TransformComponent, MeshRendererComponent>();
-    for (auto entity : meshView) {
-        const auto &tc = meshView.get<TransformComponent>(entity);
-        const auto &mc = meshView.get<MeshRendererComponent>(entity);
-        if (!mc.MeshPtr) {
-            continue;
-        }
-        const AABB &local = mc.MeshPtr->GetAABB();
-        if (!local.IsValid()) {
-            continue;
-        }
-        // 与视锥剔除用同一个盒：世界 AABB = 本地（绑定）盒 × 世界矩阵
-        const AABB world = local.Transformed(tc.GetWorldMatrix());
+    // 画一个世界空间 AABB 的 12 条边线框（供网格盒与实体盒共用）
+    const auto drawWorldAabb = [&](const AABB &world, ImU32 color) {
         const glm::vec3 c[8] = {
             {world.min.x, world.min.y, world.min.z},
             {world.max.x, world.min.y, world.min.z},
@@ -360,16 +349,6 @@ void SceneLayer::DrawWorldBounds(const glm::vec2 &imagePos) {
             {world.min.x, world.max.y, world.max.z},
             {world.max.x, world.max.y, world.max.z},
         };
-
-        // 蒙皮实体（绑定盒覆盖不了动画变形）用红，静态盒用灰蓝
-        bool skinned = false;
-        if (auto *skinC = m_Context->Scene->Reg().try_get<SkinComponent>(entity)) {
-            skinned = (skinC->skin != nullptr);
-        }
-        const ImU32 color = ImGui::ColorConvertFloat4ToU32(
-            skinned ? ImVec4(0.95f, 0.30f, 0.25f, 1.0f)
-                    : ImVec4(0.55f, 0.60f, 0.70f, 1.0f));
-
         glm::vec2 scr[8];
         bool front[8] = {};
         for (int i = 0; i < 8; ++i) {
@@ -382,6 +361,44 @@ void SceneLayer::DrawWorldBounds(const glm::vec2 &imagePos) {
                 dl->AddLine(ImVec2(scr[a].x, scr[a].y), ImVec2(scr[b].x, scr[b].y), color, 1.2f);
             }
         }
+    };
+
+    // 1) 网格级盒：与视锥剔除用同一个盒（本地绑定盒 × 世界矩阵）；蒙皮红、静态灰蓝
+    auto meshView = m_Context->Scene->Reg().view<TransformComponent, MeshRendererComponent>();
+    for (auto entity : meshView) {
+        const auto &tc = meshView.get<TransformComponent>(entity);
+        const auto &mc = meshView.get<MeshRendererComponent>(entity);
+        if (!mc.MeshPtr) {
+            continue;
+        }
+        const AABB &local = mc.MeshPtr->GetAABB();
+        if (!local.IsValid()) {
+            continue;
+        }
+        // 蒙皮实体（绑定盒覆盖不了动画变形）用红，静态盒用灰蓝
+        bool skinned = false;
+        if (auto *skinC = m_Context->Scene->Reg().try_get<SkinComponent>(entity)) {
+            skinned = (skinC->skin != nullptr);
+        }
+        const ImU32 color = ImGui::ColorConvertFloat4ToU32(
+            skinned ? ImVec4(0.95f, 0.30f, 0.25f, 1.0f)
+                    : ImVec4(0.55f, 0.60f, 0.70f, 1.0f));
+        drawWorldAabb(local.Transformed(tc.GetWorldMatrix()), color);
+    }
+
+    // 2) 实体级手动摆放盒（BoundingBoxComponent）用黄叠出，便于对照剔除覆盖范围
+    auto boundsView = m_Context->Scene->Reg().view<TransformComponent, BoundingBoxComponent>();
+    const ImU32 bbColor = ImGui::ColorConvertFloat4ToU32(ImVec4(1.0f, 0.80f, 0.10f, 1.0f));
+    for (auto entity : boundsView) {
+        const auto &tc = boundsView.get<TransformComponent>(entity);
+        const auto &bb = boundsView.get<BoundingBoxComponent>(entity);
+        if (!bb.IsValid()) {
+            continue; // 未摆放，不参与剔除也不画
+        }
+        AABB local;
+        local.min = bb.minCorner();
+        local.max = bb.maxCorner();
+        drawWorldAabb(local.Transformed(tc.GetWorldMatrix()), bbColor);
     }
 }
 

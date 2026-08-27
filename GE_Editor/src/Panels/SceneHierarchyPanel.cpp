@@ -479,6 +479,9 @@ void SceneHierarchyPanel::DrawComponents(Entity entity) {
     DrawComponent<SphereColliderComponent>("Sphere Collider", entity,
         [&](auto &c) { DrawSphereColliderComponent(entity, c); });
 
+    DrawComponent<BoundingBoxComponent>("Bounding Box", entity,
+        [](auto &c) { DrawBoundingBoxComponent(c); });
+
     // ---- Script 组件（无模板外的特殊条件，这里仅保留特殊标记） ----
     if (entity.HasComponent<ScriptComponent>()) {
         DrawComponent<ScriptComponent>("Script", entity,
@@ -507,6 +510,7 @@ void SceneHierarchyPanel::DrawAddComponentPopup() {
     TryAddComponent<RigidBodyComponent>("Rigid Body");
     TryAddComponent<BoxColliderComponent>("Box Collider");
     TryAddComponent<SphereColliderComponent>("Sphere Collider");
+    TryAddComponent<BoundingBoxComponent>("Bounding Box");
 
     ImGui::EndPopup();
 }
@@ -1230,6 +1234,18 @@ void SceneHierarchyPanel::DrawSphereColliderComponent(Entity entity, SphereColli
     if (DrawVec3Control("Offset", component.Offset, 0.0f, 120)) {
         if (physicsWorld)
             physicsWorld->RebuildRigidBody(entityHandle);
+    }
+}
+
+// ============================================================
+// Bounding Box 组件（实体级粗剔除盒，gizmo 手动摆放）
+// ============================================================
+void SceneHierarchyPanel::DrawBoundingBoxComponent(BoundingBoxComponent &component) {
+    // Center/Size 为模型局部空间；Size 任一轴重置为 0 会令盒失效（不参与剔除）
+    DrawVec3Control("Center", component.Center, 0.0f, 120);
+    DrawVec3Control("Size", component.Size, 1.0f, 120);
+    if (!component.IsValid()) {
+        ImGui::TextDisabled("盒未摆放（Size 需全部 > 0）时不参与剔除");
     }
 }
 

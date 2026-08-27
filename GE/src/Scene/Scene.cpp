@@ -634,10 +634,65 @@ void Scene::RenderMeshes3D(const glm::mat4 &view, const glm::mat4 &projection,
     const Frustum frustum = Frustum::FromViewProjection(projection * view);
     const bool cullSubMesh = (m_CullingMode == CullingMode::SubMesh);
 
+    // 实体级粗剔除（可选）：挂在实体上的 BoundingBoxComponent 判外 → 整棵子树连带剔除。
+    // 目的见 BoundingBoxComponent 注释：蒙皮实体因绑定盒追不上变形，被下方循环整段跳过
+    // 不剔，靠手动摆放的盒补一级「角色级粗筛」——角色在屏幕外时一次跳过整棵深处网格。
+    // 实现：预扫描沿 m_ChildrenOf 从每个根（Transform.parent == null）DF S，节点带有效盒
+    // 且世界盒完全在视锥外 → 节点与全部后代加入 subtreeRejected。无任何盒组件时跳过
+    // （小型/纯静态场景零损耗）。
+    std::unordered_set<entt::entity> subtreeRejected;
+    auto boundsView = m_Registry.view<BoundingBoxComponent>();
+    if (boundsView.begin() != boundsView.end()) {
+        // 以 node 为根的整棵子树收进 subtreeRejected
+        const auto rejectSubtree = [&](entt::entity node, auto &&self) -> void {
+            subtreeRejected.insert(node);
+            if (auto it = m_ChildrenOf.find(node); it != m_ChildrenOf.end()) {
+                for (auto child : it->second) {
+                    self(child, self);
+                }
+            }
+        };
+        // 节点盒判外的截止条件（无效盒 = 未摆放，保守不剔除）
+        const auto boxRejects = [&](entt::entity node) {
+            const auto *bc = m_Registry.try_get<BoundingBoxComponent>(node);
+            if (!bc || !bc->IsValid()) {
+                return false;
+            }
+            AABB box;
+            box.min = bc->minCorner();
+            box.max = bc->maxCorner();
+            const auto &ntc = m_Registry.get<TransformComponent>(node);
+            return !frustum.IsVisible(box.Transformed(ntc.GetWorldMatrix()));
+        };
+        // 从所有根发起 DFS：盒判外 → 整棵收割；否则下钻子节点
+        for (auto node : m_Registry.view<TransformComponent>()) {
+            if (m_Registry.get<TransformComponent>(node).parent != entt::null) {
+                continue; // 非根节点：由所属根的 DFS 覆盖
+            }
+            const auto dfs = [&](entt::entity n, auto &&self) -> void {
+                if (boxRejects(n)) {
+                    rejectSubtree(n, rejectSubtree);
+                    return;
+                }
+                if (auto it = m_ChildrenOf.find(n); it != m_ChildrenOf.end()) {
+                    for (auto child : it->second) {
+                        self(child, self);
+                    }
+                }
+            };
+            dfs(node, dfs);
+        }
+    }
+
     auto meshView = m_Registry.view<TransformComponent, MeshRendererComponent>();
     for (auto entity : meshView) {
         auto &tc = meshView.get<TransformComponent>(entity);
         auto &mc = meshView.get<MeshRendererComponent>(entity);
+
+        // 实体级粗剔除：所在子树已被盒判外的实体直接跳过（连 MeshPtr 判空都省）
+        if (subtreeRejected.count(entity)) {
+            continue;
+        }
 
         if (!mc.MeshPtr) {
             continue;
@@ -932,6 +987,10 @@ void Scene::OnComponentAdded<SkinComponent>(Entity entity, SkinComponent &compon
 
 template <>
 void Scene::OnComponentAdded<AnimationComponent>(Entity entity, AnimationComponent &component) {
+}
+
+template <>
+void Scene::OnComponentAdded<BoundingBoxComponent>(Entity entity, BoundingBoxComponent &component) {
 }
 
 template <>

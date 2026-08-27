@@ -178,6 +178,45 @@ struct SpriteRendererComponent {
 
 
 /**
+ * @brief 包围盒组件 —— 手动放置的模型局部空间 AABB（实体级粗剔除用）。
+ *
+ * 视锥剔除对蒙皮实体整段跳过（绑定姿势 AABB 追不上动画变形），导致屏幕外
+ * 的动画角色照样渲染；静态网格的 mesh AABB 已够用，通常只需给含蒙皮的模型
+ * 根实体摆放此盒。剔除时盒经实体世界矩阵变换到世界空间，完全在视锥外则连
+ * 该实体的整棵子实体一并跳过（见 Scene::RenderMeshes3D 的子树级预筛）。
+ *
+ * Center/Size 为局部空间（相对实体原点，与 Mesh::GetAABB 的模型空间语义
+ * 一致）。未摆放（Size 全 0）时 IsValid()==false，不参与剔除。编辑器端用
+ * gizmo 拖拽角/边调整，序列化进 .scene。
+ */
+struct BoundingBoxComponent {
+    glm::vec3 Center = {0.0f, 0.0f, 0.0f}; ///< 局部空间中心
+    glm::vec3 Size   = {0.0f, 0.0f, 0.0f}; ///< 局部空间边长（任一轴 <= 0 视为未摆放）
+
+    BoundingBoxComponent() = default;
+    BoundingBoxComponent(const BoundingBoxComponent &) = default;
+    BoundingBoxComponent(const glm::vec3 &center, const glm::vec3 &size)
+        : Center(center), Size(size) {
+    }
+
+    /// 有效判定：三轴均 > 0 才算摆放好（默认 0 尺寸为未放置）
+    [[nodiscard]] bool IsValid() const {
+        return Size.x > 0.0f && Size.y > 0.0f && Size.z > 0.0f;
+    }
+
+    /// 局部空间最小角（供剔除变换与 gizmo 的 localBounds 用）
+    [[nodiscard]] glm::vec3 minCorner() const {
+        return Center - Size * 0.5f;
+    }
+
+    /// 局部空间最大角
+    [[nodiscard]] glm::vec3 maxCorner() const {
+        return Center + Size * 0.5f;
+    }
+};
+
+
+/**
  * @brief 脚本组件 —— 挂载到实体上的行为回调。
  *
  * 轻量级脚本系统：通过 std::function 绑定每帧更新和各类事件回调，

@@ -105,6 +105,9 @@ private:
     /// 绘制 SphereCollider 组件属性
     void DrawSphereColliderComponent(Entity entity, SphereColliderComponent &component);
 
+    /// 绘制 BoundingBox（实体级粗剔除盒）组件属性
+    static void DrawBoundingBoxComponent(BoundingBoxComponent &component);
+
     /// 绘制 Script 组件属性
     static void DrawScriptComponent(ScriptComponent &component);
 

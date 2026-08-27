@@ -12,6 +12,7 @@
 namespace GE {
 
 class HierarchyLayer;
+class Entity;
 
 /// ImGuizmo 变换 gizmo 控制器 —— 在场景视口上叠加 移动/旋转/缩放 操控。
 ///
@@ -28,12 +29,18 @@ public:
     void Render(const Camera &camera, const glm::vec2 &viewportPos, const glm::vec2 &viewportSize);
 
 private:
+    /// 包围盒编辑模式：拖拽 BoundingBoxComponent 的角/边调整尺寸与中心。
+    /// 复用 ImGuizmo 的 localBounds 模式（HandleAndDrawLocalBounds 自带盒线框手柄）。
+    void EditBounds(Entity entity, const Camera &camera,
+                    const glm::vec2 &viewportPos, const glm::vec2 &viewportSize);
+
     std::shared_ptr<EditorContext> m_Context;  ///< 共享场景上下文
     HierarchyLayer *m_Hierarchy = nullptr;     ///< 读取当前选中实体（非拥有）
 
     ImGuizmo::OPERATION m_Operation = ImGuizmo::TRANSLATE; ///< 当前操作：平移/旋转/缩放
     ImGuizmo::MODE m_Mode = ImGuizmo::WORLD;               ///< 变换空间：世界/局部
     bool m_UseSnap = false;                                ///< 是否启用吸附
+    bool m_EditingBounds = false;                          ///< 是否处于包围盒编辑模式
 
     float m_SnapTranslation = 0.5f;  ///< 平移吸附步长
     float m_SnapRotation = 15.0f;    ///< 旋转吸附步长（度，ImGuizmo 内部转弧度）

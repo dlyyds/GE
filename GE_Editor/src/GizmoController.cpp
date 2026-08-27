@@ -40,6 +40,11 @@ void GizmoController::Render(const Camera &camera, const glm::vec2 &viewportPos,
     if (ImGui::IsKeyPressed(ImGuiKey_E)) m_Operation = ImGuizmo::ROTATE;
     if (ImGui::IsKeyPressed(ImGuiKey_R)) m_Operation = ImGuizmo::SCALE;
 
+    // 'B' 切换包围盒编辑模式（仅对带 BoundingBoxComponent 的实体有效，见下方分支）
+    if (ImGui::IsKeyPressed(ImGuiKey_B)) {
+        m_EditingBounds = !m_EditingBounds;
+    }
+
     // ---- 视口左上角工具条：切换模式 + 吸附开关 ----
     ImGui::SetCursorScreenPos(ImVec2(viewportPos.x + 10.0f, viewportPos.y + 10.0f));
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(6, 3));
@@ -63,8 +68,29 @@ void GizmoController::Render(const Camera &camera, const glm::vec2 &viewportPos,
     ImGui::PopStyleColor();
     ImGui::SameLine();
 
+    // 包围盒编辑开关：选中实体无 BoundingBoxComponent 时置灰
+    ImGui::PushStyleColor(ImGuiCol_Button, m_EditingBounds ? activeColor : idleColor);
+    const bool canEditBounds = selected.HasComponent<BoundingBoxComponent>();
+    if (!canEditBounds) {
+        ImGui::BeginDisabled();
+    }
+    if (ImGui::Button("Box")) {
+        m_EditingBounds = !m_EditingBounds;
+    }
+    if (!canEditBounds) {
+        ImGui::EndDisabled();
+    }
+    ImGui::PopStyleColor();
+    ImGui::SameLine();
+
     ImGui::Checkbox("Snap", &m_UseSnap);
     ImGui::PopStyleVar(2);
+
+    // ---- 包围盒编辑模式：进入后隐藏变换 gizmo，改拖盒角/边 ----
+    if (m_EditingBounds && selected.HasComponent<BoundingBoxComponent>()) {
+        EditBounds(selected, camera, viewportPos, viewportSize);
+        return;
+    }
 
     // ---- 取出选中实体的世界矩阵给 ImGuizmo 显示 ----
     // ImGuizmo 按视口世界坐标渲染手柄，层级化后局部矩阵 ≠ 世界矩阵：
@@ -145,6 +171,68 @@ void GizmoController::Render(const Camera &camera, const glm::vec2 &viewportPos,
         // ImGuizmo 拆出欧拉角（角度），在此编辑器边界转成四元数写回
         transformComp.SetRotationEuler(glm::radians(glm::vec3(rotationDeg[0], rotationDeg[1], rotationDeg[2])));
         transformComp.Scale = {scale[0], scale[1], scale[2]};
+    }
+}
+
+void GizmoController::EditBounds(Entity entity, const Camera &camera,
+                                 const glm::vec2 &viewportPos, const glm::vec2 &viewportSize) {
+    auto &bb = entity.GetComponent<BoundingBoxComponent>();
+    auto &transformComp = entity.GetComponent<TransformComponent>();
+    if (!bb.IsValid()) {
+        // 未摆放（默认 0 尺寸）：先给一个可拖拽的单位盒，用户拖一下即完成摆放
+        bb.Center = glm::vec3(0.0f);
+        bb.Size = glm::vec3(1.0f);
+    }
+
+    const glm::mat4 transform = transformComp.GetWorldMatrix();
+
+    // 手柄矩阵：平移 = 盒的世界中心，旋转 = 实体世界朝向（列归一化剥离世界缩放）。
+    // 盒在模型局部空间必须保持轴对齐，拖拽帧取「模型轴」而非世界轴；localBounds 传
+    // 相对盒中心的 ±size/2，拖拽后该帧矩阵的列模长 = 每轴缩放系数、平移 = 新中心。
+    glm::mat3 rotN = glm::mat3(transform);
+    for (int c = 0; c < 3; ++c) {
+        const float l = glm::length(rotN[c]);
+        if (l > 1e-6f) {
+            rotN[c] /= l;
+        }
+    }
+    const glm::vec3 worldCenter = glm::vec3(transform * glm::vec4(bb.Center, 1.0f));
+    glm::mat4 gizmoMatrix = glm::translate(glm::mat4(1.0f), worldCenter) * glm::mat4(rotN);
+
+    const glm::vec3 halfSize = bb.Size * 0.5f;
+    const float localBounds[6] = {-halfSize.x, -halfSize.y, -halfSize.z,
+                                  halfSize.x,  halfSize.y,  halfSize.z};
+
+    ImGuizmo::SetRect(viewportPos.x, viewportPos.y, viewportSize.x, viewportSize.y);
+    glm::mat4 proj = camera.GetProj();
+    proj[1][1] *= -1.0f; // Vulkan→OpenGL 投影还原（与变换 gizmo 同一套）
+
+    const bool changed = ImGuizmo::Manipulate(
+        glm::value_ptr(camera.GetView()),
+        glm::value_ptr(proj),
+        ImGuizmo::SCALE, ImGuizmo::LOCAL,
+        glm::value_ptr(gizmoMatrix),
+        nullptr,             // deltaMatrix
+        nullptr,             // snap
+        localBounds,         // localBounds：盒手柄（角/边拖拽），原帧三列模长均为 1
+        nullptr);            // boundsSnap
+
+    if (changed && ImGuizmo::IsUsing()) {
+        // 新尺寸 = 原尺寸 × 帧矩阵三列模长（列长即每轴缩放系数）
+        glm::vec3 newSize = bb.Size;
+        const glm::mat3 m3 = glm::mat3(gizmoMatrix);
+        for (int c = 0; c < 3; ++c) {
+            newSize[c] = bb.Size[c] * glm::length(m3[c]);
+        }
+        // 新世界中心（帧矩阵平移）还原回模型局部中心
+        const glm::vec3 newCenterWorld = glm::vec3(gizmoMatrix[3]);
+        const glm::vec3 newCenterLocal = glm::inverse(rotN) * (newCenterWorld - glm::vec3(transform[3]));
+
+        // 防止缩成退化/反向盒：任一轴过小会让 IsValid()==false、剔除失效，钳制下限
+        constexpr float kMinSize = 0.05f;
+        newSize = glm::max(newSize, glm::vec3(kMinSize));
+        bb.Center = newCenterLocal;
+        bb.Size = newSize;
     }
 }
 

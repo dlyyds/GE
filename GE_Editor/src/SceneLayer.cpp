@@ -12,6 +12,7 @@
 #include "GE/Render/MeshManager.h"
 #include "GE/Render/Mesh.h"
 #include "GE/Scene/Components.h"
+#include "GE/Scene/Entity.h"
 #include "GE/Scene/SceneSerializer.h"
 #include "GE/Utils/PlatformUtils.h"
 
@@ -27,6 +28,8 @@
 #define GE_EDITOR_BUILD_SCENE_FROM_CODE 0
 
 #include <glm/gtc/matrix_transform.hpp>
+
+#include <unordered_set>
 
 namespace GE {
 
@@ -384,9 +387,30 @@ void SceneLayer::DrawWorldBounds(const glm::vec2 &imagePos) {
         drawWorldAabb(local.Transformed(tc.GetWorldMatrix()), meshColor);
     }
 
-    // 2) 实体级手动摆放盒（BoundingBoxComponent）用黄叠出，便于对照剔除覆盖范围
+    // 2) 实体级手动摆放盒（BoundingBoxComponent）用黄叠出，便于对照剔除覆盖范围。
+    //    额外两层可视化解决「单方向看不出是否完全包围」：
+    //      a. 半透明盒面（前亮后暗），直读前后重叠与深度关系；
+    //      b. 盒覆盖子树的全部蒙皮关节投影点（盒内绿 / 盒外红），一眼见露骨。
     auto boundsView = m_Context->Scene->Reg().view<TransformComponent, BoundingBoxComponent>();
     const ImU32 bbColor = ImGui::ColorConvertFloat4ToU32(ImVec4(1.0f, 0.80f, 0.10f, 1.0f));
+    const ImU32 bbFaceFront = ImGui::ColorConvertFloat4ToU32(ImVec4(1.0f, 0.80f, 0.10f, 0.16f));
+    const ImU32 bbFaceBack = ImGui::ColorConvertFloat4ToU32(ImVec4(1.0f, 0.80f, 0.10f, 0.05f));
+    const glm::vec3 camPos = camera.GetPosition();
+
+    // 世界空间 AABB 的 6 个面（下标引用 cW[8] 角点 + 向外法线）
+    struct BoxFace { int idx[4]; glm::vec3 n; };
+    static const BoxFace kBoxFaces[6] = {
+        {{4, 5, 7, 6}, {0.0f, 0.0f, 1.0f}},   // +Z
+        {{0, 1, 3, 2}, {0.0f, 0.0f, -1.0f}},  // -Z
+        {{2, 3, 7, 6}, {0.0f, 1.0f, 0.0f}},   // +Y
+        {{0, 1, 5, 4}, {0.0f, -1.0f, 0.0f}},  // -Y
+        {{1, 3, 7, 5}, {1.0f, 0.0f, 0.0f}},   // +X
+        {{0, 2, 6, 4}, {-1.0f, 0.0f, 0.0f}},  // -X
+    };
+
+    // 蒙皮关节查重（多个盒共享同一子树时避免重复画点）
+    std::unordered_set<entt::entity> jointDrawn;
+
     for (auto entity : boundsView) {
         const auto &tc = boundsView.get<TransformComponent>(entity);
         const auto &bb = boundsView.get<BoundingBoxComponent>(entity);
@@ -396,7 +420,79 @@ void SceneLayer::DrawWorldBounds(const glm::vec2 &imagePos) {
         AABB local;
         local.min = bb.minCorner();
         local.max = bb.maxCorner();
-        drawWorldAabb(local.Transformed(tc.GetWorldMatrix()), bbColor);
+        const AABB world = local.Transformed(tc.GetWorldMatrix());
+
+        // a. 半透明面：面法线朝向相机（看到的是外表面）→ 亮，背向 → 暗，
+        //    区分前后两层，解决单视角下「前后两面重叠分不清」的问题
+        const glm::vec3 wc[8] = {
+            {world.min.x, world.min.y, world.min.z}, {world.max.x, world.min.y, world.min.z},
+            {world.min.x, world.max.y, world.min.z}, {world.max.x, world.max.y, world.min.z},
+            {world.min.x, world.min.y, world.max.z}, {world.max.x, world.min.y, world.max.z},
+            {world.min.x, world.max.y, world.max.z}, {world.max.x, world.max.y, world.max.z},
+        };
+        for (const BoxFace &f : kBoxFaces) {
+            glm::vec3 faceCenter(0.0f);
+            ImVec2 pts[4];
+            bool frontAll = true;
+            for (int k = 0; k < 4; ++k) {
+                const glm::vec3 &p = wc[f.idx[k]];
+                faceCenter += p;
+                glm::vec2 scr;
+                if (!ProjectWorldToScreen(viewProjGL, p, origin, size, scr)) {
+                    frontAll = false;
+                    break; // 面有角点在相机背面，跳过避免投影发散
+                }
+                pts[k] = ImVec2(scr.x, scr.y);
+            }
+            if (!frontAll) {
+                continue;
+            }
+            faceCenter *= 0.25f;
+            const bool facingCam = glm::dot(f.n, camPos - faceCenter) > 0.0f;
+            dl->AddConvexPolyFilled(pts, 4, facingCam ? bbFaceFront : bbFaceBack);
+        }
+
+        // 黄线框最后画（压在面上，线清晰可读）
+        drawWorldAabb(world, bbColor);
+
+        // b. 露点检查：盒覆盖子树的全部蒙皮关节（盒内绿 / 盒外红）。
+        //    Skeleton 关节是世界实体（SkinDef::joints），取世界矩阵平移列即骨骼枢轴点。
+        std::vector<Entity> stack;
+        stack.push_back(Entity(entity, m_Context->Scene));
+        while (!stack.empty()) {
+            const Entity n = stack.back();
+            stack.pop_back();
+            const entt::entity h = static_cast<entt::entity>(n);
+            if (const auto *sc = m_Context->Scene->Reg().try_get<SkinComponent>(h)) {
+                for (const entt::entity jh : sc->joints()) {
+                    if (jointDrawn.count(jh)) {
+                        continue; // 已被别的盒画过，跳过
+                    }
+                    jointDrawn.insert(jh);
+                    const auto *jtc = m_Context->Scene->Reg().try_get<TransformComponent>(jh);
+                    if (!jtc) {
+                        continue;
+                    }
+                    const glm::vec3 jp = glm::vec3(jtc->GetWorldMatrix()[3]);
+                    const bool inside = jp.x >= world.min.x && jp.x <= world.max.x
+                                     && jp.y >= world.min.y && jp.y <= world.max.y
+                                     && jp.z >= world.min.z && jp.z <= world.max.z;
+                    glm::vec2 scr;
+                    if (!ProjectWorldToScreen(viewProjGL, jp, origin, size, scr)) {
+                        continue;
+                    }
+                    const ImU32 jc = ImGui::ColorConvertFloat4ToU32(
+                        inside ? ImVec4(0.20f, 0.90f, 0.30f, 1.0f)     // 盒内：绿
+                               : ImVec4(0.95f, 0.30f, 0.25f, 1.0f));   // 盒外：红
+                    // 圆点 + 深色描边，保证在亮/暗背景上都可读
+                    dl->AddCircleFilled(ImVec2(scr.x, scr.y), 4.0f, jc);
+                    dl->AddCircle(ImVec2(scr.x, scr.y), 4.0f, IM_COL32(0, 0, 0, 200));
+                }
+            }
+            for (const auto &child : m_Context->Scene->GetChildren(n)) {
+                stack.push_back(child); // 继续下钻同棵子树
+            }
+        }
     }
 }
 

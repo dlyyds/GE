@@ -63,30 +63,30 @@ void main()
     outUV = inUV;
     outColor = instanceBuffer.instances[gl_InstanceIndex].color;
 
-    mat4 model = instanceBuffer.instances[gl_InstanceIndex].model;
-
     // —— 蒙皮：四关节加权合成一个蒙皮变换 ——
-    // jointMatrix[j] = 关节 j 的当前世界矩阵 × 逆绑定矩阵（CPU 每帧算好上传）。
+    // jointBuffer.joints[j]（CPU 每帧算好上传）= 关节 j 的当前【世界】矩阵 × 逆绑定。
     // 权重各乘一块矩阵再相加，等价于对顶点的 4 个候选位置做加权平均。
+    //
+    // 注意：蒙皮结果已经是世界坐标，这里【不再乘 instanceBuffer 的 model】。
+    // 若再乘一次 model（mesh 实体的世界矩阵），根/祖先的平移会被「关节世界矩阵」
+    // 与「model」双重叠加——单独移动 mesh 实体没问题（关节是兄弟不跟随），但移动
+    // 根实体时位移翻倍、且被链上烘焙的旋转打散导致 y/z 错乱。
     mat4 skin = inWeight.x * jointBuffer.joints[BASE_JOINT + inJointIdx.x]
               + inWeight.y * jointBuffer.joints[BASE_JOINT + inJointIdx.y]
               + inWeight.z * jointBuffer.joints[BASE_JOINT + inJointIdx.z]
               + inWeight.w * jointBuffer.joints[BASE_JOINT + inJointIdx.w];
 
-    // 顶点先被蒙皮矩阵从绑定姿态挪到当前姿态，再走正常的 model → view → proj
-    vec4 skinnedPos = skin * vec4(inPos, 1.0);
-    vec4 worldPos = model * skinnedPos;
+    vec4 worldPos = skin * vec4(inPos, 1.0);
     gl_Position = frame.projection * frame.view * worldPos;
 
     outWorldPos = worldPos.xyz;
 
-    // 法线/切线：先用蒙皮矩阵的 3×3 部分（忽略平移）随骨头弯曲，再经 model
-    // 的法线矩阵（逆转置）保证非均匀缩放下仍垂直于表面。蒙皮矩阵可能引入
-    // 非均匀缩放（两骨头加权混合），故先归一化再走法线矩阵。
+    // 法线/切线：直接用蒙皮矩阵的 3×3 部分（忽略平移）随骨骼弯曲，方向再归一化。
+    // 蒙皮矩阵可能引入非均匀缩放/剪切（多骨骼加权混合），此处按常用做法归一化
+    // 方向输出，与旧实现一致（缩放的精确逆转置留待必要时装帧处理）。
     mat3 skinNormal = mat3(skin);
-    mat3 normalMatrix = mat3(inverse(transpose(model)));
-    outNormal   = normalMatrix * normalize(skinNormal * inNormal);
-    outTangent  = normalMatrix * normalize(skinNormal * inTangent.xyz);
+    outNormal   = normalize(skinNormal * inNormal);
+    outTangent  = normalize(skinNormal * inTangent.xyz);
     // 副切线 = 法线 × 切线，再乘手性符号恢复正确的左右手系
     outBitangent = cross(outNormal, outTangent) * inTangent.w;
 

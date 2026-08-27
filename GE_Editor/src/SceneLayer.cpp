@@ -306,6 +306,8 @@ void SceneLayer::OnImGuiRender() {
 
         // 包围盒线框调试开关（叠加在视口上：静态盒灰、蒙皮绑定盒红）
         ImGui::Checkbox("显示包围盒", &m_ShowBounds);
+        // 关节露点红绿开关（叠加在包围盒上，仅在开启显示包围盒时生效）
+        ImGui::Checkbox("关节露点", &m_ShowJointDots);
 
         ImGui::TextDisabled("提示：先在左侧 Hierarchy/Properties 中调整实体，再保存/加载验证");
     }
@@ -398,14 +400,17 @@ void SceneLayer::DrawWorldBounds(const glm::vec2 &imagePos) {
     const glm::vec3 camPos = camera.GetPosition();
 
     // 世界空间 AABB 的 6 个面（下标引用 cW[8] 角点 + 向外法线）
-    struct BoxFace { int idx[4]; glm::vec3 n; };
+    struct BoxFace {
+        int idx[4];
+        glm::vec3 n;
+    };
     static const BoxFace kBoxFaces[6] = {
-        {{4, 5, 7, 6}, {0.0f, 0.0f, 1.0f}},   // +Z
-        {{0, 1, 3, 2}, {0.0f, 0.0f, -1.0f}},  // -Z
-        {{2, 3, 7, 6}, {0.0f, 1.0f, 0.0f}},   // +Y
-        {{0, 1, 5, 4}, {0.0f, -1.0f, 0.0f}},  // -Y
-        {{1, 3, 7, 5}, {1.0f, 0.0f, 0.0f}},   // +X
-        {{0, 2, 6, 4}, {-1.0f, 0.0f, 0.0f}},  // -X
+        {{4, 5, 7, 6}, {0.0f, 0.0f, 1.0f}}, // +Z
+        {{0, 1, 3, 2}, {0.0f, 0.0f, -1.0f}}, // -Z
+        {{2, 3, 7, 6}, {0.0f, 1.0f, 0.0f}}, // +Y
+        {{0, 1, 5, 4}, {0.0f, -1.0f, 0.0f}}, // -Y
+        {{1, 3, 7, 5}, {1.0f, 0.0f, 0.0f}}, // +X
+        {{0, 2, 6, 4}, {-1.0f, 0.0f, 0.0f}}, // -X
     };
 
     // 蒙皮关节查重（多个盒共享同一子树时避免重复画点）
@@ -457,40 +462,43 @@ void SceneLayer::DrawWorldBounds(const glm::vec2 &imagePos) {
 
         // b. 露点检查：盒覆盖子树的全部蒙皮关节（盒内绿 / 盒外红）。
         //    Skeleton 关节是世界实体（SkinDef::joints），取世界矩阵平移列即骨骼枢轴点。
-        std::vector<Entity> stack;
-        stack.push_back(Entity(entity, m_Context->Scene));
-        while (!stack.empty()) {
-            const Entity n = stack.back();
-            stack.pop_back();
-            const entt::entity h = static_cast<entt::entity>(n);
-            if (const auto *sc = m_Context->Scene->Reg().try_get<SkinComponent>(h)) {
-                for (const entt::entity jh : sc->joints()) {
-                    if (jointDrawn.count(jh)) {
-                        continue; // 已被别的盒画过，跳过
+        if (m_ShowJointDots) {
+            std::vector<Entity> stack;
+            stack.push_back(Entity(entity, m_Context->Scene.get()));
+            while (!stack.empty()) {
+                const Entity n = stack.back();
+                stack.pop_back();
+                const entt::entity h = static_cast<entt::entity>(n);
+                if (const auto *sc = m_Context->Scene->Reg().try_get<SkinComponent>(h)) {
+                    for (const entt::entity jh : sc->joints()) {
+                        if (jointDrawn.count(jh)) {
+                            continue; // 已被别的盒画过，跳过
+                        }
+                        jointDrawn.insert(jh);
+                        const auto *jtc = m_Context->Scene->Reg().try_get<TransformComponent>(jh);
+                        if (!jtc) {
+                            continue;
+                        }
+                        const glm::vec3 jp = glm::vec3(jtc->GetWorldMatrix()[3]);
+                        const bool inside = jp.x >= world.min.x && jp.x <= world.max.x
+                                            && jp.y >= world.min.y && jp.y <= world.max.y
+                                            && jp.z >= world.min.z && jp.z <= world.max.z;
+                        glm::vec2 scr;
+                        if (!ProjectWorldToScreen(viewProjGL, jp, origin, size, scr)) {
+                            continue;
+                        }
+                        const ImU32 jc = ImGui::ColorConvertFloat4ToU32(
+                            inside
+                                ? ImVec4(0.20f, 0.90f, 0.30f, 1.0f) // 盒内：绿
+                                : ImVec4(0.95f, 0.30f, 0.25f, 1.0f)); // 盒外：红
+                        // 圆点 + 深色描边，保证在亮/暗背景上都可读
+                        dl->AddCircleFilled(ImVec2(scr.x, scr.y), 4.0f, jc);
+                        dl->AddCircle(ImVec2(scr.x, scr.y), 4.0f, IM_COL32(0, 0, 0, 200));
                     }
-                    jointDrawn.insert(jh);
-                    const auto *jtc = m_Context->Scene->Reg().try_get<TransformComponent>(jh);
-                    if (!jtc) {
-                        continue;
-                    }
-                    const glm::vec3 jp = glm::vec3(jtc->GetWorldMatrix()[3]);
-                    const bool inside = jp.x >= world.min.x && jp.x <= world.max.x
-                                     && jp.y >= world.min.y && jp.y <= world.max.y
-                                     && jp.z >= world.min.z && jp.z <= world.max.z;
-                    glm::vec2 scr;
-                    if (!ProjectWorldToScreen(viewProjGL, jp, origin, size, scr)) {
-                        continue;
-                    }
-                    const ImU32 jc = ImGui::ColorConvertFloat4ToU32(
-                        inside ? ImVec4(0.20f, 0.90f, 0.30f, 1.0f)     // 盒内：绿
-                               : ImVec4(0.95f, 0.30f, 0.25f, 1.0f));   // 盒外：红
-                    // 圆点 + 深色描边，保证在亮/暗背景上都可读
-                    dl->AddCircleFilled(ImVec2(scr.x, scr.y), 4.0f, jc);
-                    dl->AddCircle(ImVec2(scr.x, scr.y), 4.0f, IM_COL32(0, 0, 0, 200));
                 }
-            }
-            for (const auto &child : m_Context->Scene->GetChildren(n)) {
-                stack.push_back(child); // 继续下钻同棵子树
+                for (const auto &child : m_Context->Scene->GetChildren(n)) {
+                    stack.push_back(child); // 继续下钻同棵子树
+                }
             }
         }
     }

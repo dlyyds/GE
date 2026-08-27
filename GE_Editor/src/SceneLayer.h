@@ -79,6 +79,9 @@ private:
     /// 视口是否叠加包围盒线框（静态盒白灰、蒙皮绑定盒红）
     bool m_ShowBounds = true;
 
+    /// 包围盒上的关节露点红绿点是否显示（依赖 m_ShowBounds 开启）
+    bool m_ShowJointDots = true;
+
     /// 从文件加载场景（会重建场景并重新绑定相机）
     bool LoadSceneFromFile(std::string_view filepath);
 

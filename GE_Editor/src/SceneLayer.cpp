@@ -363,27 +363,25 @@ void SceneLayer::DrawWorldBounds(const glm::vec2 &imagePos) {
         }
     };
 
-    // 1) 网格级盒：与视锥剔除用同一个盒（本地绑定盒 × 世界矩阵）；蒙皮红、静态灰蓝
+    // 1) 网格级盒：仅静态网格灰蓝（蒙皮绑定盒覆盖不了动画变形，且红显易误导，
+    //    其可靠表示统一由下方的 BoundingBoxComponent 黄盒承担）
     auto meshView = m_Context->Scene->Reg().view<TransformComponent, MeshRendererComponent>();
+    const ImU32 meshColor = ImGui::ColorConvertFloat4ToU32(ImVec4(0.55f, 0.60f, 0.70f, 1.0f));
     for (auto entity : meshView) {
         const auto &tc = meshView.get<TransformComponent>(entity);
         const auto &mc = meshView.get<MeshRendererComponent>(entity);
         if (!mc.MeshPtr) {
             continue;
         }
+        // 蒙皮实体不画（无可靠盒可示），改由用户手动摆放的黄盒表示
+        if (m_Context->Scene->Reg().try_get<SkinComponent>(entity)) {
+            continue;
+        }
         const AABB &local = mc.MeshPtr->GetAABB();
         if (!local.IsValid()) {
             continue;
         }
-        // 蒙皮实体（绑定盒覆盖不了动画变形）用红，静态盒用灰蓝
-        bool skinned = false;
-        if (auto *skinC = m_Context->Scene->Reg().try_get<SkinComponent>(entity)) {
-            skinned = (skinC->skin != nullptr);
-        }
-        const ImU32 color = ImGui::ColorConvertFloat4ToU32(
-            skinned ? ImVec4(0.95f, 0.30f, 0.25f, 1.0f)
-                    : ImVec4(0.55f, 0.60f, 0.70f, 1.0f));
-        drawWorldAabb(local.Transformed(tc.GetWorldMatrix()), color);
+        drawWorldAabb(local.Transformed(tc.GetWorldMatrix()), meshColor);
     }
 
     // 2) 实体级手动摆放盒（BoundingBoxComponent）用黄叠出，便于对照剔除覆盖范围

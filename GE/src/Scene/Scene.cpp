@@ -400,7 +400,7 @@ void Scene::UpdateAnimations(Timestep ts) {
     auto view = m_Registry.view<AnimationComponent>();
     for (auto entity : view) {
         auto &ac = view.get<AnimationComponent>(entity);
-        if (!ac.playing || ac.clips.empty()) {
+        if (ac.clips.empty()) {
             continue;
         }
         const AnimationClip *clip = ac.activeClip();
@@ -408,18 +408,28 @@ void Scene::UpdateAnimations(Timestep ts) {
             continue;
         }
 
-        // 推进时间轴：秒 × 倍速（速率为负 = 倒放）
-        ac.time += ts.GetSeconds() * ac.speed;
-        if (clip->duration > 0.0f) {
-            if (ac.loop) {
-                ac.time = std::fmod(ac.time, clip->duration);
-                if (ac.time < 0.0f) {
-                    ac.time += clip->duration;
+        // 推进时间轴（仅播放态）：秒 × 倍速（速率为负 = 倒放）
+        if (ac.playing) {
+            ac.time += ts.GetSeconds() * ac.speed;
+            if (clip->duration > 0.0f) {
+                if (ac.loop) {
+                    ac.time = std::fmod(ac.time, clip->duration);
+                    if (ac.time < 0.0f) {
+                        ac.time += clip->duration;
+                    }
+                } else {
+                    ac.time = std::clamp(ac.time, 0.0f, clip->duration);
                 }
-            } else {
-                ac.time = std::clamp(ac.time, 0.0f, clip->duration);
             }
         }
+
+        // 暂停态也要应用姿态：编辑器 Scrubber 拖动时间轴（只改 time、不停播）能即刻看动作。
+        // 时间未变化且已应用过则跳过重采样，避免暂停期间对静止姿态做无用功。
+        if (ac.timeApplied && ac.time == ac.appliedTime) {
+            continue;
+        }
+        ac.appliedTime = ac.time;
+        ac.timeApplied = true;
 
         // 逐通道采样 → 写目标实体的局部 TRS（局部字段，随后的 DFS 重算 world；
         // 目标节点可能是皮肤关节的祖先/结构节点，经 DFS 传播子树全部关节）。

@@ -406,6 +406,12 @@ struct AnimationComponent {
     bool    playing = true;             ///< 是否在播
     bool    loop = true;                ///< 是否循环
 
+    // 运行时求值状态（不序列化）：记录上次实际应用过的采样时间。
+    // 暂停时编辑器 Scrubber 只改 ac.time，据此判断是否需要重新采样应用姿态，
+    // 而静止帧（无拖动）直接跳过免无用功。
+    float   appliedTime = 0.0f;         ///< 上次实际应用过的采样时间
+    bool    timeApplied = false;        ///< 是否至少应用过一次（首次帧强制应用，避免加载后停在绑定姿态）
+
     AnimationComponent() = default;
     AnimationComponent(const AnimationComponent &) = default;
 

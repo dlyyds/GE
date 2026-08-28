@@ -1515,19 +1515,47 @@ bool SceneHierarchyPanel::AutoFitBoundingBoxToJoints(Scene *scene, Entity entity
 // ============================================================
 // Script 组件
 // ============================================================
+
+// 把对话框返回的绝对路径转成 assets/scripts/ 相对路径（ScriptEngine 基准目录）
+static std::string ScriptPathFromDialog(const std::string &absPath) {
+    std::string p = absPath;
+    for (auto &c : p)
+        if (c == '\\')
+            c = '/';
+    const std::string marker = "assets/scripts/";
+    const size_t pos = p.rfind(marker);
+    if (pos != std::string::npos)
+        return p.substr(pos + marker.size());
+    // 兜底：路径不在 assets/scripts 下，退化为仅文件名
+    const size_t slash = p.rfind('/');
+    return (slash == std::string::npos) ? p : p.substr(slash + 1);
+}
+
 void SceneHierarchyPanel::DrawScriptComponent(ScriptComponent &component, Entity entity) {
     ImGui::Checkbox("Enabled", &component.Enabled);
 
-    char buf[256] = {0};
-    component.ScriptPath.copy(buf, sizeof(buf) - 1);
-    if (ImGui::InputText("Path (.lua)", buf, sizeof(buf))) {
-        component.ScriptPath = buf;
-        // 路径改动即时重挂（旧实例卸载 + 新脚本载入）
-        if (Scene *scene = entity.GetScene()) {
-            scene->GetScriptEngine().OnComponentAdded(static_cast<entt::entity>(entity));
+    // 当前脚本路径（只读显示，选择走对话框）
+    ImGui::Text("Script: %s", component.ScriptPath.empty() ? "(未选择)" : component.ScriptPath.c_str());
+
+    if (ImGui::Button("浏览脚本...")) {
+        std::string absPath = FileDialogs::OpenFile(
+            "Lua Script (*.lua)\0*.lua\0All Files (*.*)\0*.*\0", "assets/scripts");
+        if (!absPath.empty()) {
+            component.ScriptPath = ScriptPathFromDialog(absPath);
+            // 路径选定即重挂（旧实例卸载 + 新脚本载入）
+            if (Scene *scene = entity.GetScene()) {
+                scene->GetScriptEngine().OnComponentAdded(static_cast<entt::entity>(entity));
+            }
         }
     }
-    ImGui::TextDisabled("assets/scripts/ 下相对路径，如 mover.lua");
+
+    if (!component.ScriptPath.empty()) {
+        ImGui::SameLine();
+        if (ImGui::Button("清除脚本"))
+            component.ScriptPath.clear();
+    }
+
+    ImGui::TextDisabled("脚本位于 assets/scripts/（相对该目录，含 .lua 后缀）");
 }
 
 } // namespace GE

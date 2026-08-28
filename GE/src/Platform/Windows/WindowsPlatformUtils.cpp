@@ -9,7 +9,7 @@
 
 namespace GE {
 
-std::string FileDialogs::OpenFile(const char *filter) {
+std::string FileDialogs::OpenFile(const char *filter, const char *initialDir) {
     OPENFILENAMEA ofn;
     CHAR szFile[260] = {0};
     CHAR currentDir[256] = {0};
@@ -18,8 +18,11 @@ std::string FileDialogs::OpenFile(const char *filter) {
     ofn.hwndOwner = static_cast<HWND>(Application::Get().GetWindow().GetNativeWindow());
     ofn.lpstrFile = szFile;
     ofn.nMaxFile = sizeof(szFile);
-    if (GetCurrentDirectoryA(256, currentDir))
+    if (initialDir && *initialDir) {
+        ofn.lpstrInitialDir = initialDir;
+    } else if (GetCurrentDirectoryA(256, currentDir)) {
         ofn.lpstrInitialDir = currentDir;
+    }
     ofn.lpstrFilter = filter;
     ofn.nFilterIndex = 1;
     ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_NOCHANGEDIR;

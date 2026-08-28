@@ -11,12 +11,12 @@
 ```
 实体 ──► ScriptComponent{ScriptPath, Enabled} ──► Scene::ScriptEngine（共享 sol::state）
                                                        │
-                 dofile(路径) 按路径缓存 ──► 行为表（OnCreate / OnUpdate / OnInput / OnDestroy）
+                 dofile(路径) 按路径缓存 ──► 行为表（OnCreate / OnUpdate / OnDestroy）
                  每实体建实例表（metatable→行为表）──► 每实体独立状态字段
                  热重载 = 清缓存重读文件 → 重建实例、重跑 OnCreate
 ```
 
-`ScriptComponent` 只存数据（脚本路径 + 开关），运行时逻辑全部收进 `ScriptEngine` 管理器（Scene 持有，仿 `PhysicsWorld`/`AnimationClipManager` 的归属方式）；Lua 通过一个共享的 `sol::state` 注入固定 API；每实体一份"实例表"保存独立状态，行为函数（含每帧 `OnUpdate` 与输入回调）从共享行为表通过 metatable 继承。输入事件保留现有"脚本返回 true 即消费、短路相机"语义。
+`ScriptComponent` 只存数据（脚本路径 + 开关），运行时逻辑全部收进 `ScriptEngine` 管理器（Scene 持有，仿 `PhysicsWorld`/`AnimationClipManager` 的归属方式）；Lua 通过一个共享的 `sol::state` 注入固定 API；每实体一份"实例表"保存独立状态，行为函数（含每帧 `OnUpdate`）从共享行为表通过 metatable 继承。输入不进事件分发——Lua 与 C++ 脚本同源，在 `OnUpdate` 内经注入的 `input.*` 查询场景输入快照。
 
 ---
 
@@ -29,7 +29,7 @@
 | 编辑器挂载 | `DrawAddComponentPopup`（`SceneHierarchyPanel.cpp:498`）14 种组件无 Script | 加 Script 项 + 属性面板完整编辑 UI |
 | 实际使用 | 代码库 `AddComponent<ScriptComponent>` 零匹配 | 端到端验证 + `assets/scripts/` 示例脚本 |
 | 热重载 | 无（改逻辑要重编整个引擎） | Reload 按钮 + `Ctrl+R` 全局重载 |
-| 输入事件消费 | 已实现：回调返 true 短路后续脚本与相机（`Scene.cpp:876`） | 语义保留，迁入 Lua `OnInput` |
+| 输入到达脚本 | 已实现：`Scene::OnEvent`（`Scene.cpp:852`）写 `InputState` 快照，C++ 脚本 `OnUpdate` 内查询 | Lua 同源：注入 `input.*` 查询 API，无独立事件回调 |
 | 错误隔离 | 无（C++ lambda 崩一次就崩全场） | `sol::protected_function` + 日志 + 跳过实例 + 限频禁用 |
 
 本次做上表全部行；其余能力（public 字段反射、动画事件订阅等）在 §4 路线图定位，不提前开工。
@@ -40,7 +40,7 @@
 
 ### 2.1 `ScriptComponent` 重构 —— 纯数据，可序列化
 
-替换现有七字段回调结构（`Components.h:229`），只留序列化必需的载荷：
+输入快照改造后 `ScriptComponent` 已收敛为 `{OnUpdate, Enabled}`（六个输入回调已删除），本次再移除 `OnUpdate`，只留序列化载荷：
 
 ```cpp
 struct ScriptComponent {
@@ -50,7 +50,7 @@ struct ScriptComponent {
 ```
 
 - 空路径 = 未挂脚本，Scene 直接跳过。
-- **废弃** 7 个 `std::function` 回调成员（无任何使用方，删除而非兼容保留）。动画事件回调（`AnimationComponent::eventCallback`）属另一语义，见路线图 D-2 衔接。
+- `OnUpdate` 移交 `ScriptEngine` 接管（每帧生成 `Timestep` 调 Lua），组件不再持有 `std::function`。动画事件回调（`AnimationComponent::eventCallback`）属另一语义，见路线图 D-2 衔接。
 
 ### 2.2 `ScriptEngine` —— 运行时管理器
 
@@ -63,8 +63,7 @@ public:
     void Shutdown();                                   // 清实例/行为缓存（随 Scene 析构）
 
     void OnComponentAdded(Entity);                     // Scene::OnComponentAdded<ScriptComponent> 调：挂载/换路径
-    void OnUpdate(Timestep, Entity);                   // 每帧
-    bool OnInput(Entity, const Event &);               // 输入，返回是否消费（true 短路）
+    void OnUpdate(Timestep, Entity);                   // 每帧（ScriptEngine 持 Scene*，input.* 查询经快照）
     void OnEntityDestroyed(entt::entity);              // 清理实例 + 调 OnDestroy
 
     void Reload(const std::string &path);              // 热重载单脚本（清缓存 + 重建使用它的实例）
@@ -75,13 +74,14 @@ private:
     std::map<std::string, sol::table>  m_Behaviors;    ///< 路径 → 行为表缓存
     std::map<entt::entity, sol::table> m_Instances;    ///< 实体 → 实例表（独立状态）
     std::string m_BaseDir;                             ///< assets/scripts/
+    Scene      *m_Scene = nullptr;                     ///< 反查输入快照等场景级状态（Init 注入）
     // …EnsureBehavior / MakeInstance / CallHook 等私有实现
 };
 ```
 
 **行为表 / 实例表机制（metatable 单继承）**：
 
-- **行为表**：`EnsureBehavior(path)` 对每个脚本文件 `dofile` 一次并缓存。约定脚本顶层返回一个 table，可选字段 `OnCreate(self, entity)` / `OnUpdate(self, ts)` / `OnInput(self, ...)` / `OnDestroy(self)`。
+- **行为表**：`EnsureBehavior(path)` 对每个脚本文件 `dofile` 一次并缓存。约定脚本顶层返回一个 table，可选字段 `OnCreate(self, entity)` / `OnUpdate(self, ts)` / `OnDestroy(self)`。
 - **实例表**：`MakeInstance(path)` 新建空 table 并 `setmetatable(instance, { __index = behavior })`。于是实例上的变量赋值落在实例表（**每实体独立状态**），读函数/未赋值字段经 `__index` 走共享行为表 —— 即「class + instance」。
 - **隔离**：所有调用走 `sol::protected_function_result`（异常捕获）；出错 → `GE_CORE_ERROR` 带脚本名/行号 → **本帧跳过该实例**，其它脚本照常。连续出错计数达阈值（如 3 次）→ 自动 `Enabled=false` 并提示（防刷屏，见 2.6/阶段 C）。
 
@@ -94,8 +94,10 @@ private:
 | | `get_rotation() → degX, degY, degZ` | quat→欧拉（度数，与编辑器一致） |
 | | `set_rotation(degX, degY, degZ)` | 欧拉→quat |
 | | `get_scale() / set_scale(x,y,z)` | `TransformComponent.Scale` |
-| `input` | `is_key_down(code)` / `is_mouse_button_down(btn)` | 实时状态（读 `GEInput`） |
-| | `get_mouse_pos() → x, y` | 视口坐标 |
+| `input` | `is_held(code)` / `is_mouse_down(btn)` | 读 `Scene::GetInputState()` 快照（与 C++ 脚本同帧，非 `GEInput` 实时态） |
+| | `just_pressed(code)` / `just_released(code)` | 单帧边沿 |
+| | `mouse_pos() → x, y` / `mouse_delta() → x, y` | 视口坐标 / 帧间增量 |
+| | `scroll() → n` | 本帧滚轮累计 |
 | `log` | `info(w)` / `warn(w)` / `error(w)` | → spdlog |
 | `entity` | `get_tag() → string` | `TagComponent` |
 | | `has_component("MeshRenderer") → bool` | 字符串→组件名查表 |
@@ -104,24 +106,22 @@ private:
 - **不绑定 glm vec3/flags**——位置/欧拉角用多返回值 `(x,y,z)`，避免引入 vec3 userdata 与 glsl 混淆（路线图 D 再做数学类型）。
 - **不暴露 entt 注册表/裸指针**——v1 脚本不创建/销毁实体、不跨实体改组件（路线图 D-3 补）。脚本只作用于**挂载它的实体**。
 
-### 2.4 输入事件桥接（保留消费语义）
+### 2.4 输入接入 —— 查询快照，不设事件回调
 
-`Scene::OnEvent` 入口不变（`Scene.cpp:855`）。`DispatchInputEventToScripts` 改为调 `m_ScriptEngine.OnInput(entity, e)`；每个脚本调一次 Lua `OnInput`：
+输入快照改造（`docs/脚本输入系统计划书.md`）后，`Scene::OnEvent`（`Scene.cpp:852`）不再向脚本分发输入、只写 `InputState` 快照。Lua 与 C++ 脚本同源：`ScriptEngine` 持 `Scene*`，注入的 `input.*` C 函数读 `Scene::GetInputState()`，脚本在 `OnUpdate` 里查询：
 
 ```lua
--- 约定签名（kind 字符串区分事件类）
-function M.OnInput(self, kind, a, b)   -- 返回 true = 消费该事件
-    if kind == "key_pressed"     then local key, repeatCount = a, b end
-    if kind == "key_released"    then local key = a end
-    if kind == "mouse_pressed"   then local button = a end
-    if kind == "mouse_released"  then local button = a end
-    if kind == "mouse_moved"     then local x, y = a, b end    -- 不消费
-    if kind == "mouse_scrolled"  then local x, y = a, b end    -- 不消费
+function M.OnUpdate(self, ts)
+    local dt = ts
+    if input.is_held(Key.W)            then move_forward() end  -- 按住
+    if input.just_pressed(Key.Space)   then log.info("jump") end -- 单帧边沿
+    if input.mouse_delta() ~= 0        then turn() end
 end
 ```
 
-- 取 `protected_function_result` 首返回值 `bool`，`true → ev.Handled=true` 短路**后续脚本与主相机**（与现状 `DispatchInputEventToScripts` 一致）。
-- 按键/鼠标按下释放类可消费；移动/滚动不消费（与现状一致）。
+- 无 `OnInput`、无消费短路（现有引擎已无该语义）；脚本间无先后、同帧同输入。
+- `Key.*`/`Mouse.*` 常量由引擎以字符串键码表注入（与 `Core/KeyCodes.h` 一致）。
+- 帧首 `m_InputState.BeginFrameInput()`（`Scene.cpp:508`）先于 `UpdateScripts`，Lua 拿到的 `held/just_pressed` 天然是**本帧**语义。
 
 ### 2.5 序列化
 
@@ -150,7 +150,7 @@ end
 
 **A1. vendored 集成**：Lua 5.4 源码拷入 `GE/third_party/lua/`；sol2（≥3.3）拷入 `GE/third_party/sol2/`；`CMakeLists.txt` 把 Lua `*.c` 并入 `GE_SRC` 编译，`target_include_directories(GE PUBLIC .../sol2/include)`。
 
-**A2. `ScriptEngine` 骨架**：`Init`（state + 注入 `transform/log` 子集 API + `package.path`）、`EnsureBehavior`、`MakeInstance`、`OnUpdate`。
+**A2. `ScriptEngine` 骨架**：`Init(Scene*, baseDir)`（state + 注入 `transform/log/input` API + `package.path`）、`EnsureBehavior`、`MakeInstance`、`OnUpdate`。
 
 **A3. 接线 Scene**：构造 `m_ScriptEngine` 并 `Init("assets/scripts/")`；`UpdateScripts`（`Scene.cpp:545`）改调 `OnUpdate`；`OnComponentAdded<ScriptComponent>` 挂载；`on_destroy<ScriptComponent>` 清理。
 
@@ -227,7 +227,7 @@ end
 | `CMakeLists.txt` | 修改 | Lua `*.c` 并入 GE 编译；sol2 进 PUBLIC include |
 | `GE/include/GE/Scene/ScriptEngine.h` + `GE/src/Scene/ScriptEngine.cpp` | 新增 | 运行时管理器（2.2） |
 | `GE/include/GE/Scene/Components.h` | 修改 | `ScriptComponent` 重构为 `{ScriptPath, Enabled}`（2.1） |
-| `GE/include/GE/Scene/Scene.h` + `GE/src/Scene/Scene.cpp` | 修改 | 持有 `ScriptEngine`；`UpdateScripts`/`OnEvent→Dispatch` 改造；`on_destroy<ScriptComponent>` 接线 |
+| `GE/include/GE/Scene/Scene.h` + `GE/src/Scene/Scene.cpp` | 修改 | 持有 `ScriptEngine`；`UpdateScripts` 改派 `ScriptEngine::OnUpdate`；`OnComponentAdded`/`on_destroy` 接线 |
 | `GE/src/Scene/SceneSerializer.cpp` | 修改 | `Script` 键 YAML 读写（2.5） |
 | `GE_Editor/src/Panels/SceneHierarchyPanel.cpp/.h` | 修改 | AddComponent 加项 + `DrawScriptComponent`（B2/B3） |
 | `GE_Editor/src/EditorApp.cpp`（或 DockSpaceLayer） | 修改 | `Ctrl+R` 全局重载 + 菜单项（B4） |
@@ -288,8 +288,8 @@ end
 **9.4 API 形状 —— ✅ 已定：不绑 GLM，多返回值 + 度数欧拉角；不暴露 entt/裸指针**
 - 脚本与内部分离；欧拉角对齐编辑器习惯。复杂数学留 D-4。
 
-**9.5 输入回调 —— ✅ 已定：单 `OnInput(self, kind, ...)` 按字符串 kind 分发，保留「返 true 消费事件」语义**
-- 比 7 个独立函数字段 API 面小；消费语义与现状 `DispatchInputEventToScripts` 完全一致（true → 短路本实体后脚本与主相机）。
+**9.5 输入接入 —— ✅ 已定：不设 `OnInput`，Lua 在 `OnUpdate` 内经 `input.*` 查询 `InputState` 快照**
+- 输入快照改造（脚本输入系统计划书 §2.4）后引擎已无事件分发；Lua 与 C++ 脚本同源读 `Scene::GetInputState()`，无消费短路、无脚本先后，天然同帧语义。
 
 **9.6 文件缺失 —— ✅ 已定：`GE_CORE_WARN` + 组件保留 + `Enabled=false`，不打断加载**
 - 场景加载遇到坏路径继续走完，绝不因脚本问题卡死编辑器。
@@ -303,8 +303,8 @@ end
 **9.9 错误策略 —— ✅ 已定：protected_function 捕获 + 跳过实例 + 连续 3 次自动禁用**
 - Debug 期也开（`SOL_ALL_SAFETIES_ON`），让坏脚本在编辑器里「灰掉」而不是黑掉会崩。
 
-**9.10 废弃旧回调 —— ✅ 已定：删除 `ScriptComponent` 的 7 个 std::function 字段，不做兼容层**
-- 零使用方；`AnimationComponent::eventCallback` 是动画语义，保留，D-2 再桥接。
+**9.10 废弃旧回调 —— ✅ 已定：`ScriptComponent` 收敛为 `{ScriptPath, Enabled}`，`OnUpdate` 移交 `ScriptEngine` 接管**
+- 六个输入回调和 `OnUpdate` 均无外部使用方；输入查询由注入的 `input.*` 快照 API 承担，按帧回调由 `ScriptEngine::OnUpdate` 统一调 Lua。`AnimationComponent::eventCallback` 是动画语义，保留，D-2 再桥接。
 
 ---
 
@@ -316,8 +316,8 @@ OnUpdate3D（Scene.cpp:506）
   ├─ StepPhysics、UpdateAnimations（既有，零改动；时序保持脚本优先）
   └─ UpdateWorldTransforms（DFS）──► 蒙皮肤管线 / 渲染（既有，零改动）
 
-OnEvent（Scene.cpp:855）
-  └─ DispatchInputEventToScripts ──► ScriptEngine::OnInput（返 true 短路相机；语义不变）
+OnEvent（Scene.cpp:852）
+  └─ 写 InputState 快照（既有，见脚本输入系统计划书）──► C++/Lua 脚本经 input.* 查询，无事件分发
 
 实体销毁：DestroyEntity → m_Registry.destroy ──► on_destroy<ScriptComponent> ──► OnDestroy
           （复用是从 Scene.cpp:129 RigidBody 物理清理迁来的既有 on_destroy 模式）

@@ -524,9 +524,10 @@ void SceneLayer::DrawColliders(const glm::vec2 &imagePos) {
     const Camera &camera = cc.CameraInstance;
 
     // 还原 OpenGL 投影（与 DrawWorldBounds 同款，保证线与画面/gizmo 对齐）
+    const glm::mat4 view = camera.GetView();
     glm::mat4 projGL = camera.GetProj();
     projGL[1][1] *= -1.0f;
-    const glm::mat4 viewProjGL = projGL * camera.GetView();
+    const glm::mat4 viewProjGL = projGL * view;
 
     const glm::vec2 origin{imagePos.x, imagePos.y};
     const glm::vec2 size{m_ViewportSize.x, m_ViewportSize.y};
@@ -621,8 +622,9 @@ void SceneLayer::DrawColliders(const glm::vec2 &imagePos) {
             }
             // 屏幕半径：沿相机右轴/上轴各投一个边缘点，取屏幕距离较大者（圆盘包裹球轮廓）
             glm::vec2 axisRadius = {0.0f, 0.0f};
-            const glm::vec3 camRight = camera.GetRight();
-            const glm::vec3 camUp = glm::cross(camera.GetRight(), camera.GetForward());
+            // 相基从视图矩阵旋转部分的行向量提取（GetForward/GetRight 为私有接口）
+            const glm::vec3 camRight = glm::normalize(glm::vec3(view[0][0], view[1][0], view[2][0]));
+            const glm::vec3 camUp = glm::normalize(glm::vec3(view[0][1], view[1][1], view[2][1]));
             const auto projectRim = [&](const glm::vec3 &axis) {
                 glm::vec2 sRim;
                 if (projectPoint(center + axis * radius, sRim)) {

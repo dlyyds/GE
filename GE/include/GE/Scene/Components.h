@@ -24,10 +24,10 @@
 
 namespace GE {
 
-class Texture;  // 前向声明，避免引入整个 Texture 头文件
-class Mesh;     // 前向声明，避免引入整个 Mesh 头文件
+class Texture; // 前向声明，避免引入整个 Texture 头文件
+class Mesh; // 前向声明，避免引入整个 Mesh 头文件
 class Material; // 前向声明，避免引入整个 Material 头文件
-class Entity;   // 前向声明，供 ScriptComponent 回调签名使用
+class Entity; // 前向声明，供 ScriptComponent 回调签名使用
 class Timestep; // 前向声明，供 ScriptComponent 回调签名使用
 
 
@@ -147,8 +147,8 @@ struct IDComponent {
  */
 struct SpriteRendererComponent {
     glm::vec4 Color{1.0f, 1.0f, 1.0f, 1.0f}; ///< 叠加颜色（默认白色，即不染色）
-    Texture  *SpriteTexture = nullptr;        ///< 精灵纹理（可选，为 null 时绘制纯色矩形）
-    bool      IsUI = false;                   ///< 是否为 UI 精灵（true=屏幕空间无深度，false=世界空间有深度）
+    Texture *SpriteTexture = nullptr; ///< 精灵纹理（可选，为 null 时绘制纯色矩形）
+    bool IsUI = false; ///< 是否为 UI 精灵（true=屏幕空间无深度，false=世界空间有深度）
 
     SpriteRendererComponent() = default;
 
@@ -191,10 +191,12 @@ struct SpriteRendererComponent {
  */
 struct BoundingBoxComponent {
     glm::vec3 Center = {0.0f, 0.0f, 0.0f}; ///< 局部空间中心
-    glm::vec3 Size   = {0.0f, 0.0f, 0.0f}; ///< 局部空间边长（任一轴 <= 0 视为未摆放）
+    glm::vec3 Size = {0.0f, 0.0f, 0.0f}; ///< 局部空间边长（任一轴 <= 0 视为未摆放）
 
     BoundingBoxComponent() = default;
+
     BoundingBoxComponent(const BoundingBoxComponent &) = default;
+
     BoundingBoxComponent(const glm::vec3 &center, const glm::vec3 &size)
         : Center(center), Size(size) {
     }
@@ -227,19 +229,13 @@ struct BoundingBoxComponent {
  * 移动/滚动类回调返回 void，一般不消费事件。
  */
 struct ScriptComponent {
-    using UpdateCallback       = std::function<void(Timestep, Entity)>;
-    using KeyCallback          = std::function<bool(Entity, KeyCode, int repeatCount)>;
-    using MouseButtonCallback  = std::function<bool(Entity, MouseCode)>;
-    using MouseMoveCallback    = std::function<void(Entity, float x, float y)>;
-    using MouseScrollCallback  = std::function<void(Entity, float xOffset, float yOffset)>;
+    using UpdateCallback = std::function<void(Timestep, Entity)>;
+    using KeyCallback = std::function<bool(Entity, KeyCode, int repeatCount)>;
+    using MouseButtonCallback = std::function<bool(Entity, MouseCode)>;
+    using MouseMoveCallback = std::function<void(Entity, float x, float y)>;
+    using MouseScrollCallback = std::function<void(Entity, float xOffset, float yOffset)>;
 
-    UpdateCallback      OnUpdate;              ///< 每帧更新回调
-    KeyCallback         OnKeyPressed;          ///< 按键按下，返回 true = 消费事件
-    KeyCallback         OnKeyReleased;         ///< 按键释放，返回 true = 消费事件
-    MouseButtonCallback OnMouseButtonPressed;  ///< 鼠标按下，返回 true = 消费事件
-    MouseButtonCallback OnMouseButtonReleased; ///< 鼠标释放，返回 true = 消费事件
-    MouseMoveCallback   OnMouseMoved;          ///< 鼠标移动
-    MouseScrollCallback OnMouseScrolled;       ///< 鼠标滚轮
+    UpdateCallback OnUpdate; ///< 每帧更新回调
 
     bool Enabled = true; ///< 脚本是否启用（false 时跳过所有回调）
 
@@ -269,7 +265,7 @@ struct ScriptComponent {
  */
 struct MeshRendererComponent {
     glm::vec4 Color{1.0f, 1.0f, 1.0f, 1.0f}; ///< 叠加颜色（默认白色，即不染色）
-    Mesh     *MeshPtr = nullptr;              ///< 网格资源指针（可选，为 null 时不绘制）
+    Mesh *MeshPtr = nullptr; ///< 网格资源指针（可选，为 null 时不绘制）
 
     /// 子网格材质覆写表：<子网格索引, 自定义材质>（每实体独立，借用 MaterialManager）
     std::unordered_map<uint32_t, Material *> materialOverrides;
@@ -312,7 +308,9 @@ struct JointComponent {
     int jointIndex = 0; ///< 该关节在 skin.joints 里的索引（0..N-1）
 
     JointComponent() = default;
-    explicit JointComponent(int idx) : jointIndex(idx) {}
+
+    explicit JointComponent(int idx) : jointIndex(idx) {
+    }
 };
 
 /**
@@ -328,8 +326,8 @@ struct JointComponent {
  * inverseBindMatrices 是常量（绑定姿态快照），与 joints 一一对应。
  */
 struct SkinDef {
-    std::vector<entt::entity> joints;           ///< 关节实体句柄（有序，索引 = skin.joints 序）
-    std::vector<glm::mat4>    inverseBindMatrices; ///< 逆绑定矩阵（与 joints 一一对应）
+    std::vector<entt::entity> joints; ///< 关节实体句柄（有序，索引 = skin.joints 序）
+    std::vector<glm::mat4> inverseBindMatrices; ///< 逆绑定矩阵（与 joints 一一对应）
 };
 
 /**
@@ -343,11 +341,12 @@ struct SkinDef {
  * skin 为空时返回空表，保证读取安全。
  */
 struct SkinComponent {
-    std::shared_ptr<SkinDef> skin;              ///< 共享皮肤定义（同 glTF skin 各 node 共享；null = 未接入）
-    Mesh    *MeshPtr = nullptr;                 ///< 被本皮肤驱动的网格（可选，可从绘制时取）
-    bool     RequiresJointUpload = true;        ///< 脏标记：需重新上传关节矩阵（首版每帧重算，暂未用）
+    std::shared_ptr<SkinDef> skin; ///< 共享皮肤定义（同 glTF skin 各 node 共享；null = 未接入）
+    Mesh *MeshPtr = nullptr; ///< 被本皮肤驱动的网格（可选，可从绘制时取）
+    bool RequiresJointUpload = true; ///< 脏标记：需重新上传关节矩阵（首版每帧重算，暂未用）
 
     SkinComponent() = default;
+
     SkinComponent(const SkinComponent &) = default;
 
     /// @brief 共享关节表（skin 为空时返回空表，读取安全）
@@ -371,48 +370,50 @@ struct SkinComponent {
 /// 一条动画通道：动某个节点的某条路径（TRS）
 struct AnimationChannel {
     enum class Interp : uint8_t { Linear = 0, Step = 1, CubicSpline = 2 };
+
     enum class Path : uint8_t { Translation = 0, Rotation = 1, Scale = 2 };
 
-    int         nodeIndex = -1;    ///< glTF 目标节点索引（导入期解析成实体）
-    Path        path = Path::Translation;
-    Interp      interp = Interp::Linear;
+    int nodeIndex = -1; ///< glTF 目标节点索引（导入期解析成实体）
+    Path path = Path::Translation;
+    Interp interp = Interp::Linear;
     // 键帧（按路径类型分存，避免每帧类型转换；rotation 已转 glm::quat 内存序）
-    std::vector<float>     times;           ///< 键帧时间（秒，单调递增）
-    std::vector<glm::vec3> vecKeys;         ///< translation / scale 值（每键帧一个）
-    std::vector<glm::quat> quatKeys;        ///< rotation 值（每键帧一个，wxyz 序）
+    std::vector<float> times; ///< 键帧时间（秒，单调递增）
+    std::vector<glm::vec3> vecKeys; ///< translation / scale 值（每键帧一个）
+    std::vector<glm::quat> quatKeys; ///< rotation 值（每键帧一个，wxyz 序）
 };
 
 /// 动画片段（模型级共享资源：与 SkinDef 同构，跨实体按 "path#N" 去重）
 struct AnimationClip {
-    std::string                     name;
-    std::string                     source;   ///< 源键 "path#N"（加载期由 AnimationClipManager 填，序列化回读用）
-    float                           duration = 0.0f;
-    std::vector<AnimationChannel>   channels;
+    std::string name;
+    std::string source; ///< 源键 "path#N"（加载期由 AnimationClipManager 填，序列化回读用）
+    float duration = 0.0f;
+    std::vector<AnimationChannel> channels;
 };
 
 /// 绑定到场景的动画实例：clip（共享键帧）+ 本次解析的目标实体
 struct ClipInstance {
     std::shared_ptr<AnimationClip> clip;
-    std::vector<entt::entity>      channelTargets;  ///< 与 clip->channels 一一对应（未解析为 null）
-    std::vector<uint32_t>          keyHints;        ///< 与 channels 一一对应：上次采样键帧下界（运行时缓存；不序列化）
+    std::vector<entt::entity> channelTargets; ///< 与 clip->channels 一一对应（未解析为 null）
+    std::vector<uint32_t> keyHints; ///< 与 channels 一一对应：上次采样键帧下界（运行时缓存；不序列化）
 };
 
 /// 动画组件：挂在带骨架的角色实体上（与 SkinComponent 同实体）
 struct AnimationComponent {
-    std::vector<ClipInstance> clips;   ///< 模型全部动画（mint 1 条）
-    size_t  active = 0;                 ///< 当前播放 clip 索引
-    float   time = 0.0f;                ///< 播放时间（秒）
-    float   speed = 1.0f;               ///< 播放倍速
-    bool    playing = true;             ///< 是否在播
-    bool    loop = true;                ///< 是否循环
+    std::vector<ClipInstance> clips; ///< 模型全部动画（mint 1 条）
+    size_t active = 0; ///< 当前播放 clip 索引
+    float time = 0.0f; ///< 播放时间（秒）
+    float speed = 1.0f; ///< 播放倍速
+    bool playing = true; ///< 是否在播
+    bool loop = true; ///< 是否循环
 
     // 运行时求值状态（不序列化）：记录上次实际应用过的采样时间。
     // 暂停时编辑器 Scrubber 只改 ac.time，据此判断是否需要重新采样应用姿态，
     // 而静止帧（无拖动）直接跳过免无用功。
-    float   appliedTime = 0.0f;         ///< 上次实际应用过的采样时间
-    bool    timeApplied = false;        ///< 是否至少应用过一次（首次帧强制应用，避免加载后停在绑定姿态）
+    float appliedTime = 0.0f; ///< 上次实际应用过的采样时间
+    bool timeApplied = false; ///< 是否至少应用过一次（首次帧强制应用，避免加载后停在绑定姿态）
 
     AnimationComponent() = default;
+
     AnimationComponent(const AnimationComponent &) = default;
 
     /// 便捷访问当前 clip（无动画返回 nullptr）
@@ -434,9 +435,9 @@ struct AnimationComponent {
  * - 也可直接使用 Camera 内置的交互（OnEvent、MoveForward 等）独立控制
  */
 struct CameraComponent {
-    Camera CameraInstance;           ///< 相机实例（包含投影、视图、交互等完整功能）
-    bool   Primary = true;           ///< 是否为主相机（场景中第一个主相机会被渲染器使用）
-    bool   FixedAspectRatio = false; ///< 是否固定宽高比（false 时随窗口大小自动调整）
+    Camera CameraInstance; ///< 相机实例（包含投影、视图、交互等完整功能）
+    bool Primary = true; ///< 是否为主相机（场景中第一个主相机会被渲染器使用）
+    bool FixedAspectRatio = false; ///< 是否固定宽高比（false 时随窗口大小自动调整）
 
     CameraComponent() = default;
 
@@ -477,7 +478,7 @@ struct CameraComponent {
  */
 struct PointLightComponent {
     glm::vec4 Color{1.0f, 1.0f, 1.0f, 1.0f}; ///< 光源颜色(rgb) + 强度(a)
-    float     RadiusInv = 0.5f;               ///< 光源影响半径倒数（衰减系数，越大衰减越快）
+    float RadiusInv = 0.5f; ///< 光源影响半径倒数（衰减系数，越大衰减越快）
 
     PointLightComponent() = default;
 
@@ -567,10 +568,10 @@ struct AmbientLightComponent {
  * SetSkyboxEnabled / SetIBLEnabled 驱动。可随场景序列化。
  */
 struct EnvironmentComponent {
-    std::string Name;               ///< 环境名，对应 environments/<Name>/ 子文件夹
-    bool Enabled = true;            ///< 环境总开关（关则天空盒 + IBL 一并关闭）
-    bool SkyboxEnabled = true;      ///< 天空盒背景开关
-    bool IBLEnabled = true;         ///< IBL 环境光开关
+    std::string Name; ///< 环境名，对应 environments/<Name>/ 子文件夹
+    bool Enabled = true; ///< 环境总开关（关则天空盒 + IBL 一并关闭）
+    bool SkyboxEnabled = true; ///< 天空盒背景开关
+    bool IBLEnabled = true; ///< IBL 环境光开关
 
     EnvironmentComponent() = default;
 
@@ -600,20 +601,23 @@ struct EnvironmentComponent {
  */
 struct RigidBodyComponent {
     Physics::RigidBodyType Type = Physics::RigidBodyType::Static; ///< 刚体类型
-    float Mass = 1.0f;        ///< 质量（kg，静态体/运动学体忽略）
-    float Friction = 0.6f;    ///< 摩擦系数（0~1）
+    float Mass = 1.0f; ///< 质量（kg，静态体/运动学体忽略）
+    float Friction = 0.6f; ///< 摩擦系数（0~1）
     float Restitution = 0.0f; ///< 弹性系数（0~1）
-    float LinearDamping = 0.05f;  ///< 线性阻尼
+    float LinearDamping = 0.05f; ///< 线性阻尼
     float AngularDamping = 0.05f; ///< 角阻尼
-    bool  IsSensor = false;   ///< 是否为触发器（不产生物理响应，只触发事件）
+    bool IsSensor = false; ///< 是否为触发器（不产生物理响应，只触发事件）
 
     // 运行时数据（不参与序列化）
     Physics::BodyID RuntimeBodyID{}; ///< Jolt Body 句柄（由 PhysicsWorld 设置）
-    bool IsInitialized = false;      ///< 是否已加入物理世界
+    bool IsInitialized = false; ///< 是否已加入物理世界
 
     RigidBodyComponent() = default;
+
     RigidBodyComponent(const RigidBodyComponent &) = default;
-    explicit RigidBodyComponent(Physics::RigidBodyType type) : Type(type) {}
+
+    explicit RigidBodyComponent(Physics::RigidBodyType type) : Type(type) {
+    }
 };
 
 /**
@@ -627,12 +631,15 @@ struct RigidBodyComponent {
  */
 struct BoxColliderComponent {
     glm::vec3 HalfExtents = {0.5f, 0.5f, 0.5f}; ///< 半尺寸
-    glm::vec3 Offset = {0.0f, 0.0f, 0.0f};      ///< 相对于刚体中心的偏移
+    glm::vec3 Offset = {0.0f, 0.0f, 0.0f}; ///< 相对于刚体中心的偏移
     bool DrawDebug = true; ///< 是否在视口叠加绘制该碰撞体调试线框（可单独关闭）
 
     BoxColliderComponent() = default;
+
     BoxColliderComponent(const BoxColliderComponent &) = default;
-    explicit BoxColliderComponent(const glm::vec3 &halfExtents) : HalfExtents(halfExtents) {}
+
+    explicit BoxColliderComponent(const glm::vec3 &halfExtents) : HalfExtents(halfExtents) {
+    }
 };
 
 /**
@@ -642,13 +649,16 @@ struct BoxColliderComponent {
  * 实体上可挂载多个碰撞体组件，PhysicsWorld 会合并为复合形状。
  */
 struct SphereColliderComponent {
-    float Radius = 0.5f;                       ///< 半径
-    glm::vec3 Offset = {0.0f, 0.0f, 0.0f};     ///< 偏移
+    float Radius = 0.5f; ///< 半径
+    glm::vec3 Offset = {0.0f, 0.0f, 0.0f}; ///< 偏移
     bool DrawDebug = true; ///< 是否在视口叠加绘制该碰撞体调试线框（可单独关闭）
 
     SphereColliderComponent() = default;
+
     SphereColliderComponent(const SphereColliderComponent &) = default;
-    explicit SphereColliderComponent(float radius) : Radius(radius) {}
+
+    explicit SphereColliderComponent(float radius) : Radius(radius) {
+    }
 };
 
 }

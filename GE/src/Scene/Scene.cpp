@@ -435,10 +435,10 @@ void Scene::UpdateAnimations(Timestep ts) {
         // 目标节点可能是皮肤关节的祖先/结构节点，经 DFS 传播子树全部关节）。
         // keyHints 与 channels 一一对应：缓存上次键帧下界，时间单调推进免二分。
         const auto &channels = clip->channels;
-        auto &inst     = ac.clips[ac.active];     // active 已由 activeClip 校验
-        auto &hints    = inst.keyHints;
+        auto &inst = ac.clips[ac.active]; // active 已由 activeClip 校验
+        auto &hints = inst.keyHints;
         if (hints.size() != channels.size()) {
-            hints.assign(channels.size(), 0u);    // 防御：装配路径缺失缓存时按 0 起步（走位仍收敛）
+            hints.assign(channels.size(), 0u); // 防御：装配路径缺失缓存时按 0 起步（走位仍收敛）
         }
         const auto &targets = inst.channelTargets;
         for (size_t ci = 0; ci < channels.size(); ++ci) {
@@ -451,14 +451,11 @@ void Scene::UpdateAnimations(Timestep ts) {
                 continue;
             }
             switch (ch.path) {
-            case AnimationChannel::Path::Translation:
-                tc->Translation = SampleVec3Channel(ch, ac.time, hints[ci]);
+            case AnimationChannel::Path::Translation: tc->Translation = SampleVec3Channel(ch, ac.time, hints[ci]);
                 break;
-            case AnimationChannel::Path::Rotation:
-                tc->Rotation = SampleQuatChannel(ch, ac.time, hints[ci]);
+            case AnimationChannel::Path::Rotation: tc->Rotation = SampleQuatChannel(ch, ac.time, hints[ci]);
                 break;
-            case AnimationChannel::Path::Scale:
-                tc->Scale = SampleVec3Channel(ch, ac.time, hints[ci]);
+            case AnimationChannel::Path::Scale: tc->Scale = SampleVec3Channel(ch, ac.time, hints[ci]);
                 break;
             }
         }
@@ -745,8 +742,8 @@ void Scene::RenderMeshes3D(const glm::mat4 &view, const glm::mat4 &projection,
         // 网格尚未注入）保守不剔除，避免瞬态误剔。
         const AABB &meshAabb = mc.MeshPtr->GetAABB();
         const bool meshVisible = isSkinned
-            || !meshAabb.IsValid()
-            || frustum.IsVisible(meshAabb.Transformed(tc.GetWorldMatrix()));
+                                 || !meshAabb.IsValid()
+                                 || frustum.IsVisible(meshAabb.Transformed(tc.GetWorldMatrix()));
         if (!meshVisible) {
             continue;
         }
@@ -807,7 +804,7 @@ void Scene::RenderSprites2D(const glm::mat4 &view, const glm::mat4 &projection) 
                 tc.GetWorldMatrix(),
                 sc.SpriteTexture,
                 sc.Color
-            );
+                );
         }
         r2d.EndScene();
     }
@@ -844,12 +841,11 @@ void Scene::RenderSprites2D(const glm::mat4 &view, const glm::mat4 &projection) 
                 sp.tc->GetWorldMatrix(),
                 sp.sc->SpriteTexture,
                 sp.sc->Color
-            );
+                );
         }
         r2d.EndScene();
     }
 }
-
 
 
 void Scene::OnEvent(Event &e) {
@@ -857,7 +853,7 @@ void Scene::OnEvent(Event &e) {
     //    是否转发输入事件由外层 Layer 依据「视口是否悬停」决定，此处不再判断。
 
     if (e.IsInCategory(EventCategoryInput)) {
-        DispatchInputEventToScripts(e);
+        //        DispatchInputEventToScripts(e);
         if (m_ProcessCameraInput && !e.Handled) {
             DispatchInputEventToCamera(e);
         }
@@ -873,107 +869,6 @@ void Scene::DispatchInputEventToCamera(Event &e) {
     cameraComp.CameraInstance.OnEvent(e);
 }
 
-void Scene::DispatchInputEventToScripts(Event &e) {
-    auto view = m_Registry.view<ScriptComponent>();
-    if (view.empty())
-        return;
-
-    EventDispatcher dispatcher(e);
-
-    // ---- 按键按下 ----
-    dispatcher.Dispatch<KeyPressedEvent>([&](KeyPressedEvent &ev) {
-        for (auto handle : view) {
-            auto &sc = view.get<ScriptComponent>(handle);
-            if (!sc.Enabled || !sc.OnKeyPressed)
-                continue;
-            Entity entity{handle, this};
-            if (sc.OnKeyPressed(entity, ev.GetKeyCode(), ev.GetRepeatCount())) {
-                ev.Handled = true;
-                return true;
-            }
-        }
-        return false;
-    });
-    if (e.Handled)
-        return;
-
-    // ---- 按键释放 ----
-    dispatcher.Dispatch<KeyReleasedEvent>([&](KeyReleasedEvent &ev) {
-        for (auto handle : view) {
-            auto &sc = view.get<ScriptComponent>(handle);
-            if (!sc.Enabled || !sc.OnKeyReleased)
-                continue;
-            Entity entity{handle, this};
-            if (sc.OnKeyReleased(entity, ev.GetKeyCode(), 0)) {
-                ev.Handled = true;
-                return true;
-            }
-        }
-        return false;
-    });
-    if (e.Handled)
-        return;
-
-    // ---- 鼠标按下 ----
-    dispatcher.Dispatch<MouseButtonPressedEvent>([&](MouseButtonPressedEvent &ev) {
-        for (auto handle : view) {
-            auto &sc = view.get<ScriptComponent>(handle);
-            if (!sc.Enabled || !sc.OnMouseButtonPressed)
-                continue;
-            Entity entity{handle, this};
-            if (sc.OnMouseButtonPressed(entity, ev.GetMouseButton())) {
-                ev.Handled = true;
-                return true;
-            }
-        }
-        return false;
-    });
-    if (e.Handled)
-        return;
-
-    // ---- 鼠标释放 ----
-    dispatcher.Dispatch<MouseButtonReleasedEvent>([&](MouseButtonReleasedEvent &ev) {
-        for (auto handle : view) {
-            auto &sc = view.get<ScriptComponent>(handle);
-            if (!sc.Enabled || !sc.OnMouseButtonReleased)
-                continue;
-            Entity entity{handle, this};
-            if (sc.OnMouseButtonReleased(entity, ev.GetMouseButton())) {
-                ev.Handled = true;
-                return true;
-            }
-        }
-        return false;
-    });
-    if (e.Handled)
-        return;
-
-    // ---- 鼠标移动（不消费事件） ----
-    dispatcher.Dispatch<MouseMovedEvent>([&](MouseMovedEvent &ev) {
-        for (auto handle : view) {
-            auto &sc = view.get<ScriptComponent>(handle);
-            if (!sc.Enabled || !sc.OnMouseMoved)
-                continue;
-            Entity entity{handle, this};
-            sc.OnMouseMoved(entity, ev.GetX(), ev.GetY());
-        }
-        return false;
-    });
-    if (e.Handled)
-        return;
-
-    // ---- 鼠标滚轮（不消费事件） ----
-    dispatcher.Dispatch<MouseScrolledEvent>([&](MouseScrolledEvent &ev) {
-        for (auto handle : view) {
-            auto &sc = view.get<ScriptComponent>(handle);
-            if (!sc.Enabled || !sc.OnMouseScrolled)
-                continue;
-            Entity entity{handle, this};
-            sc.OnMouseScrolled(entity, ev.GetXOffset(), ev.GetYOffset());
-        }
-        return false;
-    });
-}
 
 void Scene::OnViewportResize(const uint32_t width, const uint32_t height) {
     m_ViewportWidth = width;

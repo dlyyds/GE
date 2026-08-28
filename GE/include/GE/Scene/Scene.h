@@ -15,7 +15,10 @@ namespace GE {
 
 class Entity;
 class Event;
-namespace Physics { class PhysicsWorld; }
+
+namespace Physics {
+class PhysicsWorld;
+}
 
 class Scene {
 public:
@@ -111,7 +114,7 @@ public:
      * 两种模式均保守：AABB 无效或与任一平面相交都保留，避免误剔。
      */
     enum class CullingMode : uint8_t {
-        Mesh = 0,    ///< 仅整网格级剔除（默认，现有行为）
+        Mesh = 0, ///< 仅整网格级剔除（默认，现有行为）
         SubMesh = 1, ///< 网格级粗筛 + 子网格级细剔除
     };
 
@@ -169,8 +172,6 @@ private:
     /// 必须在 UpdateWorldTransforms（DFS 据此重算 world）之前调用。
     void UpdateAnimations(Timestep ts);
 
-    /// 将输入事件分发给所有 ScriptComponent
-    void DispatchInputEventToScripts(Event &e);
 
     /// 将输入事件路由给主相机（控制相机视角）
     void DispatchInputEventToCamera(Event &e);
@@ -181,13 +182,13 @@ private:
     /// 反向索引：parent → 直接子实体（保插入序）。
     /// 派生缓存：唯一真相在组件 TransformComponent::parent，
     /// 层级变更只走 SetParent 单一入口同步两处；可用 RebuildChildrenIndex 全量重建兜底。
-    std::unordered_map<entt::entity, std::vector<entt::entity>> m_ChildrenOf;
+    std::unordered_map<entt::entity, std::vector<entt::entity> > m_ChildrenOf;
 
     /// 一条皮肤每帧上传的关节矩阵记录（SkinDef 去重，同皮肤多 node 共享一条）。
     struct SkinJointUpload {
-        const void     *skinDef = nullptr;         ///< 共享皮肤定义（SkinDef*，去重键）
-        uint32_t        jointCount = 0;            ///< 关节数量
-        BufferAllocation jointBuffer;              ///< 关节矩阵 SSBO 分配（仅本帧有效，帧结束池重置）
+        const void *skinDef = nullptr; ///< 共享皮肤定义（SkinDef*，去重键）
+        uint32_t jointCount = 0; ///< 关节数量
+        BufferAllocation jointBuffer; ///< 关节矩阵 SSBO 分配（仅本帧有效，帧结束池重置）
     };
 
     /// 本帧所有 SkinComponent 的关节矩阵上传记录（UpdateSkins 填充，渲染读用）。

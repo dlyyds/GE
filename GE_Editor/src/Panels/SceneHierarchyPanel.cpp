@@ -1551,8 +1551,24 @@ void SceneHierarchyPanel::DrawScriptComponent(ScriptComponent &component, Entity
 
     if (!component.ScriptPath.empty()) {
         ImGui::SameLine();
-        if (ImGui::Button("清除脚本"))
+        if (ImGui::Button("清除脚本")) {
             component.ScriptPath.clear();
+            if (Scene *scene = entity.GetScene())
+                scene->GetScriptEngine().OnEntityDestroyed(static_cast<entt::entity>(entity));
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("重载")) {
+            // 清当前脚本文件的行为缓存并重建实例（重跑 OnCreate，实例字段保留）
+            if (Scene *scene = entity.GetScene())
+                scene->GetScriptEngine().Reload(component.ScriptPath);
+        }
+    }
+
+    // 状态行：是否已有运行实例
+    if (Scene *scene = entity.GetScene()) {
+        const bool mounted = scene->GetScriptEngine().HasInstance(static_cast<entt::entity>(entity));
+        ImGui::TextColored(mounted ? ImVec4(0.35f, 0.75f, 0.35f, 1.0f) : ImVec4(0.8f, 0.4f, 0.4f, 1.0f),
+                           mounted ? "状态: 已加载" : "状态: 未加载");
     }
 
     ImGui::TextDisabled("脚本位于 assets/scripts/（相对该目录，含 .lua 后缀）");

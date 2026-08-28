@@ -413,6 +413,10 @@ void ScriptEngine::OnEntityDestroyed(entt::entity entity) {
     eng.instances.erase(it);
 }
 
+bool ScriptEngine::HasInstance(entt::entity entity) const {
+    return m_Impl && m_Impl->instances.count(entity) > 0;
+}
+
 void ScriptEngine::Reload(const std::string &relPath) {
     if (!m_Impl || !m_Impl->scene)
         return;

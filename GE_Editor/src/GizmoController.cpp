@@ -36,9 +36,11 @@ void GizmoController::Render(const Camera &camera, const glm::vec2 &viewportPos,
     ImGuizmo::SetDrawlist(ImGui::GetWindowDrawList());
 
     // ---- 快捷键切换操作模式（W/E/R）----
-    if (ImGui::IsKeyPressed(ImGuiKey_W)) m_Operation = ImGuizmo::TRANSLATE;
-    if (ImGui::IsKeyPressed(ImGuiKey_E)) m_Operation = ImGuizmo::ROTATE;
-    if (ImGui::IsKeyPressed(ImGuiKey_R)) m_Operation = ImGuizmo::SCALE;
+    // Ctrl 按下时跳过（避免与 Ctrl+R 全局重载脚本冲突）
+    const bool ctrl = ImGui::IsKeyDown(ImGuiKey_LeftCtrl) || ImGui::IsKeyDown(ImGuiKey_RightCtrl);
+    if (!ctrl && ImGui::IsKeyPressed(ImGuiKey_W)) m_Operation = ImGuizmo::TRANSLATE;
+    if (!ctrl && ImGui::IsKeyPressed(ImGuiKey_E)) m_Operation = ImGuizmo::ROTATE;
+    if (!ctrl && ImGui::IsKeyPressed(ImGuiKey_R)) m_Operation = ImGuizmo::SCALE;
 
     // 'B' 切换包围盒编辑模式（仅对带 BoundingBoxComponent 的实体有效，见下方分支）
     if (ImGui::IsKeyPressed(ImGuiKey_B)) {

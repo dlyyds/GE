@@ -107,6 +107,12 @@ void DockSpaceLayer::OnImGuiRender() {
                 }
             }
             ImGui::Separator();
+            if (ImGui::MenuItem("重载所有脚本", "Ctrl+R")) {
+                if (m_SceneLayer) {
+                    m_SceneLayer->ReloadAllScripts();
+                }
+            }
+            ImGui::Separator();
             if (ImGui::MenuItem("重置布局")) {
                 // 清掉旧停靠节点，下一帧重建默认布局
                 ImGui::DockBuilderRemoveNode(dockspace_id);
@@ -115,6 +121,14 @@ void DockSpaceLayer::OnImGuiRender() {
             ImGui::EndMenu();
         }
         ImGui::EndMenuBar();
+    }
+
+    // 全局快捷键：Ctrl+R 重载所有 Lua 脚本（文本输入框聚焦时跳过，避免打字误触发）
+    const bool ctrl = ImGui::IsKeyDown(ImGuiKey_LeftCtrl) || ImGui::IsKeyDown(ImGuiKey_RightCtrl);
+    if (ctrl && !ImGui::GetIO().WantTextInput && ImGui::IsKeyPressed(ImGuiKey_R, false)) {
+        if (m_SceneLayer) {
+            m_SceneLayer->ReloadAllScripts();
+        }
     }
 
     ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_None);

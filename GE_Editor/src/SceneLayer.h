@@ -45,6 +45,9 @@ public:
     /// 新建空场景（清空当前场景内容），供顶部菜单调用
     void NewScene();
 
+    /// 重载当前场景内所有 Lua 脚本（Ctrl+R / 顶部菜单）
+    void ReloadAllScripts();
+
     /// 绑定 gizmo 控制器（在 Scene 视口内渲染变换 gizmo）
     void SetGizmoController(std::unique_ptr<GizmoController> gizmo);
 

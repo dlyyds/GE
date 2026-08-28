@@ -849,7 +849,16 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
         }
 
         // ---- ScriptComponent ----
-        // 不序列化：std::function 无法持久化
+        // 只落 ScriptPath + Enabled（行为表是引擎注入的共享函数，Lua 状态随场景重建）。
+        // 空路径 = 未挂载，不写块；旧场景无 Script 键照常加载。
+        if (entity.HasComponent<ScriptComponent>()) {
+            const auto &sc = entity.GetComponent<ScriptComponent>();
+            if (!sc.ScriptPath.empty()) {
+                YAML::Node scriptNode = entityNode["Script"];
+                scriptNode["ScriptPath"] = sc.ScriptPath;
+                scriptNode["Enabled"] = sc.Enabled;
+            }
+        }
 
         // ---- AnimationComponent（骨骼动画驱动）----
         // 结构中各 clip 是共享键帧（模型级不变量），此处只持久化引用与实例状态：
@@ -1279,7 +1288,15 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
         }
 
         // ---- ScriptComponent ----
-        // 不反序列化：无法恢复回调函数
+        // 反序列化即直接挂载：AddComponent 触发 OnComponentAdded → ScriptEngine 建实例。
+        // 脚本文件缺失 → ScriptEngine 发 warn 并置 Enabled=false（§9.6），不打断加载。
+        if (entityNode["Script"] && entityNode["Script"]["ScriptPath"]) {
+            auto &sc = entity.AddComponent<ScriptComponent>(
+                entityNode["Script"]["ScriptPath"].as<std::string>());
+            sc.Enabled = entityNode["Script"]["Enabled"]
+                             ? entityNode["Script"]["Enabled"].as<bool>()
+                             : true;
+        }
 
         entityCount++;
     }

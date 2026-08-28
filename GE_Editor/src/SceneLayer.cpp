@@ -748,4 +748,10 @@ void SceneLayer::NewScene() {
     m_Context->Scene = std::make_unique<Scene>();
 }
 
+void SceneLayer::ReloadAllScripts() {
+    if (m_Context && m_Context->Scene) {
+        m_Context->Scene->GetScriptEngine().ReloadAll();
+    }
+}
+
 } // namespace GE

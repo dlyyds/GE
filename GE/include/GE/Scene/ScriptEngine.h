@@ -43,6 +43,9 @@ public:
     /// 实体销毁/移除组件：调 OnDestroy 并清除实例。
     void OnEntityDestroyed(entt::entity entity);
 
+    /// 查询实体是否已有脚本运行实例（面板状态行用）。
+    bool HasInstance(entt::entity entity) const;
+
     /// 热重载单脚本（清行为缓存，使用它的实例 OnDestroy→重建→重跑 OnCreate，实例字段保留）。
     void Reload(const std::string &relPath);
 

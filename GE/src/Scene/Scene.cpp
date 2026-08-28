@@ -924,6 +924,8 @@ void Scene::OnComponentAdded<SpriteRendererComponent>(Entity entity, SpriteRende
 
 template <>
 void Scene::OnComponentAdded<ScriptComponent>(Entity entity, ScriptComponent &component) {
+    // 挂载/预加载 Lua 行为表并建实例（空路径跳过）
+    m_ScriptEngine.OnComponentAdded(static_cast<entt::entity>(entity));
 }
 
 template <>
@@ -964,12 +966,6 @@ void Scene::OnComponentAdded<AmbientLightComponent>(Entity entity, AmbientLightC
 
 template <>
 void Scene::OnComponentAdded<EnvironmentComponent>(Entity entity, EnvironmentComponent &component) {
-}
-
-template <>
-void Scene::OnComponentAdded<ScriptComponent>(Entity entity, ScriptComponent &component) {
-    // 挂载/预加载 Lua 行为表并建实例（空路径跳过）
-    m_ScriptEngine.OnComponentAdded(static_cast<entt::entity>(entity));
 }
 
 template <>

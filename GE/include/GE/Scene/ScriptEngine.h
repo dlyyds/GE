@@ -10,6 +10,8 @@ namespace GE {
 
 class Scene;
 
+struct Impl; ///< 持 sol::state（命名空间级前向声明，头文件不引 sol，隔离编译）
+
 /**
  * @brief Lua 脚本运行时管理器 —— 每个 Scene 一个，共享一个 Lua 状态（Lua 5.4 + sol2）。
  *
@@ -51,7 +53,6 @@ public:
     void Shutdown();
 
 private:
-    struct Impl;                        ///< 持 sol::state（头文件不引 sol，隔离编译）
     std::unique_ptr<Impl> m_Impl;
 };
 

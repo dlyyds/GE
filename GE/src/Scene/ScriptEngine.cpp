@@ -21,9 +21,9 @@
 namespace GE {
 
 // ------------------------------------------------------------------
-// ScriptEngine::Impl 定义（头文件仅前向声明，隔离 sol）
+// Impl 定义（头文件仅前向声明，隔离 sol）
 // ------------------------------------------------------------------
-struct ScriptEngine::Impl {
+struct Impl {
     sol::state lua;
     Scene *scene = nullptr;
     std::string baseDir;                                     ///< 以 '/' 结尾
@@ -84,7 +84,7 @@ constexpr MouseName kMouseNames[] = {
 };
 
 // 读/写当前活动实体的 Transform（无则返回 nullptr）
-TransformComponent *ActiveTransform(ScriptEngine::Impl &eng) {
+TransformComponent *ActiveTransform(Impl &eng) {
     if (!eng.scene || eng.activeEntity == entt::null)
         return nullptr;
     return eng.scene->Reg().try_get<TransformComponent>(eng.activeEntity);
@@ -100,7 +100,7 @@ std::string ReadFileContents(const std::string &path) {
 }
 
 // 注入脚本 API：log / input / transform / entity / Key / Mouse
-void RegisterApi(ScriptEngine::Impl &eng) {
+void RegisterApi(Impl &eng) {
     sol::state &lua = eng.lua;
 
     // ---- log → spdlog ----
@@ -241,7 +241,7 @@ void RegisterApi(ScriptEngine::Impl &eng) {
 }
 
 // 加载并缓存行为表；失败返回 false（调用方决定告警/禁用）
-bool EnsureBehavior(ScriptEngine::Impl &eng, const std::string &relPath) {
+bool EnsureBehavior(Impl &eng, const std::string &relPath) {
     if (eng.behaviors.count(relPath))
         return true;
 
@@ -268,7 +268,7 @@ bool EnsureBehavior(ScriptEngine::Impl &eng, const std::string &relPath) {
 }
 
 // 建实例表：空表 + metatable(__index → 行为表)，字段赋值落实例、函数走共享行为表
-sol::table MakeInstance(ScriptEngine::Impl &eng, const std::string &relPath) {
+sol::table MakeInstance(Impl &eng, const std::string &relPath) {
     sol::table behavior = eng.behaviors.at(relPath);
     sol::table inst = eng.lua.create_table();
     sol::table mt = eng.lua.create_table();
@@ -278,7 +278,7 @@ sol::table MakeInstance(ScriptEngine::Impl &eng, const std::string &relPath) {
 }
 
 // 调用实例函数(self, args...)。功能未定义 → false；运行出错 → 日志 + false（隔离，不拖垮引擎）。
-bool CallHook(ScriptEngine::Impl &eng, sol::table &inst, const char *name) {
+bool CallHook(Impl &eng, sol::table &inst, const char *name) {
     sol::object fn = inst[name];
     if (fn.get_type() != sol::type::function)
         return false; // 未定义该函数
@@ -298,7 +298,7 @@ bool CallHook(ScriptEngine::Impl &eng, sol::table &inst, const char *name) {
 }
 
 template <typename T>
-bool CallHook(ScriptEngine::Impl &eng, sol::table &inst, const char *name, T &&arg) {
+bool CallHook(Impl &eng, sol::table &inst, const char *name, T &&arg) {
     sol::object fn = inst[name];
     if (fn.get_type() != sol::type::function)
         return false;

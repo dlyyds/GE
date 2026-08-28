@@ -801,6 +801,7 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
             YAML::Node boxNode = entityNode["BoxCollider"];
             boxNode["HalfExtents"] = SerializeVec3(bcc.HalfExtents);
             boxNode["Offset"] = SerializeVec3(bcc.Offset);
+            boxNode["DrawDebug"] = bcc.DrawDebug;
         }
 
         // ---- BoundingBoxComponent（实体级粗剔除盒，编辑器 gizmo 手动摆放）----
@@ -817,6 +818,7 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
             YAML::Node sphereNode = entityNode["SphereCollider"];
             sphereNode["Radius"] = scc.Radius;
             sphereNode["Offset"] = SerializeVec3(scc.Offset);
+            sphereNode["DrawDebug"] = scc.DrawDebug;
         }
 
         // ---- JointComponent（骨骼关节标记）----
@@ -1205,6 +1207,7 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
 
             bcc.HalfExtents = DeserializeVec3(boxNode["HalfExtents"], {0.5f, 0.5f, 0.5f});
             bcc.Offset = DeserializeVec3(boxNode["Offset"], {0.0f, 0.0f, 0.0f});
+            bcc.DrawDebug = boxNode["DrawDebug"] ? boxNode["DrawDebug"].as<bool>(true) : true;
         }
 
         // ---- BoundingBoxComponent ----
@@ -1223,6 +1226,7 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
 
             scc.Radius = sphereNode["Radius"] ? sphereNode["Radius"].as<float>(0.5f) : 0.5f;
             scc.Offset = DeserializeVec3(sphereNode["Offset"], {0.0f, 0.0f, 0.0f});
+            scc.DrawDebug = sphereNode["DrawDebug"] ? sphereNode["DrawDebug"].as<bool>(true) : true;
         }
 
         // ---- JointComponent（骨骼关节标记）----

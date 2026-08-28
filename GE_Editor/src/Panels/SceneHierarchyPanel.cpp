@@ -1211,6 +1211,10 @@ void SceneHierarchyPanel::DrawBoxColliderComponent(Entity entity, BoxColliderCom
     Physics::PhysicsWorld *physicsWorld = m_Context->GetPhysicsWorld();
     const auto entityHandle = (entt::entity)entity;
 
+    // 碰撞体调试线框单独开关（仅影响视口叠加显示，不涉及物理）
+    ImGui::Checkbox("Draw Debug", &component.DrawDebug);
+    ImGui::Separator();
+
     // 形状改变 → 重建刚体
     if (DrawVec3Control("Half Extents", component.HalfExtents, 0.5f, 120)) {
         if (physicsWorld)
@@ -1228,6 +1232,10 @@ void SceneHierarchyPanel::DrawBoxColliderComponent(Entity entity, BoxColliderCom
 void SceneHierarchyPanel::DrawSphereColliderComponent(Entity entity, SphereColliderComponent &component) {
     Physics::PhysicsWorld *physicsWorld = m_Context->GetPhysicsWorld();
     const auto entityHandle = (entt::entity)entity;
+
+    // 碰撞体调试线框单独开关（仅影响视口叠加显示，不涉及物理）
+    ImGui::Checkbox("Draw Debug", &component.DrawDebug);
+    ImGui::Separator();
 
     // 形状改变 → 重建刚体
     if (ImGui::DragFloat("Radius", &component.Radius, 0.05f, 0.001f, 1000.0f)) {

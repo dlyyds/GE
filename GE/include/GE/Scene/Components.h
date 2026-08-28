@@ -628,6 +628,7 @@ struct RigidBodyComponent {
 struct BoxColliderComponent {
     glm::vec3 HalfExtents = {0.5f, 0.5f, 0.5f}; ///< 半尺寸
     glm::vec3 Offset = {0.0f, 0.0f, 0.0f};      ///< 相对于刚体中心的偏移
+    bool DrawDebug = true; ///< 是否在视口叠加绘制该碰撞体调试线框（可单独关闭）
 
     BoxColliderComponent() = default;
     BoxColliderComponent(const BoxColliderComponent &) = default;
@@ -643,6 +644,7 @@ struct BoxColliderComponent {
 struct SphereColliderComponent {
     float Radius = 0.5f;                       ///< 半径
     glm::vec3 Offset = {0.0f, 0.0f, 0.0f};     ///< 偏移
+    bool DrawDebug = true; ///< 是否在视口叠加绘制该碰撞体调试线框（可单独关闭）
 
     SphereColliderComponent() = default;
     SphereColliderComponent(const SphereColliderComponent &) = default;

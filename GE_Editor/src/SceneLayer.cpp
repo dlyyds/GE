@@ -598,8 +598,8 @@ void SceneLayer::DrawColliders(const glm::vec2 &imagePos) {
         }
         const glm::quat &rot = tc.Rotation;
 
-        // ---- 盒子碰撞体：中心 = T + R*Offset，半尺寸含比例 ----
-        if (box) {
+        // ---- 盒子碰撞体：中心 = T + R*Offset，半尺寸含比例；DrawDebug 关闭则不画 ----
+        if (box && box->DrawDebug) {
             const glm::vec3 center = tc.Translation + rot * box->Offset;
             const glm::vec3 half = box->HalfExtents * tc.Scale;
 
@@ -658,8 +658,8 @@ void SceneLayer::DrawColliders(const glm::vec2 &imagePos) {
             }
         }
 
-        // ---- 球体碰撞体：中心 = T + R*Offset，半径取比例最大值（与 Jolt 一致）----
-        if (sphere) {
+        // ---- 球体碰撞体：中心 = T + R*Offset，半径取比例最大值（与 Jolt 一致）；DrawDebug 关闭则不画 ----
+        if (sphere && sphere->DrawDebug) {
             const glm::vec3 center = tc.Translation + rot * sphere->Offset;
             const float radius = sphere->Radius
                                  * std::max({tc.Scale.x, tc.Scale.y, tc.Scale.z});

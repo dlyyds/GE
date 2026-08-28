@@ -566,6 +566,58 @@ void SceneLayer::DrawColliders(const glm::vec2 &imagePos) {
         if (box) {
             const glm::vec3 center = tc.Translation + rot * box->Offset;
             const glm::vec3 half = box->HalfExtents * tc.Scale;
+
+            // 画一个局部空间矩形线框环（4 角按 0-1-2-3-0 成环），边跨相机背面则跳过
+            const auto drawLocalRect = [&](const glm::vec3 (&v)[4]) {
+                glm::vec2 sc[4];
+                bool ft[4] = {};
+                for (int k = 0; k < 4; ++k) {
+                    ft[k] = projectPoint(center + rot * v[k], sc[k]);
+                }
+                for (int e = 0; e < 4; ++e) {
+                    const int a = e, b = (e + 1) % 4;
+                    if (ft[a] && ft[b]) {
+                        dl->AddLine(ImVec2(sc[a].x, sc[a].y), ImVec2(sc[b].x, sc[b].y),
+                                    colliderColor, 1.2f);
+                    }
+                }
+            };
+
+            // 沿某轴画均匀内切片线：在 [-h,h] 内取 i/n 处的切片矩形，让大地这类
+            // 大碰撞框不再只是孤零零的 12 条外棱。切片条数按该轴尺寸自适应：
+            // < 4 单位不加，越大加得越密（上限 10）。
+            const auto subdivFor = [](float h) -> int {
+                const float size = 2.0f * h;
+                if (size < 4.0f) {
+                    return 0;
+                }
+                return std::clamp(static_cast<int>(size / 2.0f), 2, 10);
+            };
+            const auto drawSlices = [&](int axis, int n) {
+                for (int i = 1; i < n; ++i) {
+                    const float pos = -half[axis] + (2.0f * half[axis] * i) / n;
+                    glm::vec3 v[4];
+                    for (int k = 0; k < 4; ++k) {
+                        glm::vec3 p(0.0f);
+                        p[axis] = pos;
+                        int idx = 0;
+                        for (int a = 0; a < 3; ++a) {
+                            if (a == axis) {
+                                continue;
+                            }
+                            p[a] = ((k >> idx) & 1) ? half[a] : -half[a];
+                            ++idx;
+                        }
+                        v[k] = p;
+                    }
+                    drawLocalRect(v);
+                }
+            };
+            drawSlices(0, subdivFor(half.x));
+            drawSlices(1, subdivFor(half.y));
+            drawSlices(2, subdivFor(half.z));
+
+            // 外棱：12 条边（下标约定与 DrawWorldBounds 一致）
             glm::vec2 scr[8];
             bool front[8] = {};
             for (int i = 0; i < 8; ++i) {

@@ -360,6 +360,7 @@ bool GLTFSceneImporter::Import(Scene &scene, MeshManager &meshManager,
                             inst.channelTargets.push_back(entt::null);
                         }
                     }
+                    inst.keyHints.assign(clip->channels.size(), 0u); // 采样键帧下界缓存初始化（阶段 A）
                     animComp.clips.push_back(std::move(inst));
                     GE_CORE_INFO("[Anim] 动画[{}] '{}' 已接入: {} channel, 时长 {:.3f}s, "
                                  "有效目标 {} 个",

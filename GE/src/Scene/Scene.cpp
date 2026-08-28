@@ -44,29 +44,45 @@ void WarnCubicSplineOnce() {
 }
 
 /**
- * @brief 定位时间 t 所在的键帧区间左端 k0。
+ * @brief 定位时间 t 所在的键帧区间左端 k0（带缓存）。
  *
  * k0 = 最后一个 times[i] <= t 的索引（upper_bound - 1）。
- * 在 t 于首尾两键之间时调用；t 恰在某键上时 k0 指向该键（STEP 取该键值、LINEAR 该点 t01=0）。
+ * hint 携带上次采样的 k0：时间单调推进时从 hint 向右/向左线性走几步即达（O(1) 均摊），
+ * 大跨度跳变（Scrubber / 切 clip）也能向正确方向走满收敛；hint 越界视为未初始化，
+ * 回退全区间二分自愈。改造前后采样结果逐位一致（阶段 A 验收标准）。
  */
-size_t FindActiveKey(const std::vector<float> &times, float t) {
-    return static_cast<size_t>(std::upper_bound(times.begin(), times.end(), t)
-                               - times.begin()) - 1u;
+size_t FindActiveKey(const std::vector<float> &times, float t, uint32_t &hint) {
+    if (hint >= times.size()) {
+        hint = static_cast<uint32_t>(std::upper_bound(times.begin(), times.end(), t)
+                                     - times.begin()) - 1u;
+        return hint;
+    }
+    size_t k = hint;
+    while (k + 1 < times.size() && times[k + 1] <= t) {
+        ++k; // 时间前进：向右扫
+    }
+    while (k > 0 && times[k] > t) {
+        --k; // 时间后退（倒放 / 回拖）：向左扫
+    }
+    hint = static_cast<uint32_t>(k);
+    return k;
 }
 
 /// vec3 通道采样：LINEAR 线性插值；STEP 取前一键值；CUBICSPLINE 按 LINEAR 近似。
-glm::vec3 SampleVec3Channel(const AnimationChannel &ch, float t) {
+glm::vec3 SampleVec3Channel(const AnimationChannel &ch, float t, uint32_t &hint) {
     const size_t n = ch.times.size();
     if (n == 0) {
         return glm::vec3(0.0f);
     }
     if (t <= ch.times.front()) {
+        hint = 0;
         return ch.vecKeys.front();
     }
     if (t >= ch.times.back()) {
+        hint = static_cast<uint32_t>(n - 1u);
         return ch.vecKeys.back();
     }
-    const size_t k0 = FindActiveKey(ch.times, t);
+    const size_t k0 = FindActiveKey(ch.times, t, hint);
     if (ch.interp == AnimationChannel::Interp::Step) {
         return ch.vecKeys[k0]; // STEP：保持前一键值
     }
@@ -78,18 +94,20 @@ glm::vec3 SampleVec3Channel(const AnimationChannel &ch, float t) {
 }
 
 /// quat 通道采样：LINEAR 用 slerp；STEP 取前一键值；CUBICSPLINE 近似 slerp。
-glm::quat SampleQuatChannel(const AnimationChannel &ch, float t) {
+glm::quat SampleQuatChannel(const AnimationChannel &ch, float t, uint32_t &hint) {
     const size_t n = ch.times.size();
     if (n == 0) {
         return glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
     }
     if (t <= ch.times.front()) {
+        hint = 0;
         return ch.quatKeys.front();
     }
     if (t >= ch.times.back()) {
+        hint = static_cast<uint32_t>(n - 1u);
         return ch.quatKeys.back();
     }
-    const size_t k0 = FindActiveKey(ch.times, t);
+    const size_t k0 = FindActiveKey(ch.times, t, hint);
     if (ch.interp == AnimationChannel::Interp::Step) {
         return ch.quatKeys[k0];
     }
@@ -404,9 +422,15 @@ void Scene::UpdateAnimations(Timestep ts) {
         }
 
         // 逐通道采样 → 写目标实体的局部 TRS（局部字段，随后的 DFS 重算 world；
-        // 目标节点可能是皮肤关节的祖先/结构节点，经 DFS 传播子树全部关节）
-        const auto &targets = ac.clips[ac.active].channelTargets; // active 已由 activeClip 校验
+        // 目标节点可能是皮肤关节的祖先/结构节点，经 DFS 传播子树全部关节）。
+        // keyHints 与 channels 一一对应：缓存上次键帧下界，时间单调推进免二分。
         const auto &channels = clip->channels;
+        auto &inst     = ac.clips[ac.active];     // active 已由 activeClip 校验
+        auto &hints    = inst.keyHints;
+        if (hints.size() != channels.size()) {
+            hints.assign(channels.size(), 0u);    // 防御：装配路径缺失缓存时按 0 起步（走位仍收敛）
+        }
+        const auto &targets = inst.channelTargets;
         for (size_t ci = 0; ci < channels.size(); ++ci) {
             const auto &ch = channels[ci];
             if (ci >= targets.size() || targets[ci] == entt::null) {
@@ -418,13 +442,13 @@ void Scene::UpdateAnimations(Timestep ts) {
             }
             switch (ch.path) {
             case AnimationChannel::Path::Translation:
-                tc->Translation = SampleVec3Channel(ch, ac.time);
+                tc->Translation = SampleVec3Channel(ch, ac.time, hints[ci]);
                 break;
             case AnimationChannel::Path::Rotation:
-                tc->Rotation = SampleQuatChannel(ch, ac.time);
+                tc->Rotation = SampleQuatChannel(ch, ac.time, hints[ci]);
                 break;
             case AnimationChannel::Path::Scale:
-                tc->Scale = SampleVec3Channel(ch, ac.time);
+                tc->Scale = SampleVec3Channel(ch, ac.time, hints[ci]);
                 break;
             }
         }

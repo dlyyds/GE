@@ -1248,25 +1248,39 @@ void SceneHierarchyPanel::DrawSphereColliderComponent(Entity entity, SphereColli
 // GE/src/Scene/Scene.cpp 的 SampleVec3Channel/SampleQuatChannel 保持同步
 // （CUBICSPLINE 目前两边都按 LINEAR 近似；引擎若升级 Hermite，此处须同步）。----
 
-/// 定位时间 t 所在的键帧区间左端（划入 active keyk0，同 Scene.cpp FindActiveKey）
-static size_t AnimFindActiveKey(const std::vector<float> &times, float t) {
-    return static_cast<size_t>(std::upper_bound(times.begin(), times.end(), t)
-                               - times.begin()) - 1u;
+/// 定位时间 t 所在的键帧区间左端 k0（划入 active key，同 Scene.cpp FindActiveKey 带缓存版）
+static size_t AnimFindActiveKey(const std::vector<float> &times, float t, uint32_t &hint) {
+    if (hint >= times.size()) {
+        hint = static_cast<uint32_t>(std::upper_bound(times.begin(), times.end(), t)
+                                     - times.begin()) - 1u;
+        return hint;
+    }
+    size_t k = hint;
+    while (k + 1 < times.size() && times[k + 1] <= t) {
+        ++k; // 时间前进：向右扫
+    }
+    while (k > 0 && times[k] > t) {
+        --k; // 时间后退：向左扫
+    }
+    hint = static_cast<uint32_t>(k);
+    return k;
 }
 
 /// vec3 通道采样：LINEAR 线性插值；STEP 取前一键值；CUBICSPLINE 按 LINEAR 近似
-static glm::vec3 SampleAnimVec3(const AnimationChannel &ch, float t) {
+static glm::vec3 SampleAnimVec3(const AnimationChannel &ch, float t, uint32_t &hint) {
     const size_t n = ch.times.size();
     if (n == 0) {
         return glm::vec3(0.0f);
     }
     if (t <= ch.times.front()) {
+        hint = 0;
         return ch.vecKeys.front();
     }
     if (t >= ch.times.back()) {
+        hint = static_cast<uint32_t>(n - 1u);
         return ch.vecKeys.back();
     }
-    const size_t k0 = AnimFindActiveKey(ch.times, t);
+    const size_t k0 = AnimFindActiveKey(ch.times, t, hint);
     if (ch.interp == AnimationChannel::Interp::Step) {
         return ch.vecKeys[k0]; // STEP：保持前一键值
     }
@@ -1275,18 +1289,20 @@ static glm::vec3 SampleAnimVec3(const AnimationChannel &ch, float t) {
 }
 
 /// quat 通道采样：LINEAR 用 slerp；STEP 取前一键值；CUBICSPLINE 近似 slerp
-static glm::quat SampleAnimQuat(const AnimationChannel &ch, float t) {
+static glm::quat SampleAnimQuat(const AnimationChannel &ch, float t, uint32_t &hint) {
     const size_t n = ch.times.size();
     if (n == 0) {
         return glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
     }
     if (t <= ch.times.front()) {
+        hint = 0;
         return ch.quatKeys.front();
     }
     if (t >= ch.times.back()) {
+        hint = static_cast<uint32_t>(n - 1u);
         return ch.quatKeys.back();
     }
-    const size_t k0 = AnimFindActiveKey(ch.times, t);
+    const size_t k0 = AnimFindActiveKey(ch.times, t, hint);
     if (ch.interp == AnimationChannel::Interp::Step) {
         return ch.quatKeys[k0];
     }
@@ -1405,6 +1421,10 @@ bool SceneHierarchyPanel::AutoFitBoundingBoxToJoints(Scene *scene, Entity entity
             }
             const auto &targets = inst.channelTargets;
 
+            // 采样时间轴单调递增 → 每 channel 独立缓存键帧下界（阶段 A：扫帧整体受益最大）。
+            // 每个 clip 从头独立扫，故用本地数组、不复用 ClipInstance 的运行时缓存。
+            std::vector<uint32_t> keyHints(clip->channels.size(), 0u);
+
             // 采样时刻：均匀网格（限流，含首尾）+ 全部键帧时刻
             // （键帧时刻覆盖 STEP 跳变与旋转弧极值不在网格上的情形）
             std::vector<float> times;
@@ -1441,13 +1461,13 @@ bool SceneHierarchyPanel::AutoFitBoundingBoxToJoints(Scene *scene, Entity entity
                     auto &lt = localTrs[target];
                     switch (ch.path) {
                     case AnimationChannel::Path::Translation:
-                        lt.Translation = SampleAnimVec3(ch, t);
+                        lt.Translation = SampleAnimVec3(ch, t, keyHints[ci]);
                         break;
                     case AnimationChannel::Path::Rotation:
-                        lt.Rotation = SampleAnimQuat(ch, t);
+                        lt.Rotation = SampleAnimQuat(ch, t, keyHints[ci]);
                         break;
                     case AnimationChannel::Path::Scale:
-                        lt.Scale = SampleAnimVec3(ch, t);
+                        lt.Scale = SampleAnimVec3(ch, t, keyHints[ci]);
                         break;
                     }
                 }

@@ -394,6 +394,7 @@ struct AnimationClip {
 struct ClipInstance {
     std::shared_ptr<AnimationClip> clip;
     std::vector<entt::entity>      channelTargets;  ///< 与 clip->channels 一一对应（未解析为 null）
+    std::vector<uint32_t>          keyHints;        ///< 与 channels 一一对应：上次采样键帧下界（运行时缓存；不序列化）
 };
 
 /// 动画组件：挂在带骨架的角色实体上（与 SkinComponent 同实体）

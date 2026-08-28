@@ -1383,6 +1383,7 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
                                                   ? static_cast<entt::entity>(it->second)
                                                   : entt::null);
             }
+            inst.keyHints.assign(clip->channels.size(), 0u); // 采样键帧下界缓存初始化（阶段 A）
             ac.clips.push_back(std::move(inst));
         }
         ac.active = (p.active < ac.clips.size()) ? p.active : 0;

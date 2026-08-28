@@ -544,14 +544,50 @@ void SceneLayer::DrawColliders(const glm::vec2 &imagePos) {
     const ImU32 colliderColor =
         ImGui::ColorConvertFloat4ToU32(ImVec4(0.25f, 0.80f, 0.90f, 1.0f));
 
-    // 世界点 → 屏幕点；返回 false 表示点在相机背面
-    const auto projectPoint = [&](const glm::vec3 &world, glm::vec2 &out) -> bool {
-        return ProjectWorldToScreen(viewProjGL, world, origin, size, out);
+    // 线段 → 屏幕坐标：先裁剪到相机近平面再投影，不做相机背面裁剪。
+    // 一端在相机背面时把端点裁到近平面上，整段在视线内的照常画出，
+    // 避免大地这类大框在相机靠近/进入时线被整批丢弃。
+    // 返回 false 表示线段完全在相机背面，无可见部分。
+    const auto projectSegment = [&](const glm::vec3 &a, const glm::vec3 &b,
+                                    glm::vec2 &sa, glm::vec2 &sb) -> bool {
+        constexpr float kNearW = 1e-3f;
+        const glm::vec4 ca = viewProjGL * glm::vec4(a, 1.0f);
+        const glm::vec4 cb = viewProjGL * glm::vec4(b, 1.0f);
+        const bool aFront = ca.w > kNearW;
+        const bool bFront = cb.w > kNearW;
+        if (!aFront && !bFront) {
+            return false; // 整段在相机背面
+        }
+        glm::vec4 cA = ca, cB = cb;
+        if (aFront && !bFront) { // b 在背面：沿线段插值到近平面
+            const float t = (kNearW - cb.w) / (ca.w - cb.w);
+            cB = cb + (ca - cb) * t;
+            cB.w = kNearW;
+        } else if (!aFront && bFront) { // a 在背面：沿线段插值到近平面
+            const float t = (kNearW - ca.w) / (cb.w - ca.w);
+            cA = ca + (cb - ca) * t;
+            cA.w = kNearW;
+        }
+        const auto toPos = [&](const glm::vec4 &c) {
+            return glm::vec2(origin.x + (0.5f + c.x / c.w * 0.5f) * size.x,
+                             origin.y + (0.5f - c.y / c.w * 0.5f) * size.y);
+        };
+        sa = toPos(cA);
+        sb = toPos(cB);
+        return true;
+    };
+
+    // 画一条世界坐标线段（内部经过近平面裁剪）
+    const auto drawWorldSegment = [&](const glm::vec3 &a, const glm::vec3 &b) {
+        glm::vec2 sa, sb;
+        if (projectSegment(a, b, sa, sb)) {
+            dl->AddLine(ImVec2(sa.x, sa.y), ImVec2(sb.x, sb.y), colliderColor, 1.2f);
+        }
     };
 
     // 遍历刚体实体，仅绘制真正进入了物理世界的碰撞体（需同时具备刚体 + 碰撞体）。
     // 变换语义与 PhysicsWorld::BuildShapeForEntity 一致：用实体局部 TRS，
-    // 半尺寸 = HalfExtents*Scale（比例烘焙进形状），Offset 只旋转不乘比例。
+    // 半尺寸/半径乘比例烘焙进形状，Offset 只旋转不乘比例。
     const auto rbView = m_Context->Scene->Reg().view<TransformComponent, RigidBodyComponent>();
     for (auto entity : rbView) {
         const auto &tc = rbView.get<TransformComponent>(entity);
@@ -567,24 +603,9 @@ void SceneLayer::DrawColliders(const glm::vec2 &imagePos) {
             const glm::vec3 center = tc.Translation + rot * box->Offset;
             const glm::vec3 half = box->HalfExtents * tc.Scale;
 
-            // 画一个局部空间矩形线框环（4 角按 0-1-2-3-0 成环），边跨相机背面则跳过
-            const auto drawLocalRect = [&](const glm::vec3 (&v)[4]) {
-                glm::vec2 sc[4];
-                bool ft[4] = {};
-                for (int k = 0; k < 4; ++k) {
-                    ft[k] = projectPoint(center + rot * v[k], sc[k]);
-                }
-                for (int e = 0; e < 4; ++e) {
-                    const int a = e, b = (e + 1) % 4;
-                    if (ft[a] && ft[b]) {
-                        dl->AddLine(ImVec2(sc[a].x, sc[a].y), ImVec2(sc[b].x, sc[b].y),
-                                    colliderColor, 1.2f);
-                    }
-                }
-            };
-
-            // 沿某轴画均匀内切片线：在 [-h,h] 内取 i/n 处的切片矩形，让大地这类
-            // 大碰撞框不再只是孤零零的 12 条外棱。切片条数按该轴尺寸自适应：
+            // 沿某轴画均匀内切片网格：在 [-h,h] 内取 i/n 处画矩形线框环，
+            // 环的四条边都平行于盒子的棱（轴对齐截面，随刚体旋转），让大地这类
+            // 大碰撞框的边界不再只是孤零零的 12 条外棱。条数按该轴尺寸自适应：
             // < 4 单位不加，越大加得越密（上限 10）。
             const auto subdivFor = [](float h) -> int {
                 const float size = 2.0f * h;
@@ -608,32 +629,32 @@ void SceneLayer::DrawColliders(const glm::vec2 &imagePos) {
                             p[a] = ((k >> idx) & 1) ? half[a] : -half[a];
                             ++idx;
                         }
-                        v[k] = p;
+                        v[k] = center + rot * p;
                     }
-                    drawLocalRect(v);
+                    // 环的四条边（0-1-2-3-0）
+                    static const int kLoop[4][2] = {{0, 1}, {1, 2}, {2, 3}, {3, 0}};
+                    for (int e = 0; e < 4; ++e) {
+                        drawWorldSegment(v[kLoop[e][0]], v[kLoop[e][1]]);
+                    }
                 }
             };
             drawSlices(0, subdivFor(half.x));
             drawSlices(1, subdivFor(half.y));
             drawSlices(2, subdivFor(half.z));
 
-            // 外棱：12 条边（下标约定与 DrawWorldBounds 一致）
-            glm::vec2 scr[8];
-            bool front[8] = {};
-            for (int i = 0; i < 8; ++i) {
-                // 与 kEdges 同序：bit0=X, bit1=Y, bit2=Z
-                const glm::vec3 sign{(i & 1) ? 1.0f : -1.0f,
-                                     (i & 2) ? 1.0f : -1.0f,
-                                     (i & 4) ? 1.0f : -1.0f};
-                front[i] = projectPoint(center + rot * (half * sign), scr[i]);
-            }
+            // 外棱：12 条边（角点序与 kEdges 一致：bit0=X, bit1=Y, bit2=Z）
+            const glm::vec3 wc[8] = {
+                center + rot * (half * glm::vec3(-1.0f, -1.0f, -1.0f)),
+                center + rot * (half * glm::vec3( 1.0f, -1.0f, -1.0f)),
+                center + rot * (half * glm::vec3(-1.0f,  1.0f, -1.0f)),
+                center + rot * (half * glm::vec3( 1.0f,  1.0f, -1.0f)),
+                center + rot * (half * glm::vec3(-1.0f, -1.0f,  1.0f)),
+                center + rot * (half * glm::vec3( 1.0f, -1.0f,  1.0f)),
+                center + rot * (half * glm::vec3(-1.0f,  1.0f,  1.0f)),
+                center + rot * (half * glm::vec3( 1.0f,  1.0f,  1.0f)),
+            };
             for (int e = 0; e < 12; ++e) {
-                const int a = kEdges[e][0], b = kEdges[e][1];
-                // 边跨相机背面则不画（避免投影发散）
-                if (front[a] && front[b]) {
-                    dl->AddLine(ImVec2(scr[a].x, scr[a].y), ImVec2(scr[b].x, scr[b].y),
-                                colliderColor, 1.2f);
-                }
+                drawWorldSegment(wc[kEdges[e][0]], wc[kEdges[e][1]]);
             }
         }
 
@@ -645,29 +666,22 @@ void SceneLayer::DrawColliders(const glm::vec2 &imagePos) {
             // 3 个正交大圆环（XY/XZ/YZ 平面）构成线框球；环旋转随刚体取向
             constexpr int kSegs = 24;
             for (int plane = 0; plane < 3; ++plane) {
-                glm::vec2 prev;
-                bool havePrev = false;
-                for (int i = 0; i <= kSegs; ++i) {
-                    const float a = (2.0f * kPi * i) / kSegs;
-                    glm::vec3 dir{0.0f, 0.0f, 0.0f};
+                for (int i = 0; i < kSegs; ++i) {
+                    const float a0 = (2.0f * kPi * i) / kSegs;
+                    const float a1 = (2.0f * kPi * (i + 1)) / kSegs;
+                    glm::vec3 d0{0.0f, 0.0f, 0.0f}, d1{0.0f, 0.0f, 0.0f};
                     if (plane == 0) {
-                        dir = {std::cos(a), std::sin(a), 0.0f};
+                        d0 = {std::cos(a0), std::sin(a0), 0.0f};
+                        d1 = {std::cos(a1), std::sin(a1), 0.0f};
                     } else if (plane == 1) {
-                        dir = {std::cos(a), 0.0f, std::sin(a)};
+                        d0 = {std::cos(a0), 0.0f, std::sin(a0)};
+                        d1 = {std::cos(a1), 0.0f, std::sin(a1)};
                     } else {
-                        dir = {0.0f, std::cos(a), std::sin(a)};
+                        d0 = {0.0f, std::cos(a0), std::sin(a0)};
+                        d1 = {0.0f, std::cos(a1), std::sin(a1)};
                     }
-                    glm::vec2 s;
-                    if (projectPoint(center + rot * (dir * radius), s)) {
-                        if (havePrev) {
-                            dl->AddLine(ImVec2(prev.x, prev.y), ImVec2(s.x, s.y),
-                                        colliderColor, 1.2f);
-                        }
-                        prev = s;
-                        havePrev = true;
-                    } else {
-                        havePrev = false; // 断线于相机背面，避免投影发散连线
-                    }
+                    drawWorldSegment(center + rot * (d0 * radius),
+                                     center + rot * (d1 * radius));
                 }
             }
         }

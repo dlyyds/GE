@@ -488,7 +488,7 @@ void SceneHierarchyPanel::DrawComponents(Entity entity) {
     // ---- Script 组件（无模板外的特殊条件，这里仅保留特殊标记） ----
     if (entity.HasComponent<ScriptComponent>()) {
         DrawComponent<ScriptComponent>("Script", entity,
-            [](auto &c) { DrawScriptComponent(c); });
+            [&](auto &c) { DrawScriptComponent(c, entity); });
     }
 }
 
@@ -514,6 +514,7 @@ void SceneHierarchyPanel::DrawAddComponentPopup() {
     TryAddComponent<BoxColliderComponent>("Box Collider");
     TryAddComponent<SphereColliderComponent>("Sphere Collider");
     TryAddComponent<BoundingBoxComponent>("Bounding Box");
+    TryAddComponent<ScriptComponent>("Script");
 
     ImGui::EndPopup();
 }
@@ -1514,10 +1515,19 @@ bool SceneHierarchyPanel::AutoFitBoundingBoxToJoints(Scene *scene, Entity entity
 // ============================================================
 // Script 组件
 // ============================================================
-void SceneHierarchyPanel::DrawScriptComponent(ScriptComponent &component) {
+void SceneHierarchyPanel::DrawScriptComponent(ScriptComponent &component, Entity entity) {
     ImGui::Checkbox("Enabled", &component.Enabled);
-    ImGui::Text("Status: %s", component.OnUpdate ? "Active" : "Empty");
-    ImGui::TextDisabled("回调由代码逻辑管理，面板中不可编辑");
+
+    char buf[256] = {0};
+    component.ScriptPath.copy(buf, sizeof(buf) - 1);
+    if (ImGui::InputText("Path (.lua)", buf, sizeof(buf))) {
+        component.ScriptPath = buf;
+        // 路径改动即时重挂（旧实例卸载 + 新脚本载入）
+        if (Scene *scene = entity.GetScene()) {
+            scene->GetScriptEngine().OnComponentAdded(static_cast<entt::entity>(entity));
+        }
+    }
+    ImGui::TextDisabled("assets/scripts/ 下相对路径，如 mover.lua");
 }
 
 } // namespace GE

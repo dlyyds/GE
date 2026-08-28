@@ -6,6 +6,7 @@
 #include "Core/InputState.h"
 #include "Core/Timestep.h"
 #include "Render/BufferPool.h"
+#include "Scene/ScriptEngine.h"
 #include <glm/glm.hpp>
 #include <memory>
 #include <string>
@@ -109,6 +110,9 @@ public:
     /// 输入快照：脚本查询入口（IsHeld/JustPressed/…），每场景一份
     const InputState &GetInputState() const { return m_InputState; }
 
+    /// Lua 脚本引擎（Scene 持有，每场景共享一个 Lua 状态）
+    ScriptEngine &GetScriptEngine() { return m_ScriptEngine; }
+
     /**
      * @brief 视锥剔除粒度。
      *
@@ -207,6 +211,9 @@ private:
     /// 每场景一份的输入快照（脚本查询；非全局单例，多视口解耦）
     InputState m_InputState;
 
+    /// Lua 脚本运行时（每场景一个共享 Lua 状态）
+    ScriptEngine m_ScriptEngine;
+
     /// 视锥剔除粒度（默认仅网格级，保留现有行为）
     CullingMode m_CullingMode = CullingMode::Mesh;
 
@@ -218,6 +225,9 @@ private:
 
     /// 碰撞体销毁回调（移除碰撞体时重建刚体形状）
     void OnColliderDestroyed(entt::registry &registry, entt::entity entity);
+
+    /// 脚本组件销毁回调（清理 ScriptEngine 实例并调 OnDestroy）
+    void OnScriptComponentDestroyed(entt::registry &registry, entt::entity entity);
 
     friend class Entity;
     friend class Physics::PhysicsWorld;

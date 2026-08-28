@@ -114,7 +114,7 @@ private:
     static bool AutoFitBoundingBoxToJoints(Scene *scene, Entity entity, BoundingBoxComponent &bb);
 
     /// 绘制 Script 组件属性
-    static void DrawScriptComponent(ScriptComponent &component);
+    static void DrawScriptComponent(ScriptComponent &component, Entity entity);
 
 private:
     Scene *m_Context = nullptr;     ///< 关联的场景（非拥有）

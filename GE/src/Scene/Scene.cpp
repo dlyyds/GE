@@ -131,9 +131,19 @@ Scene::Scene() {
     // 注册碰撞体销毁回调（移除碰撞体时触发刚体重建）
     m_Registry.on_destroy<BoxColliderComponent>().connect<&Scene::OnColliderDestroyed>(this);
     m_Registry.on_destroy<SphereColliderComponent>().connect<&Scene::OnColliderDestroyed>(this);
+
+    // Lua 脚本引擎：绑定场景 + 注入 API（脚本基准目录 assets/scripts/）
+    m_ScriptEngine.Init(this, "assets/scripts");
+
+    // 注册脚本组件销毁回调（清理 Lua 实例 + 调 OnDestroy）
+    m_Registry.on_destroy<ScriptComponent>().connect<&Scene::OnScriptComponentDestroyed>(this);
 }
 
-Scene::~Scene() = default;
+Scene::~Scene() {
+    // 提前解挂脚本销毁回调并清理，避免注册表析构时 on_destroy 回调碰卸了一半的 Lua/场景
+    m_Registry.on_destroy<ScriptComponent>().disconnect<&Scene::OnScriptComponentDestroyed>(this);
+    m_ScriptEngine.Shutdown();
+}
 
 Entity Scene::CreateEntity(const std::string &name) {
     Entity entity{m_Registry.create(), this};
@@ -466,17 +476,9 @@ void Scene::UpdateAnimations(Timestep ts) {
 void Scene::OnUpdate(Timestep ts,
                      const glm::mat4 &viewProjection,
                      const glm::vec4 &clearColor) {
-    // ── 脚本更新 ────────────────────────────────────────────────────────
-    {
-        auto view = m_Registry.view<ScriptComponent>();
-        for (auto entityHandle : view) {
-            auto &sc = view.get<ScriptComponent>(entityHandle);
-            if (sc.Enabled && sc.OnUpdate) {
-                Entity entity{entityHandle, this};
-                sc.OnUpdate(ts, entity);
-            }
-        }
-    }
+    // ── 输入快照结算 + 脚本更新（2D 场景路径）────────────────────────────
+    m_InputState.BeginFrameInput();
+    m_ScriptEngine.OnUpdate(ts);
 
     // ── 世界矩阵缓存重建（每帧一次 DFS：先于渲染，保证本帧矩阵最新） ──
     UpdateWorldTransforms();
@@ -543,14 +545,8 @@ void Scene::OnUpdate3D(Timestep ts,
 }
 
 void Scene::UpdateScripts(Timestep ts) {
-    auto scriptView = m_Registry.view<ScriptComponent>();
-    for (auto entityHandle : scriptView) {
-        auto &sc = scriptView.get<ScriptComponent>(entityHandle);
-        if (sc.Enabled && sc.OnUpdate) {
-            Entity entity{entityHandle, this};
-            sc.OnUpdate(ts, entity);
-        }
-    }
+    // Lua 脚本每帧推进（输入查询由引擎注入的 input.* 在脚本 OnUpdate 内完成）
+    m_ScriptEngine.OnUpdate(ts);
 }
 
 void Scene::StepPhysics(Timestep ts) {
@@ -971,6 +967,12 @@ void Scene::OnComponentAdded<EnvironmentComponent>(Entity entity, EnvironmentCom
 }
 
 template <>
+void Scene::OnComponentAdded<ScriptComponent>(Entity entity, ScriptComponent &component) {
+    // 挂载/预加载 Lua 行为表并建实例（空路径跳过）
+    m_ScriptEngine.OnComponentAdded(static_cast<entt::entity>(entity));
+}
+
+template <>
 void Scene::OnComponentAdded<RigidBodyComponent>(Entity entity, RigidBodyComponent &component) {
     // 延迟创建：将实体加入 PhysicsWorld 的待创建列表
     // 实际创建发生在下一次 Step() 调用时，确保 collider 组件也已添加
@@ -1021,6 +1023,11 @@ void Scene::OnColliderDestroyed(entt::registry &registry, entt::entity entity) {
     if (rbc && rbc->IsInitialized) {
         m_PhysicsWorld->RebuildRigidBody(entity);
     }
+}
+
+void Scene::OnScriptComponentDestroyed(entt::registry &registry, entt::entity entity) {
+    // 脚本组件移除/实体销毁：调 Lua OnDestroy 并清除实例
+    m_ScriptEngine.OnEntityDestroyed(entity);
 }
 
 

@@ -122,6 +122,15 @@ file(GLOB GE_SRC
 
 )
 
+# Lua 5.4（vendored）：把库 .c 并入 GE 编译，排除带 main() 的解释器/编译器/测试/合并源
+file(GLOB LUA_LIB_SRC ${CMAKE_SOURCE_DIR}/GE/third_party/lua-5.4.8/*.c)
+list(REMOVE_ITEM LUA_LIB_SRC
+        ${CMAKE_SOURCE_DIR}/GE/third_party/lua-5.4.8/lua.c
+        ${CMAKE_SOURCE_DIR}/GE/third_party/lua-5.4.8/luac.c
+        ${CMAKE_SOURCE_DIR}/GE/third_party/lua-5.4.8/ltests.c
+        ${CMAKE_SOURCE_DIR}/GE/third_party/lua-5.4.8/onelua.c)
+list(APPEND GE_SRC ${LUA_LIB_SRC})
+
 
 add_library(${GE_NAME} STATIC ${GE_SRC})
 
@@ -132,6 +141,7 @@ target_include_directories(${GE_NAME} PUBLIC
         ${CMAKE_SOURCE_DIR}/GE/third_party
         ${CMAKE_SOURCE_DIR}/GE/third_party/vma
         ${CMAKE_SOURCE_DIR}/GE/third_party/GLFW/include
+        ${CMAKE_SOURCE_DIR}/GE/third_party/lua-5.4.8
         ${CMAKE_SOURCE_DIR}/GE/third_party/stb
         ${CMAKE_SOURCE_DIR}/GE/third_party/tinyobjloader
         ${Vulkan_INCLUDE_DIRS}

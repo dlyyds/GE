@@ -217,25 +217,22 @@ struct BoundingBoxComponent {
 
 
 /**
- * @brief 脚本组件 —— 挂载到实体上的行为回调。
+ * @brief 脚本组件 —— 挂载 Lua 脚本文件到实体（纯数据，可序列化）。
  *
- * 轻量级脚本系统：绑定每帧更新回调 OnUpdate，在 Scene::OnUpdate3D 的 UpdateScripts
- * 中调用。输入不走回调分发——脚本在 OnUpdate 内经 Entity::GetScene()->GetInputState()
- * 查询快照（IsHeld/JustPressed/…）。见 docs/脚本输入系统计划书.md。
+ * 运行态全部在 Scene::ScriptEngine（Lua 5.4 + sol2，共享一个 Lua 状态）。
+ * ScriptPath 为 assets/scripts/ 下的相对路径（含 .lua 后缀）；空路径 = 未挂载。
+ * 行为约定见 docs/Lua脚本系统计划书.md。
  */
 struct ScriptComponent {
-    using UpdateCallback = std::function<void(Timestep, Entity)>;
-
-    UpdateCallback OnUpdate; ///< 每帧更新回调
-
-    bool Enabled = true; ///< 脚本是否启用（false 时跳过 OnUpdate）
+    std::string ScriptPath; ///< assets/scripts/ 下相对路径（含 .lua 后缀）；唯一序列化载荷
+    bool Enabled = true;    ///< 是否启用（false 时跳过 OnUpdate）
 
     ScriptComponent() = default;
 
     ScriptComponent(const ScriptComponent &) = default;
 
-    explicit ScriptComponent(UpdateCallback callback)
-        : OnUpdate(std::move(callback)) {
+    explicit ScriptComponent(std::string path)
+        : ScriptPath(std::move(path)) {
     }
 };
 

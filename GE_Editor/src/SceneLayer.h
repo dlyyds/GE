@@ -76,7 +76,7 @@ private:
     /// 与 GizmoController 同一套 OpenGL 投影 + 屏幕映射，保证线与画面/gizmo 对齐。
     void DrawWorldBounds(const glm::vec2 &imagePos);
 
-    /// 在 Scene 视口内叠加绘制物理碰撞体半透明体（盒子半透明面 + 球体投影圆盘）。
+    /// 在 Scene 视口内叠加绘制物理碰撞体线框（盒子 12 棱 + 球体正交圆环）。
     /// 变换语义与 PhysicsWorld::BuildShapeForEntity 一致：局部 TRS，
     /// 半尺寸/半径乘比例烘焙进形状，Offset 不乘比例。
     void DrawColliders(const glm::vec2 &imagePos);
@@ -87,7 +87,7 @@ private:
     /// 包围盒上的关节露点红绿点是否显示（依赖 m_ShowBounds 开启）
     bool m_ShowJointDots = true;
 
-    /// 视口是否叠加物理碰撞体半透明体（青绿色：盒子半透明面/球体投影圆盘）
+    /// 视口是否叠加物理碰撞体线框（青绿色：盒子/球体）
     bool m_ShowColliders = false;
 
     /// 从文件加载场景（会重建场景并重新绑定相机）

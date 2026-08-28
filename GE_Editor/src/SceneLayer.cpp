@@ -278,7 +278,7 @@ void SceneLayer::OnImGuiRender() {
                 DrawWorldBounds(glm::vec2(imagePos.x, imagePos.y));
             }
 
-            // 物理碰撞体半透明叠加：半透明盒 + 半透明球（青绿色）
+            // 物理碰撞体线框叠加：盒子 12 棱 + 球体正交圆环（青绿色）
             if (m_ShowColliders && m_Context->CameraEntity) {
                 DrawColliders(glm::vec2(imagePos.x, imagePos.y));
             }
@@ -314,7 +314,7 @@ void SceneLayer::OnImGuiRender() {
         ImGui::Checkbox("显示包围盒", &m_ShowBounds);
         // 关节露点红绿开关（叠加在包围盒上，仅在开启显示包围盒时生效）
         ImGui::Checkbox("关节露点", &m_ShowJointDots);
-        // 物理碰撞体半透明开关（叠加在视口上：盒子半透明面/球体投影圆盘，青绿色）
+        // 物理碰撞体线框开关（叠加在视口上：盒子/球体青绿色）
         ImGui::Checkbox("显示碰撞体", &m_ShowColliders);
 
         ImGui::TextDisabled("提示：先在左侧 Hierarchy/Properties 中调整实体，再保存/加载验证");
@@ -513,7 +513,7 @@ void SceneLayer::DrawWorldBounds(const glm::vec2 &imagePos) {
 }
 
 // ============================================================
-// 物理碰撞体半透明叠加
+// 物理碰撞体线框叠加
 // ============================================================
 
 void SceneLayer::DrawColliders(const glm::vec2 &imagePos) {
@@ -524,35 +524,25 @@ void SceneLayer::DrawColliders(const glm::vec2 &imagePos) {
     const Camera &camera = cc.CameraInstance;
 
     // 还原 OpenGL 投影（与 DrawWorldBounds 同款，保证线与画面/gizmo 对齐）
-    const glm::mat4 view = camera.GetView();
     glm::mat4 projGL = camera.GetProj();
     projGL[1][1] *= -1.0f;
-    const glm::mat4 viewProjGL = projGL * view;
+    const glm::mat4 viewProjGL = projGL * camera.GetView();
 
     const glm::vec2 origin{imagePos.x, imagePos.y};
     const glm::vec2 size{m_ViewportSize.x, m_ViewportSize.y};
     ImDrawList *dl = ImGui::GetWindowDrawList();
 
-    // 半透明面颜色族（青绿）：正面亮 / 背面暗，便于分辨前后重叠的碰撞体
-    const ImU32 ccFaceFront =
-        ImGui::ColorConvertFloat4ToU32(ImVec4(0.25f, 0.80f, 0.90f, 0.32f));
-    const ImU32 ccFaceBack =
-        ImGui::ColorConvertFloat4ToU32(ImVec4(0.25f, 0.80f, 0.90f, 0.10f));
-    const glm::vec3 camPos = camera.GetPosition();
+    // 立方体 12 条边（下标约定与 DrawWorldBounds 一致）
+    static const int kEdges[12][2] = {
+        {0, 1}, {1, 3}, {3, 2}, {2, 0},
+        {4, 5}, {5, 7}, {7, 6}, {6, 4},
+        {0, 4}, {1, 5}, {2, 6}, {3, 7},
+    };
+    constexpr float kPi = 3.14159265358979f;
 
-    // 世界空间盒子的 6 个面（下标引用 8 角点 + 向外法线；角点序同 DrawWorldBounds）
-    struct BoxFace {
-        int idx[4];
-        glm::vec3 n;
-    };
-    static const BoxFace kBoxFaces[6] = {
-        {{4, 5, 7, 6}, {0.0f, 0.0f, 1.0f}},  // +Z
-        {{0, 1, 3, 2}, {0.0f, 0.0f, -1.0f}}, // -Z
-        {{2, 3, 7, 6}, {0.0f, 1.0f, 0.0f}},  // +Y
-        {{0, 1, 5, 4}, {0.0f, -1.0f, 0.0f}}, // -Y
-        {{1, 3, 7, 5}, {1.0f, 0.0f, 0.0f}},  // +X
-        {{0, 2, 6, 4}, {-1.0f, 0.0f, 0.0f}}, // -X
-    };
+    // 碰撞体线框颜色（青绿，与灰网格盒/黄实体盒区分）
+    const ImU32 colliderColor =
+        ImGui::ColorConvertFloat4ToU32(ImVec4(0.25f, 0.80f, 0.90f, 1.0f));
 
     // 世界点 → 屏幕点；返回 false 表示点在相机背面
     const auto projectPoint = [&](const glm::vec3 &world, glm::vec2 &out) -> bool {
@@ -561,7 +551,7 @@ void SceneLayer::DrawColliders(const glm::vec2 &imagePos) {
 
     // 遍历刚体实体，仅绘制真正进入了物理世界的碰撞体（需同时具备刚体 + 碰撞体）。
     // 变换语义与 PhysicsWorld::BuildShapeForEntity 一致：用实体局部 TRS，
-    // 半尺寸/半径乘比例烘焙进形状，Offset 只旋转不乘比例。
+    // 半尺寸 = HalfExtents*Scale（比例烘焙进形状），Offset 只旋转不乘比例。
     const auto rbView = m_Context->Scene->Reg().view<TransformComponent, RigidBodyComponent>();
     for (auto entity : rbView) {
         const auto &tc = rbView.get<TransformComponent>(entity);
@@ -572,72 +562,62 @@ void SceneLayer::DrawColliders(const glm::vec2 &imagePos) {
         }
         const glm::quat &rot = tc.Rotation;
 
-        // ---- 盒子碰撞体：中心 = T + R*Offset，半尺寸含比例；6 个半透明面 ----
+        // ---- 盒子碰撞体：中心 = T + R*Offset，半尺寸含比例 ----
         if (box) {
             const glm::vec3 center = tc.Translation + rot * box->Offset;
             const glm::vec3 half = box->HalfExtents * tc.Scale;
-            // 8 角点（bit0=X, bit1=Y, bit2=Z，与 kBoxFaces 下标一致）
-            const glm::vec3 wc[8] = {
-                center + rot * (half * glm::vec3(-1.0f, -1.0f, -1.0f)),
-                center + rot * (half * glm::vec3( 1.0f, -1.0f, -1.0f)),
-                center + rot * (half * glm::vec3(-1.0f,  1.0f, -1.0f)),
-                center + rot * (half * glm::vec3( 1.0f,  1.0f, -1.0f)),
-                center + rot * (half * glm::vec3(-1.0f, -1.0f,  1.0f)),
-                center + rot * (half * glm::vec3( 1.0f, -1.0f,  1.0f)),
-                center + rot * (half * glm::vec3(-1.0f,  1.0f,  1.0f)),
-                center + rot * (half * glm::vec3( 1.0f,  1.0f,  1.0f)),
-            };
-            for (const BoxFace &f : kBoxFaces) {
-                glm::vec3 faceCenter(0.0f);
-                ImVec2 pts[4];
-                bool allFront = true;
-                for (int k = 0; k < 4; ++k) {
-                    const glm::vec3 &p = wc[f.idx[k]];
-                    faceCenter += p;
-                    glm::vec2 s;
-                    if (!projectPoint(p, s)) {
-                        allFront = false;
-                        break; // 面有角点在相机背面，跳过
-                    }
-                    pts[k] = ImVec2(s.x, s.y);
+            glm::vec2 scr[8];
+            bool front[8] = {};
+            for (int i = 0; i < 8; ++i) {
+                // 与 kEdges 同序：bit0=X, bit1=Y, bit2=Z
+                const glm::vec3 sign{(i & 1) ? 1.0f : -1.0f,
+                                     (i & 2) ? 1.0f : -1.0f,
+                                     (i & 4) ? 1.0f : -1.0f};
+                front[i] = projectPoint(center + rot * (half * sign), scr[i]);
+            }
+            for (int e = 0; e < 12; ++e) {
+                const int a = kEdges[e][0], b = kEdges[e][1];
+                // 边跨相机背面则不画（避免投影发散）
+                if (front[a] && front[b]) {
+                    dl->AddLine(ImVec2(scr[a].x, scr[a].y), ImVec2(scr[b].x, scr[b].y),
+                                colliderColor, 1.2f);
                 }
-                if (!allFront) {
-                    continue;
-                }
-                faceCenter *= 0.25f;
-                // 面法线朝相机（看到外表面）→ 亮，背向 → 暗
-                const bool facingCam = glm::dot(f.n, camPos - faceCenter) > 0.0f;
-                dl->AddConvexPolyFilled(pts, 4, facingCam ? ccFaceFront : ccFaceBack);
             }
         }
 
-        // ---- 球体碰撞体：中心 = T + R*Offset，半径取比例最大值；半透明投影圆盘 ----
+        // ---- 球体碰撞体：中心 = T + R*Offset，半径取比例最大值（与 Jolt 一致）----
         if (sphere) {
             const glm::vec3 center = tc.Translation + rot * sphere->Offset;
             const float radius = sphere->Radius
                                  * std::max({tc.Scale.x, tc.Scale.y, tc.Scale.z});
-            glm::vec2 sCenter;
-            if (!projectPoint(center, sCenter)) {
-                continue; // 球心在相机背面，跳过
-            }
-            // 屏幕半径：沿相机右轴/上轴各投一个边缘点，取屏幕距离较大者（圆盘包裹球轮廓）
-            glm::vec2 axisRadius = {0.0f, 0.0f};
-            // 相基从视图矩阵旋转部分的行向量提取（GetForward/GetRight 为私有接口）
-            const glm::vec3 camRight = glm::normalize(glm::vec3(view[0][0], view[1][0], view[2][0]));
-            const glm::vec3 camUp = glm::normalize(glm::vec3(view[0][1], view[1][1], view[2][1]));
-            const auto projectRim = [&](const glm::vec3 &axis) {
-                glm::vec2 sRim;
-                if (projectPoint(center + axis * radius, sRim)) {
-                    axisRadius.x = std::max(axisRadius.x, glm::distance(sCenter, sRim));
+            // 3 个正交大圆环（XY/XZ/YZ 平面）构成线框球；环旋转随刚体取向
+            constexpr int kSegs = 24;
+            for (int plane = 0; plane < 3; ++plane) {
+                glm::vec2 prev;
+                bool havePrev = false;
+                for (int i = 0; i <= kSegs; ++i) {
+                    const float a = (2.0f * kPi * i) / kSegs;
+                    glm::vec3 dir{0.0f, 0.0f, 0.0f};
+                    if (plane == 0) {
+                        dir = {std::cos(a), std::sin(a), 0.0f};
+                    } else if (plane == 1) {
+                        dir = {std::cos(a), 0.0f, std::sin(a)};
+                    } else {
+                        dir = {0.0f, std::cos(a), std::sin(a)};
+                    }
+                    glm::vec2 s;
+                    if (projectPoint(center + rot * (dir * radius), s)) {
+                        if (havePrev) {
+                            dl->AddLine(ImVec2(prev.x, prev.y), ImVec2(s.x, s.y),
+                                        colliderColor, 1.2f);
+                        }
+                        prev = s;
+                        havePrev = true;
+                    } else {
+                        havePrev = false; // 断线于相机背面，避免投影发散连线
+                    }
                 }
-            };
-            projectRim(camRight);
-            projectRim(camUp);
-            const float radiusPx = std::max(axisRadius.x, axisRadius.y);
-            if (radiusPx <= 0.0f) {
-                continue;
             }
-            dl->AddCircleFilled(ImVec2(sCenter.x, sCenter.y), radiusPx, ccFaceFront);
         }
     }
 }

@@ -23,6 +23,7 @@
 #include "GE/Utils/PlatformUtils.h"
 
 #include <glm/gtc/type_ptr.hpp>
+#include <glm/gtc/matrix_inverse.hpp>
 #include <cmath>
 #include <algorithm>
 #include <cstdio>
@@ -480,7 +481,7 @@ void SceneHierarchyPanel::DrawComponents(Entity entity) {
         [&](auto &c) { DrawSphereColliderComponent(entity, c); });
 
     DrawComponent<BoundingBoxComponent>("Bounding Box", entity,
-        [](auto &c) { DrawBoundingBoxComponent(c); });
+        [this, entity](auto &c) { DrawBoundingBoxComponent(entity, c, m_Context); });
 
     // ---- Script 组件（无模板外的特殊条件，这里仅保留特殊标记） ----
     if (entity.HasComponent<ScriptComponent>()) {
@@ -1240,13 +1241,68 @@ void SceneHierarchyPanel::DrawSphereColliderComponent(Entity entity, SphereColli
 // ============================================================
 // Bounding Box 组件（实体级粗剔除盒，gizmo 手动摆放）
 // ============================================================
-void SceneHierarchyPanel::DrawBoundingBoxComponent(BoundingBoxComponent &component) {
+void SceneHierarchyPanel::DrawBoundingBoxComponent(Entity entity, BoundingBoxComponent &component, Scene *scene) {
     // Center/Size 为模型局部空间；Size 任一轴重置为 0 会令盒失效（不参与剔除）
     DrawVec3Control("Center", component.Center, 0.0f, 120);
     DrawVec3Control("Size", component.Size, 1.0f, 120);
     if (!component.IsValid()) {
         ImGui::TextDisabled("盒未摆放（Size 需全部 > 0）时不参与剔除");
     }
+    if (ImGui::Button("从关节自动适配")) {
+        if (!AutoFitBoundingBoxToJoints(scene, entity, component)) {
+            GE_CORE_WARN("该实体子树内没有蒙皮关节，无法自动适配包围盒");
+        }
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("按子树内全部蒙皮关节位置计算并写回");
+}
+
+bool SceneHierarchyPanel::AutoFitBoundingBoxToJoints(Scene *scene, Entity entity, BoundingBoxComponent &bb) {
+    if (!scene || !entity) {
+        return false;
+    }
+    const auto *tc = scene->Reg().try_get<TransformComponent>(static_cast<entt::entity>(entity));
+    if (!tc) {
+        return false;
+    }
+    // 关节是世界实体，先经逆世界矩阵变换到本实体局部空间，再取本地 AABB。
+    // 这样写回的 Center/Size 经世界矩阵还原（视锥剔除用的 world 盒）后必能罩住全部关节。
+    const glm::mat4 invWorld = glm::inverse(tc->GetWorldMatrix());
+
+    glm::vec3 localMin(0.0f), localMax(0.0f);
+    bool found = false;
+    std::vector<Entity> stack;
+    stack.push_back(entity);
+    while (!stack.empty()) {
+        const Entity n = stack.back();
+        stack.pop_back();
+        const entt::entity h = static_cast<entt::entity>(n);
+        if (const auto *sc = scene->Reg().try_get<SkinComponent>(h)) {
+            for (const entt::entity jh : sc->joints()) {
+                const auto *jtc = scene->Reg().try_get<TransformComponent>(jh);
+                if (!jtc) {
+                    continue;
+                }
+                const glm::vec3 jp = glm::vec3(invWorld * glm::vec4(glm::vec3(jtc->GetWorldMatrix()[3]), 1.0f));
+                if (!found) {
+                    localMin = localMax = jp;
+                    found = true;
+                } else {
+                    localMin = glm::min(localMin, jp);
+                    localMax = glm::max(localMax, jp);
+                }
+            }
+        }
+        for (const auto &child : scene->GetChildren(n)) {
+            stack.push_back(child); // 继续下钻同棵子树
+        }
+    }
+    if (!found) {
+        return false;
+    }
+    bb.Center = (localMin + localMax) * 0.5f;
+    bb.Size = localMax - localMin;
+    return true;
 }
 
 // ============================================================

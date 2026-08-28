@@ -106,7 +106,11 @@ private:
     void DrawSphereColliderComponent(Entity entity, SphereColliderComponent &component);
 
     /// 绘制 BoundingBox（实体级粗剔除盒）组件属性
-    static void DrawBoundingBoxComponent(BoundingBoxComponent &component);
+    static void DrawBoundingBoxComponent(Entity entity, BoundingBoxComponent &component, Scene *scene);
+
+    /// 根据实体子树内全部蒙皮关节的位置自动计算本地包围盒并写回（盒罩住所有关节）。
+    /// 无关节时不修改，返回 false。
+    static bool AutoFitBoundingBoxToJoints(Scene *scene, Entity entity, BoundingBoxComponent &bb);
 
     /// 绘制 Script 组件属性
     static void DrawScriptComponent(ScriptComponent &component);

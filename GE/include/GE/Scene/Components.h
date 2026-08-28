@@ -18,8 +18,6 @@
 #include "entt.hpp"
 
 #include "Render/Camera.h"
-#include "Core/KeyCodes.h"
-#include "Core/MouseCodes.h"
 #include "Physics/PhysicsTypes.h"
 
 namespace GE {
@@ -221,23 +219,16 @@ struct BoundingBoxComponent {
 /**
  * @brief 脚本组件 —— 挂载到实体上的行为回调。
  *
- * 轻量级脚本系统：通过 std::function 绑定每帧更新和各类事件回调，
- * 在 Scene::OnUpdate 中调用 OnUpdate，在 Scene::OnEvent 中调用对应事件回调，
- * 用于实现实体的行为逻辑。
- *
- * 按键/鼠标按键类回调返回 bool：true 表示消费该事件，阻止后续脚本接收。
- * 移动/滚动类回调返回 void，一般不消费事件。
+ * 轻量级脚本系统：绑定每帧更新回调 OnUpdate，在 Scene::OnUpdate3D 的 UpdateScripts
+ * 中调用。输入不走回调分发——脚本在 OnUpdate 内经 Entity::GetScene()->GetInputState()
+ * 查询快照（IsHeld/JustPressed/…）。见 docs/脚本输入系统计划书.md。
  */
 struct ScriptComponent {
     using UpdateCallback = std::function<void(Timestep, Entity)>;
-    using KeyCallback = std::function<bool(Entity, KeyCode, int repeatCount)>;
-    using MouseButtonCallback = std::function<bool(Entity, MouseCode)>;
-    using MouseMoveCallback = std::function<void(Entity, float x, float y)>;
-    using MouseScrollCallback = std::function<void(Entity, float xOffset, float yOffset)>;
 
     UpdateCallback OnUpdate; ///< 每帧更新回调
 
-    bool Enabled = true; ///< 脚本是否启用（false 时跳过所有回调）
+    bool Enabled = true; ///< 脚本是否启用（false 时跳过 OnUpdate）
 
     ScriptComponent() = default;
 

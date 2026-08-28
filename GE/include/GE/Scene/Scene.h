@@ -3,6 +3,7 @@
 #include "entt.hpp"
 
 
+#include "Core/InputState.h"
 #include "Core/Timestep.h"
 #include "Render/BufferPool.h"
 #include <glm/glm.hpp>
@@ -105,6 +106,9 @@ public:
     /// 实际的相机输入路由在 Scene 内部完成。
     void SetProcessCameraInput(bool enabled) { m_ProcessCameraInput = enabled; }
 
+    /// 输入快照：脚本查询入口（IsHeld/JustPressed/…），每场景一份
+    const InputState &GetInputState() const { return m_InputState; }
+
     /**
      * @brief 视锥剔除粒度。
      *
@@ -199,6 +203,9 @@ private:
 
     /// 是否将输入路由给主相机（由编辑器设置）
     bool m_ProcessCameraInput = false;
+
+    /// 每场景一份的输入快照（脚本查询；非全局单例，多视口解耦）
+    InputState m_InputState;
 
     /// 视锥剔除粒度（默认仅网格级，保留现有行为）
     CullingMode m_CullingMode = CullingMode::Mesh;

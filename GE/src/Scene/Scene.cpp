@@ -505,6 +505,9 @@ void Scene::OnUpdate3D(Timestep ts,
                        const glm::mat4 &projection,
                        const glm::vec3 &viewPos,
                        const glm::vec4 &clearColor) {
+    // ── 输入快照结算：本轮事件累积 → 本帧语义，脚本随后在 OnUpdate 查询 ──
+    m_InputState.BeginFrameInput();
+
     // ── 脚本更新 ──
     UpdateScripts(ts);
 
@@ -849,11 +852,36 @@ void Scene::RenderSprites2D(const glm::mat4 &view, const glm::mat4 &projection) 
 
 
 void Scene::OnEvent(Event &e) {
-    // ── 输入事件：先分发给所有 ScriptComponent，未被消费的再交给主相机控制视角。──
+    // ── 输入事件：仅记录到快照供脚本查询，未消费的再交给主相机控制视角。──
     //    是否转发输入事件由外层 Layer 依据「视口是否悬停」决定，此处不再判断。
 
     if (e.IsInCategory(EventCategoryInput)) {
-        //        DispatchInputEventToScripts(e);
+        EventDispatcher dispatcher(e);
+        dispatcher.Dispatch<KeyPressedEvent>([&](KeyPressedEvent &ev) {
+            m_InputState.RecordKeyPressed(ev.GetKeyCode(), ev.GetRepeatCount());
+            return false;
+        });
+        dispatcher.Dispatch<KeyReleasedEvent>([&](KeyReleasedEvent &ev) {
+            m_InputState.RecordKeyReleased(ev.GetKeyCode());
+            return false;
+        });
+        dispatcher.Dispatch<MouseButtonPressedEvent>([&](MouseButtonPressedEvent &ev) {
+            m_InputState.RecordMouseButtonPressed(ev.GetMouseButton());
+            return false;
+        });
+        dispatcher.Dispatch<MouseButtonReleasedEvent>([&](MouseButtonReleasedEvent &ev) {
+            m_InputState.RecordMouseButtonReleased(ev.GetMouseButton());
+            return false;
+        });
+        dispatcher.Dispatch<MouseMovedEvent>([&](MouseMovedEvent &ev) {
+            m_InputState.RecordMouseMoved(ev.GetX(), ev.GetY());
+            return false;
+        });
+        dispatcher.Dispatch<MouseScrolledEvent>([&](MouseScrolledEvent &ev) {
+            m_InputState.RecordMouseScrolled(ev.GetXOffset(), ev.GetYOffset());
+            return false;
+        });
+
         if (m_ProcessCameraInput && !e.Handled) {
             DispatchInputEventToCamera(e);
         }

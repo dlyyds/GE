@@ -54,6 +54,9 @@ public:
         return !(*this == other);
     }
 
+    /// 所属场景指针（脚本查询 InputState 等场景级状态用）
+    Scene *GetScene() const { return m_Scene; }
+
 private:
     entt::entity m_EntityHandle{entt::null};
     Scene *m_Scene = nullptr;

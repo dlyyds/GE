@@ -122,17 +122,22 @@ file(GLOB GE_SRC
 
 )
 
-# Lua 5.4（vendored）：把库 .c 并入 GE 编译，排除带 main() 的解释器/编译器/测试/合并源
+
+add_library(${GE_NAME} STATIC ${GE_SRC})
+
+# ==============================================
+# Lua 5.4（vendored）—— 独立静态库
+# 单独成目标而不是混入 GE：C 源若并进带 PCH 的 C++ 目标，会同时吃到 /TC 与
+# /FI cmake_pch.h，CLion 编译器探测即崩（STL1003）。隔离后每条链路的 FLAGS 干净。
+# ==============================================
 file(GLOB LUA_LIB_SRC ${CMAKE_SOURCE_DIR}/GE/third_party/lua-5.4.8/*.c)
 list(REMOVE_ITEM LUA_LIB_SRC
         ${CMAKE_SOURCE_DIR}/GE/third_party/lua-5.4.8/lua.c
         ${CMAKE_SOURCE_DIR}/GE/third_party/lua-5.4.8/luac.c
         ${CMAKE_SOURCE_DIR}/GE/third_party/lua-5.4.8/ltests.c
         ${CMAKE_SOURCE_DIR}/GE/third_party/lua-5.4.8/onelua.c)
-list(APPEND GE_SRC ${LUA_LIB_SRC})
-
-
-add_library(${GE_NAME} STATIC ${GE_SRC})
+add_library(ge_lua STATIC ${LUA_LIB_SRC})
+target_include_directories(ge_lua PUBLIC ${CMAKE_SOURCE_DIR}/GE/third_party/lua-5.4.8)
 
 target_include_directories(${GE_NAME} PUBLIC
         ${CMAKE_SOURCE_DIR}/GE/include/GE
@@ -178,6 +183,7 @@ target_link_libraries(${GE_NAME} PUBLIC
         ktx
         spirv-cross-glsl
         spirv-cross-core
+        ge_lua
 )
 
 

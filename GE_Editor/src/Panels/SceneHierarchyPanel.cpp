@@ -30,6 +30,8 @@
 #include <cstring>
 #include <filesystem>
 #include <vector>
+#include <functional>
+#include <unordered_set>
 
 namespace GE {
 
@@ -1241,6 +1243,70 @@ void SceneHierarchyPanel::DrawSphereColliderComponent(Entity entity, SphereColli
 // ============================================================
 // Bounding Box 组件（实体级粗剔除盒，gizmo 手动摆放）
 // ============================================================
+
+// ---- 动画扫描评估助手：用于「播放一遍取关节极值」。以下采样逻辑与
+// GE/src/Scene/Scene.cpp 的 SampleVec3Channel/SampleQuatChannel 保持同步
+// （CUBICSPLINE 目前两边都按 LINEAR 近似；引擎若升级 Hermite，此处须同步）。----
+
+/// 定位时间 t 所在的键帧区间左端（划入 active keyk0，同 Scene.cpp FindActiveKey）
+static size_t AnimFindActiveKey(const std::vector<float> &times, float t) {
+    return static_cast<size_t>(std::upper_bound(times.begin(), times.end(), t)
+                               - times.begin()) - 1u;
+}
+
+/// vec3 通道采样：LINEAR 线性插值；STEP 取前一键值；CUBICSPLINE 按 LINEAR 近似
+static glm::vec3 SampleAnimVec3(const AnimationChannel &ch, float t) {
+    const size_t n = ch.times.size();
+    if (n == 0) {
+        return glm::vec3(0.0f);
+    }
+    if (t <= ch.times.front()) {
+        return ch.vecKeys.front();
+    }
+    if (t >= ch.times.back()) {
+        return ch.vecKeys.back();
+    }
+    const size_t k0 = AnimFindActiveKey(ch.times, t);
+    if (ch.interp == AnimationChannel::Interp::Step) {
+        return ch.vecKeys[k0]; // STEP：保持前一键值
+    }
+    const float t01 = (t - ch.times[k0]) / (ch.times[k0 + 1] - ch.times[k0]);
+    return glm::mix(ch.vecKeys[k0], ch.vecKeys[k0 + 1], t01);
+}
+
+/// quat 通道采样：LINEAR 用 slerp；STEP 取前一键值；CUBICSPLINE 近似 slerp
+static glm::quat SampleAnimQuat(const AnimationChannel &ch, float t) {
+    const size_t n = ch.times.size();
+    if (n == 0) {
+        return glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
+    }
+    if (t <= ch.times.front()) {
+        return ch.quatKeys.front();
+    }
+    if (t >= ch.times.back()) {
+        return ch.quatKeys.back();
+    }
+    const size_t k0 = AnimFindActiveKey(ch.times, t);
+    if (ch.interp == AnimationChannel::Interp::Step) {
+        return ch.quatKeys[k0];
+    }
+    const float t01 = (t - ch.times[k0]) / (ch.times[k0 + 1] - ch.times[k0]);
+    return glm::slerp(ch.quatKeys[k0], ch.quatKeys[k0 + 1], t01);
+}
+
+/// 动画评估用局部 TRS（只拷作者字段，不碰缓存 worldMatrix）
+struct AnimLocalTrs {
+    glm::vec3 Translation;
+    glm::quat Rotation;
+    glm::vec3 Scale;
+};
+
+static glm::mat4 AnimLocalMatrix(const AnimLocalTrs &trs) {
+    return glm::translate(glm::mat4(1.0f), trs.Translation)
+           * glm::toMat4(trs.Rotation)
+           * glm::scale(glm::mat4(1.0f), trs.Scale);
+}
+
 void SceneHierarchyPanel::DrawBoundingBoxComponent(Entity entity, BoundingBoxComponent &component, Scene *scene) {
     // Center/Size 为模型局部空间；Size 任一轴重置为 0 会令盒失效（不参与剔除）
     DrawVec3Control("Center", component.Center, 0.0f, 120);
@@ -1254,14 +1320,15 @@ void SceneHierarchyPanel::DrawBoundingBoxComponent(Entity entity, BoundingBoxCom
         }
     }
     ImGui::SameLine();
-    ImGui::TextDisabled("按子树内全部蒙皮关节位置计算并写回");
+    ImGui::TextDisabled("按子树内全部蒙皮关节计算并写回；检测到动画时逐帧播放取最大范围");
 }
 
 bool SceneHierarchyPanel::AutoFitBoundingBoxToJoints(Scene *scene, Entity entity, BoundingBoxComponent &bb) {
     if (!scene || !entity) {
         return false;
     }
-    const auto *tc = scene->Reg().try_get<TransformComponent>(static_cast<entt::entity>(entity));
+    entt::registry &reg = scene->Reg();
+    const auto *tc = reg.try_get<TransformComponent>(static_cast<entt::entity>(entity));
     if (!tc) {
         return false;
     }
@@ -1269,37 +1336,148 @@ bool SceneHierarchyPanel::AutoFitBoundingBoxToJoints(Scene *scene, Entity entity
     // 这样写回的 Center/Size 经世界矩阵还原（视锥剔除用的 world 盒）后必能罩住全部关节。
     const glm::mat4 invWorld = glm::inverse(tc->GetWorldMatrix());
 
-    glm::vec3 localMin(0.0f), localMax(0.0f);
-    bool found = false;
+    // ── 1) DFS 子树：收集蒙皮关节 + 动画组件 ──
+    std::vector<entt::entity> joints;
+    std::vector<AnimationComponent *> anims;
     std::vector<Entity> stack;
     stack.push_back(entity);
     while (!stack.empty()) {
         const Entity n = stack.back();
         stack.pop_back();
         const entt::entity h = static_cast<entt::entity>(n);
-        if (const auto *sc = scene->Reg().try_get<SkinComponent>(h)) {
-            for (const entt::entity jh : sc->joints()) {
-                const auto *jtc = scene->Reg().try_get<TransformComponent>(jh);
-                if (!jtc) {
-                    continue;
-                }
-                const glm::vec3 jp = glm::vec3(invWorld * glm::vec4(glm::vec3(jtc->GetWorldMatrix()[3]), 1.0f));
-                if (!found) {
-                    localMin = localMax = jp;
-                    found = true;
-                } else {
-                    localMin = glm::min(localMin, jp);
-                    localMax = glm::max(localMax, jp);
-                }
-            }
+        if (const auto *sc = reg.try_get<SkinComponent>(h)) {
+            joints.insert(joints.end(), sc->joints().begin(), sc->joints().end());
+        }
+        if (auto *ac = reg.try_get<AnimationComponent>(h)) {
+            anims.push_back(ac); // 有动画则后续按帧扫关节极值
         }
         for (const auto &child : scene->GetChildren(n)) {
             stack.push_back(child); // 继续下钻同棵子树
         }
     }
+    if (joints.empty()) {
+        return false; // 子树内无蒙皮关节，无从适配
+    }
+
+    glm::vec3 localMin(0.0f), localMax(0.0f);
+    bool found = false;
+    // invW 逐帧变化：当前姿态用 invWorld，动画扫描用「该帧盒子自身世界矩阵的逆」，
+    // 这样即使盒子随动画移动/旋转，度量尺度始终与盒子本地空间一致。
+    const auto expandLocal = [&](const glm::mat4 &invW, const glm::vec3 &wpos) {
+        const glm::vec3 jp = glm::vec3(invW * glm::vec4(wpos, 1.0f));
+        if (!found) {
+            localMin = localMax = jp;
+            found = true;
+        } else {
+            localMin = glm::min(localMin, jp);
+            localMax = glm::max(localMax, jp);
+        }
+    };
+
+    // ── 2) 当前姿态打底（无动画时仅此一步） ──
+    for (const entt::entity jh : joints) {
+        const auto *jtc = reg.try_get<TransformComponent>(jh);
+        if (jtc) {
+            expandLocal(invWorld, glm::vec3(jtc->GetWorldMatrix()[3]));
+        }
+    }
     if (!found) {
         return false;
     }
+
+    // ── 3) 动画扫描：把子树内的每个 clip 从头到尾播一遍，各帧关节极值并入最大盒 ──
+    // 关节世界位置只受「关节到根祖先链」上实体局部 TRS 影响，先收集整条链
+    std::unordered_set<entt::entity> chainSet;
+    for (const entt::entity jh : joints) {
+        entt::entity cur = jh;
+        while (cur != entt::null) {
+            chainSet.insert(cur);
+            const auto *curTc = reg.try_get<TransformComponent>(cur);
+            cur = curTc ? curTc->parent : entt::null;
+        }
+    }
+
+    for (const AnimationComponent *ac : anims) {
+        for (const ClipInstance &inst : ac->clips) {
+            const auto &clip = inst.clip;
+            if (!clip || clip->channels.empty()) {
+                continue;
+            }
+            const auto &targets = inst.channelTargets;
+
+            // 采样时刻：均匀网格（限流，含首尾）+ 全部键帧时刻
+            // （键帧时刻覆盖 STEP 跳变与旋转弧极值不在网格上的情形）
+            std::vector<float> times;
+            const float duration = clip->duration;
+            if (duration > 0.0f) {
+                const float step = std::max(1.0f / 30.0f, duration / 1200.0f);
+                for (float t = 0.0f; t < duration; t += step) {
+                    times.push_back(t);
+                }
+            }
+            times.push_back(duration);
+            for (const auto &ch : clip->channels) {
+                times.insert(times.end(), ch.times.begin(), ch.times.end());
+            }
+            std::sort(times.begin(), times.end());
+            times.erase(std::unique(times.begin(), times.end()), times.end());
+
+            for (const float t : times) {
+                // 局部 TRS：默认取场景当前值，被本 clip 指定 path 驱动的分量用采样覆盖
+                // （同一目标只改写驱动分量，其余分量保持绑定姿态）
+                std::unordered_map<entt::entity, AnimLocalTrs> localTrs;
+                for (const entt::entity c : chainSet) {
+                    const auto *cTc = reg.try_get<TransformComponent>(c);
+                    if (cTc) {
+                        localTrs[c] = AnimLocalTrs{cTc->Translation, cTc->Rotation, cTc->Scale};
+                    }
+                }
+                for (size_t ci = 0; ci < clip->channels.size(); ++ci) {
+                    const AnimationChannel &ch = clip->channels[ci];
+                    const entt::entity target = (ci < targets.size()) ? targets[ci] : entt::null;
+                    if (target == entt::null || !chainSet.count(target)) {
+                        continue; // 空洞目标、或不在本骨架链上（不影响这些关节），跳过
+                    }
+                    auto &lt = localTrs[target];
+                    switch (ch.path) {
+                    case AnimationChannel::Path::Translation:
+                        lt.Translation = SampleAnimVec3(ch, t);
+                        break;
+                    case AnimationChannel::Path::Rotation:
+                        lt.Rotation = SampleAnimQuat(ch, t);
+                        break;
+                    case AnimationChannel::Path::Scale:
+                        lt.Scale = SampleAnimVec3(ch, t);
+                        break;
+                    }
+                }
+
+                // 自顶向下累乘世界矩阵（链已含根，父先于子），滚到每个关节取世界位置。
+                // 度量尺度用该帧盒子自身的逆世界矩阵：盒子随动画位移/旋转时仍得本地空间极值。
+                std::unordered_map<entt::entity, glm::mat4> worldMat;
+                std::function<glm::mat4(entt::entity)> calcWorld = [&](entt::entity e) -> glm::mat4 {
+                    auto it = worldMat.find(e);
+                    if (it != worldMat.end()) {
+                        return it->second;
+                    }
+                    const auto ltIt = localTrs.find(e);
+                    glm::mat4 m = (ltIt != localTrs.end()) ? AnimLocalMatrix(ltIt->second) : glm::mat4(1.0f);
+                    const auto *eTc = reg.try_get<TransformComponent>(e);
+                    if (eTc && eTc->parent != entt::null) {
+                        m = calcWorld(eTc->parent) * m;
+                    }
+                    worldMat[e] = m;
+                    return m;
+                };
+                const entt::entity boxH = static_cast<entt::entity>(entity);
+                const glm::mat4 invWorldT = glm::inverse(calcWorld(boxH));
+                for (const entt::entity jh : joints) {
+                    expandLocal(invWorldT, glm::vec3(calcWorld(jh)[3]));
+                }
+            }
+        }
+    }
+
     bb.Center = (localMin + localMax) * 0.5f;
     bb.Size = localMax - localMin;
     return true;

@@ -109,6 +109,7 @@ private:
     static void DrawBoundingBoxComponent(Entity entity, BoundingBoxComponent &component, Scene *scene);
 
     /// 根据实体子树内全部蒙皮关节的位置自动计算本地包围盒并写回（盒罩住所有关节）。
+    /// 子树内检测到动画组件时，扫描每个 clip 的逐帧关节极值取最大范围（播放一遍的效果）。
     /// 无关节时不修改，返回 false。
     static bool AutoFitBoundingBoxToJoints(Scene *scene, Entity entity, BoundingBoxComponent &bb);
 

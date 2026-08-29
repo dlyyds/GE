@@ -268,6 +268,105 @@ void BlendAndApplyTransition(entt::registry &registry, AnimationComponent &ac, f
 } // namespace
 
 
+// ============================================================================
+// 动画状态机 ASM 求值（计划书 §2.3）：条件求值 + 进入状态（阶段 B）
+// ============================================================================
+
+namespace {
+
+/// NearEq 比较 / StateEnded 判末使用的内容差（数值 / 秒），见计划书 §2.3
+constexpr float kAnimNearEps = 0.01f;
+
+/// clip 名 → AnimationComponent.clips 下标（未命中返回 SIZE_MAX，PlayClip 越界忽略）。
+/// clipName 是序列化稳定标识；下标随模型重排会错位，故运行期按名查（决策 9.2）。
+size_t ResolveClipIndex(const AnimationComponent &ac, const std::string &clipName) {
+    for (size_t i = 0; i < ac.clips.size(); ++i) {
+        if (ac.clips[i].clip && ac.clips[i].clip->name == clipName) {
+            return i;
+        }
+    }
+    return SIZE_MAX;
+}
+
+/// 求值一条转换下的全部条件（AND）：全满足才 true；空条件 = 恒真。
+/// trigger 读到即消费：Bool 条件读到的名字若在 triggers 集合中，视为 true 并移除（一次性脉冲）。
+bool EvalConditions(AnimStateMachineComponent &asmc, const AnimationComponent &ac,
+                    const std::vector<AnimCondition> &conditions) {
+    for (const AnimCondition &c : conditions) {
+        switch (c.type) {
+        case AnimCondition::Type::FloatCmp: {
+            const float a = asmc.floats.count(c.param) ? asmc.floats.at(c.param) : 0.0f; // 缺省按 0
+            const float b = c.value;
+            bool pass = false;
+            switch (c.cmp) {
+            case AnimCondition::Cmp::Greater:   pass = a > b;  break;
+            case AnimCondition::Cmp::GreaterEq: pass = a >= b; break;
+            case AnimCondition::Cmp::Less:      pass = a < b;  break;
+            case AnimCondition::Cmp::LessEq:    pass = a <= b; break;
+            case AnimCondition::Cmp::NearEq:    pass = std::abs(a - b) <= kAnimNearEps; break;
+            default:                            pass = (a != b); break; // Not
+            }
+            if (!pass) {
+                return false;
+            }
+        } break;
+        case AnimCondition::Type::Bool: {
+            const bool fired = asmc.triggers.erase(c.param) > 0; // 读到即消费
+            const bool val = fired || (asmc.bools.count(c.param) ? asmc.bools.at(c.param) : false);
+            if (val != c.expect) {
+                return false;
+            }
+        } break;
+        case AnimCondition::Type::StateTime:
+            if (asmc.stateTime < c.value) { // 驻留时间下限，防触发后立刻回跳（振铃）
+                return false;
+            }
+            break;
+        case AnimCondition::Type::StateEnded: {
+            const AnimationClip *clip = ac.activeClip();
+            if (!clip || ac.loop) { // 无有效 clip / 循环动画永不"播完"
+                return false;
+            }
+            if (ac.time < clip->duration - kAnimNearEps) {
+                return false;
+            }
+        } break;
+        }
+    }
+    return true;
+}
+
+/// 启用时的初始状态下标：initialState 名匹配；空 / 未匹配 → 状态 0；无状态 → SIZE_MAX
+size_t ResolveInitialStateIndex(const AnimStateMachineComponent &asmc) {
+    if (asmc.states.empty()) {
+        return SIZE_MAX;
+    }
+    if (!asmc.initialState.empty()) {
+        for (size_t i = 0; i < asmc.states.size(); ++i) {
+            if (asmc.states[i].name == asmc.initialState) {
+                return i;
+            }
+        }
+    }
+    return 0;
+}
+
+/// 进入目标状态：写 speed/loop + PlayClip 过渡（复用阶段 C 双路混合，ASM 不重写采样）。
+void EnterState(AnimStateMachineComponent &asmc, AnimationComponent &ac, size_t to, float blend) {
+    if (to >= asmc.states.size()) {
+        return;
+    }
+    asmc.current = to;
+    asmc.stateTime = 0.0f;
+    const AnimStateDef &st = asmc.states[to];
+    ac.loop = st.loop;
+    ac.speed = st.speed;
+    ac.PlayClip(ResolveClipIndex(ac, st.clipName), blend); // 解析失败 → SIZE_MAX → PlayClip 忽略
+}
+
+} // namespace
+
+
 Scene::Scene() {
     // 创建物理世界
     m_PhysicsWorld = std::make_unique<Physics::PhysicsWorld>(this);
@@ -563,6 +662,36 @@ void Scene::UpdateAnimations(Timestep ts) {
         const AnimationClip *clip = ac.activeClip();
         if (!clip || clip->channels.empty()) {
             continue;
+        }
+
+        // ---- 动画状态机 ASM 求值（阶段 B）：仅播放态，在推进时间轴之前 ----
+        // 启用但未进入任何状态 → 先进初始状态（硬切）；随后每帧按声明序检查导出转换，
+        // 第一条条件全满足的进入目标状态（PlayClip 交叉淡化由 EnterState 发起）。求值若
+        // 触发了 EnterState，本帧推进与混合已按新目标走（决策 2.4）。暂停（playing=false）
+        // 跳过求值、stateTime 冻结；手动切 clip 等外部覆盖由调用侧关停 ASM（决策 9.5）。
+        if (auto *asmc = m_Registry.try_get<AnimStateMachineComponent>(entity)) {
+            if (asmc->enabled && ac.playing) {
+                if (asmc->current == SIZE_MAX) {
+                    EnterState(*asmc, ac, ResolveInitialStateIndex(*asmc), 0.0f);
+                }
+                if (asmc->current != SIZE_MAX) {
+                    ac.loop = asmc->states[asmc->current].loop;   // 状态参数持续生效（防外改漂移）
+                    ac.speed = asmc->states[asmc->current].speed;
+                    asmc->stateTime += ts.GetSeconds();
+                    for (const AnimTransitionDef &t : asmc->transitions) {
+                        if (t.from != SIZE_MAX && t.from != asmc->current) {
+                            continue;
+                        }
+                        if (!EvalConditions(*asmc, ac, t.conditions)) {
+                            continue;
+                        }
+                        if (t.to != asmc->current && t.to < asmc->states.size()) {
+                            EnterState(*asmc, ac, t.to, t.blendSec);
+                        }
+                        break; // 声明序首达优先
+                    }
+                }
+            }
         }
 
         // 过渡期自愈：源 clip 失效（越界 / 空）时放弃过渡，回退单 clip 驱动。

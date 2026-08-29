@@ -493,6 +493,295 @@ void SceneHierarchyPanel::DrawAnimationComponent(Entity entity, AnimationCompone
 }
 
 // ============================================================
+// AnimStateMachine 组件（动画状态机，阶段 D，列表式编辑器）
+// ============================================================
+void SceneHierarchyPanel::DrawAnimStateMachine(Entity entity, AnimStateMachineComponent &component) {
+    // 同实体 AnimationComponent 的 clip 名列表：状态「片段」下拉数据源（无则占位提示）
+    const AnimationComponent *ac = m_Context->Reg().try_get<AnimationComponent>(
+        static_cast<entt::entity>(entity));
+
+    // 本地复用字符串池（条件类型 / 比较符 → ImGui::Combo 的零结尾串）
+    static const char *kCondTypeItems = "FloatCmp\0Bool\0StateTime\0StateEnded\0";
+    static const char *kCmpItems = "Greater\0GreaterEq\0Less\0LessEq\0NearEq\0Not\0";
+
+    // ---- 总开关 + 初始状态 + 运行状态 ----
+    const bool wasEnabled = component.enabled;
+    if (ImGui::Checkbox("状态机", &component.enabled)) {
+        if (wasEnabled && !component.enabled) {
+            // 关停 → 回到手动 PlayClip 控制：current 复位，重开时从初始状态重新进入（决策 2.4）
+            component.current = SIZE_MAX;
+            component.stateTime = 0.0f;
+        }
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled(component.enabled ? "运行中" : "关闭");
+
+    const std::string initialPreview = component.initialState.empty() ? "(默认：第一个)" : component.initialState;
+    ImGui::Text("初始状态");
+    ImGui::SameLine();
+    if (ImGui::BeginCombo("##asmInitial", initialPreview.c_str())) {
+        if (ImGui::Selectable("(默认：第一个)", component.initialState.empty())) {
+            component.initialState.clear();
+        }
+        for (const auto &st : component.states) {
+            const bool selected = (st.name == component.initialState);
+            if (ImGui::Selectable(st.name.c_str(), selected)) {
+                component.initialState = st.name;
+            }
+        }
+        ImGui::EndCombo();
+    }
+
+    if (component.enabled) {
+        const char *curName = (component.current != SIZE_MAX && component.current < component.states.size())
+            ? component.states[component.current].name.c_str() : "(未进入)";
+        ImGui::Text("当前状态: %s　stateTime %.2fs", curName, component.stateTime);
+    }
+    ImGui::Separator();
+
+    // ---- 参数调试：滑条/开关直写 floats/bools（驱动测试，不依赖脚本）----
+    ImGui::Text("参数调试");
+    if (component.floats.empty() && component.bools.empty()) {
+        ImGui::TextDisabled("空。脚本 OnCreate 初始化参数，或在下行添加调试参数");
+    }
+    for (auto &kv : component.floats) {
+        if (ImGui::SliderFloat(kv.first.c_str(), &kv.second, -10.0f, 10.0f, "%.2f")) {
+        }
+    }
+    for (auto &kv : component.bools) {
+        if (ImGui::Checkbox(kv.first.c_str(), &kv.second)) {
+        }
+    }
+    // 添加调试参数（float/bool）+ 触发一次性脉冲（等价脚本 anim.trigger）
+    static char sNewParamName[64] = {};
+    static int sNewParamType = 0; // 0=float 1=bool
+    ImGui::InputText("##asmNewParam", sNewParamName, sizeof(sNewParamName));
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(80.0f);
+    ImGui::Combo("##asmNewParamType", &sNewParamType, "float\0bool\0");
+    ImGui::SameLine();
+    if (ImGui::Button("添加") && sNewParamName[0]) {
+        const std::string name = sNewParamName;
+        if (sNewParamType == 0) {
+            component.floats[name] = 0.0f;
+        } else {
+            component.bools[name] = false;
+        }
+        sNewParamName[0] = '\0';
+    }
+    static char sTriggerName[64] = {};
+    ImGui::InputText("##asmTrigger", sTriggerName, sizeof(sTriggerName));
+    ImGui::SameLine();
+    if (ImGui::Button("触发脉冲") && sTriggerName[0]) {
+        component.triggers.insert(sTriggerName);
+        sTriggerName[0] = '\0';
+    }
+    if (!component.triggers.empty()) {
+        std::string pending;
+        for (const auto &tn : component.triggers) {
+            pending += tn + " ";
+        }
+        ImGui::TextDisabled("待消费 trigger: %s", pending.c_str());
+    }
+    ImGui::Separator();
+
+    // ---- 状态表：名字 + clip 下拉 + loop/speed + 删除；当前状态加标识 ----
+    ImGui::Text("状态");
+    int removeState = -1;
+    for (int i = 0; i < static_cast<int>(component.states.size()); ++i) {
+        auto &st = component.states[i];
+        ImGui::PushID(i);
+        char nameBuf[128] = {};
+        strncpy_s(nameBuf, sizeof(nameBuf), st.name.c_str(), _TRUNCATE);
+        if (ImGui::InputText("名", nameBuf, sizeof(nameBuf))) {
+            st.name = nameBuf;
+        }
+        if (component.current == static_cast<size_t>(i)) {
+            ImGui::SameLine();
+            ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.3f, 1.0f), "[当前]");
+        }
+        if (ac && !ac->clips.empty()) {
+            const std::string clipPreview = st.clipName.empty() ? "(选片段)" : st.clipName;
+            if (ImGui::BeginCombo("片段", clipPreview.c_str())) {
+                for (const auto &inst : ac->clips) {
+                    if (!inst.clip) {
+                        continue;
+                    }
+                    const bool sel = (inst.clip->name == st.clipName);
+                    if (ImGui::Selectable(inst.clip->name.c_str(), sel)) {
+                        st.clipName = inst.clip->name;
+                    }
+                }
+                ImGui::EndCombo();
+            }
+        } else {
+            ImGui::TextDisabled("无动画片段");
+        }
+        ImGui::Checkbox("循环", &st.loop);
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(110.0f);
+        ImGui::DragFloat("速度", &st.speed, 0.05f, 0.0f, 10.0f, "%.2f");
+        ImGui::SameLine();
+        if (ImGui::Button("删除")) {
+            removeState = i;
+        }
+        ImGui::PopID();
+    }
+    if (removeState >= 0) {
+        const size_t removed = static_cast<size_t>(removeState);
+        // 维护转换引用：引用被删状态的转换移除，其后的下标左移一档（ANY 永不为下标）
+        if (component.current == removed) {
+            component.current = SIZE_MAX; // 运行中的状态被删 → 下帧求值回初始状态
+        } else if (component.current != SIZE_MAX && component.current > removed) {
+            --component.current;
+        }
+        component.states.erase(component.states.begin() + removeState);
+        for (size_t ti = 0; ti < component.transitions.size();) {
+            auto &tr = component.transitions[ti];
+            if (tr.from == removed || tr.to == removed) {
+                component.transitions.erase(component.transitions.begin() + ti);
+                continue;
+            }
+            if (tr.from != SIZE_MAX && tr.from > removed) {
+                --tr.from;
+            }
+            if (tr.to > removed) {
+                --tr.to;
+            }
+            ++ti;
+        }
+    }
+    if (ImGui::Button("添加状态")) {
+        component.states.push_back(AnimStateDef{});
+    }
+    ImGui::Separator();
+
+    // ---- 转换表：From(ANY)/To/过渡时长 + 点开编辑条件列表 ----
+    ImGui::Text("转换");
+    int removeTrans = -1;
+    int openCondRow = -1; // 正在展开条件编辑的转换行
+    for (int i = 0; i < static_cast<int>(component.transitions.size()); ++i) {
+        auto &tr = component.transitions[i];
+        ImGui::PushID(i);
+        const char *fromPreview = (tr.from == SIZE_MAX) ? "ANY"
+            : (tr.from < component.states.size() ? component.states[tr.from].name.c_str() : "(无效)");
+        if (ImGui::BeginCombo("From", fromPreview)) {
+            if (ImGui::Selectable("ANY (全局)", tr.from == SIZE_MAX)) {
+                tr.from = SIZE_MAX;
+            }
+            for (size_t si = 0; si < component.states.size(); ++si) {
+                const bool sel = (tr.from == si);
+                if (ImGui::Selectable(component.states[si].name.c_str(), sel)) {
+                    tr.from = si;
+                }
+            }
+            ImGui::EndCombo();
+        }
+        ImGui::SameLine();
+        ImGui::Text("→");
+        ImGui::SameLine();
+        const char *toPreview = (tr.to < component.states.size()) ? component.states[tr.to].name.c_str() : "(无效)";
+        if (ImGui::BeginCombo("To", toPreview)) {
+            for (size_t si = 0; si < component.states.size(); ++si) {
+                const bool sel = (tr.to == si);
+                if (ImGui::Selectable(component.states[si].name.c_str(), sel)) {
+                    tr.to = si;
+                }
+            }
+            ImGui::EndCombo();
+        }
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(90.0f);
+        ImGui::DragFloat("过渡s", &tr.blendSec, 0.01f, 0.0f, 10.0f, "%.2f");
+        ImGui::SameLine();
+        if (ImGui::Button("条件")) {
+            openCondRow = (openCondRow == i) ? -1 : i;
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("删除")) {
+            removeTrans = i;
+        }
+        ImGui::TextDisabled("%d 条条件", static_cast<int>(tr.conditions.size()));
+
+        if (i == openCondRow) {
+            ImGui::Indent();
+            int removeCond = -1;
+            for (int ci = 0; ci < static_cast<int>(tr.conditions.size()); ++ci) {
+                AnimCondition &cond = tr.conditions[ci];
+                ImGui::PushID(ci);
+                int typeIdx = static_cast<int>(cond.type);
+                if (ImGui::Combo("类型", &typeIdx, kCondTypeItems)) {
+                    cond.type = static_cast<AnimCondition::Type>(typeIdx);
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("删除")) {
+                    removeCond = ci;
+                }
+                switch (cond.type) {
+                case AnimCondition::Type::FloatCmp: {
+                    char pbuf[64] = {};
+                    strncpy_s(pbuf, sizeof(pbuf), cond.param.c_str(), _TRUNCATE);
+                    if (ImGui::InputText("参数", pbuf, sizeof(pbuf))) {
+                        cond.param = pbuf;
+                    }
+                    int cmpIdx = static_cast<int>(cond.cmp);
+                    if (ImGui::Combo("比较", &cmpIdx, kCmpItems)) {
+                        cond.cmp = static_cast<AnimCondition::Cmp>(cmpIdx);
+                    }
+                    ImGui::SameLine();
+                    ImGui::SetNextItemWidth(90.0f);
+                    ImGui::DragFloat("阈值", &cond.value, 0.01f, -100.0f, 100.0f, "%.2f");
+                } break;
+                case AnimCondition::Type::Bool: {
+                    char pbuf[64] = {};
+                    strncpy_s(pbuf, sizeof(pbuf), cond.param.c_str(), _TRUNCATE);
+                    if (ImGui::InputText("参数", pbuf, sizeof(pbuf))) {
+                        cond.param = pbuf;
+                    }
+                    ImGui::SameLine();
+                    const char *expectPreview = cond.expect ? "true" : "false";
+                    if (ImGui::BeginCombo("期望", expectPreview)) {
+                        if (ImGui::Selectable("true", cond.expect)) {
+                            cond.expect = true;
+                        }
+                        if (ImGui::Selectable("false", !cond.expect)) {
+                            cond.expect = false;
+                        }
+                        ImGui::EndCombo();
+                    }
+                } break;
+                case AnimCondition::Type::StateTime:
+                    ImGui::SetNextItemWidth(110.0f);
+                    ImGui::DragFloat("驻留(秒)", &cond.value, 0.01f, 0.0f, 100.0f, "%.2f");
+                    break;
+                case AnimCondition::Type::StateEnded:
+                    ImGui::TextDisabled("当前动画播放到末尾后离开（需非循环）");
+                    break;
+                }
+                ImGui::PopID();
+            }
+            if (removeCond >= 0) {
+                tr.conditions.erase(tr.conditions.begin() + removeCond);
+            }
+            if (ImGui::Button("+ 条件")) {
+                tr.conditions.push_back(AnimCondition{});
+            }
+            ImGui::Unindent();
+        }
+        ImGui::PopID();
+    }
+    if (removeTrans >= 0) {
+        component.transitions.erase(component.transitions.begin() + removeTrans);
+    }
+    if (ImGui::Button("添加转换")) {
+        AnimTransitionDef t;
+        t.from = component.states.empty() ? SIZE_MAX : 0;
+        t.to = 0;
+        component.transitions.push_back(t);
+    }
+}
+
+// ============================================================
 // 绘制选中实体的所有组件（顶层编排函数）
 // ============================================================
 void SceneHierarchyPanel::DrawComponents(Entity entity) {
@@ -533,6 +822,9 @@ void SceneHierarchyPanel::DrawComponents(Entity entity) {
 
     DrawComponent<AnimationComponent>("Animation", entity,
         [&](auto &c) { DrawAnimationComponent(entity, c); });
+
+    DrawComponent<AnimStateMachineComponent>("Anim State Machine", entity,
+        [this, entity](auto &c) { DrawAnimStateMachine(entity, c); });
 
     DrawComponent<SpriteRendererComponent>("Sprite Renderer", entity,
         [](auto &c) { DrawSpriteRendererComponent(c); });
@@ -581,6 +873,7 @@ void SceneHierarchyPanel::DrawAddComponentPopup() {
     TryAddComponent<JointComponent>("Joint");
     TryAddComponent<SkinComponent>("Skin");
     TryAddComponent<AnimationComponent>("Animation");
+    TryAddComponent<AnimStateMachineComponent>("Anim State Machine");
     TryAddComponent<SpriteRendererComponent>("Sprite Renderer");
     TryAddComponent<PointLightComponent>("Point Light");
     TryAddComponent<DirectionalLightComponent>("Directional Light");

@@ -460,13 +460,14 @@ struct AnimationComponent {
         return (active < clips.size()) ? clips[active].clip.get() : nullptr;
     }
 
-    /// 请求切换到 clip[idx]，用 blendSeconds 秒过渡（<=0 为硬切；负速倒放强行硬切，决策 9.9）。
+    /// 请求切换到 clip[idx]，用 blendSeconds 秒过渡（<=0 为硬切；负速倒放/暂停 强行硬切，决策 9.9）。
     /// 切换瞬间 active 指向目标、time 归零，源 clip 以 transitionFrom/transitionFromTime 续播参与混合。
+    /// 暂停（无时间轴）时列过渡会因 α 永不推进而卡在源 pose，故暂停一律硬切（编辑器暂停下切换也能立刻看到目标）。
     void PlayClip(size_t idx, float blendSeconds) {
         if (idx >= clips.size() || idx == active) {
             return; // 越界或同片段：忽略
         }
-        const bool crossfade = blendSeconds > 0.0f && speed >= 0.0f;
+        const bool crossfade = blendSeconds > 0.0f && speed >= 0.0f && playing;
         if (crossfade) {
             transitionFrom = active; // 旧 active 成为源，从当前时间续播
             transitionFromTime = time;

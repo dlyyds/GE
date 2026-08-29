@@ -369,6 +369,15 @@ void SceneHierarchyPanel::DrawAnimationComponent(AnimationComponent &component) 
 
     ImGui::Text("片段源: %s", clip->source.c_str());
 
+    // 单片段模型兜底：切换 UI 需要 clips.size()>1。克隆第 2 个实例（共享同一 clip 键帧）以启用
+    // 过渡测试——先 Scrubber 拖源时间再「过渡切换」即可看到同 clip 不同相位间的混合（计划书 §8 兜底）。
+    // 注意：克隆实例会随场景序列化多写一条同 source 的 Clip（测试遗留，可手删；正式验证仍建议多 clip 资产）。
+    if (component.clips.size() == 1) {
+        if (ImGui::Button("克隆第2实例(过渡测试)")) {
+            component.clips.push_back(component.clips[0]);
+        }
+    }
+
     // 多 clip 下拉切换（单片段时隐藏）：选择只暂存目标（uiClipTarget，不序列化），
     // 点「过渡切换」走交叉淡化 / 「立即切换」走硬切；过渡期展示 α 进度便于验证（阶段 C）。
     if (component.clips.size() > 1) {
@@ -400,10 +409,12 @@ void SceneHierarchyPanel::DrawAnimationComponent(AnimationComponent &component) 
         }
         ImGui::SameLine();
         if (ImGui::Button("过渡切换")) {
+            GE_CORE_INFO("[Anim][Editor] 过渡切换 → clip {0}（{1:.2f}s）", component.uiClipTarget, component.uiBlendSec);
             component.PlayClip(component.uiClipTarget, component.uiBlendSec);
         }
         ImGui::SameLine();
         if (ImGui::Button("立即切换")) {
+            GE_CORE_INFO("[Anim][Editor] 立即切换 → clip {0}", component.uiClipTarget);
             component.PlayClip(component.uiClipTarget, 0.0f);
         }
 

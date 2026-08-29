@@ -104,6 +104,13 @@ TransformComponent *ActiveTransform(Impl &eng) {
     return eng.scene->Reg().try_get<TransformComponent>(eng.activeEntity);
 }
 
+// 读当前活动实体的动画状态机组件（无则返回 nullptr）
+AnimStateMachineComponent *ActiveAnimStateMachine(Impl &eng) {
+    if (!eng.scene || eng.activeEntity == entt::null)
+        return nullptr;
+    return eng.scene->Reg().try_get<AnimStateMachineComponent>(eng.activeEntity);
+}
+
 std::string ReadFileContents(const std::string &path) {
     std::ifstream in(path, std::ios::binary);
     if (!in)
@@ -221,6 +228,43 @@ void RegisterApi(Impl &eng) {
         return false;
     };
     lua["transform"] = trT;
+
+    // ---- anim → 当前实体动画状态机（ASM）参数表（计划书 §2.2）----
+    // 参数存 ASM 组件、不序列化：OnCreate 初始化、OnUpdate 按输入/物理驱动，
+    // Scene::UpdateAnimations 求值期消费。trigger 为一次性脉冲（读到即删）。get 未命中的
+    // float 参数回退到当前状态驻留时长 stateTime（脚本想自己读驻留时间用）。
+    sol::table animT = lua.create_table();
+    animT["set"] = [&eng](const std::string &name, float v) {
+        if (auto *asmc = ActiveAnimStateMachine(eng)) {
+            asmc->floats[name] = v;
+        } else {
+            GE_CORE_WARN("[Lua] anim.set: 实体无 AnimStateMachine 组件");
+        }
+    };
+    animT["set_bool"] = [&eng](const std::string &name, bool v) {
+        if (auto *asmc = ActiveAnimStateMachine(eng)) {
+            asmc->bools[name] = v;
+        } else {
+            GE_CORE_WARN("[Lua] anim.set_bool: 实体无 AnimStateMachine 组件");
+        }
+    };
+    animT["trigger"] = [&eng](const std::string &name) {
+        if (auto *asmc = ActiveAnimStateMachine(eng)) {
+            asmc->triggers.insert(name);
+        } else {
+            GE_CORE_WARN("[Lua] anim.trigger: 实体无 AnimStateMachine 组件");
+        }
+    };
+    animT["get"] = [&eng](const std::string &name) -> float {
+        if (auto *asmc = ActiveAnimStateMachine(eng)) {
+            if (asmc->floats.count(name)) {
+                return asmc->floats.at(name);
+            }
+            return asmc->stateTime;
+        }
+        return 0.0f;
+    };
+    lua["anim"] = animT;
 
     // ---- entity → 挂载实体的基本查询 ----
     auto hasAny = [&eng](const char *name) -> bool {

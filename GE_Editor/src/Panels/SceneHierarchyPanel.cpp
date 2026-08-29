@@ -376,10 +376,15 @@ void SceneHierarchyPanel::DrawAnimationComponent(AnimationComponent &component) 
             ? component.clips[component.active].clip->name
             : ("Clip " + std::to_string(component.active));
 
-        ImGui::SetNextItemWidth(100.0f);
+        // 过渡时长输入：带步进按钮会占用设定宽度一部分，给足余量避免数字截断
+        ImGui::SetNextItemWidth(150.0f);
         ImGui::InputFloat("过渡(s)", &component.uiBlendSec, 0.01f, 0.1f, "%.2f");
         ImGui::SameLine();
-        if (ImGui::BeginCombo("播放片段", preview.c_str())) {
+        ImGui::Text("片段");
+        ImGui::SameLine();
+        // 下拉框占满本行剩余宽度；标签用 ## 隐藏，避免挤在框右侧还额外占宽导致溢出截断
+        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+        if (ImGui::BeginCombo("##播放片段", preview.c_str())) {
             for (size_t i = 0; i < component.clips.size(); ++i) {
                 const bool selected = (i == component.active);
                 const std::string label = component.clips[i].clip

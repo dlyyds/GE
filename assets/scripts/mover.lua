@@ -19,8 +19,8 @@ function M.OnUpdate(self, ts)
 
     -- R 按下单帧边沿：绕 Y 转 90°
     if input.just_pressed(Key.R) then
-        local rx, ry, rz = transform.get_rotation()
-        transform.set_rotation(rx, ry + 90.0, rz)
+        -- 绕自身当前 Y 轴 +90°（四元数右乘增量，不用欧拉回读，避免万向锁/分支翻转）
+        transform.rotate_local(0.0, 1.0, 0.0, 90.0)
         log.info("mover: rotate by 90deg, tag=" .. entity.get_tag())
     end
 

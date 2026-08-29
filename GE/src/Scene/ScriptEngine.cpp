@@ -16,6 +16,7 @@
 #include "Core/Log.h"
 #include "Core/MouseCodes.h"
 
+#include <glm/gtc/quaternion.hpp>
 #include <sol/sol.hpp>
 
 namespace GE {
@@ -174,6 +175,23 @@ void RegisterApi(Impl &eng) {
             return true;
         }
         GE_CORE_WARN("[Lua] transform.set_rotation: 无 Transform 组件");
+        return false;
+    };
+    trT["rotate_local"] = [&eng](float ax, float ay, float az, float deg) {
+        // 绕该实体【当前局部】 (ax,ay,az) 轴旋转 deg 度：四元数右乘增量，
+        // 全程不碰欧拉回读（解不唯一 + 万向锁不稳），增量旋转请用它而非 get/set_rotation。
+        if (auto *t = ActiveTransform(eng)) {
+            const glm::vec3 axis(ax, ay, az);
+            const float len = glm::length(axis);
+            if (len < 1e-5f) {
+                GE_CORE_WARN("[Lua] transform.rotate_local: 轴为零向量");
+                return false;
+            }
+            t->Rotation = glm::normalize(
+                t->Rotation * glm::angleAxis(glm::radians(deg), axis / len));
+            return true;
+        }
+        GE_CORE_WARN("[Lua] transform.rotate_local: 无 Transform 组件");
         return false;
     };
     trT["get_scale"] = [&eng]() {

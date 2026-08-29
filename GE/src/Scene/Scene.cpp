@@ -1142,6 +1142,10 @@ void Scene::OnComponentAdded<AnimationComponent>(Entity entity, AnimationCompone
 }
 
 template <>
+void Scene::OnComponentAdded<AnimStateMachineComponent>(Entity entity, AnimStateMachineComponent &component) {
+}
+
+template <>
 void Scene::OnComponentAdded<BoundingBoxComponent>(Entity entity, BoundingBoxComponent &component) {
 }
 

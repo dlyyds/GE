@@ -99,6 +99,50 @@ ScriptFieldType ScriptFieldTypeFromName(const std::string &name) {
     return ScriptFieldType::None;
 }
 
+// ============================================================
+// 动画状态机 ASM 辅助（条件类型 / 比较符 ←→ 字符串标签）
+// ============================================================
+
+/// 条件类型枚举 → 字符串标签（可读性，落盘用）
+const char *AnimConditionTypeName(AnimCondition::Type type) {
+    switch (type) {
+    case AnimCondition::Type::Bool:       return "Bool";
+    case AnimCondition::Type::StateTime:  return "StateTime";
+    case AnimCondition::Type::StateEnded: return "StateEnded";
+    default:                              return "FloatCmp";
+    }
+}
+
+/// 字符串标签 → 条件类型枚举（未知回退 FloatCmp）
+AnimCondition::Type AnimConditionTypeFromName(const std::string &name) {
+    if (name == "Bool")       return AnimCondition::Type::Bool;
+    if (name == "StateTime")  return AnimCondition::Type::StateTime;
+    if (name == "StateEnded") return AnimCondition::Type::StateEnded;
+    return AnimCondition::Type::FloatCmp;
+}
+
+/// 比较符枚举 → 字符串标签（可读性，落盘用）
+const char *AnimConditionCmpName(AnimCondition::Cmp cmp) {
+    switch (cmp) {
+    case AnimCondition::Cmp::GreaterEq: return "GreaterEq";
+    case AnimCondition::Cmp::Less:      return "Less";
+    case AnimCondition::Cmp::LessEq:    return "LessEq";
+    case AnimCondition::Cmp::NearEq:    return "NearEq";
+    case AnimCondition::Cmp::Not:       return "Not";
+    default:                            return "Greater";
+    }
+}
+
+/// 字符串标签 → 比较符枚举（未知回退 Greater）
+AnimCondition::Cmp AnimConditionCmpFromName(const std::string &name) {
+    if (name == "GreaterEq") return AnimCondition::Cmp::GreaterEq;
+    if (name == "Less")      return AnimCondition::Cmp::Less;
+    if (name == "LessEq")    return AnimCondition::Cmp::LessEq;
+    if (name == "NearEq")    return AnimCondition::Cmp::NearEq;
+    if (name == "Not")       return AnimCondition::Cmp::Not;
+    return AnimCondition::Cmp::Greater;
+}
+
 /**
  * @brief 将纹理采样器参数写入 YAML 节点。
  *
@@ -939,6 +983,71 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
             }
         }
 
+        // ---- AnimStateMachineComponent（动画状态机：状态 + 转换 + 条件）----
+        // 运行时字段（current/stateTime/参数表）不落盘：玩法态初值由脚本 OnCreate 重填，
+        // 反序列化后 current=SIZE_MAX，首次 enabled=true 时从 initial 进入。
+        // From/To 以状态名序列化（"*" = ANY 全局转换），反序列化时转回下标；引用越界容错为 ANY。
+        if (entity.HasComponent<AnimStateMachineComponent>()) {
+            const auto &asmc = entity.GetComponent<AnimStateMachineComponent>();
+            YAML::Node asmNode = entityNode["AnimStateMachine"];
+            asmNode["Enabled"] = asmc.enabled;
+            if (!asmc.initialState.empty()) {
+                asmNode["Initial"] = asmc.initialState;
+            }
+
+            if (!asmc.states.empty()) {
+                YAML::Node statesNode = asmNode["States"];
+                statesNode.SetStyle(YAML::EmitterStyle::Block);
+                for (const auto &st : asmc.states) {
+                    YAML::Node stateNode;
+                    stateNode["Name"] = st.name;
+                    stateNode["Clip"] = st.clipName;
+                    stateNode["Loop"] = st.loop;
+                    stateNode["Speed"] = st.speed;
+                    statesNode.push_back(stateNode);
+                }
+            }
+
+            if (!asmc.transitions.empty()) {
+                YAML::Node transNode = asmNode["Transitions"];
+                transNode.SetStyle(YAML::EmitterStyle::Block);
+                for (const auto &tr : asmc.transitions) {
+                    YAML::Node tNode;
+                    const bool fromValid = tr.from != SIZE_MAX && tr.from < asmc.states.size();
+                    const bool toValid = tr.to < asmc.states.size();
+                    tNode["From"] = fromValid ? asmc.states[tr.from].name : "*";
+                    tNode["To"] = toValid ? asmc.states[tr.to].name : "*";
+                    tNode["BlendSec"] = tr.blendSec;
+                    if (!tr.conditions.empty()) {
+                        YAML::Node condsNode = tNode["Conditions"];
+                        condsNode.SetStyle(YAML::EmitterStyle::Block);
+                        for (const auto &c : tr.conditions) {
+                            YAML::Node condNode;
+                            condNode["Type"] = AnimConditionTypeName(c.type);
+                            switch (c.type) {
+                            case AnimCondition::Type::FloatCmp:
+                                condNode["Param"] = c.param;
+                                condNode["Cmp"] = AnimConditionCmpName(c.cmp);
+                                condNode["Value"] = c.value;
+                                break;
+                            case AnimCondition::Type::Bool:
+                                condNode["Param"] = c.param;
+                                condNode["Expect"] = c.expect;
+                                break;
+                            case AnimCondition::Type::StateTime:
+                                condNode["Value"] = c.value;
+                                break;
+                            case AnimCondition::Type::StateEnded:
+                                break;
+                            }
+                            condsNode.push_back(condNode);
+                        }
+                    }
+                    transNode.push_back(tNode);
+                }
+            }
+        }
+
         entitiesNode.push_back(entityNode);
     }
 
@@ -1367,6 +1476,95 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
                     default: break;
                     }
                     sc.PublicFields[name] = field;
+                }
+            }
+        }
+
+        // ---- AnimStateMachineComponent（状态/转换/条件全在组件内部自洽，随实体一并反序列化）----
+        // From/To 以状态名解析回下标（"*" = ANY）；引用不存在的状态名 → 跳过该转换容错。
+        // clipName 暂以字符串存，运行时按 AnimationComponent.clips 查 name 解析下标（阶段 B，不在本序列化器内）。
+        if (entityNode["AnimStateMachine"]) {
+            YAML::Node asmNode = entityNode["AnimStateMachine"];
+            auto &asmc = entity.AddComponent<AnimStateMachineComponent>();
+
+            asmc.enabled = asmNode["Enabled"] ? asmNode["Enabled"].as<bool>(false) : false;
+            asmc.initialState = asmNode["Initial"] ? asmNode["Initial"].as<std::string>()
+                                                   : std::string();
+
+            if (asmNode["States"] && asmNode["States"].IsSequence()) {
+                for (const auto &sn : asmNode["States"]) {
+                    AnimStateDef st;
+                    st.name = sn["Name"] ? sn["Name"].as<std::string>() : std::string();
+                    st.clipName = sn["Clip"] ? sn["Clip"].as<std::string>() : std::string();
+                    st.loop = sn["Loop"] ? sn["Loop"].as<bool>(true) : true;
+                    st.speed = sn["Speed"] ? sn["Speed"].as<float>(1.0f) : 1.0f;
+                    asmc.states.push_back(std::move(st));
+                }
+            }
+
+            // 状态名 → 下标映射（From/To 解析用）
+            std::unordered_map<std::string, size_t> stateIndex;
+            for (size_t i = 0; i < asmc.states.size(); ++i) {
+                stateIndex[asmc.states[i].name] = i;
+            }
+
+            if (asmNode["Transitions"] && asmNode["Transitions"].IsSequence()) {
+                for (const auto &tn : asmNode["Transitions"]) {
+                    AnimTransitionDef tr;
+                    const std::string fromName = tn["From"] ? tn["From"].as<std::string>()
+                                                            : std::string();
+                    const std::string toName = tn["To"] ? tn["To"].as<std::string>()
+                                                         : std::string();
+
+                    if (fromName.empty() || fromName == "*") {
+                        tr.from = SIZE_MAX; // ANY 全局转换
+                    } else {
+                        auto it = stateIndex.find(fromName);
+                        if (it == stateIndex.end()) {
+                            GE_CORE_WARN("SceneSerializer: 状态机转换 From 状态 '{0}' 不存在，跳过该转换",
+                                         fromName);
+                            continue;
+                        }
+                        tr.from = it->second;
+                    }
+                    auto itTo = stateIndex.find(toName);
+                    if (itTo == stateIndex.end()) {
+                        GE_CORE_WARN("SceneSerializer: 状态机转换 To 状态 '{0}' 不存在，跳过该转换", toName);
+                        continue;
+                    }
+                    tr.to = itTo->second;
+                    tr.blendSec = tn["BlendSec"] ? tn["BlendSec"].as<float>(0.25f) : 0.25f;
+
+                    if (tn["Conditions"] && tn["Conditions"].IsSequence()) {
+                        for (const auto &cn : tn["Conditions"]) {
+                            AnimCondition cond;
+                            const std::string typeStr = cn["Type"] ? cn["Type"].as<std::string>()
+                                                                   : std::string();
+                            cond.type = AnimConditionTypeFromName(typeStr);
+                            switch (cond.type) {
+                            case AnimCondition::Type::FloatCmp:
+                                cond.param = cn["Param"] ? cn["Param"].as<std::string>()
+                                                          : std::string();
+                                cond.cmp = AnimConditionCmpFromName(cn["Cmp"]
+                                                                         ? cn["Cmp"].as<std::string>()
+                                                                         : std::string());
+                                cond.value = cn["Value"] ? cn["Value"].as<float>(0.0f) : 0.0f;
+                                break;
+                            case AnimCondition::Type::Bool:
+                                cond.param = cn["Param"] ? cn["Param"].as<std::string>()
+                                                          : std::string();
+                                cond.expect = cn["Expect"] ? cn["Expect"].as<bool>(true) : true;
+                                break;
+                            case AnimCondition::Type::StateTime:
+                                cond.value = cn["Value"] ? cn["Value"].as<float>(0.0f) : 0.0f;
+                                break;
+                            case AnimCondition::Type::StateEnded:
+                                break;
+                            }
+                            tr.conditions.push_back(std::move(cond));
+                        }
+                    }
+                    asmc.transitions.push_back(std::move(tr));
                 }
             }
         }

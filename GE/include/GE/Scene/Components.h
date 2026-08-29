@@ -11,6 +11,7 @@
 #include <string>
 #include <vector>
 #include <unordered_map>
+#include <unordered_set>
 #include <random>
 #include <cstdint>
 #include <memory>
@@ -482,6 +483,59 @@ struct AnimationComponent {
         time = 0.0f;
         timeApplied = false; // 强制切换帧重新采样（时间轴归零可能与 appliedTime 撞车）
     }
+};
+
+
+// ============================================================
+// 动画状态机 ASM（数据层，详见 docs/动画状态机ASM计划书.md）
+// ============================================================
+
+/// 单个状态：指到一条 clip + 播放参数覆盖（进入状态时应用到 ac）
+struct AnimStateDef {
+    std::string name;      ///< 状态名（序列化稳定标识，编辑器/转换引用）
+    std::string clipName;  ///< 目标 AnimationClip::name（与 AnimationClipManager 键无关；运行时解析为 clips 下标）
+    bool loop = true;      ///< 进入时写 ac.loop（false = 播一次，配合「播完」条件离开）
+    float speed = 1.0f;    ///< 进入时写 ac.speed
+};
+
+/// 条件节点：各类型取其一（其余字段默认无效）
+struct AnimCondition {
+    enum class Type : uint8_t { FloatCmp = 0, Bool = 1, StateTime = 2, StateEnded = 3 };
+    enum class Cmp : uint8_t { Greater, GreaterEq, Less, LessEq, NearEq, Not };
+    Type type = Type::FloatCmp;
+    std::string param;     ///< FloatCmp/Bool：参数名
+    Cmp cmp = Cmp::Greater;
+    float value = 0.0f;    ///< FloatCmp 阈值 / StateTime 秒 / NearEq 用同值 + 内置 eps
+    bool expect = true;    ///< Bool 期望值
+};
+
+/// 转换边：from → to（from 空 = 全局 ANY，任意状态可退出）
+struct AnimTransitionDef {
+    size_t from = SIZE_MAX; ///< 源状态下标；SIZE_MAX = ANY（全局转换）
+    size_t to = 0;          ///< 目标状态下标
+    float blendSec = 0.25f; ///< 复用阶段 C 过渡时长
+    std::vector<AnimCondition> conditions; ///< 全满足（AND）才触发；空 = 恒真
+};
+
+/// 运行时参数表（不序列化；初值由脚本 OnCreate 填写）
+struct AnimStateMachineComponent {
+    bool enabled = false;         ///< 总开关；editor/脚本可开
+    std::string initialState;      ///< 启用时进入的状态名（空 = 取第一个状态）
+    std::vector<AnimStateDef> states;
+    std::vector<AnimTransitionDef> transitions;
+
+    // ---- 运行时状态（不序列化）----
+    size_t current = SIZE_MAX;    ///< 当前状态下标（SIZE_MAX = 未进入）
+    float stateTime = 0.0f;       ///< 当前状态已驻留秒数（求值累加，EnterState 清零）
+
+    // ---- 参数 ----
+    std::unordered_map<std::string, float> floats;          ///< 连续参数（速度、方向、血量）
+    std::unordered_map<std::string, bool> bools;            ///< 开关参数（on_ground、in_air）
+    std::unordered_set<std::string> triggers;               ///< 一次性脉冲，求值读到即消费
+
+    AnimStateMachineComponent() = default;
+
+    AnimStateMachineComponent(const AnimStateMachineComponent &) = default;
 };
 
 

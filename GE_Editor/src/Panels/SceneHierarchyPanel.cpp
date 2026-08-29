@@ -369,20 +369,28 @@ void SceneHierarchyPanel::DrawAnimationComponent(AnimationComponent &component) 
 
     ImGui::Text("片段源: %s", clip->source.c_str());
 
-    // 多 clip 下拉切换（单片段时隐藏，Active 指向唯一 clip）
+    // 多 clip 下拉切换（单片段时隐藏）：选择只暂存目标（uiClipTarget，不序列化），
+    // 点「过渡切换」走交叉淡化 / 「立即切换」走硬切；过渡期展示 α 进度便于验证（阶段 C）。
     if (component.clips.size() > 1) {
-        const std::string preview = component.clips[component.active].clip
-            ? component.clips[component.active].clip->name
-            : ("Clip " + std::to_string(component.active));
-        if (ImGui::BeginCombo("播放片段", preview.c_str())) {
+        // 暂存目标兜底对齐：跨实体选择或外部改 active 后指回当前播放片段
+        if (component.uiClipTarget == SIZE_MAX || component.uiClipTarget >= component.clips.size()) {
+            component.uiClipTarget = component.active;
+        }
+        const std::string pendingLabel = component.clips[component.uiClipTarget].clip
+            ? component.clips[component.uiClipTarget].clip->name
+            : ("Clip " + std::to_string(component.uiClipTarget));
+
+        ImGui::SetNextItemWidth(100.0f);
+        ImGui::InputFloat("过渡(s)", &component.uiBlendSec, 0.01f, 0.1f, "%.2f");
+        ImGui::SameLine();
+        if (ImGui::BeginCombo("目标片段", pendingLabel.c_str())) {
             for (size_t i = 0; i < component.clips.size(); ++i) {
-                const bool selected = (i == component.active);
+                const bool selected = (i == component.uiClipTarget);
                 const std::string label = component.clips[i].clip
                     ? component.clips[i].clip->name
                     : ("Clip " + std::to_string(i));
                 if (ImGui::Selectable(label.c_str(), selected)) {
-                    component.active = i;
-                    component.time = 0.0f; // 切换后从头播放
+                    component.uiClipTarget = i;
                 }
                 if (selected) {
                     ImGui::SetItemDefaultFocus();
@@ -390,6 +398,25 @@ void SceneHierarchyPanel::DrawAnimationComponent(AnimationComponent &component) 
             }
             ImGui::EndCombo();
         }
+        ImGui::SameLine();
+        if (ImGui::Button("过渡切换")) {
+            component.PlayClip(component.uiClipTarget, component.uiBlendSec);
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("立即切换")) {
+            component.PlayClip(component.uiClipTarget, 0.0f);
+        }
+
+        // 过渡进度（仅过渡期显示）
+        if (component.transitionFrom != SIZE_MAX) {
+            const float alpha = (component.transitionDuration > 0.0f)
+                ? std::clamp(component.transitionElapsed / component.transitionDuration, 0.0f, 1.0f)
+                : 1.0f;
+            char overlay[16] = {};
+            snprintf(overlay, sizeof(overlay), "%d%%", static_cast<int>(alpha * 100.0f));
+            ImGui::ProgressBar(alpha, ImVec2(-1.0f, 0.0f), overlay);
+        }
+        ImGui::Separator();
     }
 
     // 播放控制行：播放/暂停按钮 + 循环开关

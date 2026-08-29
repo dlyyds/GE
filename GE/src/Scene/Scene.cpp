@@ -118,6 +118,153 @@ glm::quat SampleQuatChannel(const AnimationChannel &ch, float t, uint32_t &hint)
     return glm::slerp(ch.quatKeys[k0], ch.quatKeys[k0 + 1], t01);
 }
 
+/**
+ * @brief 推进 clip 播放时间（含 loop 回绕 / 非循环钳制）。
+ *
+ * duration <= 0 视为自由时间轴（不钳制，采样落到末键帧即可）。目标与源 clip 在
+ * 过渡期共用同一回绕/钳制语义（阶段 C）。
+ */
+void AdvanceClipTime(float &t, float dt, float duration, bool loop) {
+    t += dt;
+    if (duration > 0.0f) {
+        if (loop) {
+            t = std::fmod(t, duration);
+            if (t < 0.0f) {
+                t += duration;
+            }
+        } else {
+            t = std::clamp(t, 0.0f, duration);
+        }
+    }
+}
+
+/**
+ * @brief 动画事件区间检测：跨过 e.time（prev < e.time <= cur）触发脚本 OnAnimationEvent。
+ *
+ * loop 回绕（cur < prev 说明跨过了末尾）拆两段各触发一次；负速倒放（非回绕 cur<prev）
+ * 与时间未移动（prev==cur）都不触发（计划书决策 9.9 / 2.2，Scrubber 只改 time 不产生区间）。
+ * 过渡期只对目标 clip 触发（源 clip 事件不触发，决策 9.8）——由调用方只传目标事件表实现。
+ */
+void FireEvents(ScriptEngine &engine, entt::entity entity,
+                const std::vector<AnimationEvent> &evts,
+                float prev, float cur, float duration, bool loop) {
+    if (evts.empty() || prev == cur) {
+        return;
+    }
+    auto fire = [&](float a, float b) {
+        for (const auto &e : evts)
+            if (e.time > a && e.time <= b)
+                engine.DispatchAnimationEvent(entity, e.name);
+    };
+    if (loop && cur < prev) { // 回绕：跨过末尾 → 拆 (prev, duration] 与 [0, cur]
+        fire(prev, duration);
+        fire(0.0f, cur);
+    } else if (cur > prev) {
+        fire(prev, cur);
+    }
+}
+
+/**
+ * @brief 过渡期双路求值：目标 clip（active）与源 clip（transitionFrom）各自采样，
+ * 以 (entity, path) 键合到 ac.blendBuffer 按 α 混合，统一写回局部 TRS（决策 9.3）。
+ *
+ * α=0 → 全源姿势；α=1 → 全目标姿势。仅源拥有的节点恒按源值驱动（不同目标集 clip
+ * 的已知妥协：过渡结束后该节点保持源构型，不参与目标复位；同骨架多 clip 目标集一致，
+ * 不触发该分支）。
+ */
+void BlendAndApplyTransition(entt::registry &registry, AnimationComponent &ac, float alpha) {
+    using Path = AnimationChannel::Path;
+    std::vector<BlendSlot> &buffer = ac.blendBuffer;
+    buffer.clear();
+
+    auto findSlot = [&](entt::entity e, Path p) -> size_t {
+        for (size_t i = 0; i < buffer.size(); ++i)
+            if (buffer[i].e == e && buffer[i].p == p)
+                return i;
+        return buffer.size();
+    };
+
+    // pass 1：目标 clip 全通道 → 刷目标值（新槽 w=1，缓存 hint 复用阶段 A 免二分）
+    const auto &targetInst = ac.clips[ac.active];
+    const auto *targetClip = targetInst.clip.get();
+    auto &targetHints = targetInst.keyHints;
+    if (targetHints.size() != targetClip->channels.size()) {
+        targetHints.assign(targetClip->channels.size(), 0u);
+    }
+    for (size_t ci = 0; ci < targetClip->channels.size(); ++ci) {
+        const auto &ch = targetClip->channels[ci];
+        const entt::entity e = (ci < targetInst.channelTargets.size())
+            ? targetInst.channelTargets[ci] : entt::null;
+        if (e == entt::null || !registry.try_get<TransformComponent>(e)) {
+            continue;
+        }
+        size_t s = findSlot(e, ch.path);
+        if (s == buffer.size()) {
+            buffer.push_back({});
+            s = buffer.size() - 1;
+            buffer[s].e = e;
+            buffer[s].p = ch.path;
+            buffer[s].w = 1.0f;
+        }
+        switch (ch.path) {
+        case Path::Translation:
+        case Path::Scale: buffer[s].v = SampleVec3Channel(ch, ac.time, targetHints[ci]); break;
+        case Path::Rotation: buffer[s].q = SampleQuatChannel(ch, ac.time, targetHints[ci]); break;
+        }
+    }
+
+    // pass 2：源 clip 全通道 → 双驱动槽按 α 混合（(1-α)src + αtgt），仅源拥有则补源值
+    const auto &fromInst = ac.clips[ac.transitionFrom];
+    const auto *fromClip = fromInst.clip.get();
+    auto &fromHints = fromInst.keyHints;
+    if (fromHints.size() != fromClip->channels.size()) {
+        fromHints.assign(fromClip->channels.size(), 0u);
+    }
+    for (size_t ci = 0; ci < fromClip->channels.size(); ++ci) {
+        const auto &ch = fromClip->channels[ci];
+        const entt::entity e = (ci < fromInst.channelTargets.size())
+            ? fromInst.channelTargets[ci] : entt::null;
+        if (e == entt::null || !registry.try_get<TransformComponent>(e)) {
+            continue;
+        }
+        const size_t s = findSlot(e, ch.path);
+        switch (ch.path) {
+        case Path::Translation:
+        case Path::Scale: {
+            const glm::vec3 src = SampleVec3Channel(ch, ac.transitionFromTime, fromHints[ci]);
+            if (s != buffer.size()) {
+                buffer[s].v = glm::mix(src, buffer[s].v, alpha); // 目标已写 buffer：向 α 混合源
+            } else {
+                buffer.push_back({e, ch.path, 1.0f, src, glm::quat(1.0f, 0.0f, 0.0f, 0.0f)});
+            }
+            break;
+        }
+        case Path::Rotation: {
+            const glm::quat src = SampleQuatChannel(ch, ac.transitionFromTime, fromHints[ci]);
+            if (s != buffer.size()) {
+                buffer[s].q = glm::slerp(src, buffer[s].q, alpha);
+            } else {
+                buffer.push_back({e, ch.path, 1.0f, glm::vec3(0.0f), src});
+            }
+            break;
+        }
+        }
+    }
+
+    // pass 3：统一写回实体局部 TRS（随后的 DFS 重算 world）
+    for (const auto &slot : buffer) {
+        auto *tc = registry.try_get<TransformComponent>(slot.e);
+        if (!tc) {
+            continue;
+        }
+        switch (slot.p) {
+        case Path::Translation: tc->Translation = slot.v; break;
+        case Path::Rotation: tc->Rotation = slot.q; break;
+        case Path::Scale: tc->Scale = slot.v; break;
+        }
+    }
+}
+
 } // namespace
 
 
@@ -418,38 +565,30 @@ void Scene::UpdateAnimations(Timestep ts) {
             continue;
         }
 
-        // 推进时间轴（仅播放态）：秒 × 倍速（速率为负 = 倒放）
+        // 过渡期自愈：源 clip 失效（越界 / 空）时放弃过渡，回退单 clip 驱动。
+        if (ac.transitionFrom != SIZE_MAX) {
+            if (ac.transitionFrom >= ac.clips.size()
+                || !ac.clips[ac.transitionFrom].clip
+                || ac.clips[ac.transitionFrom].clip->channels.empty()) {
+                ac.transitionFrom = SIZE_MAX;
+            }
+        }
+        const bool inTransition = ac.transitionFrom != SIZE_MAX;
+
+        // 推进时间轴（仅播放态）：目标 clip 推进并触发其事件；过渡期源 clip 按同速续播，
+        // 过渡进度按墙钟推进（决策 9.7，不随 speed 缩放）。
         if (ac.playing) {
             const float prev = ac.time; // 推进前记录，供事件区间检测
-            ac.time += ts.GetSeconds() * ac.speed;
-            if (clip->duration > 0.0f) {
-                if (ac.loop) {
-                    ac.time = std::fmod(ac.time, clip->duration);
-                    if (ac.time < 0.0f) {
-                        ac.time += clip->duration;
-                    }
-                } else {
-                    ac.time = std::clamp(ac.time, 0.0f, clip->duration);
-                }
-            }
-
-            // 事件区间检测：跨过 e.time（prev < e.time <= cur）触发脚本 OnAnimationEvent。
-            // loop 回绕（cur < prev 说明跨过了末尾）拆两段各触发一次；负速倒放（非回绕 cur<prev）
-            // 与时间未移动（prev==cur）都不触发（计划书 7.9 / 2.3，Scrubber 只改 time 不产生区间）。
+            AdvanceClipTime(ac.time, ts.GetSeconds() * ac.speed, clip->duration, ac.loop);
             const float cur = ac.time;
             const auto &evts = ac.clips[ac.active].events; // active 已由 activeClip 校验非空
-            if (!evts.empty() && prev != cur) {
-                auto fire = [&](float a, float b) {
-                    for (const auto &e : evts)
-                        if (e.time > a && e.time <= b)
-                            m_ScriptEngine.DispatchAnimationEvent(entity, e.name);
-                };
-                if (ac.loop && cur < prev) {
-                    fire(prev, clip->duration);
-                    fire(0.0f, cur);
-                } else if (cur > prev) {
-                    fire(prev, cur);
-                }
+            FireEvents(m_ScriptEngine, entity, evts, prev, cur, clip->duration, ac.loop);
+
+            if (inTransition) {
+                const auto *fromClip = ac.clips[ac.transitionFrom].clip.get();
+                AdvanceClipTime(ac.transitionFromTime, ts.GetSeconds() * ac.speed,
+                                fromClip->duration, ac.loop);
+                ac.transitionElapsed += ts.GetSeconds();
             }
         }
 
@@ -461,9 +600,21 @@ void Scene::UpdateAnimations(Timestep ts) {
         ac.appliedTime = ac.time;
         ac.timeApplied = true;
 
-        // 逐通道采样 → 写目标实体的局部 TRS（局部字段，随后的 DFS 重算 world；
-        // 目标节点可能是皮肤关节的祖先/结构节点，经 DFS 传播子树全部关节）。
-        // keyHints 与 channels 一一对应：缓存上次键帧下界，时间单调推进免二分。
+        if (inTransition) {
+            // 过渡期：双路求值 → buffer 混合 → 统一写回（决策 9.3）。
+            const float alpha = (ac.transitionDuration > 0.0f)
+                ? std::clamp(ac.transitionElapsed / ac.transitionDuration, 0.0f, 1.0f)
+                : 1.0f;
+            BlendAndApplyTransition(m_Registry, ac, alpha);
+            if (ac.transitionElapsed >= ac.transitionDuration) {
+                ac.transitionFrom = SIZE_MAX; // 过渡结束：仅目标 clip 驱动
+            }
+            continue;
+        }
+
+        // 非过渡（常规单 clip 路径）：逐通道采样 → 写目标实体的局部 TRS（局部字段，
+        // 随后的 DFS 重算 world；目标节点可能是皮肤关节的祖先/结构节点，经 DFS 传播子树全部关节）。
+        // keyHints 与 channels 一一对应：缓存上次键帧下界，时间单调推进免二分（阶段 A）。
         const auto &channels = clip->channels;
         auto &inst = ac.clips[ac.active]; // active 已由 activeClip 校验
         auto &hints = inst.keyHints;

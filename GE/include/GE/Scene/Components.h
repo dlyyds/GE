@@ -2,6 +2,7 @@
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <algorithm>
 #include <utility>
 #include <functional>
 
@@ -404,6 +405,16 @@ struct AnimationEvent {
     std::string name;    ///< 事件名（脚本/音频等按名订阅）
 };
 
+/// 过渡混合槽：键合 (实体, 路径) 的临时姿态，clip 过渡期双路求值并入后统一写回。
+/// w 为累计权重：2-clip 交叉淡化恒为 1（为将来多源叠加预留），运行时计算不用。
+struct BlendSlot {
+    entt::entity e = entt::null; ///< 目标实体
+    AnimationChannel::Path p = AnimationChannel::Path::Translation; ///< 驱动路径
+    float w = 1.0f; ///< 累计权重（2-clip 交叉淡化恒为 1）
+    glm::vec3 v{}; ///< Translation / Scale 值
+    glm::quat q = glm::quat(1.0f, 0.0f, 0.0f, 0.0f); ///< Rotation 值
+};
+
 /// 绑定到场景的动画实例：clip（共享键帧）+ 本次解析的目标实体
 struct ClipInstance {
     std::shared_ptr<AnimationClip> clip;
@@ -421,6 +432,19 @@ struct AnimationComponent {
     bool playing = true; ///< 是否在播
     bool loop = true; ///< 是否循环
 
+    // ---- clip 过渡状态（决策 9.4/9.6；不序列化）----
+    // 切换瞬间 active 已是目标 clip、time 已是目标时间轴，源 clip 由下述字段续播。
+    // 保存→加载后自然落在目标 clip，无残留过渡状态（故过渡不进序列化）。
+    size_t transitionFrom = SIZE_MAX; ///< 源 clip 实例索引；SIZE_MAX = 无过渡
+    float transitionFromTime = 0.0f; ///< 源 clip 播放时间（续播）
+    float transitionElapsed = 0.0f; ///< 过渡已进行墙钟时间
+    float transitionDuration = 0.0f; ///< 过渡总时长（秒；0 = 立即）
+    std::vector<BlendSlot> blendBuffer; ///< 过渡临时姿态槽（成员复用容量，免每帧分配）
+
+    // ---- 编辑器 UI 暂存（不序列化）：下拉暂存的目标 index 与过渡秒输入 ----
+    size_t uiClipTarget = SIZE_MAX; ///< 面板下拉暂存的目标 clip 索引（SIZE_MAX = 未设，绘制时对齐 active）
+    float uiBlendSec = 0.25f; ///< 面板过渡时长输入默认值（秒）
+
     // 运行时求值状态（不序列化）：记录上次实际应用过的采样时间。
     // 暂停时编辑器 Scrubber 只改 ac.time，据此判断是否需要重新采样应用姿态，
     // 而静止帧（无拖动）直接跳过免无用功。
@@ -434,6 +458,29 @@ struct AnimationComponent {
     /// 便捷访问当前 clip（无动画返回 nullptr）
     [[nodiscard]] const AnimationClip *activeClip() const {
         return (active < clips.size()) ? clips[active].clip.get() : nullptr;
+    }
+
+    /// 请求切换到 clip[idx]，用 blendSeconds 秒过渡（<=0 为硬切；负速倒放强行硬切，决策 9.9）。
+    /// 切换瞬间 active 指向目标、time 归零，源 clip 以 transitionFrom/transitionFromTime 续播参与混合。
+    void PlayClip(size_t idx, float blendSeconds) {
+        if (idx >= clips.size() || idx == active) {
+            return; // 越界或同片段：忽略
+        }
+        const bool crossfade = blendSeconds > 0.0f && speed >= 0.0f;
+        if (crossfade) {
+            transitionFrom = active; // 旧 active 成为源，从当前时间续播
+            transitionFromTime = time;
+            transitionElapsed = 0.0f;
+            transitionDuration = blendSeconds;
+        } else {
+            transitionFrom = SIZE_MAX; // 硬切：清过渡状态
+            transitionFromTime = 0.0f;
+            transitionElapsed = 0.0f;
+            transitionDuration = 0.0f;
+        }
+        active = idx;
+        time = 0.0f;
+        timeApplied = false; // 强制切换帧重新采样（时间轴归零可能与 appliedTime 撞车）
     }
 };
 

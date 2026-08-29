@@ -441,8 +441,7 @@ struct AnimationComponent {
     float transitionDuration = 0.0f; ///< 过渡总时长（秒；0 = 立即）
     std::vector<BlendSlot> blendBuffer; ///< 过渡临时姿态槽（成员复用容量，免每帧分配）
 
-    // ---- 编辑器 UI 暂存（不序列化）：下拉暂存的目标 index 与过渡秒输入 ----
-    size_t uiClipTarget = SIZE_MAX; ///< 面板下拉暂存的目标 clip 索引（SIZE_MAX = 未设，绘制时对齐 active）
+    // ---- 编辑器 UI 暂存（不序列化）：过渡时长输入（秒）----
     float uiBlendSec = 0.25f; ///< 面板过渡时长输入默认值（秒）
 
     // 运行时求值状态（不序列化）：记录上次实际应用过的采样时间。

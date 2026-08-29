@@ -370,7 +370,8 @@ void SceneHierarchyPanel::DrawAnimationComponent(AnimationComponent &component) 
     ImGui::Text("片段源: %s", clip->source.c_str());
 
     // 单片段模型兜底：切换 UI 需要 clips.size()>1。克隆第 2 个实例（共享同一 clip 键帧）以启用
-    // 过渡测试——先 Scrubber 拖源时间再「过渡切换」即可看到同 clip 不同相位间的混合（计划书 §8 兜底）。
+    // 过渡测试——克隆后下拉选第 2 个实例即过渡，先让动画播一会（Scrubber 拖相位）再切，
+    // 就能看到同 clip 不同相位间的混合（计划书 §8 兜底）。
     // 注意：克隆实例会随场景序列化多写一条同 source 的 Clip（测试遗留，可手删；正式验证仍建议多 clip 资产）。
     if (component.clips.size() == 1) {
         if (ImGui::Button("克隆第2实例(过渡测试)")) {
@@ -378,44 +379,31 @@ void SceneHierarchyPanel::DrawAnimationComponent(AnimationComponent &component) 
         }
     }
 
-    // 多 clip 下拉切换（单片段时隐藏）：选择只暂存目标（uiClipTarget，不序列化），
-    // 点「过渡切换」走交叉淡化 / 「立即切换」走硬切；过渡期展示 α 进度便于验证（阶段 C）。
+    // 多 clip 下拉切换（单片段时隐藏）：选中即切换，默认走过渡淡化——衔接旧「选中即切」手感，
+    // 「过渡(s)」填 0 即硬切；过渡期展示 α 进度便于验证（阶段 C）。
     if (component.clips.size() > 1) {
-        // 暂存目标兜底对齐：跨实体选择或外部改 active 后指回当前播放片段
-        if (component.uiClipTarget == SIZE_MAX || component.uiClipTarget >= component.clips.size()) {
-            component.uiClipTarget = component.active;
-        }
-        const std::string pendingLabel = component.clips[component.uiClipTarget].clip
-            ? component.clips[component.uiClipTarget].clip->name
-            : ("Clip " + std::to_string(component.uiClipTarget));
+        const std::string preview = component.clips[component.active].clip
+            ? component.clips[component.active].clip->name
+            : ("Clip " + std::to_string(component.active));
 
         ImGui::SetNextItemWidth(100.0f);
         ImGui::InputFloat("过渡(s)", &component.uiBlendSec, 0.01f, 0.1f, "%.2f");
         ImGui::SameLine();
-        if (ImGui::BeginCombo("目标片段", pendingLabel.c_str())) {
+        if (ImGui::BeginCombo("播放片段", preview.c_str())) {
             for (size_t i = 0; i < component.clips.size(); ++i) {
-                const bool selected = (i == component.uiClipTarget);
+                const bool selected = (i == component.active);
                 const std::string label = component.clips[i].clip
                     ? component.clips[i].clip->name
                     : ("Clip " + std::to_string(i));
                 if (ImGui::Selectable(label.c_str(), selected)) {
-                    component.uiClipTarget = i;
+                    GE_CORE_INFO("[Anim][Editor] 切换 → clip {0}（{1:.2f}s 过渡）", i, component.uiBlendSec);
+                    component.PlayClip(i, component.uiBlendSec);
                 }
                 if (selected) {
                     ImGui::SetItemDefaultFocus();
                 }
             }
             ImGui::EndCombo();
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("过渡切换")) {
-            GE_CORE_INFO("[Anim][Editor] 过渡切换 → clip {0}（{1:.2f}s）", component.uiClipTarget, component.uiBlendSec);
-            component.PlayClip(component.uiClipTarget, component.uiBlendSec);
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("立即切换")) {
-            GE_CORE_INFO("[Anim][Editor] 立即切换 → clip {0}", component.uiClipTarget);
-            component.PlayClip(component.uiClipTarget, 0.0f);
         }
 
         // 过渡进度（仅过渡期显示）

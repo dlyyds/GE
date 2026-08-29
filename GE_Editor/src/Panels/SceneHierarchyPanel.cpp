@@ -581,7 +581,18 @@ void SceneHierarchyPanel::DrawCameraComponent(CameraComponent &component) {
     // FOV（Camera 内部使用度数）
     float fov = camera.GetFov();
     if (ImGui::SliderFloat("FOV (deg)", &fov, 10.0f, 120.0f)) {
-        camera.SetPerspective(fov, camera.GetAspect(), 0.1f, 100.0f);
+        camera.SetPerspective(fov, camera.GetAspect(), camera.GetNear(), camera.GetFar());
+    }
+
+    // 近远裁剪面
+    float nearPlane = camera.GetNear();
+    if (ImGui::DragFloat("Near Plane", &nearPlane, 0.01f, 0.001f, camera.GetFar())) {
+        camera.SetPerspective(camera.GetFov(), camera.GetAspect(), nearPlane, camera.GetFar());
+    }
+
+    float farPlane = camera.GetFar();
+    if (ImGui::DragFloat("Far Plane", &farPlane, 0.5f, camera.GetNear(), 100000.0f)) {
+        camera.SetPerspective(camera.GetFov(), camera.GetAspect(), camera.GetNear(), farPlane);
     }
 
     // 宽高比

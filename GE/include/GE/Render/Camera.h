@@ -37,6 +37,8 @@ public:
 
     [[nodiscard]] float GetFov() const { return m_Fov; }
     [[nodiscard]] float GetAspect() const { return m_Aspect; }
+    [[nodiscard]] float GetNear() const { return m_Near; }
+    [[nodiscard]] float GetFar() const { return m_Far; }
 
     // ---- FPS ----
     void SetPosition(const glm::vec3 &pos);

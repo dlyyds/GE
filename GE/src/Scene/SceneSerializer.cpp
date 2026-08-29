@@ -744,11 +744,8 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
             cameraNode["Fov"] = cam.GetFov();
             cameraNode["Aspect"] = cam.GetAspect();
 
-            // 近远裁剪面：Camera 类未直接暴露，通过 SetPerspective 间接设置；
-            // 我们用默认值保存（Camera 构造时 Near=0.1, Far=100）
-            // 注意：如果 Camera 类以后添加 GetNear/GetFar 方法，这里需要更新
-            cameraNode["Near"] = 0.1f;
-            cameraNode["Far"] = 100.0f;
+            cameraNode["Near"] = cam.GetNear();
+            cameraNode["Far"] = cam.GetFar();
 
             // Orbit 模式参数
             cameraNode["Target"] = SerializeVec3(cam.GetTarget());

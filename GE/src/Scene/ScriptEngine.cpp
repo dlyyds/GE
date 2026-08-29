@@ -425,6 +425,30 @@ bool CallHook(InstanceData &id, const char *name, T &&arg) {
     }
 }
 
+// 事件钩子多参调用：self 之外带普通参数（sol 自动转换；物理碰撞 Enter 用）。
+// 未定义钩子 → false；运行出错 → 记 lastError + 日志 + false（隔离，不拖垮引擎）。
+template <typename... Args>
+bool CallHookVariadic(InstanceData &id, const char *name, Args &&...args) {
+    sol::object fn = id.inst[name];
+    if (fn.get_type() != sol::type::function)
+        return false;
+    sol::protected_function pf = fn.as<sol::protected_function>();
+    try {
+        sol::protected_function_result res = pf(id.inst, std::forward<Args>(args)...);
+        if (!res.valid()) {
+            sol::error err = res;
+            id.lastError = err.what();
+            GE_CORE_ERROR("[Lua] 函数 {} 出错: {}", name, id.lastError);
+            return false;
+        }
+        return true;
+    } catch (const sol::error &e) {
+        id.lastError = e.what();
+        GE_CORE_ERROR("[Lua] 函数 {} 异常: {}", name, id.lastError);
+        return false;
+    }
+}
+
 } // namespace
 
 
@@ -548,6 +572,53 @@ void ScriptEngine::DispatchAnimationEvent(entt::entity entity, const std::string
     CallHook(it->second, "OnAnimationEvent", eventName);
     eng.activeEntity = entt::null;
     // 事件钩子出错只记 lastError（CallHook 已做），不累计限频——限频仅针对 OnUpdate 运行循环（计划书 7.4）
+}
+
+void ScriptEngine::DispatchCollisionEvent(entt::entity entity, const std::string &otherTag,
+                                          bool isTrigger, Physics::CollisionPhase phase,
+                                          float impulse, float nx, float ny, float nz) {
+    if (!m_Impl || !m_Impl->scene)
+        return;
+    Impl &eng = *m_Impl;
+    if (entity == entt::null)
+        return;
+    // 无脚本/未启用 → 静默丢弃（计划书 2.4)
+    auto *sc = eng.scene->Reg().try_get<ScriptComponent>(entity);
+    if (!sc || !sc->Enabled || sc->ScriptPath.empty())
+        return;
+    auto it = eng.instances.find(entity);
+    if (it == eng.instances.end())
+        return;
+
+    eng.activeEntity = entity; // 钩子内经 transform/entity API 作用于此实体的实例
+    if (isTrigger) {
+        switch (phase) {
+        case Physics::CollisionPhase::Enter: CallHook(it->second, "OnTriggerEnter", otherTag); break;
+        case Physics::CollisionPhase::Stay:  CallHook(it->second, "OnTriggerStay", otherTag); break;
+        case Physics::CollisionPhase::Exit:  CallHook(it->second, "OnTriggerExit", otherTag); break;
+        }
+    } else {
+        switch (phase) {
+        case Physics::CollisionPhase::Enter:
+            CallHookVariadic(it->second, "OnCollisionEnter", otherTag, impulse, nx, ny, nz);
+            break;
+        case Physics::CollisionPhase::Stay:  CallHook(it->second, "OnCollisionStay", otherTag); break;
+        case Physics::CollisionPhase::Exit:  CallHook(it->second, "OnCollisionExit", otherTag); break;
+        }
+    }
+    eng.activeEntity = entt::null;
+}
+
+bool ScriptEngine::AnyInstanceDefinesHook(const char *hookName) const {
+    if (!m_Impl)
+        return false;
+    for (const auto &[entity, id] : m_Impl->instances) {
+        (void)entity;
+        sol::object fn = id.inst[hookName]; // 经 metatable __index 查到行为表的函数即算定义
+        if (fn.get_type() == sol::type::function)
+            return true;
+    }
+    return false;
 }
 
 bool ScriptEngine::HasInstance(entt::entity entity) const {

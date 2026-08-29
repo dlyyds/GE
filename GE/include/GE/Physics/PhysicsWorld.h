@@ -48,6 +48,12 @@ struct TransformComponent;
 namespace Physics {
 
 /**
+ * @brief 接触事件缓冲（阶段 B）：环形缓冲 + 引擎 ContactListener + Stay 开关。
+ * 定义放 PhysicsWorld.cpp（持 Jolt 类型），头文件仅前向声明隔离 Jolt。
+ */
+class ContactEventBuffer;
+
+/**
  * @brief 物理世界 —— 封装 Jolt 物理系统，每个 Scene 一个实例。
  *
  * 使用固定步长（60Hz）+ 时间累加器模式进行物理步进，
@@ -135,6 +141,25 @@ public:
     /** @brief 获取当前重力加速度 */
     [[nodiscard]] glm::vec3 GetGravity() const { return m_Gravity; }
 
+    // ========================================================================
+    // 碰撞事件（阶段 B）
+    // ========================================================================
+
+    /**
+     * @brief 开关 Stay 高频通道（Step 前由 Scene 设）。
+     * 任何脚本订阅了 OnCollisionStay/OnTriggerStay 时置 true，Persisted 回调才写缓冲；
+     * 否则 Stay 零开销（计划书 B4）。
+     */
+    void SetStayEnabled(bool on);
+
+    /**
+     * @brief 取本帧碰撞事件列表（Step 后消费，紧邻调用）。
+     *
+     * 返回的是 Step 内部把环形缓冲翻译成的实体级事件；本帧有效，
+     * 下次 Step 会整体重建，调用方须在当帧派发完（阶段 B 约定：到达即派发即弃）。
+     */
+    [[nodiscard]] const std::vector<CollisionEvent> &TakeCollisionEvents() const;
+
 private:
     // ========================================================================
     // 内部辅助
@@ -157,6 +182,9 @@ private:
 
     /** @brief 判断 entity 是否有碰撞体组件 */
     bool HasColliderComponent(entt::entity entity) const;
+
+    /** @brief Step 步进后：把环形缓冲（BodyID 对）翻译成本帧实体级碰撞事件（主线程可碰 ECS） */
+    void CollectCollisionEvents();
 
     // ========================================================================
     // GLM ↔ Jolt 数学转换辅助
@@ -191,6 +219,10 @@ private:
 
     // 待创建刚体列表（延迟创建机制）
     std::vector<entt::entity> m_PendingBodies;
+
+    // 接触事件（阶段 B）：环形缓冲（Listener 写）+ 本帧实体级事件（Step 后填）
+    std::unique_ptr<ContactEventBuffer> m_ContactBuffer;
+    std::vector<CollisionEvent>         m_CollisionEvents;
 };
 
 } // namespace Physics

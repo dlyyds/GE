@@ -20,6 +20,7 @@ class Event;
 
 namespace Physics {
 class PhysicsWorld;
+struct CollisionEvent; // 定义在 PhysicsTypes.h（头文件只前向声明，避免引 Jolt）
 }
 
 class Scene {
@@ -152,6 +153,9 @@ private:
 
     /// 物理步进（OnUpdate3D 子步骤）
     void StepPhysics(Timestep ts);
+
+    /// 单条碰撞事件按实体双侧投递到脚本（法线各向自己，B 侧翻转；reg.valid 兜底）
+    void DispatchCollisionEvent(const Physics::CollisionEvent &evt);
 
     /// 收集场景光源（方向光 / 环境光 / 点光源）到渲染器（OnUpdate3D 子步骤）
     void UpdateLightParams();

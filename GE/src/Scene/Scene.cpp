@@ -570,8 +570,34 @@ void Scene::UpdateScripts(Timestep ts) {
 }
 
 void Scene::StepPhysics(Timestep ts) {
-    if (m_PhysicsWorld) {
-        m_PhysicsWorld->Step(ts);
+    if (!m_PhysicsWorld) {
+        return;
+    }
+    // 阶段 B4：Stay 高频通道按需 —— 任一脚本订阅了 Stay 钩子才收集 Persisted，否则零开销
+    m_PhysicsWorld->SetStayEnabled(
+        m_ScriptEngine.AnyInstanceDefinesHook("OnCollisionStay") ||
+        m_ScriptEngine.AnyInstanceDefinesHook("OnTriggerStay"));
+    m_PhysicsWorld->Step(ts);
+    // 阶段 B3：本帧碰撞事件按实体双侧派发到脚本（到达即派发即弃，不留过帧状态）
+    for (const auto &evt : m_PhysicsWorld->TakeCollisionEvents()) {
+        DispatchCollisionEvent(evt);
+    }
+}
+
+void Scene::DispatchCollisionEvent(const Physics::CollisionEvent &evt) {
+    // 双侧各投一次：每侧从自己视角收对端 Tag；法线各向自己（B 侧翻转）。
+    // reg.valid 兜底：事件缓冲存续期内实体可能已被销毁（物理计划风险 3）。
+    if (m_Registry.valid(evt.A)) {
+        const auto *tb = m_Registry.try_get<TagComponent>(evt.B);
+        m_ScriptEngine.DispatchCollisionEvent(
+            evt.A, tb ? tb->Tag : std::string(), evt.isTrigger, evt.phase,
+            evt.impulse, evt.normal.x, evt.normal.y, evt.normal.z);
+    }
+    if (m_Registry.valid(evt.B)) {
+        const auto *ta = m_Registry.try_get<TagComponent>(evt.A);
+        m_ScriptEngine.DispatchCollisionEvent(
+            evt.B, ta ? ta->Tag : std::string(), evt.isTrigger, evt.phase,
+            evt.impulse, -evt.normal.x, -evt.normal.y, -evt.normal.z);
     }
 }
 

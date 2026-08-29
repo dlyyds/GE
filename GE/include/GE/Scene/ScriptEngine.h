@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "Core/Timestep.h"
+#include "Physics/PhysicsTypes.h"
 #include "Scene/Components.h"
 #include "entt.hpp"
 
@@ -58,6 +59,16 @@ public:
     /// 动画事件派发：动画跨过事件时间点后由 Scene::UpdateAnimations 调。
     /// 实体无脚本/未启用/未定义 OnAnimationEvent → 空操作；错误走 lastError，不累计限频。
     void DispatchAnimationEvent(entt::entity entity, const std::string &eventName);
+
+    /// 物理碰撞事件派发：StepPhysics 消费碰撞事件后对**该侧**实体调一次（参数已按侧算好）。
+    /// 按 (isTrigger, phase) 映射到 OnCollision*/OnTrigger* 约定钩子；未定义钩子 → 空操作。
+    void DispatchCollisionEvent(entt::entity entity, const std::string &otherTag,
+                                bool isTrigger, Physics::CollisionPhase phase,
+                                float impulse, float nx, float ny, float nz);
+
+    /// 任一已加载脚本实例是否定义了该钩子（阶段 B4：Stay 高频通道全局按需开关用）。
+    /// 主线程调用；OnCollisionStay/OnTriggerStay 任意一个存在即返回 true。
+    bool AnyInstanceDefinesHook(const char *hookName) const;
 
     /// 查询实体是否已有脚本运行实例（面板状态行用）。
     bool HasInstance(entt::entity entity) const;

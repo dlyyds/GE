@@ -10,6 +10,12 @@
 #include "Scene/Components.h"
 #include "Core/Log.h"
 
+#include <algorithm>
+#include <array>
+#include <atomic>
+#include <utility>
+#include <vector>
+
 // Jolt 重型头文件仅在 .cpp 中引入
 #include <Jolt/Jolt.h>
 #include <Jolt/RegisterTypes.h>
@@ -27,6 +33,9 @@
 #include <Jolt/Physics/Collision/BroadPhase/BroadPhaseLayer.h>
 #include <Jolt/Physics/Collision/BroadPhase/ObjectVsBroadPhaseLayerFilterTable.h>
 #include <Jolt/Physics/Collision/ObjectLayer.h>
+#include <Jolt/Physics/Collision/ContactListener.h>
+#include <Jolt/Physics/Collision/Shape/SubShapeIDPair.h>
+#include <Jolt/Physics/Collision/EstimateCollisionResponse.h>
 #include <Jolt/Core/Factory.h>
 #include <Jolt/Core/JobSystemThreadPool.h>
 #include <Jolt/Core/TempAllocator.h>
@@ -111,6 +120,115 @@ public:
 } // anonymous namespace
 
 // ============================================================
+// 碰撞事件（阶段 B）：Jolt ContactListener → 环形缓冲
+// 定义在 GE::Physics 作用域（头文件已 fwd 声明 ContactEventBuffer）。
+// 监听器与缓冲互相依赖：先声明监听器，缓冲定义后实现监听器（两位一体）。
+// ============================================================
+
+/// 回调内只写这段 POD：BodyID 对 + 纯数值，无 ECS 引用。
+/// 回调可能在 Jolt 工作线程上触发，禁止碰 ECS / 分配内存（计划书 §0 硬约束）。
+struct RawContactEvent {
+    JPH::BodyID body1;
+    JPH::BodyID body2;
+    float nx = 0.0f, ny = 0.0f, nz = 0.0f; ///< 世界空间法线（向 body1；Stay/Exit 无效）
+    float impulse = 0.0f;                  ///< 法向冲量近似（仅 Enter 有效，kg·m/s）
+    CollisionPhase phase = CollisionPhase::Enter;
+};
+
+/// Jolt 接触监听器：Added→Enter / Persisted→Stay（按需）/ Removed→Exit。
+/// 三态天然对应 Jolt 回调；只写环形缓冲，Step 返回后主线程再消费。
+/// 成员函数实现放本文件后部（ContactEventBuffer 完整后）。
+class EngineContactListener final : public JPH::ContactListener {
+public:
+    explicit EngineContactListener(ContactEventBuffer &buffer);
+
+    void OnContactAdded(const JPH::Body &inBody1, const JPH::Body &inBody2,
+                        const JPH::ContactManifold &inManifold, JPH::ContactSettings &ioSettings) override;
+    void OnContactPersisted(const JPH::Body &inBody1, const JPH::Body &inBody2,
+                            const JPH::ContactManifold &inManifold, JPH::ContactSettings &ioSettings) override;
+    void OnContactRemoved(const JPH::SubShapeIDPair &inPair) override;
+
+private:
+    ContactEventBuffer &m_Buffer;
+};
+
+/// 固定容量、无堆分配：Listener 用原子计数追加（各线程写各槽），Step 返回后主线程只读消费。
+class ContactEventBuffer {
+public:
+    ContactEventBuffer();
+
+    /// 步进前调用（主线程）：本帧计数归零（Update 同步完成后无残余写入，天然无竞态）
+    void Reset() { m_Count.store(0u, std::memory_order_relaxed); }
+
+    void SetStayEnabled(bool on) { m_StayEnabled.store(on, std::memory_order_relaxed); }
+    bool StayEnabled() const { return m_StayEnabled.load(std::memory_order_relaxed); }
+
+    /// 回调追加：原子取槽，各线程写不同槽；数量封顶，溢出丢弃（防冲刷，不扩容）
+    void Append(const RawContactEvent &e) {
+        const uint32_t idx = m_Count.fetch_add(1u, std::memory_order_relaxed);
+        if (idx < kCapacity)
+            m_Events[idx] = e;
+    }
+
+    /// 已写条数（封顶到容量；溢出部分在 Append 里已被丢弃）
+    uint32_t Count() const {
+        return std::min<uint32_t>(m_Count.load(std::memory_order_relaxed), kCapacity);
+    }
+
+    RawContactEvent &operator[](uint32_t idx) { return m_Events[idx]; }
+
+    JPH::ContactListener *Listener() const { return m_Listener.get(); }
+
+    static constexpr uint32_t kCapacity = 256;
+
+private:
+    std::array<RawContactEvent, kCapacity> m_Events;
+    std::atomic<uint32_t> m_Count{0u};
+    std::atomic<bool> m_StayEnabled{false};
+    std::unique_ptr<EngineContactListener> m_Listener;
+};
+
+// ---- 监听器与缓冲实现（双方完整后才可写）----
+
+ContactEventBuffer::ContactEventBuffer() {
+    m_Listener = std::make_unique<EngineContactListener>(*this);
+}
+
+EngineContactListener::EngineContactListener(ContactEventBuffer &buffer)
+    : m_Buffer(buffer) {
+}
+
+void EngineContactListener::OnContactAdded(const JPH::Body &inBody1, const JPH::Body &inBody2,
+                                           const JPH::ContactManifold &inManifold,
+                                           JPH::ContactSettings &ioSettings) {
+    // 求解前冲量未知，用 Jolt 官方估算（读两侧线/角速度 + 流形，纯计算无分配）
+    float impulse = 0.0f;
+    JPH::CollisionEstimationResult est;
+    JPH::EstimateCollisionResponse(inBody1, inBody2, inManifold, est,
+                                   ioSettings.mCombinedFriction, ioSettings.mCombinedRestitution);
+    for (float contactImpulse : est.mContactImpulse)
+        impulse += contactImpulse;
+    const JPH::Vec3 &n = inManifold.mWorldSpaceNormal;
+    m_Buffer.Append({ inBody1.GetID(), inBody2.GetID(),
+                      n.GetX(), n.GetY(), n.GetZ(), impulse, CollisionPhase::Enter });
+}
+
+void EngineContactListener::OnContactPersisted(const JPH::Body &inBody1, const JPH::Body &inBody2,
+                                               const JPH::ContactManifold &,
+                                               JPH::ContactSettings &) {
+    if (!m_Buffer.StayEnabled())
+        return; // 无脚本订阅 Stay → 不收集（计划书 B4 零开销）
+    m_Buffer.Append({ inBody1.GetID(), inBody2.GetID(),
+                      0.0f, 0.0f, 0.0f, 0.0f, CollisionPhase::Stay });
+}
+
+void EngineContactListener::OnContactRemoved(const JPH::SubShapeIDPair &inPair) {
+    // Removed 回调禁止访问 body（ContactListener.h:127），只能取 ID
+    m_Buffer.Append({ inPair.GetBody1ID(), inPair.GetBody2ID(),
+                      0.0f, 0.0f, 0.0f, 0.0f, CollisionPhase::Exit });
+}
+
+// ============================================================
 // GLM ↔ Jolt 数学转换辅助函数
 // ============================================================
 
@@ -149,6 +267,8 @@ PhysicsWorld::~PhysicsWorld() {
     m_BroadPhaseLayerInterface.reset();
     m_ObjectVsBroadPhaseFilter.reset();
     m_ObjectLayerPairFilter.reset();
+    // 接触监听器持有 physics system 的裸指针，必须在其析构之后再销毁
+    m_ContactBuffer.reset();
 }
 
 void PhysicsWorld::InitJolt() {
@@ -194,6 +314,10 @@ void PhysicsWorld::InitJolt() {
     // 设置重力
     m_PhysicsSystem->SetGravity(ToJoltVec3(m_Gravity));
 
+    // 接触事件监听器（阶段 B）：环形缓冲承载 Jolt contact 回调，Step 返回后主线程消费
+    m_ContactBuffer = std::make_unique<ContactEventBuffer>();
+    m_PhysicsSystem->SetContactListener(m_ContactBuffer->Listener());
+
     GE_CORE_INFO("PhysicsWorld: Jolt 物理系统初始化完成");
 }
 
@@ -215,6 +339,9 @@ void PhysicsWorld::Step(Timestep ts) {
     const float dt = ts.GetSeconds();
     m_Accumulator += dt;
 
+    // 步进前清零接触缓冲：本帧的 Jolt 回调从 0 开始累加（Update 同步阻塞，无跨帧残留竞态）
+    m_ContactBuffer->Reset();
+
     // 防止"死亡螺旋"：长时间卡顿后限制最大步进次数
     int subSteps = 0;
     while (m_Accumulator >= FIXED_TIMESTEP && subSteps < MAX_SUBSTEPS) {
@@ -232,6 +359,9 @@ void PhysicsWorld::Step(Timestep ts) {
     if (subSteps >= MAX_SUBSTEPS) {
         m_Accumulator = 0.0f;
     }
+
+    // 步进后：把接触缓冲（BodyID 对）翻译成本帧实体级事件（主线程可碰 ECS）
+    CollectCollisionEvents();
 
     // Step 4: 同步动态体 Jolt → Transform
     SyncBodiesToTransforms();
@@ -409,6 +539,8 @@ void PhysicsWorld::ProcessPendingBodies() {
         bodySettings.mLinearDamping = rbc->LinearDamping;
         bodySettings.mAngularDamping = rbc->AngularDamping;
         bodySettings.mIsSensor = rbc->IsSensor;
+        // 阶段 B：写入实体句柄，Step 返回后经 userdata 反向查实体（碰撞事件/查询接口都靠它）
+        bodySettings.mUserData = static_cast<JPH::uint64>(static_cast<entt::id_type>(entity));
 
         if (motionType == JPH::EMotionType::Dynamic) {
             bodySettings.mOverrideMassProperties = JPH::EOverrideMassProperties::CalculateInertia;
@@ -585,6 +717,71 @@ void PhysicsWorld::SetGravity(const glm::vec3 &gravity) {
     m_Gravity = gravity;
     if (m_PhysicsSystem) {
         m_PhysicsSystem->SetGravity(ToJoltVec3(gravity));
+    }
+}
+
+// ============================================================
+// 碰撞事件（阶段 B）：把环形缓冲翻译成实体级事件并供场景分发
+// ============================================================
+
+void PhysicsWorld::SetStayEnabled(bool on) {
+    if (m_ContactBuffer)
+        m_ContactBuffer->SetStayEnabled(on);
+}
+
+const std::vector<CollisionEvent> &PhysicsWorld::TakeCollisionEvents() const {
+    return m_CollisionEvents;
+}
+
+void PhysicsWorld::CollectCollisionEvents() {
+    m_CollisionEvents.clear();
+    if (!m_ContactBuffer || !m_PhysicsSystem)
+        return;
+    const uint32_t n = m_ContactBuffer->Count();
+    if (n == 0)
+        return;
+
+    // 主线程在 Update 返回后读 body：BodyLockRead 顺带做"body 是否仍有效"检查（比裸接口安全）
+    auto &lockInterface = m_PhysicsSystem->GetBodyLockInterface();
+    std::vector<std::pair<entt::entity, entt::entity>> staySeen; // Stay 按实体对去重
+    for (uint32_t i = 0; i < n; ++i) {
+        const RawContactEvent &raw = (*m_ContactBuffer)[i];
+        JPH::BodyLockRead lockA(lockInterface, raw.body1);
+        JPH::BodyLockRead lockB(lockInterface, raw.body2);
+        if (!lockA.Succeeded() || !lockB.Succeeded())
+            continue; // body 不存在/本帧已销毁 → 事件无效，跳过
+
+        const auto ud1 = lockA.GetBody()->GetUserData();
+        const auto ud2 = lockB.GetBody()->GetUserData();
+        const entt::entity a = static_cast<entt::entity>(static_cast<entt::id_type>(ud1));
+        const entt::entity b = static_cast<entt::entity>(static_cast<entt::id_type>(ud2));
+        if (a == entt::null || b == entt::null)
+            continue;
+
+        if (raw.phase == CollisionPhase::Stay) {
+            // 同一对每帧最多一条 Stay（复合形状多子形状时 Jolt 会对同对多发 Persisted）
+            const auto key = std::make_pair(a, b);
+            const auto rev = std::make_pair(b, a);
+            if (std::find(staySeen.begin(), staySeen.end(), key) != staySeen.end() ||
+                std::find(staySeen.begin(), staySeen.end(), rev) != staySeen.end())
+                continue;
+            staySeen.push_back(key);
+        }
+
+        // 传感器标志：主线程从组件读（回调里读 body 受限；RigidBodyComponent.IsSensor 是权威）
+        const auto isSensor = [this](entt::entity e) {
+            const auto *rc = (m_Scene ? m_Scene->Reg().try_get<RigidBodyComponent>(e) : nullptr);
+            return rc && rc->IsSensor;
+        };
+
+        CollisionEvent evt;
+        evt.A = a;
+        evt.B = b;
+        evt.phase = raw.phase;
+        evt.isTrigger = isSensor(a) || isSensor(b);
+        evt.normal = {raw.nx, raw.ny, raw.nz};
+        evt.impulse = raw.impulse;
+        m_CollisionEvents.push_back(evt);
     }
 }
 

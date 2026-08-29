@@ -369,16 +369,6 @@ void SceneHierarchyPanel::DrawAnimationComponent(AnimationComponent &component) 
 
     ImGui::Text("片段源: %s", clip->source.c_str());
 
-    // 单片段模型兜底：切换 UI 需要 clips.size()>1。克隆第 2 个实例（共享同一 clip 键帧）以启用
-    // 过渡测试——克隆后下拉选第 2 个实例即过渡，先让动画播一会（Scrubber 拖相位）再切，
-    // 就能看到同 clip 不同相位间的混合（计划书 §8 兜底）。
-    // 注意：克隆实例会随场景序列化多写一条同 source 的 Clip（测试遗留，可手删；正式验证仍建议多 clip 资产）。
-    if (component.clips.size() == 1) {
-        if (ImGui::Button("克隆第2实例(过渡测试)")) {
-            component.clips.push_back(component.clips[0]);
-        }
-    }
-
     // 多 clip 下拉切换（单片段时隐藏）：选中即切换，默认走过渡淡化——衔接旧「选中即切」手感，
     // 「过渡(s)」填 0 即硬切；过渡期展示 α 进度便于验证（阶段 C）。
     if (component.clips.size() > 1) {

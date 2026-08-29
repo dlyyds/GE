@@ -751,8 +751,8 @@ void PhysicsWorld::CollectCollisionEvents() {
         if (!lockA.Succeeded() || !lockB.Succeeded())
             continue; // body 不存在/本帧已销毁 → 事件无效，跳过
 
-        const auto ud1 = lockA.GetBody()->GetUserData();
-        const auto ud2 = lockB.GetBody()->GetUserData();
+        const auto ud1 = lockA.GetBody().GetUserData();
+        const auto ud2 = lockB.GetBody().GetUserData();
         const entt::entity a = static_cast<entt::entity>(static_cast<entt::id_type>(ud1));
         const entt::entity b = static_cast<entt::entity>(static_cast<entt::id_type>(ud2));
         if (a == entt::null || b == entt::null)

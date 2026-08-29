@@ -69,7 +69,7 @@ enum class CollisionPhase : uint8_t {
  * @brief 实体级碰撞事件（阶段 B 桥接产物）。
  *
  * 由 Jolt 回调内环形缓冲（BodyID 对）在 Step 返回后、主线程上翻译成 ECS 实体对，
- * 再由 Scene::StepPhysics 尾部按实体双侧派发到脚本（OnCollision*/OnTrigger*）。
+ * 再由 Scene::StepPhysics 尾部按实体双侧派发到脚本（OnCollision 系 / OnTrigger 系钩子）。
  * 事件到达即派发即弃，不留过帧状态。
  */
 struct CollisionEvent {

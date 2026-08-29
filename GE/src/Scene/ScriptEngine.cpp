@@ -528,6 +528,12 @@ void ScriptEngine::OnUpdate(Timestep ts) {
                 continue;
         }
         eng.activeEntity = e;
+        // 行为表未定义 OnUpdate（纯事件钩子脚本：只订阅 OnAnimationEvent/OnCollision* 等）
+        // → 每帧跳过、不参与限频。"写了即订阅"，没有每帧逻辑不是错误（计划书 2.1）。
+        if (it->second.inst["OnUpdate"].get_type() != sol::type::function) {
+            eng.activeEntity = entt::null;
+            continue;
+        }
         const bool ok = CallHook(it->second, "OnUpdate", ts.GetSeconds());
         eng.activeEntity = entt::null;
         if (ok) {

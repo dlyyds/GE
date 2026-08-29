@@ -185,7 +185,7 @@ void BlendAndApplyTransition(entt::registry &registry, AnimationComponent &ac, f
     };
 
     // pass 1：目标 clip 全通道 → 刷目标值（新槽 w=1，缓存 hint 复用阶段 A 免二分）
-    const auto &targetInst = ac.clips[ac.active];
+    auto &targetInst = ac.clips[ac.active];
     const auto *targetClip = targetInst.clip.get();
     auto &targetHints = targetInst.keyHints;
     if (targetHints.size() != targetClip->channels.size()) {
@@ -214,7 +214,7 @@ void BlendAndApplyTransition(entt::registry &registry, AnimationComponent &ac, f
     }
 
     // pass 2：源 clip 全通道 → 双驱动槽按 α 混合（(1-α)src + αtgt），仅源拥有则补源值
-    const auto &fromInst = ac.clips[ac.transitionFrom];
+    auto &fromInst = ac.clips[ac.transitionFrom];
     const auto *fromClip = fromInst.clip.get();
     auto &fromHints = fromInst.keyHints;
     if (fromHints.size() != fromClip->channels.size()) {

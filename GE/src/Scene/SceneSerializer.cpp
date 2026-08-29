@@ -923,6 +923,17 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
                         const auto *idc = reg.try_get<IDComponent>(t);
                         targetsNode.push_back(idc ? idc->UUID : "");
                     }
+                    // 事件表是场景数据（非模型不变量），随每 clip 落盘；为空则不写键（旧工具链文件照常）
+                    if (!inst.events.empty()) {
+                        YAML::Node eventsNode = clipNode["Events"];
+                        eventsNode.SetStyle(YAML::EmitterStyle::Block);
+                        for (const auto &e : inst.events) {
+                            YAML::Node evtNode;
+                            evtNode["Time"] = e.time;
+                            evtNode["Name"] = e.name;
+                            eventsNode.push_back(evtNode);
+                        }
+                    }
                     clipsNode.push_back(clipNode);
                 }
             }
@@ -1053,6 +1064,7 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
     struct PendingAnimationClip {
         std::string clipKey;               ///< 动画片段源键 "path#N"
         std::vector<std::string> targetIds; ///< 与 clip.channels 一一对应的目标实体 UUID
+        std::vector<AnimationEvent> events; ///< 场景级事件表（缺省为空，旧场景照常）
     };
     struct PendingAnimation {
         Entity entity;
@@ -1314,6 +1326,14 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
                             pc.targetIds.push_back(tu.as<std::string>());
                         }
                     }
+                    if (clipNode["Events"] && clipNode["Events"].IsSequence()) {
+                        for (const auto &en : clipNode["Events"]) {
+                            AnimationEvent e;
+                            e.time = en["Time"] ? en["Time"].as<float>(0.0f) : 0.0f;
+                            e.name = en["Name"] ? en["Name"].as<std::string>("") : std::string();
+                            pc.events.push_back(std::move(e));
+                        }
+                    }
                     p.clips.push_back(std::move(pc));
                 }
             }
@@ -1458,6 +1478,7 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
                                                   : entt::null);
             }
             inst.keyHints.assign(clip->channels.size(), 0u); // 采样键帧下界缓存初始化（阶段 A）
+            inst.events = pc.events; // 场景级事件表回填（缺省为空，旧场景文件照常）
             ac.clips.push_back(std::move(inst));
         }
         ac.active = (p.active < ac.clips.size()) ? p.active : 0;

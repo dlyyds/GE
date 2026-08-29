@@ -398,11 +398,18 @@ struct AnimationClip {
     std::vector<AnimationChannel> channels;
 };
 
+/// 动画事件：挂在动画时间轴上的"某时刻通知"（播放跨过 e.time 时触发脚本 OnAnimationEvent）
+struct AnimationEvent {
+    float time = 0.0f;   ///< 秒，相对 clip 起点
+    std::string name;    ///< 事件名（脚本/音频等按名订阅）
+};
+
 /// 绑定到场景的动画实例：clip（共享键帧）+ 本次解析的目标实体
 struct ClipInstance {
     std::shared_ptr<AnimationClip> clip;
     std::vector<entt::entity> channelTargets; ///< 与 clip->channels 一一对应（未解析为 null）
     std::vector<uint32_t> keyHints; ///< 与 channels 一一对应：上次采样键帧下界（运行时缓存；不序列化）
+    std::vector<AnimationEvent> events; ///< 场景级事件表（编辑/序列化；共享键帧里没有事件）
 };
 
 /// 动画组件：挂在带骨架的角色实体上（与 SkinComponent 同实体）

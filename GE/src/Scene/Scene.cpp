@@ -420,6 +420,7 @@ void Scene::UpdateAnimations(Timestep ts) {
 
         // 推进时间轴（仅播放态）：秒 × 倍速（速率为负 = 倒放）
         if (ac.playing) {
+            const float prev = ac.time; // 推进前记录，供事件区间检测
             ac.time += ts.GetSeconds() * ac.speed;
             if (clip->duration > 0.0f) {
                 if (ac.loop) {
@@ -429,6 +430,25 @@ void Scene::UpdateAnimations(Timestep ts) {
                     }
                 } else {
                     ac.time = std::clamp(ac.time, 0.0f, clip->duration);
+                }
+            }
+
+            // 事件区间检测：跨过 e.time（prev < e.time <= cur）触发脚本 OnAnimationEvent。
+            // loop 回绕（cur < prev 说明跨过了末尾）拆两段各触发一次；负速倒放（非回绕 cur<prev）
+            // 与时间未移动（prev==cur）都不触发（计划书 7.9 / 2.3，Scrubber 只改 time 不产生区间）。
+            const float cur = ac.time;
+            const auto &evts = ac.clips[ac.active].events; // active 已由 activeClip 校验非空
+            if (!evts.empty() && prev != cur) {
+                auto fire = [&](float a, float b) {
+                    for (const auto &e : evts)
+                        if (e.time > a && e.time <= b)
+                            m_ScriptEngine.DispatchAnimationEvent(entity, e.name);
+                };
+                if (ac.loop && cur < prev) {
+                    fire(prev, clip->duration);
+                    fire(0.0f, cur);
+                } else if (cur > prev) {
+                    fire(prev, cur);
                 }
             }
         }

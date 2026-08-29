@@ -414,6 +414,42 @@ void SceneHierarchyPanel::DrawAnimationComponent(AnimationComponent &component) 
     }
     ImGui::Text("时长: %.3fs, channel 数: %d",
                 clip->duration, static_cast<int>(clip->channels.size()));
+
+    // ---- 动画事件表编辑（计划书阶段 A5）：仅编辑数据，不派发 ----
+    // 读/写 active clip 的事件表；每行「时间 + 名字 + 删除」，底部添加。
+    ImGui::Separator();
+    ImGui::Text("动画事件");
+    auto &events = component.clips[component.active].events;
+    int removeIdx = -1;
+    char nameBuf[128] = {};
+    for (int i = 0; i < static_cast<int>(events.size()); ++i) {
+        auto &evt = events[i];
+        ImGui::PushID(i);
+        float t = evt.time;
+        if (ImGui::InputFloat("时间(s)", &t, 0.01f, 0.1f, "%.3f")) {
+            if (clip->duration > 0.0f)
+                evt.time = std::clamp(t, 0.0f, clip->duration);
+            else
+                evt.time = std::max(0.0f, t);
+        }
+        ImGui::SameLine();
+        strncpy_s(nameBuf, sizeof(nameBuf), evt.name.c_str(), _TRUNCATE);
+        if (ImGui::InputText("事件名", nameBuf, sizeof(nameBuf))) {
+            evt.name = nameBuf;
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("删除")) {
+            removeIdx = i;
+        }
+        ImGui::PopID();
+    }
+    if (removeIdx >= 0) {
+        events.erase(events.begin() + removeIdx);
+    }
+    ImGui::TextDisabled("脚本里写 OnAnimationEvent(self, name) 按名分派");
+    if (ImGui::Button("添加事件")) {
+        events.push_back(AnimationEvent{});
+    }
 }
 
 // ============================================================

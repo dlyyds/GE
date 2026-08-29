@@ -55,6 +55,10 @@ public:
     /// 实体销毁/移除组件：调 OnDestroy 并清除实例。
     void OnEntityDestroyed(entt::entity entity);
 
+    /// 动画事件派发：动画跨过事件时间点后由 Scene::UpdateAnimations 调。
+    /// 实体无脚本/未启用/未定义 OnAnimationEvent → 空操作；错误走 lastError，不累计限频。
+    void DispatchAnimationEvent(entt::entity entity, const std::string &eventName);
+
     /// 查询实体是否已有脚本运行实例（面板状态行用）。
     bool HasInstance(entt::entity entity) const;
 

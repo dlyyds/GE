@@ -531,6 +531,25 @@ void ScriptEngine::OnEntityDestroyed(entt::entity entity) {
     eng.instances.erase(it);
 }
 
+void ScriptEngine::DispatchAnimationEvent(entt::entity entity, const std::string &eventName) {
+    if (!m_Impl || !m_Impl->scene)
+        return;
+    Impl &eng = *m_Impl;
+    if (entity == entt::null)
+        return;
+    // 无脚本/未启用 → 静默丢弃（计划书 2.4）
+    auto *sc = eng.scene->Reg().try_get<ScriptComponent>(entity);
+    if (!sc || !sc->Enabled || sc->ScriptPath.empty())
+        return;
+    auto it = eng.instances.find(entity);
+    if (it == eng.instances.end())
+        return; // 实例未装配（路径面板直改等）→ 不补挂，边沿通知一次性丢弃
+    eng.activeEntity = entity; // 钩子内经 transform/entity API 作用于此实体的实例
+    CallHook(it->second, "OnAnimationEvent", eventName);
+    eng.activeEntity = entt::null;
+    // 事件钩子出错只记 lastError（CallHook 已做），不累计限频——限频仅针对 OnUpdate 运行循环（计划书 7.4）
+}
+
 bool ScriptEngine::HasInstance(entt::entity entity) const {
     return m_Impl && m_Impl->instances.count(entity) > 0;
 }

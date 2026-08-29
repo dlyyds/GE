@@ -741,8 +741,11 @@ void PhysicsWorld::CollectCollisionEvents() {
     if (n == 0)
         return;
 
-    // 主线程在 Update 返回后读 body：BodyLockRead 顺带做"body 是否仍有效"检查（比裸接口安全）
-    auto &lockInterface = m_PhysicsSystem->GetBodyLockInterface();
+    // 主线程在 Update 返回后读 body，此时无并发模拟但不持有任何 body 锁：
+    // 用 NoLock 接口做裸读（不取 PerBody 锁，避开 Jolt 锁层级断言——PhysicsLock 要求
+    // 本线程掩码 < PerBody 才能取 BodyLockRead；Update 内部已对全体 body 加过锁，返回前释放）。
+    // BodyLockRead::Succeeded() 仍借 TryGetBody 做"body 是否有效"校验。
+    auto &lockInterface = m_PhysicsSystem->GetBodyLockInterfaceNoLock();
     std::vector<std::pair<entt::entity, entt::entity>> staySeen; // Stay 按实体对去重
     for (uint32_t i = 0; i < n; ++i) {
         const RawContactEvent &raw = (*m_ContactBuffer)[i];

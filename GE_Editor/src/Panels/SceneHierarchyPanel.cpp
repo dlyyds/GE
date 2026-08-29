@@ -1558,17 +1558,71 @@ void SceneHierarchyPanel::DrawScriptComponent(ScriptComponent &component, Entity
         }
         ImGui::SameLine();
         if (ImGui::Button("重载")) {
-            // 清当前脚本文件的行为缓存并重建实例（重跑 OnCreate，实例字段保留）
+            // 热重载：换逻辑不换状态（实例字段保留，见计划书 9.8）
             if (Scene *scene = entity.GetScene())
                 scene->GetScriptEngine().Reload(component.ScriptPath);
         }
     }
 
-    // 状态行：是否已有运行实例
+    // 状态行：加载状态 + 最近错误（含限频自动禁用提示）
     if (Scene *scene = entity.GetScene()) {
-        const bool mounted = scene->GetScriptEngine().HasInstance(static_cast<entt::entity>(entity));
-        ImGui::TextColored(mounted ? ImVec4(0.35f, 0.75f, 0.35f, 1.0f) : ImVec4(0.8f, 0.4f, 0.4f, 1.0f),
-                           mounted ? "状态: 已加载" : "状态: 未加载");
+        auto &eng = scene->GetScriptEngine();
+        const bool mounted = eng.HasInstance(static_cast<entt::entity>(entity));
+        const std::string lastErr = eng.GetLastError(static_cast<entt::entity>(entity));
+        if (!mounted) {
+            ImGui::TextColored(ImVec4(0.8f, 0.4f, 0.4f, 1.0f), "状态: 未加载");
+        } else if (!component.Enabled && !lastErr.empty()) {
+            ImGui::TextColored(ImVec4(0.85f, 0.45f, 0.28f, 1.0f), "状态: 已暂停（连续报错自动禁用）");
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("连续 OnUpdate 报错超过 3 次自动置 Enabled=false；再勾选即重新计数");
+        } else if (!component.Enabled) {
+            ImGui::TextColored(ImVec4(0.85f, 0.8f, 0.5f, 1.0f), "状态: 已暂停（手动禁用）");
+        } else {
+            ImGui::TextColored(ImVec4(0.35f, 0.75f, 0.35f, 1.0f), "状态: 已加载");
+        }
+        if (!lastErr.empty())
+            ImGui::TextWrapped("最近错误: %s", lastErr.c_str());
+    }
+
+    // ---- public 字段（脚本 PUBLIC_FIELDS 声明 → 输入控件；值写回组件，保存时落盘）----
+    if (Scene *scene = entity.GetScene()) {
+        auto &eng = scene->GetScriptEngine();
+        const auto schema = eng.GetPublicFieldSchema(static_cast<entt::entity>(entity));
+        if (!schema.empty()) {
+            ImGui::Separator();
+            ImGui::TextDisabled("Public Fields");
+            ImGui::Indent();
+            for (const auto &meta : schema) {
+                auto it = component.PublicFields.find(meta.Name);
+                if (it == component.PublicFields.end() || it->second.Type != meta.Type) {
+                    // 缺失（脚本新增字段）或类型已变 → 按 schema 重置默认
+                    it = component.PublicFields.insert_or_assign(
+                             meta.Name,
+                             ScriptPublicField{meta.Type, meta.NumberDefault,
+                                               meta.BoolDefault, meta.StringDefault})
+                             .first;
+                }
+                switch (meta.Type) {
+                case ScriptFieldType::Number:
+                    ImGui::DragFloat(meta.Name.c_str(), &it->second.Number, 0.1f);
+                    break;
+                case ScriptFieldType::Bool:
+                    ImGui::Checkbox(meta.Name.c_str(), &it->second.Bool);
+                    break;
+                case ScriptFieldType::String: {
+                    char buf[256];
+                    std::strncpy(buf, it->second.String.c_str(), sizeof(buf) - 1);
+                    buf[sizeof(buf) - 1] = '\0';
+                    if (ImGui::InputText(meta.Name.c_str(), buf, sizeof(buf)))
+                        it->second.String = buf;
+                    break;
+                }
+                default:
+                    break;
+                }
+            }
+            ImGui::Unindent();
+        }
     }
 
     ImGui::TextDisabled("脚本位于 assets/scripts/（相对该目录，含 .lua 后缀）");

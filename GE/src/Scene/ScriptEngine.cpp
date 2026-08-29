@@ -24,12 +24,22 @@ namespace GE {
 // ------------------------------------------------------------------
 // Impl 定义（头文件仅前向声明，隔离 sol）
 // ------------------------------------------------------------------
+/// 一个脚本实例：实例表（独立状态）+ 元表（__index → 行为表）+ 运行时错误状态。
+/// 热重载只改 meta 的 __index（换逻辑不换状态，实例字段保留）；错误计数供限频禁用，
+/// lastError 供面板状态行展示。
+struct InstanceData {
+    sol::table inst;            ///< 实例表（脚本自有字段，重载保留）
+    sol::table meta;            ///< 元表（__index = 行为表；重载时改绑新行为表）
+    int errorStreak = 0;        ///< OnUpdate 连续出错次数（≥kErrorLimit 自动禁用）
+    std::string lastError;      ///< 最近一次 hook 错误信息（空 = 正常）
+};
+
 struct Impl {
     sol::state lua;
     Scene *scene = nullptr;
     std::string baseDir;                                     ///< 以 '/' 结尾
     std::unordered_map<std::string, sol::table> behaviors;   ///< 相对路径 → 行为表（共享函数）
-    std::unordered_map<entt::entity, sol::table> instances;  ///< 实体 → 实例表（独立字段）
+    std::unordered_map<entt::entity, InstanceData> instances; ///< 实体 → 实例（状态 + 错误状态）
     entt::entity activeEntity = entt::null;                  ///< 当前正在执行回调的实体
 };
 
@@ -84,6 +94,9 @@ constexpr MouseName kMouseNames[] = {
     {"ButtonMiddle", Mouse::ButtonMiddle},
 };
 
+/// 连续 OnUpdate 报错达到该次数 → 自动置 Enabled=false（防刷屏，见计划书 2.6/阶段 C）。
+constexpr int kErrorLimit = 3;
+
 // 读/写当前活动实体的 Transform（无则返回 nullptr）
 TransformComponent *ActiveTransform(Impl &eng) {
     if (!eng.scene || eng.activeEntity == entt::null)
@@ -100,7 +113,7 @@ std::string ReadFileContents(const std::string &path) {
     return ss.str();
 }
 
-// 注入脚本 API：log / input / transform / entity / Key / Mouse
+// 注入脚本 API：log / input / transform / entity / public / Key / Mouse
 void RegisterApi(Impl &eng) {
     sol::state &lua = eng.lua;
 
@@ -246,6 +259,29 @@ void RegisterApi(Impl &eng) {
     entT["has_component"] = [hasAny](const std::string &name) -> bool { return hasAny(name.c_str()); };
     lua["entity"] = entT;
 
+    // ---- public → 本实体 public 字段（脚本 PUBLIC_FIELDS 声明的可调配置）。
+    // 每次 get 实时读 ScriptComponent.PublicFields：面板改值/场景加载即生效，无需同步运行中实例。
+    sol::table pubT = lua.create_table();
+    pubT["get"] = [&eng](const std::string &name) -> sol::object {
+        if (!eng.scene || eng.activeEntity == entt::null)
+            return sol::lua_nil;
+        auto *sc = eng.scene->Reg().try_get<ScriptComponent>(eng.activeEntity);
+        if (!sc)
+            return sol::lua_nil;
+        auto it = sc->PublicFields.find(name);
+        if (it == sc->PublicFields.end()) {
+            GE_CORE_WARN("[Lua] public 字段不存在: {}", name);
+            return sol::lua_nil;
+        }
+        switch (it->second.Type) {
+            case ScriptFieldType::Number: return sol::make_object(eng.lua, it->second.Number);
+            case ScriptFieldType::Bool:   return sol::make_object(eng.lua, it->second.Bool);
+            case ScriptFieldType::String: return sol::make_object(eng.lua, it->second.String);
+            default: return sol::lua_nil;
+        }
+    };
+    lua["public"] = pubT;
+
     // ---- Key / Mouse 键码表 ----
     sol::table keyT = lua.create_table();
     for (const auto &k : kKeyNames)
@@ -285,52 +321,106 @@ bool EnsureBehavior(Impl &eng, const std::string &relPath) {
     return true;
 }
 
-// 建实例表：空表 + metatable(__index → 行为表)，字段赋值落实例、函数走共享行为表
-sol::table MakeInstance(Impl &eng, const std::string &relPath) {
+// 建实例：空实例表 + 独立元表（__index → 行为表）。字段赋值落实例、函数走共享行为表。
+// meta 单独持有：热重载时改它单个对象的 __index 即整体换绑，实例表不动。
+InstanceData MakeInstance(Impl &eng, const std::string &relPath) {
     sol::table behavior = eng.behaviors.at(relPath);
-    sol::table inst = eng.lua.create_table();
-    sol::table mt = eng.lua.create_table();
-    mt[sol::meta_function::index] = behavior;
-    inst[sol::metatable_key] = mt;
-    return inst;
+    InstanceData id;
+    id.inst = eng.lua.create_table();
+    id.meta = eng.lua.create_table();
+    id.meta[sol::meta_function::index] = behavior;
+    id.inst[sol::metatable_key] = id.meta;
+    return id;
 }
 
-// 调用实例函数(self, args...)。功能未定义 → false；运行出错 → 日志 + false（隔离，不拖垮引擎）。
-bool CallHook(Impl &eng, sol::table &inst, const char *name) {
-    sol::object fn = inst[name];
+// 解析行为表顶部的 PUBLIC_FIELDS 声明 → 面板控件规格（非 table/空则空表）
+std::vector<ScriptFieldMeta> ParsePublicFields(const sol::table &behavior) {
+    std::vector<ScriptFieldMeta> out;
+    sol::object pfObj = behavior["PUBLIC_FIELDS"];
+    if (pfObj.get_type() != sol::type::table)
+        return out;
+    sol::table fields = pfObj.as<sol::table>();
+    for (auto [key, value] : fields) { // 拷贝绑定，避免 as<T>() 需要非 const 的隐患
+        if (key.get_type() != sol::type::string || value.get_type() != sol::type::table)
+            continue;
+        ScriptFieldMeta m;
+        m.Name = key.as<std::string>();
+        sol::table def = value.as<sol::table>();
+        const std::string typeStr = def["type"].get_or<std::string>("number");
+        sol::object defObj = def["default"];
+        if (typeStr == "bool" || typeStr == "boolean") {
+            m.Type = ScriptFieldType::Bool;
+            m.BoolDefault = (defObj.get_type() == sol::type::boolean) ? defObj.as<bool>() : false;
+        } else if (typeStr == "string") {
+            m.Type = ScriptFieldType::String;
+            m.StringDefault =
+                (defObj.get_type() == sol::type::string) ? defObj.as<std::string>() : std::string{};
+        } else {
+            m.Type = ScriptFieldType::Number;
+            m.NumberDefault = (defObj.get_type() == sol::type::number) ? defObj.as<float>() : 0.0f;
+        }
+        out.push_back(std::move(m));
+    }
+    return out;
+}
+
+// 用行为表 schema 补全实体 public 字段：缺失按 default 填入，已有值保留；脚本类型变了重置为默认
+void EnsurePublicFields(Impl &eng, entt::entity entity, const sol::table &behavior) {
+    auto *sc = eng.scene->Reg().try_get<ScriptComponent>(entity);
+    if (!sc)
+        return;
+    for (const auto &m : ParsePublicFields(behavior)) {
+        auto it = sc->PublicFields.find(m.Name);
+        if (it != sc->PublicFields.end()) {
+            if (it->second.Type == m.Type)
+                continue;
+            sc->PublicFields.erase(it); // 类型随脚本更新 → 按新类型重置默认
+        }
+        sc->PublicFields.emplace(m.Name,
+            ScriptPublicField{m.Type, m.NumberDefault, m.BoolDefault, m.StringDefault});
+    }
+}
+
+// 调用实例函数(self, args...)。功能未定义 → false；运行出错 → 记录 lastError + 日志 + false（隔离，不拖垮引擎）。
+bool CallHook(InstanceData &id, const char *name) {
+    sol::object fn = id.inst[name];
     if (fn.get_type() != sol::type::function)
         return false; // 未定义该函数
     sol::protected_function pf = fn.as<sol::protected_function>();
     try {
-        sol::protected_function_result res = pf(inst);
+        sol::protected_function_result res = pf(id.inst);
         if (!res.valid()) {
             sol::error err = res;
-            GE_CORE_ERROR("[Lua] 函数 {} 出错: {}", name, err.what());
+            id.lastError = err.what();
+            GE_CORE_ERROR("[Lua] 函数 {} 出错: {}", name, id.lastError);
             return false;
         }
         return true;
     } catch (const sol::error &e) {
-        GE_CORE_ERROR("[Lua] 函数 {} 异常: {}", name, e.what());
+        id.lastError = e.what();
+        GE_CORE_ERROR("[Lua] 函数 {} 异常: {}", name, id.lastError);
         return false;
     }
 }
 
 template <typename T>
-bool CallHook(Impl &eng, sol::table &inst, const char *name, T &&arg) {
-    sol::object fn = inst[name];
+bool CallHook(InstanceData &id, const char *name, T &&arg) {
+    sol::object fn = id.inst[name];
     if (fn.get_type() != sol::type::function)
         return false;
     sol::protected_function pf = fn.as<sol::protected_function>();
     try {
-        sol::protected_function_result res = pf(inst, std::forward<T>(arg));
+        sol::protected_function_result res = pf(id.inst, std::forward<T>(arg));
         if (!res.valid()) {
             sol::error err = res;
-            GE_CORE_ERROR("[Lua] 函数 {} 出错: {}", name, err.what());
+            id.lastError = err.what();
+            GE_CORE_ERROR("[Lua] 函数 {} 出错: {}", name, id.lastError);
             return false;
         }
         return true;
     } catch (const sol::error &e) {
-        GE_CORE_ERROR("[Lua] 函数 {} 异常: {}", name, e.what());
+        id.lastError = e.what();
+        GE_CORE_ERROR("[Lua] 函数 {} 异常: {}", name, id.lastError);
         return false;
     }
 }
@@ -385,8 +475,9 @@ void ScriptEngine::OnComponentAdded(entt::entity entity) {
 
     if (EnsureBehavior(eng, sc->ScriptPath)) {
         eng.instances[entity] = MakeInstance(eng, sc->ScriptPath);
+        EnsurePublicFields(eng, entity, eng.behaviors.at(sc->ScriptPath)); // 先补 public 默认，OnCreate 才能读
         eng.activeEntity = entity;
-        CallHook(eng, eng.instances[entity], "OnCreate");
+        CallHook(eng.instances[entity], "OnCreate");
         eng.activeEntity = entt::null;
     } else {
         GE_CORE_WARN("[Lua] 脚本加载失败，组件禁用: {}", sc->ScriptPath);
@@ -413,8 +504,17 @@ void ScriptEngine::OnUpdate(Timestep ts) {
                 continue;
         }
         eng.activeEntity = e;
-        CallHook(eng, it->second, "OnUpdate", ts.GetSeconds());
+        const bool ok = CallHook(it->second, "OnUpdate", ts.GetSeconds());
         eng.activeEntity = entt::null;
+        if (ok) {
+            it->second.errorStreak = 0;
+            it->second.lastError.clear(); // 恢复后清最近错误，面板回绿
+        } else if (++it->second.errorStreak >= kErrorLimit) {
+            // 连续报错 → 自动禁用（防刷屏）。计数清零等下次重挂/重新勾选后才重新累计。
+            sc.Enabled = false;
+            it->second.errorStreak = 0;
+            GE_CORE_ERROR("[Lua] 脚本连续报错 {} 次，已自动禁用: {}", kErrorLimit, sc.ScriptPath);
+        }
     }
 }
 
@@ -426,7 +526,7 @@ void ScriptEngine::OnEntityDestroyed(entt::entity entity) {
     if (it == eng.instances.end())
         return;
     eng.activeEntity = entity;
-    CallHook(eng, it->second, "OnDestroy");
+    CallHook(it->second, "OnDestroy");
     eng.activeEntity = entt::null;
     eng.instances.erase(it);
 }
@@ -435,15 +535,55 @@ bool ScriptEngine::HasInstance(entt::entity entity) const {
     return m_Impl && m_Impl->instances.count(entity) > 0;
 }
 
+std::string ScriptEngine::GetLastError(entt::entity entity) const {
+    if (!m_Impl)
+        return {};
+    const auto it = m_Impl->instances.find(entity);
+    return (it != m_Impl->instances.end()) ? it->second.lastError : std::string{};
+}
+
+std::vector<ScriptFieldMeta> ScriptEngine::GetPublicFieldSchema(entt::entity entity) const {
+    if (!m_Impl || !m_Impl->scene)
+        return {};
+    const auto *sc = m_Impl->scene->Reg().try_get<ScriptComponent>(entity);
+    if (!sc || sc->ScriptPath.empty())
+        return {};
+    const auto bIt = m_Impl->behaviors.find(sc->ScriptPath);
+    if (bIt == m_Impl->behaviors.end())
+        return {}; // 未加载（加载失败）→ 无 schema
+    return ParsePublicFields(bIt->second);
+}
+
 void ScriptEngine::Reload(const std::string &relPath) {
     if (!m_Impl || !m_Impl->scene)
         return;
-    m_Impl->behaviors.erase(relPath); // 热重载：换逻辑不换状态（实例字段保留）
-    for (entt::entity e : m_Impl->scene->Reg().view<ScriptComponent>()) {
-        if (m_Impl->scene->Reg().get<ScriptComponent>(e).ScriptPath == relPath) {
-            OnEntityDestroyed(e);
-            OnComponentAdded(e);
-        }
+    Impl &eng = *m_Impl;
+
+    // 热重载 = 换逻辑不换状态：清行为缓存重新 dofile；实例表保留，只改绑元表 __index。
+    const auto oldIt = eng.behaviors.find(relPath);
+    const sol::table oldBehavior = (oldIt != eng.behaviors.end()) ? oldIt->second : sol::table{};
+    eng.behaviors.erase(relPath);
+    if (!EnsureBehavior(eng, relPath)) {
+        if (oldBehavior.valid())
+            eng.behaviors[relPath] = oldBehavior; // 重载失败：回退旧逻辑，运行中实例不受影响
+        GE_CORE_WARN("[Lua] 重载失败，保留旧逻辑: {}", relPath);
+        return;
+    }
+    const sol::table newBehavior = eng.behaviors.at(relPath);
+
+    for (entt::entity e : eng.scene->Reg().view<ScriptComponent>()) {
+        if (eng.scene->Reg().get<ScriptComponent>(e).ScriptPath != relPath)
+            continue;
+        auto it = eng.instances.find(e);
+        if (it == eng.instances.end())
+            continue; // 该实体未挂成运行实例，无需动作
+        // 顺序：先 OnDestroy（旧行为）→ 改绑 __index 至新行为表 → 补 public 字段 → 重跑 OnCreate（新行为）
+        eng.activeEntity = e;
+        CallHook(it->second, "OnDestroy");
+        it->second.meta[sol::meta_function::index] = newBehavior;
+        EnsurePublicFields(eng, e, newBehavior);
+        CallHook(it->second, "OnCreate");
+        eng.activeEntity = entt::null;
     }
 }
 

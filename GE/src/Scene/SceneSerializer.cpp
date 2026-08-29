@@ -77,6 +77,28 @@ vk::Filter FilterFromString(const std::string &s) {
     return (s == "Nearest") ? vk::Filter::eNearest : vk::Filter::eLinear;
 }
 
+// ============================================================
+// Script public 字段辅助
+// ============================================================
+
+/// public 字段类型枚举 → 字符串标签（可读性，落盘用）
+const char *ScriptFieldTypeName(ScriptFieldType type) {
+    switch (type) {
+    case ScriptFieldType::Number: return "number";
+    case ScriptFieldType::Bool:   return "bool";
+    case ScriptFieldType::String: return "string";
+    default:                      return "none";
+    }
+}
+
+/// 字符串标签 → public 字段类型枚举（未知回退 None）
+ScriptFieldType ScriptFieldTypeFromName(const std::string &name) {
+    if (name == "number") return ScriptFieldType::Number;
+    if (name == "bool")   return ScriptFieldType::Bool;
+    if (name == "string") return ScriptFieldType::String;
+    return ScriptFieldType::None;
+}
+
 /**
  * @brief 将纹理采样器参数写入 YAML 节点。
  *
@@ -857,6 +879,20 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
                 YAML::Node scriptNode = entityNode["Script"];
                 scriptNode["ScriptPath"] = sc.ScriptPath;
                 scriptNode["Enabled"] = sc.Enabled;
+                // public 字段值：<名, {Type, Value}>（随实体各存一份，面板编辑 → 落盘）
+                if (!sc.PublicFields.empty()) {
+                    YAML::Node pfNode = scriptNode["PublicFields"];
+                    for (const auto &[name, field] : sc.PublicFields) {
+                        YAML::Node fn = pfNode[name];
+                        fn["Type"] = ScriptFieldTypeName(field.Type);
+                        switch (field.Type) {
+                        case ScriptFieldType::Number: fn["Value"] = field.Number; break;
+                        case ScriptFieldType::Bool:   fn["Value"] = field.Bool;   break;
+                        case ScriptFieldType::String: fn["Value"] = field.String; break;
+                        default: break;
+                        }
+                    }
+                }
             }
         }
 
@@ -1296,6 +1332,26 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
             sc.Enabled = entityNode["Script"]["Enabled"]
                              ? entityNode["Script"]["Enabled"].as<bool>()
                              : true;
+            // public 字段回读（AddComponent 已触发一次挂载；public.get 实时读组件，loaded 值下一帧生效，
+            // 序列化时使用本块覆盖的最终值落盘）
+            if (entityNode["Script"]["PublicFields"]) {
+                const YAML::Node pfNode = entityNode["Script"]["PublicFields"];
+                for (auto it = pfNode.begin(); it != pfNode.end(); ++it) {
+                    const std::string name = it->first.as<std::string>();
+                    const YAML::Node fn = it->second;
+                    ScriptPublicField field;
+                    field.Type = ScriptFieldTypeFromName(fn["Type"]
+                                                             ? fn["Type"].as<std::string>()
+                                                             : std::string("number"));
+                    switch (field.Type) {
+                    case ScriptFieldType::Number: field.Number = fn["Value"].as<float>(0.0f); break;
+                    case ScriptFieldType::Bool:   field.Bool   = fn["Value"].as<bool>(false); break;
+                    case ScriptFieldType::String: field.String = fn["Value"].as<std::string>(std::string()); break;
+                    default: break;
+                    }
+                    sc.PublicFields[name] = field;
+                }
+            }
         }
 
         entityCount++;

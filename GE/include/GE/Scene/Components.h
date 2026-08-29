@@ -216,16 +216,36 @@ struct BoundingBoxComponent {
 };
 
 
+/// public 字段值类型（脚本 PUBLIC_FIELDS 声明；序列化为字符串 Type 标签，见 SceneSerializer）。
+enum class ScriptFieldType : uint8_t {
+    None = 0,
+    Number,
+    Bool,
+    String
+};
+
+/// 单个 public 字段的值载荷（Type 决定哪个成员有效；按类型冗余存值便于面板/脚本直读）。
+struct ScriptPublicField {
+    ScriptFieldType Type = ScriptFieldType::None;
+    float Number = 0.0f;
+    bool Bool = false;
+    std::string String;
+};
+
 /**
  * @brief 脚本组件 —— 挂载 Lua 脚本文件到实体（纯数据，可序列化）。
  *
  * 运行态全部在 Scene::ScriptEngine（Lua 5.4 + sol2，共享一个 Lua 状态）。
  * ScriptPath 为 assets/scripts/ 下的相对路径（含 .lua 后缀）；空路径 = 未挂载。
+ * PublicFields 是脚本 `PUBLIC_FIELDS` 声明字段的本实体取值：编辑器面板编辑、
+ * 随场景落盘，脚本经注入的 `public.get(name)` 实时读取（引擎不改运行中实例）。
  * 行为约定见 docs/Lua脚本系统计划书.md。
  */
 struct ScriptComponent {
-    std::string ScriptPath; ///< assets/scripts/ 下相对路径（含 .lua 后缀）；唯一序列化载荷
+    std::string ScriptPath; ///< assets/scripts/ 下相对路径（含 .lua 后缀）
     bool Enabled = true;    ///< 是否启用（false 时跳过 OnUpdate）
+    /// public 字段值：<名, 值>；键与脚本 PUBLIC_FIELDS 声明对齐（缺省由 ScriptEngine 补默认）。
+    std::unordered_map<std::string, ScriptPublicField> PublicFields;
 
     ScriptComponent() = default;
 

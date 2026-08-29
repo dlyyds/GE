@@ -1,9 +1,12 @@
 #pragma once
 
+#include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "Core/Timestep.h"
+#include "Scene/Components.h"
 #include "entt.hpp"
 
 namespace GE {
@@ -11,6 +14,15 @@ namespace GE {
 class Scene;
 
 struct Impl; ///< 持 sol::state（命名空间级前向声明，头文件不引 sol，隔离编译）
+
+/// public 字段声明规格（脚本行为表 PUBLIC_FIELDS 解析而来，面板据此生成输入控件）。
+struct ScriptFieldMeta {
+    std::string Name;
+    ScriptFieldType Type = ScriptFieldType::None;
+    float NumberDefault = 0.0f;
+    bool BoolDefault = false;
+    std::string StringDefault;
+};
 
 /**
  * @brief Lua 脚本运行时管理器 —— 每个 Scene 一个，共享一个 Lua 状态（Lua 5.4 + sol2）。
@@ -46,7 +58,13 @@ public:
     /// 查询实体是否已有脚本运行实例（面板状态行用）。
     bool HasInstance(entt::entity entity) const;
 
-    /// 热重载单脚本（清行为缓存，使用它的实例 OnDestroy→重建→重跑 OnCreate，实例字段保留）。
+    /// 实体当前脚本的 public 字段声明表（从行为表 PUBLIC_FIELDS 解析；未挂载/无声明返回空表）。
+    std::vector<ScriptFieldMeta> GetPublicFieldSchema(entt::entity entity) const;
+
+    /// 该实体脚本实例最近一次运行错误信息（空 = 无/已恢复；面板状态行/自动禁用提示用）。
+    std::string GetLastError(entt::entity entity) const;
+
+    /// 热重载单脚本（清行为缓存重新 dofile；使用它的实例保留字段、只改绑元表 __index，重跑 OnCreate）。
     void Reload(const std::string &relPath);
 
     /// 热重载所有已加载脚本。

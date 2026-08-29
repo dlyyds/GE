@@ -1,6 +1,6 @@
 # Lua 脚本系统计划书（sol2 · 文件脚本 · 可序列化 · 编辑器接入）
 
-> 状态：**计划中（未开工）**。前置已完成：ECS（EnTT）、现有 `ScriptComponent`（std::function 回调框架）、`Scene::OnUpdate3D` 时序、`SceneSerializer`（YAML）、`SceneHierarchyPanel` 组件面板、`on_destroy` 组件监听模式（物理清理在用）。
+> 状态：**阶段 A/B/C 已完成**（阶段 A：Lua 运行时端到端；阶段 B：序列化 + 编辑器接入；阶段 C：API 补齐 + 限频禁用 + 热重载收口 + public 字段 C4）。前置已完成：ECS（EnTT）、现有 `ScriptComponent`（std::function 回调框架）、`Scene::OnUpdate3D` 时序、`SceneSerializer`（YAML）、`SceneHierarchyPanel` 组件面板、`on_destroy` 组件监听模式（物理清理在用）。
 > 目标：把当前「C++ 手写 lambda、无法序列化、编辑器无法挂载、零实际使用」的脚本占位框架，升级为**真正可用的 Lua 脚本系统**——脚本是独立的 `.lua` 文件、挂到实体、可保存加载、可在编辑器里管理、可热重载、坏脚本不拖垮引擎。
 > 定位：纯场景层/玩法层特性，**渲染层与着色器零改动**；三个阶段各自独立可回退，每阶段结束可编译可运行。
 
@@ -101,6 +101,7 @@ private:
 | `log` | `info(w)` / `warn(w)` / `error(w)` | → spdlog |
 | `entity` | `get_tag() → string` | `TagComponent` |
 | | `has_component("MeshRenderer") → bool` | 字符串→组件名查表 |
+| `public` | `get(name)` | 读本实体 `ScriptComponent.PublicFields`（按字段类型返回 number/bool/string；未声明→nil，设计见 9.11） |
 
 **MVP 硬决策**：
 - **不绑定 glm vec3/flags**——位置/欧拉角用多返回值 `(x,y,z)`，避免引入 vec3 userdata 与 glsl 混淆（路线图 D 再做数学类型）。
@@ -144,7 +145,7 @@ end
 
 ## 3. 分阶段实施
 
-### 阶段 A：Lua 运行时端到端打通
+### 阶段 A：Lua 运行时端到端打通（已完成）
 
 **目标**：示例脚本在编辑器视口内每帧驱动实体、输入回调可用、坏脚本不崩引擎。
 
@@ -163,7 +164,7 @@ end
 
 ---
 
-### 阶段 B：序列化 + 编辑器接入
+### 阶段 B：序列化 + 编辑器接入（已完成）
 
 **目标**：脚本成为场景资产一部分，编辑器可视化挂载/管理。
 
@@ -182,7 +183,7 @@ end
 
 ---
 
-### 阶段 C：API 补齐 + 稳健性
+### 阶段 C：API 补齐 + 稳健性（已完成）
 
 **目标**：脚本能写更真实玩法逻辑，沙箱可靠。
 
@@ -192,7 +193,7 @@ end
 
 **C3. 热重载语义收口**：`Reload` 保留实例字段、只重跑 `OnCreate`（先 `OnDestroy`），行为见 2.6；文档明示「重载 = 换逻辑不换状态」。
 
-**C4.（可选）public 字段编辑**：脚本声明 `PUBLIC_FIELDS = { speed = {type="number", default=2.0} }` → 面板生成输入框，值序列化进 `ScriptComponent.PublicFields`。若不做，标为路线图 D-1。
+**C4. public 字段编辑（已完成，非 D-1）**：脚本声明 `PUBLIC_FIELDS = { speed = {type="number", default=2.0} }`（支持 `number/bool/string`）→ 面板按声明生成输入框，值存进 `ScriptComponent.PublicFields` 随场景序列化。运行时脚本经注入的 `public.get(name)` 实时读**本实体**组件值（读保存值，不并入实例表，重载/面板改动天然即时生效），设计见 **9.11**。
 
 **退出标准**：
 - 脚本能读鼠标状态、查询自身组件；public 字段（若做）面板改动即时生效并落盘。
@@ -207,7 +208,7 @@ end
 
 | 编号 | 能力 | 触发时机 / 复杂度 | 与本次关系 |
 |---|---|---|---|
-| D-1 | public 字段反射编辑（C4 未做时） | 出现「调参型脚本」时；中 | 复用 C 序列化扩展 |
+| D-1 | ~~public 字段反射编辑~~（已并入 C4 完成） | —— | 本次已实现 number/bool/string；vec3 等复杂类型并入 D-4 |
 | D-2 | 脚本订阅动画事件 | 动画增强计划阶段 B 的 `eventCallback` 已留句柄，桥接为 Lua 回调；小 | `ScriptEngine` 发 `sol::protected_function` |
 | D-3 | 脚本创建/销毁实体、跨实体操作、消息 | 角色生成/击杀逻辑；中 | 需设计 entity 句柄的 Lua 包装（防悬挂引用） |
 | D-4 | 数学类型（vec3/quat userdata） | 复杂移动/射线脚本；中 | 替换 2.3 的多返回值，向后兼容 |
@@ -305,6 +306,16 @@ end
 
 **9.10 废弃旧回调 —— ✅ 已定：`ScriptComponent` 收敛为 `{ScriptPath, Enabled}`，`OnUpdate` 移交 `ScriptEngine` 接管**
 - 六个输入回调和 `OnUpdate` 均无外部使用方；输入查询由注入的 `input.*` 快照 API 承担，按帧回调由 `ScriptEngine::OnUpdate` 统一调 Lua。`AnimationComponent::eventCallback` 是动画语义，保留，D-2 再桥接。
+
+**9.11 public 字段（C4）—— ✅ 已定：运行时经 `public.get(name)` 实时读本实体 `ScriptComponent.PublicFields`，配置不入实例表**
+- 脚本顶层 `PUBLIC_FIELDS`（`type` 支持 number/bool/string + `default`）作 schema，面板据此生成输入框；值存组件 map，随场景序列化（`Script.PublicFields`）。
+- **不入实例表 ⇒ public 字段是「配置」不是「状态」**：面板改动/场景加载即时生效，与热重载「换逻辑不换状态」天然不冲突，也绝不与脚本自己的实例字段混叠。
+- 挂载/热重载时按 schema 补默认：缺失字段补 default，已有值保留，脚本类型变化则重置默认。
+- 约定：场景反序列化先 `AddComponent`（触发挂载 OnCreate）再回读 loaded 值，故加载首帧 OnCreate 读到默认、此后 `public.get` 即 loaded 值——可接受，不重挂。
+
+**9.12 限频禁用（C2）—— ✅ 已定：连续 3 次 OnUpdate 报错自动 `Enabled=false`**
+- 计数只在 `OnUpdate` 累计（OnCreate/OnDestroy 等其余 hook 只记 lastError 不累计），成功一帧即清零；触发禁用后计数清零，重新勾选/重挂才重新累计 3 次。
+- 面板状态行区分「未加载 / 已暂停（连续报错自动禁用）/ 已暂停（手动禁用）/ 已加载」四态，并显示最近错误文本（`ScriptEngine::GetLastError`）。
 
 ---
 

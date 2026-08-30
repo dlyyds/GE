@@ -9,6 +9,7 @@
 #include <backends/imgui_impl_vulkan.h>
 
 #include "GE/Scene/Components.h"
+#include "GE/Scene/AnimationSystem.h"
 #include "GE/Scene/Scene.h"
 #include "GE/Physics/PhysicsWorld.h"
 #include "GE/Render/Camera.h"
@@ -1633,72 +1634,6 @@ void SceneHierarchyPanel::DrawSphereColliderComponent(Entity entity, SphereColli
 // Bounding Box 组件（实体级粗剔除盒，gizmo 手动摆放）
 // ============================================================
 
-// ---- 动画扫描评估助手：用于「播放一遍取关节极值」。以下采样逻辑与
-// GE/src/Scene/Scene.cpp 的 SampleVec3Channel/SampleQuatChannel 保持同步
-// （CUBICSPLINE 目前两边都按 LINEAR 近似；引擎若升级 Hermite，此处须同步）。----
-
-/// 定位时间 t 所在的键帧区间左端 k0（划入 active key，同 Scene.cpp FindActiveKey 带缓存版）
-static size_t AnimFindActiveKey(const std::vector<float> &times, float t, uint32_t &hint) {
-    if (hint >= times.size()) {
-        hint = static_cast<uint32_t>(std::upper_bound(times.begin(), times.end(), t)
-                                     - times.begin()) - 1u;
-        return hint;
-    }
-    size_t k = hint;
-    while (k + 1 < times.size() && times[k + 1] <= t) {
-        ++k; // 时间前进：向右扫
-    }
-    while (k > 0 && times[k] > t) {
-        --k; // 时间后退：向左扫
-    }
-    hint = static_cast<uint32_t>(k);
-    return k;
-}
-
-/// vec3 通道采样：LINEAR 线性插值；STEP 取前一键值；CUBICSPLINE 按 LINEAR 近似
-static glm::vec3 SampleAnimVec3(const AnimationChannel &ch, float t, uint32_t &hint) {
-    const size_t n = ch.times.size();
-    if (n == 0) {
-        return glm::vec3(0.0f);
-    }
-    if (t <= ch.times.front()) {
-        hint = 0;
-        return ch.vecKeys.front();
-    }
-    if (t >= ch.times.back()) {
-        hint = static_cast<uint32_t>(n - 1u);
-        return ch.vecKeys.back();
-    }
-    const size_t k0 = AnimFindActiveKey(ch.times, t, hint);
-    if (ch.interp == AnimationChannel::Interp::Step) {
-        return ch.vecKeys[k0]; // STEP：保持前一键值
-    }
-    const float t01 = (t - ch.times[k0]) / (ch.times[k0 + 1] - ch.times[k0]);
-    return glm::mix(ch.vecKeys[k0], ch.vecKeys[k0 + 1], t01);
-}
-
-/// quat 通道采样：LINEAR 用 slerp；STEP 取前一键值；CUBICSPLINE 近似 slerp
-static glm::quat SampleAnimQuat(const AnimationChannel &ch, float t, uint32_t &hint) {
-    const size_t n = ch.times.size();
-    if (n == 0) {
-        return glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
-    }
-    if (t <= ch.times.front()) {
-        hint = 0;
-        return ch.quatKeys.front();
-    }
-    if (t >= ch.times.back()) {
-        hint = static_cast<uint32_t>(n - 1u);
-        return ch.quatKeys.back();
-    }
-    const size_t k0 = AnimFindActiveKey(ch.times, t, hint);
-    if (ch.interp == AnimationChannel::Interp::Step) {
-        return ch.quatKeys[k0];
-    }
-    const float t01 = (t - ch.times[k0]) / (ch.times[k0 + 1] - ch.times[k0]);
-    return glm::slerp(ch.quatKeys[k0], ch.quatKeys[k0 + 1], t01);
-}
-
 /// 动画评估用局部 TRS（只拷作者字段，不碰缓存 worldMatrix）
 struct AnimLocalTrs {
     glm::vec3 Translation;
@@ -1850,13 +1785,13 @@ bool SceneHierarchyPanel::AutoFitBoundingBoxToJoints(Scene *scene, Entity entity
                     auto &lt = localTrs[target];
                     switch (ch.path) {
                     case AnimationChannel::Path::Translation:
-                        lt.Translation = SampleAnimVec3(ch, t, keyHints[ci]);
+                        lt.Translation = AnimationSystem::SampleVec3Channel(ch, t, keyHints[ci]);
                         break;
                     case AnimationChannel::Path::Rotation:
-                        lt.Rotation = SampleAnimQuat(ch, t, keyHints[ci]);
+                        lt.Rotation = AnimationSystem::SampleQuatChannel(ch, t, keyHints[ci]);
                         break;
                     case AnimationChannel::Path::Scale:
-                        lt.Scale = SampleAnimVec3(ch, t, keyHints[ci]);
+                        lt.Scale = AnimationSystem::SampleVec3Channel(ch, t, keyHints[ci]);
                         break;
                     }
                 }

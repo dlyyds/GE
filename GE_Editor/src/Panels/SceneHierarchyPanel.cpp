@@ -588,6 +588,7 @@ void SceneHierarchyPanel::DrawAnimStateMachine(Entity entity, AnimStateMachineCo
 
     // ---- 状态表：名字 + clip 下拉 + loop/speed + 删除；当前状态加标识 ----
     ImGui::Text("状态");
+    ImGui::PushID("states"); // 与下方转换表隔离 ID 域（两表是兄弟循环、都用 PushID(i)，同名「删除」会撞 ID）
     int removeState = -1;
     for (int i = 0; i < static_cast<int>(component.states.size()); ++i) {
         auto &st = component.states[i];
@@ -655,10 +656,12 @@ void SceneHierarchyPanel::DrawAnimStateMachine(Entity entity, AnimStateMachineCo
     if (ImGui::Button("添加状态")) {
         component.states.push_back(AnimStateDef{});
     }
+    ImGui::PopID(); // states
     ImGui::Separator();
 
     // ---- 转换表：From(ANY)/To/过渡时长 + 点开编辑条件列表 ----
     ImGui::Text("转换");
+    ImGui::PushID("trans"); // 与状态表隔离 ID 域
     int removeTrans = -1;
     int openCondRow = -1; // 正在展开条件编辑的转换行
     for (int i = 0; i < static_cast<int>(component.transitions.size()); ++i) {
@@ -791,6 +794,7 @@ void SceneHierarchyPanel::DrawAnimStateMachine(Entity entity, AnimStateMachineCo
         t.to = 0;
         component.transitions.push_back(t);
     }
+    ImGui::PopID(); // trans
 }
 
 // ============================================================

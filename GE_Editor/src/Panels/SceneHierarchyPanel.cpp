@@ -666,16 +666,15 @@ void SceneHierarchyPanel::DrawAnimStateMachine(Entity entity, AnimStateMachineCo
         ImGui::PushID(i);
         const char *fromPreview = (tr.from == SIZE_MAX) ? "ANY"
             : (tr.from < component.states.size() ? component.states[tr.from].name.c_str() : "(无效)");
-        // From/To 下拉不按预览文本自适应宽度：长状态名会把 From 撑爆整行，To 放不下折到下行/截断。
-        // 按整行可用宽扣除尾段固定控件（→/过渡/条件/删除 + 间距）后，让 From/To 各占一半。
-        const float rowAvail = ImGui::GetContentRegionAvail().x;
+        const char *toPreview = (tr.to < component.states.size()) ? component.states[tr.to].name.c_str() : "(无效)";
+        // 第一行只放 From/To：各占可用宽一半。不按预览文本自适应宽度（长状态名会把某侧下拉
+        // 撑爆整行、另一侧被裁掉）；下拉弹层仍按最长的选项自适应，超宽预览在框内截断。
         const float spacing = ImGui::GetStyle().ItemSpacing.x;
-        const float tailCompW = ImGui::CalcTextSize("→").x
-            + 90.0f
-            + ImGui::CalcTextSize("条件").x + 2.0f * ImGui::GetStyle().FramePadding.x
-            + ImGui::CalcTextSize("删除").x + 2.0f * ImGui::GetStyle().FramePadding.x
-            + 5.0f * spacing;
-        const float comboW = std::max(60.0f, (rowAvail - tailCompW) * 0.5f);
+        // 行宽用「内容区右缘 − 行起点 X」测量，与光标当前横坐标无关：上一行控件结束时
+        // 光标停在行尾，直接 GetContentRegionAvail() 会量到残余宽度，导致下拉过窄（40px 兜底）。
+        const float rowW = ImGui::GetContentRegionMax().x - ImGui::GetCursorStartPos().x;
+        const float comboW = std::max(40.0f,
+            (rowW - ImGui::CalcTextSize("→").x - 2.0f * spacing) * 0.5f);
         ImGui::SetNextItemWidth(comboW);
         if (ImGui::BeginCombo("From", fromPreview)) {
             if (ImGui::Selectable("ANY (全局)", tr.from == SIZE_MAX)) {
@@ -692,7 +691,6 @@ void SceneHierarchyPanel::DrawAnimStateMachine(Entity entity, AnimStateMachineCo
         ImGui::SameLine();
         ImGui::Text("→");
         ImGui::SameLine();
-        const char *toPreview = (tr.to < component.states.size()) ? component.states[tr.to].name.c_str() : "(无效)";
         ImGui::SetNextItemWidth(comboW);
         if (ImGui::BeginCombo("To", toPreview)) {
             for (size_t si = 0; si < component.states.size(); ++si) {
@@ -703,7 +701,8 @@ void SceneHierarchyPanel::DrawAnimStateMachine(Entity entity, AnimStateMachineCo
             }
             ImGui::EndCombo();
         }
-        ImGui::SameLine();
+        // 第二行：过渡时长 + 「条件」/「删除」按钮独立成行——不再与 From/To 抢一行，
+        // 窄面板也不会把尾部按钮裁掉（ImGui 对超宽控件是裁剪而非换行）。
         ImGui::SetNextItemWidth(90.0f);
         ImGui::DragFloat("过渡s", &tr.blendSec, 0.01f, 0.0f, 10.0f, "%.2f");
         ImGui::SameLine();

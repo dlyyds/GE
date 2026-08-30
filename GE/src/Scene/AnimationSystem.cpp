@@ -43,9 +43,12 @@ size_t ResolveClipIndex(const AnimationComponent &ac, const std::string &clipNam
 }
 
 /// 求值一条转换下的全部条件（AND）：全满足才 true；空条件 = 恒真。
-/// trigger 读到即消费：Bool 条件读到的名字若在 triggers 集合中，视为 true 并移除（一次性脉冲）。
+/// trigger 采用「帧末统一消费」：Bool 条件读到的名字只标记到 consumedTriggers 而不删——
+/// 同一次脉冲可同时供给本帧多条边的条件判断（声明序命中优先），由调用方在求值末尾
+/// 从集合统一清除，仍是一次性语义（未被任何边命中也会消失）。
 bool EvalConditions(AnimStateMachineComponent &asmc, const AnimationComponent &ac,
-                    const std::vector<AnimCondition> &conditions) {
+                    const std::vector<AnimCondition> &conditions,
+                    std::vector<std::string> &consumedTriggers) {
     for (const AnimCondition &c : conditions) {
         switch (c.type) {
         case AnimCondition::Type::FloatCmp: {
@@ -65,7 +68,10 @@ bool EvalConditions(AnimStateMachineComponent &asmc, const AnimationComponent &a
             }
         } break;
         case AnimCondition::Type::Bool: {
-            const bool fired = asmc.triggers.erase(c.param) > 0; // 读到即消费
+            const bool fired = asmc.triggers.count(c.param) > 0; // 读，不删（帧末统一消费）
+            if (fired) {
+                consumedTriggers.push_back(c.param);
+            }
             const bool val = fired || (asmc.bools.count(c.param) ? asmc.bools.at(c.param) : false);
             if (val != c.expect) {
                 return false;
@@ -376,17 +382,25 @@ void UpdateAnimations(entt::registry &registry, ScriptEngine &scriptEngine, Time
                     ac.loop = asmc->states[asmc->current].loop;   // 状态参数持续生效（防外改漂移）
                     ac.speed = asmc->states[asmc->current].speed;
                     asmc->stateTime += ts.GetSeconds();
+
+                    // 本帧所有 Bool 条件读到的 trigger 名字先记在这、求值末尾统一清：
+                    // 同一条脉冲可同时供给本帧多条边的条件判断（声明序命中优先），
+                    // 帧末清掉后仍是一次性语义（未被任何边命中也会消失）。
+                    std::vector<std::string> consumedTriggers;
                     for (const AnimTransitionDef &t : asmc->transitions) {
                         if (t.from != SIZE_MAX && t.from != asmc->current) {
                             continue;
                         }
-                        if (!EvalConditions(*asmc, ac, t.conditions)) {
+                        if (!EvalConditions(*asmc, ac, t.conditions, consumedTriggers)) {
                             continue;
                         }
                         if (t.to != asmc->current && t.to < asmc->states.size()) {
                             EnterState(*asmc, ac, t.to, t.blendSec);
                         }
                         break; // 声明序首达优先
+                    }
+                    for (const std::string &name : consumedTriggers) {
+                        asmc->triggers.erase(name); // 帧末统一消费
                     }
                 }
             }

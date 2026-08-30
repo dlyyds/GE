@@ -114,7 +114,7 @@ animT["trigger"] = [&eng](const std::string &name) { /* ASM.triggers.insert(name
 animT["get"]    = [&eng](const std::string &name) -> float { /* 读 floats/state_time 回退 */ };
 ```
 
-**trigger 自动消费**：`trigger("jump")` 置入集合；下一次求值读到即从集合移除——天然「按采样跳一次」，脚本无需手动复位。`get` 额外回退到 `stateTime`（脚本想自己读驻留时长用）。
+**trigger 自动消费（帧末统一）**：`trigger("jump")` 置入集合；求值时 Bool 条件读到名字只标记、不删——同一次脉冲可同时供给**本帧多条边**的条件判断（声明序命中优先），本实体本帧求值末尾从集合统一清除。未被任何边命中同样消失，仍是一次性脉冲，脚本无需手动复位。`get` 额外回退到 `stateTime`（脚本想自己读驻留时长用）。
 
 ### 2.3 条件求值 & 转换选择
 
@@ -262,7 +262,7 @@ AnimStateMachine:
 | 状态引用的 clip 名字解析失配（模型重导入/改名） | 中 | 名字序列化稳定；解析失败状态置无效 + WARN，被引用时跳过不崩 |
 | 手动切 clip 与 ASM 抢 `active` | 中 | 决策 9.5：手动 = 外部覆盖、关停 ASM；由调用侧落实，`PlayClip` 保持无感知 |
 | 条件漏配/临界触发导致同帧回跳（振铃） | 中 | 提供 `StateTime` 最小驻留条件；（可选）转换求值用「进入后至少 1 帧」冷却 |
-| trigger 消费时序（本帧未求值就复位/漏跳） | 低 | trigger 放集合、求值读到即删，天然脉冲；验收做精确次数断言 |
+| trigger 消费时序（本帧未求值就复位/漏跳） | 低 | trigger 放集合、帧末统一消费：同帧多条边都能读到，声明序命中优先；未被命中同样消失，天然脉冲；验收做精确次数断言 |
 | 多状态引用同一 clip 互转看不出变化 | 低 | 正常（clip 相同但 phase/speed 不同仍过渡）；验收说明靠 speed/相位差异 |
 | 大量状态/转换的表单编辑繁琐、易配错 | 中 | 阶段 D 提供参数调试滑条驱动闭环；错误引用即时 WARN；节点图记为 D-11 |
 | 序列化旧场景无 `AnimStateMachine` 节点 | 低 | 缺省 `enabled=false` 照常 |

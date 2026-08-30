@@ -666,6 +666,17 @@ void SceneHierarchyPanel::DrawAnimStateMachine(Entity entity, AnimStateMachineCo
         ImGui::PushID(i);
         const char *fromPreview = (tr.from == SIZE_MAX) ? "ANY"
             : (tr.from < component.states.size() ? component.states[tr.from].name.c_str() : "(无效)");
+        // From/To 下拉不按预览文本自适应宽度：长状态名会把 From 撑爆整行，To 放不下折到下行/截断。
+        // 按整行可用宽扣除尾段固定控件（→/过渡/条件/删除 + 间距）后，让 From/To 各占一半。
+        const float rowAvail = ImGui::GetContentRegionAvail().x;
+        const float spacing = ImGui::GetStyle().ItemSpacing.x;
+        const float tailCompW = ImGui::CalcTextSize("→").x
+            + 90.0f
+            + ImGui::CalcTextSize("条件").x + 2.0f * ImGui::GetStyle().FramePadding.x
+            + ImGui::CalcTextSize("删除").x + 2.0f * ImGui::GetStyle().FramePadding.x
+            + 5.0f * spacing;
+        const float comboW = std::max(60.0f, (rowAvail - tailCompW) * 0.5f);
+        ImGui::SetNextItemWidth(comboW);
         if (ImGui::BeginCombo("From", fromPreview)) {
             if (ImGui::Selectable("ANY (全局)", tr.from == SIZE_MAX)) {
                 tr.from = SIZE_MAX;
@@ -682,6 +693,7 @@ void SceneHierarchyPanel::DrawAnimStateMachine(Entity entity, AnimStateMachineCo
         ImGui::Text("→");
         ImGui::SameLine();
         const char *toPreview = (tr.to < component.states.size()) ? component.states[tr.to].name.c_str() : "(无效)";
+        ImGui::SetNextItemWidth(comboW);
         if (ImGui::BeginCombo("To", toPreview)) {
             for (size_t si = 0; si < component.states.size(); ++si) {
                 const bool sel = (tr.to == si);

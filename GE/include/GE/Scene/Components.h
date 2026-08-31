@@ -547,12 +547,28 @@ struct SphereColliderComponent {
 };
 
 /**
+ * @brief 胶囊碰撞体轴向 —— 胶囊主轴沿实体局部坐标的哪根轴放置。
+ *
+ * Jolt 的 CapsuleShape 原生沿局部 Y（= 引擎 up 轴）；当实体的 Transform
+ * 带着旋转（例如 Z-up 模型经 90°X 旋转转正后局部 Z 才是模型的"上"）时，
+ * 默认 Y 会让胶囊横躺，此时改选 X/Z 即可让胶囊贴住模型的实际朝向。
+ * 缩放烘焙跟随所选轴：半高按该轴的分量缩放。
+ */
+enum class CapsuleAxis : uint8_t {
+    Y = 0, ///< 沿局部 Y 轴（默认）
+    X = 1, ///< 沿局部 X 轴
+    Z = 2  ///< 沿局部 Z 轴
+};
+
+/**
  * @brief 胶囊碰撞体组件。
  *
- * 胶囊沿 Y 轴对齐，由中间圆柱段 + 上下两个半球帽组成（与 Jolt CapsuleShape 语义一致）。
- * Radius 为圆柱段半径，HalfHeight 为圆柱段半高（球帽球心在 y = ±HalfHeight 处，
- * 极点分别在 y = ±(HalfHeight + Radius)）。总高 = 2 × (HalfHeight + Radius)。
- * 缩放烘焙：半径取三轴缩放最大值，半高乘 Y 轴缩放（与 BuildShapeForEntity / 调试线框一致）。
+ * 胶囊由中间圆柱段 + 上下两个半球帽组成（与 Jolt CapsuleShape 语义一致）。
+ * Radius 为圆柱段半径，HalfHeight 为圆柱段半高（球帽球心在 ±HalfHeight 处，
+ * 极点分别在 ±(HalfHeight + Radius)）。总长 = 2 × (HalfHeight + Radius)。
+ * Axis 决定胶囊主轴沿实体局部坐标的哪根轴（默认 Y，见 CapsuleAxis）。
+ * 缩放烘焙跟随所选轴：半径取三轴缩放最大值，半高乘所选轴的分量缩放
+ * （与 BuildShapeForEntity / 调试线框一致）。
  * Offset 是碰撞体相对于刚体中心的偏移。
  *
  * 实体上可挂载多个碰撞体组件，PhysicsWorld 会合并为复合形状。
@@ -560,6 +576,7 @@ struct SphereColliderComponent {
 struct CapsuleColliderComponent {
     float Radius = 0.5f; ///< 半径
     float HalfHeight = 0.5f; ///< 圆柱段半高（不含球帽）
+    CapsuleAxis Axis = CapsuleAxis::Y; ///< 胶囊主轴方向（局部坐标）
     glm::vec3 Offset = {0.0f, 0.0f, 0.0f}; ///< 偏移
     bool DrawDebug = true; ///< 是否在视口叠加绘制该碰撞体调试线框（可单独关闭）
 

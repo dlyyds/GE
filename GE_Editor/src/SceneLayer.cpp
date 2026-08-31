@@ -687,12 +687,27 @@ void SceneLayer::DrawColliders(const glm::vec2 &imagePos) {
             }
         }
 
-        // ---- 胶囊碰撞体（Y 轴对齐）：圆柱段半高乘 Y 缩放、半径取三轴最大缩放（与 Jolt 构建一致）；DrawDebug 关闭则不画 ----
+        // ---- 胶囊碰撞体：主轴沿实体局部某轴（默认 Y），旋转跟随 Transform 并叠加轴向烘焙；DrawDebug 关闭则不画 ----
         if (capsule && capsule->DrawDebug) {
             const glm::vec3 center = tc.Translation + rot * capsule->Offset;
             const float radius = capsule->Radius
                                  * std::max({tc.Scale.x, tc.Scale.y, tc.Scale.z});
-            const float halfHeight = capsule->HalfHeight * tc.Scale.y;
+            // 半高缩放跟随胶囊主轴对应的轴分量（与 PhysicsWorld::BuildShapeForEntity 一致）
+            float heightScale = tc.Scale.y;
+            if (capsule->Axis == CapsuleAxis::X)
+                heightScale = tc.Scale.x;
+            else if (capsule->Axis == CapsuleAxis::Z)
+                heightScale = tc.Scale.z;
+            const float halfHeight = capsule->HalfHeight * heightScale;
+
+            // 轴向烘焙（与形状构建一致：X: 绕局部 Z -90°，Z: 绕局部 X +90°），与实体旋转复合后作用于局部坐标
+            glm::quat axisRot(1.0f, 0.0f, 0.0f, 0.0f);
+            constexpr float kSqrtHalf = 0.707106781f;
+            if (capsule->Axis == CapsuleAxis::X)
+                axisRot = glm::quat(kSqrtHalf, 0.0f, 0.0f, -kSqrtHalf);
+            else if (capsule->Axis == CapsuleAxis::Z)
+                axisRot = glm::quat(kSqrtHalf, kSqrtHalf, 0.0f, 0.0f);
+            const glm::quat capsuleRot = rot * axisRot;
 
             // N 条经线剖面（球帽弧 + 圆柱母线 + 下半球帽弧），凸显胶囊轮廓
             constexpr int kMeri = 8;    // 经线数量
@@ -701,10 +716,10 @@ void SceneLayer::DrawColliders(const glm::vec2 &imagePos) {
                 const float ang = (2.0f * kPi * m) / kMeri;
                 const float dx = std::cos(ang), dz = std::sin(ang);
                 // 上球帽弧：极点 (0, +H+R) → 赤道 (R, +H)
-                glm::vec3 prev = center + rot * glm::vec3(0.0f, halfHeight + radius, 0.0f);
+                glm::vec3 prev = center + capsuleRot * glm::vec3(0.0f, halfHeight + radius, 0.0f);
                 for (int i = 1; i <= kArcSegs; ++i) {
                     const float a = (static_cast<float>(i) / kArcSegs) * kPi * 0.5f;
-                    const glm::vec3 cur = center + rot * glm::vec3(
+                    const glm::vec3 cur = center + capsuleRot * glm::vec3(
                         std::sin(a) * radius * dx,
                         halfHeight + std::cos(a) * radius,
                         std::sin(a) * radius * dz);
@@ -713,13 +728,13 @@ void SceneLayer::DrawColliders(const glm::vec2 &imagePos) {
                 }
                 // 圆柱母线：下赤道 → 上赤道
                 drawWorldSegment(
-                    center + rot * glm::vec3(radius * dx, -halfHeight, radius * dz),
-                    center + rot * glm::vec3(radius * dx, +halfHeight, radius * dz));
+                    center + capsuleRot * glm::vec3(radius * dx, +halfHeight, radius * dz),
+                    center + capsuleRot * glm::vec3(radius * dx, -halfHeight, radius * dz));
                 // 下球帽弧：赤道 (R, -H) → 极点 (0, -H-R)
-                glm::vec3 prev2 = center + rot * glm::vec3(radius * dx, -halfHeight, radius * dz);
+                glm::vec3 prev2 = center + capsuleRot * glm::vec3(radius * dx, -halfHeight, radius * dz);
                 for (int i = 1; i <= kArcSegs; ++i) {
                     const float a = (static_cast<float>(i) / kArcSegs) * kPi * 0.5f;
-                    const glm::vec3 cur = center + rot * glm::vec3(
+                    const glm::vec3 cur = center + capsuleRot * glm::vec3(
                         std::sin(a) * radius * dx,
                         -halfHeight - std::cos(a) * radius,
                         std::sin(a) * radius * dz);
@@ -736,8 +751,8 @@ void SceneLayer::DrawColliders(const glm::vec2 &imagePos) {
                     const float a0 = (2.0f * kPi * i) / kSegs;
                     const float a1 = (2.0f * kPi * (i + 1)) / kSegs;
                     drawWorldSegment(
-                        center + rot * glm::vec3(std::cos(a0) * radius, y, std::sin(a0) * radius),
-                        center + rot * glm::vec3(std::cos(a1) * radius, y, std::sin(a1) * radius));
+                        center + capsuleRot * glm::vec3(std::cos(a0) * radius, y, std::sin(a0) * radius),
+                        center + capsuleRot * glm::vec3(std::cos(a1) * radius, y, std::sin(a1) * radius));
                 }
             }
         }

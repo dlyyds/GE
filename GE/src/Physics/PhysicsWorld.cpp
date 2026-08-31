@@ -621,10 +621,16 @@ JPH::ShapeRefC PhysicsWorld::BuildShapeForEntity(entt::entity entity) {
         }
     }
 
-    // 收集 CapsuleCollider 组件（胶囊沿 Y 轴对齐：圆柱段半高乘 Y 缩放，半径取三轴最大缩放）
+    // 收集 CapsuleCollider 组件（胶囊默认沿局部 Y；可选 X/Z，半高缩放跟随所选轴）
     auto *capsuleColliders = reg.try_get<CapsuleColliderComponent>(entity);
     if (capsuleColliders) {
-        float scaledHalfHeight = capsuleColliders->HalfHeight * tc->Scale.y;
+        // 半高缩放：跟随胶囊主轴对应的轴分量；半径取三轴最大值（与球体一致）
+        float heightScale = tc->Scale.y;
+        if (capsuleColliders->Axis == CapsuleAxis::X)
+            heightScale = tc->Scale.x;
+        else if (capsuleColliders->Axis == CapsuleAxis::Z)
+            heightScale = tc->Scale.z;
+        float scaledHalfHeight = capsuleColliders->HalfHeight * heightScale;
         float scaledRadius = capsuleColliders->Radius * std::max({tc->Scale.x, tc->Scale.y, tc->Scale.z});
 
         // 半高归零时 CapsuleShape 直接构造会触发 JPH_ASSERT(> 0)，退化为球体（与 Jolt Settings::IsSphere 语义一致）
@@ -635,10 +641,21 @@ JPH::ShapeRefC PhysicsWorld::BuildShapeForEntity(entt::entity entity) {
             capsuleShape = new JPH::SphereShape(scaledRadius);
         }
 
-        if (capsuleColliders->Offset != glm::vec3(0.0f)) {
+        // 轴向烘焙：Jolt 胶囊原生沿局部 Y，选 X/Z 时把形状绕对应轴转过去
+        // （X: 绕局部 Z -90° 使 Y→X；Z: 绕局部 X +90° 使 Y→Z。glm::quat(w,x,y,z)）
+        glm::quat axisRot(1.0f, 0.0f, 0.0f, 0.0f);
+        constexpr float kSqrtHalf = 0.707106781f;
+        switch (capsuleColliders->Axis) {
+        case CapsuleAxis::X: axisRot = glm::quat(kSqrtHalf, 0.0f, 0.0f, -kSqrtHalf); break;
+        case CapsuleAxis::Z: axisRot = glm::quat(kSqrtHalf, kSqrtHalf, 0.0f, 0.0f); break;
+        default: break; // Y 轴无需旋转
+        }
+
+        // 仅在带偏移或非默认轴向时才用 RotatedTranslatedShape 烘焙（零偏移零旋转时直接用裸形状）
+        if (capsuleColliders->Offset != glm::vec3(0.0f) || capsuleColliders->Axis != CapsuleAxis::Y) {
             JPH::RotatedTranslatedShapeSettings offsetSettings(
                 ToJoltVec3(capsuleColliders->Offset),
-                JPH::Quat::sIdentity(),
+                ToJoltQuat(axisRot),
                 capsuleShape
                 );
             auto result = offsetSettings.Create();

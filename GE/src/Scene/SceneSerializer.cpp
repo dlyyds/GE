@@ -890,6 +890,7 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
             YAML::Node capsuleNode = entityNode["CapsuleCollider"];
             capsuleNode["Radius"] = ccc.Radius;
             capsuleNode["HalfHeight"] = ccc.HalfHeight;
+            capsuleNode["Axis"] = static_cast<int>(ccc.Axis);
             capsuleNode["Offset"] = SerializeVec3(ccc.Offset);
             capsuleNode["DrawDebug"] = ccc.DrawDebug;
         }
@@ -1409,6 +1410,7 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
 
             ccc.Radius = capsuleNode["Radius"] ? capsuleNode["Radius"].as<float>(0.5f) : 0.5f;
             ccc.HalfHeight = capsuleNode["HalfHeight"] ? capsuleNode["HalfHeight"].as<float>(0.5f) : 0.5f;
+            ccc.Axis = static_cast<CapsuleAxis>(capsuleNode["Axis"] ? capsuleNode["Axis"].as<int>(0) : 0);
             ccc.Offset = DeserializeVec3(capsuleNode["Offset"], {0.0f, 0.0f, 0.0f});
             ccc.DrawDebug = capsuleNode["DrawDebug"] ? capsuleNode["DrawDebug"].as<bool>(true) : true;
         }

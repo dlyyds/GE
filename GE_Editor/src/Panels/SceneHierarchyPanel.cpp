@@ -1701,6 +1701,25 @@ void SceneHierarchyPanel::DrawCapsuleColliderComponent(Entity entity, CapsuleCol
     ImGui::Checkbox("Draw Debug", &component.DrawDebug);
     ImGui::Separator();
 
+    // 胶囊轴向（实体带旋转时让胶囊贴住模型实际朝向；改变需要重建刚体）
+    {
+        const char *axisStrings[] = {"Y", "X", "Z"};
+        const int currentAxis = static_cast<int>(component.Axis);
+        if (ImGui::BeginCombo("Direction", axisStrings[currentAxis])) {
+            for (int i = 0; i < 3; i++) {
+                const bool isSelected = currentAxis == i;
+                if (ImGui::Selectable(axisStrings[i], isSelected)) {
+                    component.Axis = static_cast<CapsuleAxis>(i);
+                    if (physicsWorld)
+                        physicsWorld->RebuildRigidBody(entityHandle);
+                }
+                if (isSelected)
+                    ImGui::SetItemDefaultFocus();
+            }
+            ImGui::EndCombo();
+        }
+    }
+
     // 形状改变 → 重建刚体
     if (ImGui::DragFloat("Radius", &component.Radius, 0.05f, 0.001f, 1000.0f)) {
         if (physicsWorld)

@@ -268,7 +268,9 @@ void SceneLayer::OnImGuiRender() {
             // 变换 gizmo（ImGuizmo 须在此窗口内调用）。用 GetItemRectMin() 取图像
             // 自身的屏幕左上角 —— 精确落在 Scene 窗口内容区（标题栏下方），若用
             // GetWindowPos() 会因标题栏偏移使 gizmo 偏高。
-            if (m_Gizmo && m_Context->CameraEntity) {
+            // 阶段 C：Play（运行）中禁用 gizmo 拖拽——动态体每帧被物理写回 Transform，
+            // 拖了也白拖还制造困惑，显式隐藏（决策 5.4）。
+            if (m_Gizmo && m_Context->CameraEntity && m_Context->Scene && !m_Context->Scene->IsPlaying()) {
                 auto &cameraComp = m_Context->CameraEntity.GetComponent<CameraComponent>();
                 m_Gizmo->Render(cameraComp.CameraInstance, glm::vec2(imagePos.x, imagePos.y), m_ViewportSize);
             }
@@ -282,6 +284,19 @@ void SceneLayer::OnImGuiRender() {
             if (m_ShowColliders && m_Context->CameraEntity) {
                 DrawColliders(glm::vec2(imagePos.x, imagePos.y));
             }
+
+            // 阶段 C：Play 运行中在视口左下角叠"▶ 运行中"徽标（gizmo 已隐藏，一眼可见当前处于模拟）
+            if (m_Context->Scene && m_Context->Scene->IsPlaying()) {
+                ImDrawList *dl = ImGui::GetWindowDrawList();
+                const char *label = "▶ 运行中";
+                const glm::vec2 pos{imagePos.x + 10.0f, imagePos.y + m_ViewportSize.y - 26.0f};
+                const ImVec2 labelSize = ImGui::CalcTextSize(label);
+                constexpr float kPad = 6.0f;
+                dl->AddRectFilled(ImVec2(pos.x - kPad, pos.y - 3.0f),
+                                  ImVec2(pos.x + labelSize.x + kPad, pos.y + labelSize.y + 3.0f),
+                                  IM_COL32(0, 0, 0, 150), 4.0f);
+                dl->AddText(ImVec2(pos.x, pos.y), IM_COL32(0x2E, 0xD0, 0x5E, 255), label);
+            }
         }
     }
     ImGui::End();
@@ -293,6 +308,25 @@ void SceneLayer::OnImGuiRender() {
     ImGui::Separator();
 
     // 场景的 保存 / 加载 / 新建 已移到顶部菜单「文件」中
+
+    // ---- 阶段 C：编辑/运行时物理分离 —— ▶ Play / ⏹ Stop 运行控制 ----
+    // Edit 态物理静止（可自由摆放），Playing 态物理接管模拟，Stop 回到摆放姿态。
+    if (m_Context->Scene) {
+        if (m_Context->Scene->IsPlaying()) {
+            if (ImGui::Button("⏹ Stop")) {
+                m_Context->Scene->Stop();
+            }
+            ImGui::SameLine();
+            ImGui::TextDisabled("运行中（物理模拟中，编辑禁用）");
+        } else {
+            if (ImGui::Button("▶ Play")) {
+                m_Context->Scene->Play();
+            }
+            ImGui::SameLine();
+            ImGui::TextDisabled("编辑中（物理静止）");
+        }
+        ImGui::Separator();
+    }
 
     // ---- 场景统计信息 ----
     if (m_Context->Scene) {
@@ -769,6 +803,12 @@ void SceneLayer::SaveScene() {
     std::string filepath = FileDialogs::SaveFile("GE Scene (*.scene)\0*.scene\0All Files (*.*)\0*.*\0");
     if (filepath.empty()) {
         return;
+    }
+
+    // 保存按 Edit 视角（决策 5.5）：若正在 Play，先 Stop 回滚到摆放姿态再落盘，
+    // 避免把模拟后的混乱 Transform 写进场景文件
+    if (m_Context->Scene->IsPlaying()) {
+        m_Context->Scene->Stop();
     }
 
     // 序列化器无状态、操作完即弃，按需创建为局部变量即可；

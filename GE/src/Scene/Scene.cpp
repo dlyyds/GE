@@ -178,6 +178,15 @@ void Scene::RebuildChildrenIndex() {
 }
 
 void Scene::ClearAllEntities() {
+    // 物理运行态是瞬态：清实体即回 Edit（Deserialize 加载后恒为编辑态，决策 5.5）。
+    // 残留 pending / 快照一并清掉，避免下次 Play 用错位/失效句柄建体。
+    m_SimulationState = SimulationState::Edit;
+    m_PlaySnapshot.clear();
+    if (m_PhysicsWorld) {
+        m_PhysicsWorld->ClearPendingBodies();
+        m_PhysicsWorld->ClearPendingCharacters();
+        m_PhysicsWorld->ResetAccumulator();
+    }
     m_ChildrenOf.clear();
     m_Registry.clear();
 }
@@ -211,6 +220,96 @@ Entity Scene::GetPrimaryCameraEntity() {
 
     // 场景中没有相机
     return {};
+}
+
+void Scene::Play() {
+    // 已 Playing：重复进入无操作（幂等）
+    if (m_SimulationState == SimulationState::Playing)
+        return;
+    if (!m_PhysicsWorld)
+        return;
+
+    // 1. 备份 Transform 快照：带刚体/角色控制器的实体都存（Stop 回滚到此姿态）。
+    //    静态体位置不随模拟变，存了无害（决策 5.7）。
+    m_PlaySnapshot.clear();
+    auto rbView = m_Registry.view<TransformComponent, RigidBodyComponent>();
+    for (auto entity : rbView) {
+        const auto &tc = rbView.get<TransformComponent>(entity);
+        m_PlaySnapshot.push_back({entity, tc.Translation, tc.Rotation});
+    }
+    auto ccView = m_Registry.view<TransformComponent, CharacterControllerComponent>();
+    for (auto entity : ccView) {
+        const auto &tc = ccView.get<TransformComponent>(entity);
+        m_PlaySnapshot.push_back({entity, tc.Translation, tc.Rotation});
+    }
+
+    // 2. flush：补请求"有刚体/角色但未初始化、也从未入队"的实体，首帧 Step 即建体。
+    //    RequestCreate* 内部去重：pending 已有者自然无操作。
+    for (auto entity : rbView) {
+        const auto &rbc = rbView.get<RigidBodyComponent>(entity);
+        if (!rbc.IsInitialized)
+            m_PhysicsWorld->RequestCreateRigidBody(entity);
+    }
+    for (auto entity : ccView) {
+        const auto &ccc = ccView.get<CharacterControllerComponent>(entity);
+        if (!ccc.IsInitialized)
+            m_PhysicsWorld->RequestCreateCharacter(entity);
+    }
+
+    // 3. 防抖：清空时间累加器，避免上次运行残留的累积时间在首帧连跑多个子步（"按 Play 抖一下"）。
+    //    body 首帧由 ProcessPendingBodies 从实体当前 Transform 创建，初始位与摆放天然对齐，
+    //    无需再在 UI 线程补同步（SyncBodiesToTransforms 此刻无已初始化体，重复调用无副作用）。
+    m_PhysicsWorld->ResetAccumulator();
+
+    m_SimulationState = SimulationState::Playing;
+}
+
+void Scene::Stop() {
+    // 非 Playing：调用无操作
+    if (m_SimulationState != SimulationState::Playing)
+        return;
+    if (!m_PhysicsWorld)
+        return;
+
+    // 1. 销毁全部刚体（仅 IsInitialized 进 Jolt；pending 未建的由第 3 步清空列表收口）
+    auto rbView = m_Registry.view<RigidBodyComponent>();
+    for (auto entity : rbView)
+        m_PhysicsWorld->DestroyRigidBody(entity);
+
+    // 2. 销毁全部角色控制器，并复位面朝基准：下次 Play 从回滚后的姿态重新捕获，
+    //    避免 Edit 期间改了旋转后仍沿用旧基准导致转向漂移。
+    auto ccView = m_Registry.view<CharacterControllerComponent>();
+    for (auto entity : ccView) {
+        m_PhysicsWorld->DestroyCharacter(entity);
+        auto &ccc = ccView.get<CharacterControllerComponent>(entity);
+        ccc.FacingInit = false;
+        ccc.FacingYaw = 0.0f;
+        ccc.BaseRotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
+        ccc.WishVelocity = {0.0f, 0.0f, 0.0f};
+        ccc.JumpRequested = false;
+    }
+
+    // 3. 清空 pending：编辑态新加未建 / Play 后又加的刚体与角色全部清掉，不留待建残留
+    m_PhysicsWorld->ClearPendingBodies();
+    m_PhysicsWorld->ClearPendingCharacters();
+
+    // 4. 回滚 Transform 快照 → 实体回到播放前摆放姿态（下帧 UpdateWorldTransforms 重建 world）
+    for (const auto &s : m_PlaySnapshot) {
+        // 播放期间实体可能被脚本销毁：reg.valid 兜底（物理计划风险 3）
+        if (!m_Registry.valid(s.entity))
+            continue;
+        auto *tc = m_Registry.try_get<TransformComponent>(s.entity);
+        if (!tc)
+            continue;
+        tc->Translation = s.translation;
+        tc->Rotation = s.rotation;
+    }
+    m_PlaySnapshot.clear();
+
+    // 5. 累加器归零：Edit 态不再步进，把干净状态留给下次 Play
+    m_PhysicsWorld->ResetAccumulator();
+
+    m_SimulationState = SimulationState::Edit;
 }
 
 void Scene::UpdateWorldTransforms() {
@@ -402,6 +501,11 @@ void Scene::UpdateScripts(Timestep ts) {
 }
 
 void Scene::StepPhysics(Timestep ts) {
+    // 阶段 C 门控：编辑态物理整体停摆——不建体、不步进、不派发碰撞事件（决策 5.3）。
+    // 动画事件不受此门控（决策 5.6），UpdateAnimations 独立于 StepPhysics。
+    if (m_SimulationState != SimulationState::Playing) {
+        return;
+    }
     if (!m_PhysicsWorld) {
         return;
     }

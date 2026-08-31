@@ -138,6 +138,19 @@ public:
     /** @brief 获取物理世界指针（可能为 nullptr，如果物理系统未启用） */
     [[nodiscard]] Physics::PhysicsWorld *GetPhysicsWorld() const { return m_PhysicsWorld.get(); }
 
+    /// 模拟运行态：Edit = 编辑器编辑（物理静止、可自由摆放），Playing = 运行时模拟（物理接管）
+    enum class SimulationState : uint8_t { Edit, Playing };
+
+    /// 是否正在运行时模拟（Play 状态；脚本/编辑器 UI 短路查询用）
+    bool IsPlaying() const { return m_SimulationState == SimulationState::Playing; }
+
+    /// Edit → Playing：备份 Transform 快照、flush 未初始化刚体/角色，首帧 Step 建体并模拟。
+    /// 重复进入 -> 无操作（已 Playing）。
+    void Play();
+
+    /// Playing → Edit：销毁全部 body/角色、清空 pending、回滚快照回到摆放姿态。Edit 态调用 -> 无操作。
+    void Stop();
+
     /**
      * @brief 获取主相机实体。
      *
@@ -220,6 +233,17 @@ private:
 
     /// 视锥剔除粒度（默认仅网格级，保留现有行为）
     CullingMode m_CullingMode = CullingMode::Mesh;
+
+    /// 模拟运行态（默认 Edit；瞬态不序列化，加载后恒为 Edit，见计划书决策 5.5）
+    SimulationState m_SimulationState = SimulationState::Edit;
+
+    /// Play(): 快照、Stop(): 回滚用的 Transform 备份（仅内存，Play 前摆放姿态）
+    struct PlayTransformSnapshot {
+        entt::entity entity = entt::null;
+        glm::vec3 translation{0.0f, 0.0f, 0.0f};
+        glm::quat rotation{1.0f, 0.0f, 0.0f, 0.0f};
+    };
+    std::vector<PlayTransformSnapshot> m_PlaySnapshot;
 
     template <typename T>
     void OnComponentAdded(Entity entity, T &component);

@@ -190,6 +190,31 @@ public:
      */
     [[nodiscard]] const std::vector<CollisionEvent> &TakeCollisionEvents() const;
 
+    // ========================================================================
+    // 运行态生命周期（阶段 C：Edit/Play 分离）
+    // ========================================================================
+
+    /**
+     * @brief 清空待创建刚体列表（Stop 时调用）。
+     *
+     * 销毁动作只收已初始化的 body；pending 里"编辑态加未建 / Play 后又加"的请求
+     * 用此接口一并清空，避免残留句柄在下个 Play 周期建出错位 body。
+     */
+    void ClearPendingBodies();
+
+    /**
+     * @brief 清空待创建角色列表（Stop 时调用，与 ClearPendingBodies 同语义）。
+     */
+    void ClearPendingCharacters();
+
+    /**
+     * @brief 时间累加器归零（Play/Stop 时调用）。
+     *
+     * 编辑态不步进、累加器本应恒 0；上轮 Play 残留的累积时间若不清理，
+     * 下次 Play 首帧会连跑多个子步、画面"抖一下"。
+     */
+    void ResetAccumulator();
+
 private:
     // ========================================================================
     // 内部辅助

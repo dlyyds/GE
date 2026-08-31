@@ -1033,6 +1033,22 @@ const std::vector<CollisionEvent> &PhysicsWorld::TakeCollisionEvents() const {
     return m_CollisionEvents;
 }
 
+// ============================================================
+// 运行态生命周期（阶段 C：Edit/Play 分离）
+// ============================================================
+
+void PhysicsWorld::ClearPendingBodies() {
+    m_PendingBodies.clear();
+}
+
+void PhysicsWorld::ClearPendingCharacters() {
+    m_PendingCharacters.clear();
+}
+
+void PhysicsWorld::ResetAccumulator() {
+    m_Accumulator = 0.0f;
+}
+
 void PhysicsWorld::CollectCollisionEvents() {
     m_CollisionEvents.clear();
     if (!m_ContactBuffer || !m_PhysicsSystem)

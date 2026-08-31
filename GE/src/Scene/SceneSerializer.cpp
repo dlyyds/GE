@@ -869,6 +869,8 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
             ccNode["Offset"] = SerializeVec3(ccc.Offset);
             ccNode["MaxSlopeAngle"] = ccc.MaxSlopeAngle;
             ccNode["MaxJumpSpeed"] = ccc.MaxJumpSpeed;
+            ccNode["FaceMovement"] = ccc.FaceMovement;
+            ccNode["TurnSpeed"] = ccc.TurnSpeed;
         }
 
         // ---- BoxColliderComponent ----
@@ -1399,6 +1401,8 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
             ccc.Offset = DeserializeVec3(ccNode["Offset"], {0.0f, 0.0f, 0.0f});
             ccc.MaxSlopeAngle = ccNode["MaxSlopeAngle"] ? ccNode["MaxSlopeAngle"].as<float>(45.0f) : 45.0f;
             ccc.MaxJumpSpeed = ccNode["MaxJumpSpeed"] ? ccNode["MaxJumpSpeed"].as<float>(5.0f) : 5.0f;
+            ccc.FaceMovement = ccNode["FaceMovement"] ? ccNode["FaceMovement"].as<bool>(true) : true;
+            ccc.TurnSpeed = ccNode["TurnSpeed"] ? ccNode["TurnSpeed"].as<float>(540.0f) : 540.0f;
         }
 
         // ---- BoxColliderComponent ----

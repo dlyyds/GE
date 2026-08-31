@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cmath>
 #include <utility>
 #include <vector>
 
@@ -649,6 +650,28 @@ void PhysicsWorld::UpdateCharacters(float dt) {
         cc->Velocity = ToGlmVec3(cv->GetLinearVelocity());
         cc->GroundNormalY = cv->GetGroundNormal().GetY();
         cc->JumpRequested = false; // 未贴地也清：空中按压不缓冲，防落地自动跳
+
+        // 面朝水平移动方向（可选）：仅在脚本有水平输入时缓转向期望偏航角（绕世界 up）。
+        // 取 WishVelocity 的水平方向而非合成速度：避免站移动平台被回带、贴墙时朝向输入方向
+        //（面向墙）而非被挡后归零的实际速度。yaw 语义：yaw=0 → 面向 +Z（模型正前方）。
+        if (cc->FaceMovement) {
+            constexpr float kPi = 3.14159265358979f;
+            const float wx = cc->WishVelocity.x, wz = cc->WishVelocity.z;
+            const float h = std::sqrt(wx * wx + wz * wz);
+            if (h > 0.1f) {
+                const float targetYaw = std::atan2(wx, wz);
+                // 当前偏航 = 当前旋转把局部 +Z 前向投影到 XZ 平面的方位角（容忍头/侧倾）
+                const JPH::Vec3 fwd = cv->GetRotation() * JPH::Vec3(0.0f, 0.0f, 1.0f);
+                float curYaw = std::atan2(fwd.GetX(), fwd.GetZ());
+                // 夹角收进 [-pi, pi]，按 TurnSpeed 限速逼近（不瞬转）
+                float diff = targetYaw - curYaw;
+                while (diff > kPi) diff -= 2.0f * kPi;
+                while (diff < -kPi) diff += 2.0f * kPi;
+                const float maxStep = JPH::DegreesToRadians(cc->TurnSpeed) * dt;
+                cv->SetRotation(JPH::Quat::sRotation(JPH::Vec3::sAxisY(),
+                                                     curYaw + std::clamp(diff, -maxStep, maxStep)));
+            }
+        }
     }
 }
 

@@ -1704,6 +1704,12 @@ void SceneHierarchyPanel::DrawCharacterControllerComponent(
 
     // 跳跃初速不改形状：无需重建（引擎每子步实时读组件值）
     ImGui::DragFloat("Max Jump Speed", &component.MaxJumpSpeed, 0.1f, 0.0f, 100.0f);
+
+    // 朝向移动：每子步实时读组件值，无需重建
+    ImGui::Checkbox("Face Movement", &component.FaceMovement);
+    if (component.FaceMovement) {
+        ImGui::DragFloat("Turn Speed (deg/s)", &component.TurnSpeed, 10.0f, 1.0f, 1080.0f);
+    }
 }
 
 // ============================================================

@@ -612,6 +612,8 @@ struct CharacterControllerComponent {
     glm::vec3 Offset    = {0.0f, 0.0f, 0.0f}; ///< 胶囊相对脚底的局部偏移（角色局部帧）
     float MaxSlopeAngle = 45.0f; ///< 可上坡最大倾角（度）
     float MaxJumpSpeed  = 5.0f;  ///< 跳跃初速（m/s，character.jump 使用）
+    bool  FaceMovement  = true;  ///< 是否朝向水平移动方向（脚本有水平输入时绕 up 缓转）
+    float TurnSpeed     = 540.0f; ///< 转向速率（度/秒，FaceMovement 生效时的最大偏航角速度）
 
     // 运行时（不参与序列化）
     bool      IsInitialized = false;              ///< CharacterVirtual 已创建

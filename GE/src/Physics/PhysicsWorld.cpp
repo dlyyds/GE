@@ -28,6 +28,7 @@
 #include <Jolt/Physics/PhysicsSystem.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
+#include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
 #include <Jolt/Physics/Collision/Shape/StaticCompoundShape.h>
 #include <Jolt/Physics/Collision/Shape/RotatedTranslatedShape.h>
 #include <Jolt/Physics/Collision/BroadPhase/BroadPhaseLayer.h>
@@ -560,7 +561,7 @@ bool PhysicsWorld::HasColliderComponent(entt::entity entity) const {
     if (!m_Scene)
         return false;
     auto &reg = m_Scene->Reg();
-    return reg.any_of<BoxColliderComponent, SphereColliderComponent>(entity);
+    return reg.any_of<BoxColliderComponent, SphereColliderComponent, CapsuleColliderComponent>(entity);
 }
 
 JPH::ShapeRefC PhysicsWorld::BuildShapeForEntity(entt::entity entity) {
@@ -617,6 +618,35 @@ JPH::ShapeRefC PhysicsWorld::BuildShapeForEntity(entt::entity entity) {
             }
         } else {
             subShapes.push_back(sphereShape);
+        }
+    }
+
+    // 收集 CapsuleCollider 组件（胶囊沿 Y 轴对齐：圆柱段半高乘 Y 缩放，半径取三轴最大缩放）
+    auto *capsuleColliders = reg.try_get<CapsuleColliderComponent>(entity);
+    if (capsuleColliders) {
+        float scaledHalfHeight = capsuleColliders->HalfHeight * tc->Scale.y;
+        float scaledRadius = capsuleColliders->Radius * std::max({tc->Scale.x, tc->Scale.y, tc->Scale.z});
+
+        // 半高归零时 CapsuleShape 直接构造会触发 JPH_ASSERT(> 0)，退化为球体（与 Jolt Settings::IsSphere 语义一致）
+        JPH::ShapeRefC capsuleShape;
+        if (scaledHalfHeight > 0.0f) {
+            capsuleShape = new JPH::CapsuleShape(scaledHalfHeight, scaledRadius);
+        } else {
+            capsuleShape = new JPH::SphereShape(scaledRadius);
+        }
+
+        if (capsuleColliders->Offset != glm::vec3(0.0f)) {
+            JPH::RotatedTranslatedShapeSettings offsetSettings(
+                ToJoltVec3(capsuleColliders->Offset),
+                JPH::Quat::sIdentity(),
+                capsuleShape
+                );
+            auto result = offsetSettings.Create();
+            if (result.IsValid()) {
+                subShapes.push_back(result.Get());
+            }
+        } else {
+            subShapes.push_back(capsuleShape);
         }
     }
 

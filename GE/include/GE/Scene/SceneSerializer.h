@@ -19,7 +19,7 @@ class Material;
  * 支持的组件：TagComponent、TransformComponent、SpriteRendererComponent、
  *            MeshRendererComponent、CameraComponent、PointLightComponent、
  *            DirectionalLightComponent、AmbientLightComponent、RigidBodyComponent、
- *            BoxColliderComponent、SphereColliderComponent。
+ *            BoxColliderComponent、SphereColliderComponent、CapsuleColliderComponent。
  *
  * 3D 网格材质由子网格绑定（随模型加载），不序列化到场景。
  * SpriteRenderer 的纹理同样保存其采样器参数。

@@ -593,7 +593,8 @@ void SceneLayer::DrawColliders(const glm::vec2 &imagePos) {
         const auto &tc = rbView.get<TransformComponent>(entity);
         const auto *box = m_Context->Scene->Reg().try_get<BoxColliderComponent>(entity);
         const auto *sphere = m_Context->Scene->Reg().try_get<SphereColliderComponent>(entity);
-        if (!box && !sphere) {
+        const auto *capsule = m_Context->Scene->Reg().try_get<CapsuleColliderComponent>(entity);
+        if (!box && !sphere && !capsule) {
             continue; // 无碰撞体，未创建刚体
         }
         const glm::quat &rot = tc.Rotation;
@@ -682,6 +683,61 @@ void SceneLayer::DrawColliders(const glm::vec2 &imagePos) {
                     }
                     drawWorldSegment(center + rot * (d0 * radius),
                                      center + rot * (d1 * radius));
+                }
+            }
+        }
+
+        // ---- 胶囊碰撞体（Y 轴对齐）：圆柱段半高乘 Y 缩放、半径取三轴最大缩放（与 Jolt 构建一致）；DrawDebug 关闭则不画 ----
+        if (capsule && capsule->DrawDebug) {
+            const glm::vec3 center = tc.Translation + rot * capsule->Offset;
+            const float radius = capsule->Radius
+                                 * std::max({tc.Scale.x, tc.Scale.y, tc.Scale.z});
+            const float halfHeight = capsule->HalfHeight * tc.Scale.y;
+
+            // N 条经线剖面（球帽弧 + 圆柱母线 + 下半球帽弧），凸显胶囊轮廓
+            constexpr int kMeri = 8;    // 经线数量
+            constexpr int kArcSegs = 8; // 每条半球帽弧的分段数
+            for (int m = 0; m < kMeri; ++m) {
+                const float ang = (2.0f * kPi * m) / kMeri;
+                const float dx = std::cos(ang), dz = std::sin(ang);
+                // 上球帽弧：极点 (0, +H+R) → 赤道 (R, +H)
+                glm::vec3 prev = center + rot * glm::vec3(0.0f, halfHeight + radius, 0.0f);
+                for (int i = 1; i <= kArcSegs; ++i) {
+                    const float a = (static_cast<float>(i) / kArcSegs) * kPi * 0.5f;
+                    const glm::vec3 cur = center + rot * glm::vec3(
+                        std::sin(a) * radius * dx,
+                        halfHeight + std::cos(a) * radius,
+                        std::sin(a) * radius * dz);
+                    drawWorldSegment(prev, cur);
+                    prev = cur;
+                }
+                // 圆柱母线：下赤道 → 上赤道
+                drawWorldSegment(
+                    center + rot * glm::vec3(radius * dx, -halfHeight, radius * dz),
+                    center + rot * glm::vec3(radius * dx, +halfHeight, radius * dz));
+                // 下球帽弧：赤道 (R, -H) → 极点 (0, -H-R)
+                glm::vec3 prev2 = center + rot * glm::vec3(radius * dx, -halfHeight, radius * dz);
+                for (int i = 1; i <= kArcSegs; ++i) {
+                    const float a = (static_cast<float>(i) / kArcSegs) * kPi * 0.5f;
+                    const glm::vec3 cur = center + rot * glm::vec3(
+                        std::sin(a) * radius * dx,
+                        -halfHeight - std::cos(a) * radius,
+                        std::sin(a) * radius * dz);
+                    drawWorldSegment(prev2, cur);
+                    prev2 = cur;
+                }
+            }
+
+            // 圆环绕 y = ±H（赤道/圆柱边）与 y = 0（圆柱中段）各画一圈
+            constexpr int kSegs = 24; // 圆环分段数
+            for (int ring = 0; ring < 3; ++ring) {
+                const float y = (ring == 0) ? -halfHeight : ((ring == 1) ? 0.0f : halfHeight);
+                for (int i = 0; i < kSegs; ++i) {
+                    const float a0 = (2.0f * kPi * i) / kSegs;
+                    const float a1 = (2.0f * kPi * (i + 1)) / kSegs;
+                    drawWorldSegment(
+                        center + rot * glm::vec3(std::cos(a0) * radius, y, std::sin(a0) * radius),
+                        center + rot * glm::vec3(std::cos(a1) * radius, y, std::sin(a1) * radius));
                 }
             }
         }

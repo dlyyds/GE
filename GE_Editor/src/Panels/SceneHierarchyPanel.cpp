@@ -907,6 +907,9 @@ void SceneHierarchyPanel::DrawComponents(Entity entity) {
     DrawComponent<SphereColliderComponent>("Sphere Collider", entity,
         [&](auto &c) { DrawSphereColliderComponent(entity, c); });
 
+    DrawComponent<CapsuleColliderComponent>("Capsule Collider", entity,
+        [&](auto &c) { DrawCapsuleColliderComponent(entity, c); });
+
     DrawComponent<BoundingBoxComponent>("Bounding Box", entity,
         [this, entity](auto &c) { DrawBoundingBoxComponent(entity, c, m_Context); });
 
@@ -939,6 +942,7 @@ void SceneHierarchyPanel::DrawAddComponentPopup() {
     TryAddComponent<RigidBodyComponent>("Rigid Body");
     TryAddComponent<BoxColliderComponent>("Box Collider");
     TryAddComponent<SphereColliderComponent>("Sphere Collider");
+    TryAddComponent<CapsuleColliderComponent>("Capsule Collider");
     TryAddComponent<BoundingBoxComponent>("Bounding Box");
     TryAddComponent<ScriptComponent>("Script");
 
@@ -1677,6 +1681,32 @@ void SceneHierarchyPanel::DrawSphereColliderComponent(Entity entity, SphereColli
 
     // 形状改变 → 重建刚体
     if (ImGui::DragFloat("Radius", &component.Radius, 0.05f, 0.001f, 1000.0f)) {
+        if (physicsWorld)
+            physicsWorld->RebuildRigidBody(entityHandle);
+    }
+    if (DrawVec3Control("Offset", component.Offset, 0.0f, 120)) {
+        if (physicsWorld)
+            physicsWorld->RebuildRigidBody(entityHandle);
+    }
+}
+
+// ============================================================
+// Capsule Collider 组件
+// ============================================================
+void SceneHierarchyPanel::DrawCapsuleColliderComponent(Entity entity, CapsuleColliderComponent &component) {
+    Physics::PhysicsWorld *physicsWorld = m_Context->GetPhysicsWorld();
+    const auto entityHandle = (entt::entity)entity;
+
+    // 碰撞体调试线框单独开关（仅影响视口叠加显示，不涉及物理）
+    ImGui::Checkbox("Draw Debug", &component.DrawDebug);
+    ImGui::Separator();
+
+    // 形状改变 → 重建刚体
+    if (ImGui::DragFloat("Radius", &component.Radius, 0.05f, 0.001f, 1000.0f)) {
+        if (physicsWorld)
+            physicsWorld->RebuildRigidBody(entityHandle);
+    }
+    if (ImGui::DragFloat("Half Height", &component.HalfHeight, 0.05f, 0.0f, 1000.0f)) {
         if (physicsWorld)
             physicsWorld->RebuildRigidBody(entityHandle);
     }

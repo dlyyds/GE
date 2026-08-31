@@ -884,6 +884,16 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
             sphereNode["DrawDebug"] = scc.DrawDebug;
         }
 
+        // ---- CapsuleColliderComponent ----
+        if (entity.HasComponent<CapsuleColliderComponent>()) {
+            const auto &ccc = entity.GetComponent<CapsuleColliderComponent>();
+            YAML::Node capsuleNode = entityNode["CapsuleCollider"];
+            capsuleNode["Radius"] = ccc.Radius;
+            capsuleNode["HalfHeight"] = ccc.HalfHeight;
+            capsuleNode["Offset"] = SerializeVec3(ccc.Offset);
+            capsuleNode["DrawDebug"] = ccc.DrawDebug;
+        }
+
         // ---- JointComponent（骨骼关节标记）----
         // 关节序号是导入器按 skin.joints 写入的皮肤内索引，不落盘则骨架链丢失。
         if (entity.HasComponent<JointComponent>()) {
@@ -1390,6 +1400,17 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
             scc.Radius = sphereNode["Radius"] ? sphereNode["Radius"].as<float>(0.5f) : 0.5f;
             scc.Offset = DeserializeVec3(sphereNode["Offset"], {0.0f, 0.0f, 0.0f});
             scc.DrawDebug = sphereNode["DrawDebug"] ? sphereNode["DrawDebug"].as<bool>(true) : true;
+        }
+
+        // ---- CapsuleColliderComponent ----
+        if (entityNode["CapsuleCollider"]) {
+            YAML::Node capsuleNode = entityNode["CapsuleCollider"];
+            auto &ccc = entity.AddComponent<CapsuleColliderComponent>();
+
+            ccc.Radius = capsuleNode["Radius"] ? capsuleNode["Radius"].as<float>(0.5f) : 0.5f;
+            ccc.HalfHeight = capsuleNode["HalfHeight"] ? capsuleNode["HalfHeight"].as<float>(0.5f) : 0.5f;
+            ccc.Offset = DeserializeVec3(capsuleNode["Offset"], {0.0f, 0.0f, 0.0f});
+            ccc.DrawDebug = capsuleNode["DrawDebug"] ? capsuleNode["DrawDebug"].as<bool>(true) : true;
         }
 
         // ---- JointComponent（骨骼关节标记）----

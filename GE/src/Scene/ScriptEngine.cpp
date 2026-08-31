@@ -286,6 +286,7 @@ void RegisterApi(Impl &eng) {
         if (name == std::string_view("Environment")) return reg.any_of<EnvironmentComponent>(e);
         if (name == std::string_view("BoxCollider")) return reg.any_of<BoxColliderComponent>(e);
         if (name == std::string_view("SphereCollider")) return reg.any_of<SphereColliderComponent>(e);
+        if (name == std::string_view("CapsuleCollider")) return reg.any_of<CapsuleColliderComponent>(e);
         if (name == std::string_view("Joint")) return reg.any_of<JointComponent>(e);
         if (name == std::string_view("Skin")) return reg.any_of<SkinComponent>(e);
         if (name == std::string_view("BoundingBox")) return reg.any_of<BoundingBoxComponent>(e);

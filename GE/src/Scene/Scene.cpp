@@ -39,6 +39,7 @@ Scene::Scene() {
     // 注册碰撞体销毁回调（移除碰撞体时触发刚体重建）
     m_Registry.on_destroy<BoxColliderComponent>().connect<&Scene::OnColliderDestroyed>(this);
     m_Registry.on_destroy<SphereColliderComponent>().connect<&Scene::OnColliderDestroyed>(this);
+    m_Registry.on_destroy<CapsuleColliderComponent>().connect<&Scene::OnColliderDestroyed>(this);
 
     // Lua 脚本引擎：绑定场景 + 注入 API（脚本基准目录 assets/scripts/）
     m_ScriptEngine.Init(this, "assets/scripts");
@@ -870,6 +871,18 @@ void Scene::OnComponentAdded<BoxColliderComponent>(Entity entity, BoxColliderCom
 
 template <>
 void Scene::OnComponentAdded<SphereColliderComponent>(Entity entity, SphereColliderComponent &component) {
+    // 同 BoxColliderComponent 逻辑
+    if (entity.HasComponent<RigidBodyComponent>()) {
+        auto &rbc = entity.GetComponent<RigidBodyComponent>();
+        if (rbc.IsInitialized) {
+            m_PhysicsWorld->DestroyRigidBody(static_cast<entt::entity>(entity));
+        }
+        m_PhysicsWorld->RequestCreateRigidBody(static_cast<entt::entity>(entity));
+    }
+}
+
+template <>
+void Scene::OnComponentAdded<CapsuleColliderComponent>(Entity entity, CapsuleColliderComponent &component) {
     // 同 BoxColliderComponent 逻辑
     if (entity.HasComponent<RigidBodyComponent>()) {
         auto &rbc = entity.GetComponent<RigidBodyComponent>();

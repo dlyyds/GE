@@ -576,9 +576,13 @@ void PhysicsWorld::UpdateCharacters(float dt) {
     // ExtendedUpdate = Update + StickToFloor + WalkStairs 一站式（默认上楼 0.4m、贴地下探 0.5m）
     const JPH::CharacterVirtual::ExtendedUpdateSettings extSettings;
     // 对象层过滤：以 Player 层身份撞向全层（复用现有 pair filter 全放行语义）；
+    // BroadPhase 过滤：DefaultBroadPhaseLayerFilter 把现有双参 ObjectVsBroadPhaseLayerFilter
+    // 以固定对象层（Player）适配成 ExtendedUpdate 需要的单参形式，语义与全放行一致；
     // Body/Shape 过滤默认实现即全放行（Jolt 无 sAllHit 常量，默认构造等价）
     const JPH::DefaultObjectLayerFilter objFilter(
         *m_ObjectLayerPairFilter, static_cast<JPH::ObjectLayer>(CollisionLayer::Player));
+    const JPH::DefaultBroadPhaseLayerFilter broadPhaseFilter(
+        *m_ObjectVsBroadPhaseFilter, static_cast<JPH::ObjectLayer>(CollisionLayer::Player));
     const JPH::BodyFilter bodyFilter;
     const JPH::ShapeFilter shapeFilter;
 
@@ -608,7 +612,7 @@ void PhysicsWorld::UpdateCharacters(float dt) {
         vel += ToJoltVec3(cc->WishVelocity); // 脚本水平输入
         cv->SetLinearVelocity(vel);
         cv->ExtendedUpdate(dt, ToJoltVec3(m_Gravity), extSettings,
-                           *m_ObjectVsBroadPhaseFilter, objFilter, bodyFilter, shapeFilter,
+                           broadPhaseFilter, objFilter, bodyFilter, shapeFilter,
                            *m_TempAllocator);
 
         // 组件回写：贴地态 + 真实速度 + 地面法线（character.* 查询 API 读这些字段）

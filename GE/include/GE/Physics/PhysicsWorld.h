@@ -22,6 +22,7 @@
 
 #include <glm/glm.hpp>
 #include <memory>
+#include <unordered_map>
 #include <vector>
 #include <entt.hpp>
 
@@ -34,6 +35,7 @@ namespace JPH {
     class BroadPhaseLayerInterface;
     class ObjectVsBroadPhaseLayerFilter;
     class ObjectLayerPairFilter;
+    class CharacterVirtual;
 
     template <class T> class RefConst;
     class Shape;
@@ -132,6 +134,34 @@ public:
     void RebuildRigidBody(entt::entity entity);
 
     // ========================================================================
+    // 角色控制器（CharacterVirtual，由 Scene 的 OnComponentAdded 回调触发）
+    // ========================================================================
+
+    /**
+     * @brief 请求创建 Jolt CharacterVirtual（延迟创建）。
+     *
+     * 与刚体同样走「先入 pending，下次 Step 再创建」的策略，取当前 Transform
+     * 作初始位置/旋转。角色实体不挂 RigidBodyComponent，两条刚体同步循环不受影响。
+     *
+     * @param entity 实体句柄（需带 TransformComponent + CharacterControllerComponent）
+     */
+    void RequestCreateCharacter(entt::entity entity);
+
+    /**
+     * @brief 销毁 Jolt CharacterVirtual（实体销毁或移除角色组件时调用）。
+     *
+     * CharacterVirtual 析构会自动 RemoveBody + DestroyBody 清理 inner body。
+     * @param entity 实体句柄
+     */
+    void DestroyCharacter(entt::entity entity);
+
+    /**
+     * @brief 销毁并重建角色（编辑器面板改 Radius/Height/MaxSlopeAngle 时用）。
+     * @param entity 实体句柄
+     */
+    void RebuildCharacter(entt::entity entity);
+
+    // ========================================================================
     // 重力
     // ========================================================================
 
@@ -186,6 +216,15 @@ private:
     /** @brief Step 步进后：把环形缓冲（BodyID 对）翻译成本帧实体级碰撞事件（主线程可碰 ECS） */
     void CollectCollisionEvents();
 
+    /** @brief 处理待创建角色列表（角色延迟创建，参考 ProcessPendingBodies） */
+    void ProcessPendingCharacters();
+
+    /** @brief 每个物理子步推进所有角色：合成速度（重力 + 水平期望）→ ExtendedUpdate */
+    void UpdateCharacters(float dt);
+
+    /** @brief 步进后将 CharacterVirtual 位置/旋转写回 TransformComponent */
+    void SyncCharacterTransformsToComponents();
+
     // ========================================================================
     // GLM ↔ Jolt 数学转换辅助
     // ========================================================================
@@ -219,6 +258,11 @@ private:
 
     // 待创建刚体列表（延迟创建机制）
     std::vector<entt::entity> m_PendingBodies;
+
+    // 角色控制器：<实体, CharacterVirtual>；析构顺序先于 m_PhysicsSystem（见析构函数）
+    std::unordered_map<entt::entity, std::unique_ptr<JPH::CharacterVirtual>> m_Characters;
+    // 待创建角色列表（延迟创建机制）
+    std::vector<entt::entity> m_PendingCharacters;
 
     // 接触事件（阶段 B）：环形缓冲（Listener 写）+ 本帧实体级事件（Step 后填）
     std::unique_ptr<ContactEventBuffer> m_ContactBuffer;

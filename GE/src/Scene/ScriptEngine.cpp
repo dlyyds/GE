@@ -266,6 +266,51 @@ void RegisterApi(Impl &eng) {
     };
     lua["anim"] = animT;
 
+    // ---- character → 当前实体角色控制器（Jolt CharacterVirtual，计划书 §4）----
+    // set_move 写水平期望速度（世界空间 x/z，垂直速度由引擎每子步积分），引擎消费；
+    // jump 置位后引擎贴地时消费一次；get_* 回读组件运行时字段（引擎每子步回写）。
+    auto activeChar = [&eng]() -> CharacterControllerComponent * {
+        if (!eng.scene || eng.activeEntity == entt::null)
+            return nullptr;
+        return eng.scene->Reg().try_get<CharacterControllerComponent>(eng.activeEntity);
+    };
+    sol::table charT = lua.create_table();
+    charT["set_move"] = [activeChar](float x, float z) {
+        if (auto *cc = activeChar()) {
+            cc->WishVelocity = {x, 0.0f, z};
+            return true;
+        }
+        GE_CORE_WARN("[Lua] character.set_move: 实体无 CharacterController 组件");
+        return false;
+    };
+    charT["jump"] = [activeChar]() {
+        if (auto *cc = activeChar()) {
+            if (cc->IsGrounded) { // 贴地才起跳；空中按压不缓冲
+                cc->JumpRequested = true;
+                return true;
+            }
+            return false;
+        }
+        GE_CORE_WARN("[Lua] character.jump: 实体无 CharacterController 组件");
+        return false;
+    };
+    charT["get_grounded"] = [activeChar]() -> bool {
+        if (auto *cc = activeChar())
+            return cc->IsGrounded;
+        return false;
+    };
+    charT["get_velocity"] = [activeChar]() {
+        if (auto *cc = activeChar())
+            return std::make_tuple(cc->Velocity.x, cc->Velocity.y, cc->Velocity.z);
+        return std::make_tuple(0.0f, 0.0f, 0.0f);
+    };
+    charT["get_ground_normal_y"] = [activeChar]() -> float {
+        if (auto *cc = activeChar())
+            return cc->GroundNormalY;
+        return 1.0f;
+    };
+    lua["character"] = charT;
+
     // ---- entity → 挂载实体的基本查询 ----
     auto hasAny = [&eng](const char *name) -> bool {
         if (!eng.scene || eng.activeEntity == entt::null)

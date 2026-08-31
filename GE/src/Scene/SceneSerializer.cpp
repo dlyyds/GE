@@ -858,6 +858,17 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
             rbNode["IsSensor"] = rbc.IsSensor;
         }
 
+        // ---- CharacterControllerComponent ----
+        // 运行时字段（IsInitialized/WishVelocity/IsGrounded/...）不落盘，只写配置四项。
+        if (entity.HasComponent<CharacterControllerComponent>()) {
+            const auto &ccc = entity.GetComponent<CharacterControllerComponent>();
+            YAML::Node ccNode = entityNode["CharacterController"];
+            ccNode["Radius"] = ccc.Radius;
+            ccNode["Height"] = ccc.Height;
+            ccNode["MaxSlopeAngle"] = ccc.MaxSlopeAngle;
+            ccNode["MaxJumpSpeed"] = ccc.MaxJumpSpeed;
+        }
+
         // ---- BoxColliderComponent ----
         if (entity.HasComponent<BoxColliderComponent>()) {
             const auto &bcc = entity.GetComponent<BoxColliderComponent>();
@@ -1372,6 +1383,18 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
             rbc.LinearDamping = rbNode["LinearDamping"] ? rbNode["LinearDamping"].as<float>(0.05f) : 0.05f;
             rbc.AngularDamping = rbNode["AngularDamping"] ? rbNode["AngularDamping"].as<float>(0.05f) : 0.05f;
             rbc.IsSensor = rbNode["IsSensor"] ? rbNode["IsSensor"].as<bool>(false) : false;
+        }
+
+        // ---- CharacterControllerComponent ----
+        // AddComponent 触发 OnComponentAdded → RequestCreateCharacter（延迟创建）
+        if (entityNode["CharacterController"]) {
+            YAML::Node ccNode = entityNode["CharacterController"];
+            auto &ccc = entity.AddComponent<CharacterControllerComponent>();
+
+            ccc.Radius = ccNode["Radius"] ? ccNode["Radius"].as<float>(0.35f) : 0.35f;
+            ccc.Height = ccNode["Height"] ? ccNode["Height"].as<float>(1.80f) : 1.80f;
+            ccc.MaxSlopeAngle = ccNode["MaxSlopeAngle"] ? ccNode["MaxSlopeAngle"].as<float>(45.0f) : 45.0f;
+            ccc.MaxJumpSpeed = ccNode["MaxJumpSpeed"] ? ccNode["MaxJumpSpeed"].as<float>(5.0f) : 5.0f;
         }
 
         // ---- BoxColliderComponent ----

@@ -901,6 +901,9 @@ void SceneHierarchyPanel::DrawComponents(Entity entity) {
     DrawComponent<RigidBodyComponent>("Rigid Body", entity,
         [&](auto &c) { DrawRigidBodyComponent(entity, c); });
 
+    DrawComponent<CharacterControllerComponent>("Character Controller", entity,
+        [&](auto &c) { DrawCharacterControllerComponent(entity, c); });
+
     DrawComponent<BoxColliderComponent>("Box Collider", entity,
         [&](auto &c) { DrawBoxColliderComponent(entity, c); });
 
@@ -940,6 +943,7 @@ void SceneHierarchyPanel::DrawAddComponentPopup() {
     TryAddComponent<AmbientLightComponent>("Ambient Light");
     TryAddComponent<EnvironmentComponent>("Environment");
     TryAddComponent<RigidBodyComponent>("Rigid Body");
+    TryAddComponent<CharacterControllerComponent>("Character Controller");
     TryAddComponent<BoxColliderComponent>("Box Collider");
     TryAddComponent<SphereColliderComponent>("Sphere Collider");
     TryAddComponent<CapsuleColliderComponent>("Capsule Collider");
@@ -1644,6 +1648,39 @@ void SceneHierarchyPanel::DrawRigidBodyComponent(Entity entity, RigidBodyCompone
 
     ImGui::Separator();
     ImGui::TextDisabled("Runtime Body ID: %s", component.IsInitialized ? "valid" : "uninitialized");
+}
+
+// ============================================================
+// Character Controller（角色控制器）组件
+// ============================================================
+void SceneHierarchyPanel::DrawCharacterControllerComponent(
+    Entity entity, CharacterControllerComponent &component) {
+    Physics::PhysicsWorld *physicsWorld = m_Context->GetPhysicsWorld();
+    const auto entityHandle = (entt::entity)entity;
+
+    ImGui::Separator();
+    ImGui::TextDisabled("Runtime: %s%s",
+                        component.IsInitialized ? "active" : "uninitialized",
+                        component.IsInitialized
+                            ? (component.IsGrounded ? " / on ground" : " / in air")
+                            : "");
+
+    // 半径/总高/最大坡度改变胶囊形状 → 销毁重建角色（取当前 Transform 作初始位置）
+    if (ImGui::DragFloat("Radius", &component.Radius, 0.05f, 0.001f, 100.0f)) {
+        if (physicsWorld)
+            physicsWorld->RebuildCharacter(entityHandle);
+    }
+    if (ImGui::DragFloat("Height", &component.Height, 0.05f, 0.01f, 100.0f)) {
+        if (physicsWorld)
+            physicsWorld->RebuildCharacter(entityHandle);
+    }
+    if (ImGui::DragFloat("Max Slope (deg)", &component.MaxSlopeAngle, 0.5f, 0.0f, 89.0f)) {
+        if (physicsWorld)
+            physicsWorld->RebuildCharacter(entityHandle);
+    }
+
+    // 跳跃初速不改形状：无需重建（引擎每子步实时读组件值）
+    ImGui::DragFloat("Max Jump Speed", &component.MaxJumpSpeed, 0.1f, 0.0f, 100.0f);
 }
 
 // ============================================================

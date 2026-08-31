@@ -102,6 +102,9 @@ private:
     /// 绘制 RigidBody 组件属性
     void DrawRigidBodyComponent(Entity entity, RigidBodyComponent &component);
 
+    /// 绘制 CharacterController（角色控制器）组件属性
+    void DrawCharacterControllerComponent(Entity entity, CharacterControllerComponent &component);
+
     /// 绘制 BoxCollider 组件属性
     void DrawBoxColliderComponent(Entity entity, BoxColliderComponent &component);
 

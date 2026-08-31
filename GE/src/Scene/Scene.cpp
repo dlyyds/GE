@@ -41,6 +41,9 @@ Scene::Scene() {
     m_Registry.on_destroy<SphereColliderComponent>().connect<&Scene::OnColliderDestroyed>(this);
     m_Registry.on_destroy<CapsuleColliderComponent>().connect<&Scene::OnColliderDestroyed>(this);
 
+    // 注册角色控制器销毁回调（销毁 Jolt CharacterVirtual）
+    m_Registry.on_destroy<CharacterControllerComponent>().connect<&Scene::OnCharacterControllerDestroyed>(this);
+
     // Lua 脚本引擎：绑定场景 + 注入 API（脚本基准目录 assets/scripts/）
     m_ScriptEngine.Init(this, "assets/scripts");
 
@@ -893,6 +896,14 @@ void Scene::OnComponentAdded<CapsuleColliderComponent>(Entity entity, CapsuleCol
     }
 }
 
+template <>
+void Scene::OnComponentAdded<CharacterControllerComponent>(Entity entity, CharacterControllerComponent &component) {
+    // 延迟创建：加入 PhysicsWorld 待创建列表，下次 Step 取当前 Transform 创建 CharacterVirtual
+    if (m_PhysicsWorld) {
+        m_PhysicsWorld->RequestCreateCharacter(static_cast<entt::entity>(entity));
+    }
+}
+
 void Scene::OnRigidBodyDestroyed(entt::registry &registry, entt::entity entity) {
     // EnTT 的 on_destroy 回调，在实体销毁或组件移除时触发
     if (m_PhysicsWorld) {
@@ -915,6 +926,13 @@ void Scene::OnColliderDestroyed(entt::registry &registry, entt::entity entity) {
 void Scene::OnScriptComponentDestroyed(entt::registry &registry, entt::entity entity) {
     // 脚本组件移除/实体销毁：调 Lua OnDestroy 并清除实例
     m_ScriptEngine.OnEntityDestroyed(entity);
+}
+
+void Scene::OnCharacterControllerDestroyed(entt::registry &registry, entt::entity entity) {
+    // 角色组件移除/实体销毁：销毁 Jolt CharacterVirtual（析构自动清 inner body）
+    if (m_PhysicsWorld) {
+        m_PhysicsWorld->DestroyCharacter(entity);
+    }
 }
 
 

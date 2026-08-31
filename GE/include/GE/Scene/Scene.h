@@ -230,6 +230,9 @@ private:
     /// 碰撞体销毁回调（移除碰撞体时重建刚体形状）
     void OnColliderDestroyed(entt::registry &registry, entt::entity entity);
 
+    /// 角色控制器销毁回调（销毁 Jolt CharacterVirtual）
+    void OnCharacterControllerDestroyed(entt::registry &registry, entt::entity entity);
+
     /// 脚本组件销毁回调（清理 ScriptEngine 实例并调 OnDestroy）
     void OnScriptComponentDestroyed(entt::registry &registry, entt::entity entity);
 

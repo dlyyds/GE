@@ -36,6 +36,9 @@
 #include <Jolt/Physics/Collision/ContactListener.h>
 #include <Jolt/Physics/Collision/Shape/SubShapeIDPair.h>
 #include <Jolt/Physics/Collision/EstimateCollisionResponse.h>
+#include <Jolt/Physics/Body/BodyFilter.h>
+#include <Jolt/Physics/Collision/ShapeFilter.h>
+#include <Jolt/Physics/Character/CharacterVirtual.h>
 #include <Jolt/Core/Factory.h>
 #include <Jolt/Core/JobSystemThreadPool.h>
 #include <Jolt/Core/TempAllocator.h>
@@ -251,6 +254,9 @@ PhysicsWorld::PhysicsWorld(Scene *scene)
 }
 
 PhysicsWorld::~PhysicsWorld() {
+    // 角色必须先于物理系统销毁：CharacterVirtual 析构要经 BodyInterface 移除 inner body，
+    // 若等成员析构（此时 m_PhysicsSystem 已释放）再析构 unique_ptr 会访问悬垂指针。
+    m_Characters.clear();
     // 先销毁 Jolt 物理系统，再销毁依赖对象
     m_PhysicsSystem.reset();
     m_JobSystem.reset();
@@ -323,6 +329,9 @@ void PhysicsWorld::Step(Timestep ts) {
     // Step 1: 处理待创建刚体列表
     ProcessPendingBodies();
 
+    // Step 1.5: 处理待创建角色列表（角色延迟创建，取当前 Transform 作初始位置）
+    ProcessPendingCharacters();
+
     // Step 2: 同步运动学体 Transform → Jolt
     SyncKinematicTransformsToBodies();
 
@@ -342,6 +351,8 @@ void PhysicsWorld::Step(Timestep ts) {
             m_TempAllocator.get(),
             m_JobSystem.get()
             );
+        // 角色在物理 Update 之后查询世界（看到动态体最新位置），在下一子步前推进
+        UpdateCharacters(FIXED_TIMESTEP);
         m_Accumulator -= FIXED_TIMESTEP;
         subSteps++;
     }
@@ -356,6 +367,9 @@ void PhysicsWorld::Step(Timestep ts) {
 
     // Step 4: 同步动态体 Jolt → Transform
     SyncBodiesToTransforms();
+
+    // Step 5: 同步角色 CharacterVirtual 位置 → TransformComponent（渲染读它）
+    SyncCharacterTransformsToComponents();
 }
 
 // ============================================================
@@ -452,6 +466,172 @@ void PhysicsWorld::RebuildRigidBody(entt::entity entity) {
 
     // 加入待创建列表，下一次 Step() 时重建
     RequestCreateRigidBody(entity);
+}
+
+// ============================================================
+// 角色控制器（Jolt CharacterVirtual，计划书 §3）
+// ============================================================
+
+void PhysicsWorld::RequestCreateCharacter(entt::entity entity) {
+    // 去重：待创建列表已有则跳过（同 RequestCreateRigidBody）
+    for (auto pending : m_PendingCharacters) {
+        if (pending == entity)
+            return;
+    }
+    m_PendingCharacters.push_back(entity);
+}
+
+void PhysicsWorld::DestroyCharacter(entt::entity entity) {
+    // 尚未创建的角色停在 pending 列表，先移除再擦除映射
+    m_PendingCharacters.erase(
+        std::remove(m_PendingCharacters.begin(), m_PendingCharacters.end(), entity),
+        m_PendingCharacters.end());
+    m_Characters.erase(entity); // unique_ptr 析构 → CharacterVirtual 自动清 inner body
+}
+
+void PhysicsWorld::RebuildCharacter(entt::entity entity) {
+    DestroyCharacter(entity);
+    RequestCreateCharacter(entity);
+}
+
+void PhysicsWorld::ProcessPendingCharacters() {
+    if (m_PendingCharacters.empty() || !m_Scene || !m_PhysicsSystem)
+        return;
+
+    auto &reg = m_Scene->Reg();
+    std::vector<entt::entity> completed;
+    std::vector<entt::entity> stillPending;
+
+    for (auto entity : m_PendingCharacters) {
+        if (!reg.valid(entity)) {
+            completed.push_back(entity); // 无效实体直接丢弃
+            continue;
+        }
+
+        auto *cc = reg.try_get<CharacterControllerComponent>(entity);
+        if (!cc || cc->IsInitialized) {
+            completed.push_back(entity); // 组件已移除或已初始化
+            continue;
+        }
+
+        auto *tc = reg.try_get<TransformComponent>(entity);
+        if (!tc) {
+            stillPending.push_back(entity); // 缺 Transform：等待下次 Step
+            continue;
+        }
+
+        // 胶囊形状：柱身半高 = H/2 - R，总高 = 2·(半高 + R) = H。半高归零退化为球
+        //（与 CapsuleCollider 的退化分支一致，CapsuleShape 半高 0 会触发 JPH_ASSERT）
+        const float cylHalf = std::max(cc->Height * 0.5f - cc->Radius, 0.0f);
+        JPH::ShapeRefC capsule;
+        if (cylHalf > 0.0f)
+            capsule = new JPH::CapsuleShape(cylHalf, cc->Radius);
+        else
+            capsule = new JPH::SphereShape(cc->Radius);
+
+        // 上移 H/2 让底部落回局部 (0,0,0)：CharacterBaseSettings 硬约束 shape 底部在原点
+        JPH::RotatedTranslatedShapeSettings shifted(
+            JPH::Vec3(0.0f, cc->Height * 0.5f, 0.0f), JPH::Quat::sIdentity(), capsule);
+        auto shiftedResult = shifted.Create();
+        if (!shiftedResult.IsValid()) {
+            stillPending.push_back(entity);
+            continue;
+        }
+
+        JPH::CharacterVirtualSettings settings;
+        settings.mShape = shiftedResult.Get();
+        settings.mInnerBodyShape = settings.mShape; // 启用 inner body：角色在世界中有存在感
+        settings.mInnerBodyLayer = static_cast<JPH::ObjectLayer>(CollisionLayer::Player);
+        settings.mUp = JPH::Vec3::sAxisY();
+        settings.mMaxSlopeAngle = JPH::DegreesToRadians(cc->MaxSlopeAngle);
+        settings.mPredictiveContactDistance = 0.1f;
+        settings.mCharacterPadding = 0.02f;
+
+        // inner body 创建时 settings.mUserData = inUserData（CharacterVirtual.cpp:147），
+        // 传实体句柄即让既有 CollectCollisionEvents 免费把接触映射回实体。
+        std::unique_ptr<JPH::CharacterVirtual> cv(
+            new JPH::CharacterVirtual(&settings,
+                                      ToJoltVec3(tc->Translation),
+                                      ToJoltQuat(tc->Rotation),
+                                      static_cast<JPH::uint64>(static_cast<entt::id_type>(entity)),
+                                      m_PhysicsSystem.get()));
+
+        cc->IsInitialized = true;
+        cc->IsGrounded = false;
+        cc->JumpRequested = false;
+        cc->WishVelocity = {0.0f, 0.0f, 0.0f};
+        m_Characters[entity] = std::move(cv);
+        completed.push_back(entity);
+    }
+
+    // 只保留仍需等待的实体
+    m_PendingCharacters = std::move(stillPending);
+}
+
+void PhysicsWorld::UpdateCharacters(float dt) {
+    if (m_Characters.empty() || !m_Scene || !m_PhysicsSystem)
+        return;
+
+    auto &reg = m_Scene->Reg();
+    // ExtendedUpdate = Update + StickToFloor + WalkStairs 一站式（默认上楼 0.4m、贴地下探 0.5m）
+    const JPH::CharacterVirtual::ExtendedUpdateSettings extSettings;
+    // 对象层过滤：以 Player 层身份撞向全层（复用现有 pair filter 全放行语义）；
+    // Body/Shape 过滤默认实现即全放行（Jolt 无 sAllHit 常量，默认构造等价）
+    const JPH::DefaultObjectLayerFilter objFilter(
+        *m_ObjectLayerPairFilter, static_cast<JPH::ObjectLayer>(CollisionLayer::Player));
+    const JPH::BodyFilter bodyFilter;
+    const JPH::ShapeFilter shapeFilter;
+
+    for (auto &[entity, cv] : m_Characters) {
+        auto *cc = reg.try_get<CharacterControllerComponent>(entity);
+        if (!cc || !cv)
+            continue;
+
+        // 速度合成：重力由引擎积分（Jolt 原文"自己负责给角色速度施加重力"）。
+        // 贴地 → 跟随地面速度（站移动平台不掉落）；悬空 → 保留当前垂直速度。
+        // 再叠加重力增量与脚本水平期望速度。
+        const JPH::Vec3 up(0.0f, 1.0f, 0.0f);
+        const JPH::Vec3 vert(0.0f, cv->GetLinearVelocity().GetY(), 0.0f);
+        const JPH::Vec3 groundVel = cv->GetGroundVelocity();
+        JPH::Vec3 vel;
+        if (cv->GetGroundState() == JPH::CharacterBase::EGroundState::OnGround
+            && (vert - groundVel).Dot(up) < 0.1f) {
+            vel = groundVel;
+            if (cc->JumpRequested) {
+                vel += up * cc->MaxJumpSpeed;
+                cc->JumpRequested = false;
+            }
+        } else {
+            vel = vert;
+        }
+        vel += ToJoltVec3(m_Gravity) * dt;   // 重力（每子步）
+        vel += ToJoltVec3(cc->WishVelocity); // 脚本水平输入
+        cv->SetLinearVelocity(vel);
+        cv->ExtendedUpdate(dt, ToJoltVec3(m_Gravity), extSettings,
+                           *m_ObjectVsBroadPhaseFilter, objFilter, bodyFilter, shapeFilter,
+                           *m_TempAllocator);
+
+        // 组件回写：贴地态 + 真实速度 + 地面法线（character.* 查询 API 读这些字段）
+        cc->IsGrounded = (cv->GetGroundState() == JPH::CharacterBase::EGroundState::OnGround);
+        cc->Velocity = ToGlmVec3(cv->GetLinearVelocity());
+        cc->GroundNormalY = cv->GetGroundNormal().GetY();
+        cc->JumpRequested = false; // 未贴地也清：空中按压不缓冲，防落地自动跳
+    }
+}
+
+void PhysicsWorld::SyncCharacterTransformsToComponents() {
+    if (m_Characters.empty() || !m_Scene)
+        return;
+
+    auto &reg = m_Scene->Reg();
+    for (auto &[entity, cv] : m_Characters) {
+        auto *tc = reg.try_get<TransformComponent>(entity);
+        if (!tc || !cv)
+            continue;
+        // 渲染读 TransformComponent，取最末子步位置（与 SyncBodiesToTransforms 同风格）
+        tc->Translation = ToGlmVec3(cv->GetPosition());
+        tc->Rotation = ToGlmQuat(cv->GetRotation());
+    }
 }
 
 void PhysicsWorld::ProcessPendingBodies() {

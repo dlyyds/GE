@@ -590,6 +590,12 @@ void PhysicsWorld::ProcessPendingCharacters() {
         cc->IsGrounded = false;
         cc->JumpRequested = false;
         cc->WishVelocity = {0.0f, 0.0f, 0.0f};
+        // 首次创建时捕获面朝基准姿态（含转正倾斜）；重建时 FacingInit 挡住，不再重捕获
+        if (!cc->FacingInit) {
+            cc->BaseRotation = tc->Rotation;
+            cc->FacingYaw = 0.0f;
+            cc->FacingInit = true;
+        }
         m_Characters[entity] = std::move(cv);
         completed.push_back(entity);
     }
@@ -652,26 +658,44 @@ void PhysicsWorld::UpdateCharacters(float dt) {
         cc->JumpRequested = false; // 未贴地也清：空中按压不缓冲，防落地自动跳
 
         // 面朝水平移动方向（可选）：仅在脚本有水平输入时绕世界 up 缓转朝向。
-        // 旋转用 Y(Δ)*cur 在【现有姿态】上叠加世界偏航增量，而不是整段替换成纯 yaw
-        // 旋转——否则会丢掉实体原有的转正倾斜（如 Z-up 模型 -90°X 转正），角色会躺倒。
+        // 用「基准姿态 × 累计偏航」重建完整旋转：基准姿态（含转正倾斜）在创建时捕获、
+        // 不随之累加，因此模型不会因转向而躺倒；累计偏航每子步朝移动方向角逼近。
         // 目标取 WishVelocity 水平向而非合成速度（避免站移动平台被回带/贴墙朝向归零）。
         if (cc->FaceMovement) {
+            constexpr float kPi = 3.14159265358979f;
             const float wx = cc->WishVelocity.x, wz = cc->WishVelocity.z;
             if (std::sqrt(wx * wx + wz * wz) > 0.1f) {
-                const JPH::Quat cur = cv->GetRotation();
-                // 当前朝向 = 局部 +Z（模型正前方）经当前旋转后的水平投影
-                const JPH::Vec3 fw = cur * JPH::Vec3(0.0f, 0.0f, 1.0f);
-                const float fl = std::sqrt(fw.GetX() * fw.GetX() + fw.GetZ() * fw.GetZ());
-                if (fl > 1e-4f) { // 前向水平投影退化（如正朝上/朝下）→ 本子步不转
-                    const float fx = fw.GetX() / fl, fz = fw.GetZ() / fl;
-                    const float tl = std::sqrt(wx * wx + wz * wz);
-                    const float tx = wx / tl, tz = wz / tl;
-                    // 当前朝向 → 输入方向的水平夹角（绕 +Y 的带符号最短弧）
-                    const float diff = std::atan2(tx * fz - tz * fx, tz * fz + tx * fx);
+                // 模型前向基准：按 FrontAxis 取局部轴经基准旋转的水平投影；该轴退化
+                //（正好指向世界竖直方向，如 armatur 的 +Z 被 +90°X 转朝下）时回退 Y、再 X，
+                // 保证带转正倾斜的模型仍能转向。home = 归一化的水平前向
+                glm::vec3 home(0.0f);
+                glm::vec3 configured(0.0f, 0.0f, 1.0f);
+                switch (cc->FrontAxis) {
+                case CapsuleAxis::X: configured = {1.0f, 0.0f, 0.0f}; break;
+                case CapsuleAxis::Y: configured = {0.0f, 1.0f, 0.0f}; break;
+                default: configured = {0.0f, 0.0f, 1.0f}; break;
+                }
+                const glm::vec3 tryAxes[3] = {configured, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f, 0.0f}};
+                for (const auto &ax : tryAxes) {
+                    const glm::vec3 wv = cc->BaseRotation * ax;
+                    const float hl = std::sqrt(wv.x * wv.x + wv.z * wv.z);
+                    if (hl > 1e-3f) {
+                        home = {wv.x / hl, 0.0f, wv.z / hl};
+                        break;
+                    }
+                }
+                if (home.x != 0.0f || home.z != 0.0f) {
+                    // 目标累计偏航 = 移动方向水平角 − 模型前向固有朝向角
+                    const float globalFrontYaw = std::atan2(home.x, home.z);
+                    float target = std::atan2(wx, wz) - globalFrontYaw;
+                    // 累计偏航之差收进 [-π, π]，按 TurnSpeed 限速逼近（不瞬转）
+                    float diff = target - cc->FacingYaw;
+                    while (diff > kPi) diff -= 2.0f * kPi;
+                    while (diff < -kPi) diff += 2.0f * kPi;
                     const float maxStep = JPH::DegreesToRadians(cc->TurnSpeed) * dt;
-                    cv->SetRotation(
-                        JPH::Quat::sRotation(JPH::Vec3::sAxisY(),
-                                             std::clamp(diff, -maxStep, maxStep)) * cur);
+                    cc->FacingYaw += std::clamp(diff, -maxStep, maxStep);
+                    cv->SetRotation(JPH::Quat::sRotation(JPH::Vec3::sAxisY(), cc->FacingYaw)
+                                    * ToJoltQuat(cc->BaseRotation));
                 }
             }
         }

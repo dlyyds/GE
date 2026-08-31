@@ -866,6 +866,7 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
             ccNode["Radius"] = ccc.Radius;
             ccNode["Height"] = ccc.Height;
             ccNode["Axis"] = static_cast<int>(ccc.Axis);
+            ccNode["FrontAxis"] = static_cast<int>(ccc.FrontAxis);
             ccNode["Offset"] = SerializeVec3(ccc.Offset);
             ccNode["MaxSlopeAngle"] = ccc.MaxSlopeAngle;
             ccNode["MaxJumpSpeed"] = ccc.MaxJumpSpeed;
@@ -1398,6 +1399,7 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
             ccc.Radius = ccNode["Radius"] ? ccNode["Radius"].as<float>(0.35f) : 0.35f;
             ccc.Height = ccNode["Height"] ? ccNode["Height"].as<float>(1.80f) : 1.80f;
             ccc.Axis = static_cast<CapsuleAxis>(ccNode["Axis"] ? ccNode["Axis"].as<int>(0) : 0);
+            ccc.FrontAxis = static_cast<CapsuleAxis>(ccNode["FrontAxis"] ? ccNode["FrontAxis"].as<int>(2) : 2);
             ccc.Offset = DeserializeVec3(ccNode["Offset"], {0.0f, 0.0f, 0.0f});
             ccc.MaxSlopeAngle = ccNode["MaxSlopeAngle"] ? ccNode["MaxSlopeAngle"].as<float>(45.0f) : 45.0f;
             ccc.MaxJumpSpeed = ccNode["MaxJumpSpeed"] ? ccNode["MaxJumpSpeed"].as<float>(5.0f) : 5.0f;

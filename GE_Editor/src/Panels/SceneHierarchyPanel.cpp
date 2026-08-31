@@ -1684,6 +1684,22 @@ void SceneHierarchyPanel::DrawCharacterControllerComponent(
         }
     }
 
+    // 模型前向基准轴（面朝方向对齐哪个局部轴；退化时引擎自动回退 Y/X，实时生效无需重建）
+    {
+        const char *frontStrings[] = {"Y", "X", "Z"};
+        const int currentFront = static_cast<int>(component.FrontAxis);
+        if (ImGui::BeginCombo("Front Axis", frontStrings[currentFront])) {
+            for (int i = 0; i < 3; i++) {
+                const bool isSelected = currentFront == i;
+                if (ImGui::Selectable(frontStrings[i], isSelected))
+                    component.FrontAxis = static_cast<CapsuleAxis>(i);
+                if (isSelected)
+                    ImGui::SetItemDefaultFocus();
+            }
+            ImGui::EndCombo();
+        }
+    }
+
     // 半径/总高/最大坡度改变胶囊形状 → 销毁重建角色（取当前 Transform 作初始位置）
     if (ImGui::DragFloat("Radius", &component.Radius, 0.05f, 0.001f, 100.0f)) {
         if (physicsWorld)

@@ -614,6 +614,7 @@ struct CharacterControllerComponent {
     float MaxJumpSpeed  = 5.0f;  ///< 跳跃初速（m/s，character.jump 使用）
     bool  FaceMovement  = true;  ///< 是否朝向水平移动方向（脚本有水平输入时绕 up 缓转）
     float TurnSpeed     = 540.0f; ///< 转向速率（度/秒，FaceMovement 生效时的最大偏航角速度）
+    CapsuleAxis FrontAxis = CapsuleAxis::Z; ///< 模型前向基准轴（决定面朝方向对齐哪个局部轴）
 
     // 运行时（不参与序列化）
     bool      IsInitialized = false;              ///< CharacterVirtual 已创建
@@ -622,6 +623,9 @@ struct CharacterControllerComponent {
     bool      IsGrounded    = false;              ///< 引擎每子步回写（贴地/斜坡/悬空）
     glm::vec3 Velocity      = {0.0f, 0.0f, 0.0f}; ///< 最近一次真实速度（character.get_velocity 回读）
     float     GroundNormalY = 1.0f;               ///< 最近一次地面法线 Y（character.get_ground_normal_y 回读）
+    glm::quat BaseRotation  = glm::quat(1.0f, 0.0f, 0.0f, 0.0f); ///< 面朝基准姿态（创建时捕获，不随之累加）
+    float     FacingYaw     = 0.0f;               ///< 累计偏航角（弧度，绕世界 up；面朝逻辑每子步驱动）
+    bool      FacingInit    = false;              ///< BaseRotation/FacingYaw 已初始化（重建不重捕获）
 
     CharacterControllerComponent() = default;
 

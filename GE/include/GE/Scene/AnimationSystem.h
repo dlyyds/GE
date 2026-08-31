@@ -44,10 +44,12 @@ void BlendAndApplyTransition(entt::registry &registry, AnimationComponent &ac, f
 /// Scene::OnUpdate3D 每帧调用（Scene::UpdateAnimations 的实现体，语义见计划书 §2.4）。
 void UpdateAnimations(entt::registry &registry, ScriptEngine &scriptEngine, Timestep ts);
 
-/// 重载片段源：按 entity 的动画组件各 clip 的 source 键从磁盘强制重建键帧
-/// （跳过缓存与 .geanim 烘焙），并同步场景中所有引用同源键的实体，保持共享不变。
-/// 仅刷新键帧数据，保留各 ClipInstance 的通道目标实体与场景级事件表。
-/// 某条源键失败时保留旧数据并告警。返回是否至少成功重载了一条。
+/// 重载片段源：重读 entity 动画组件各 clip 的源文件，按其中动画目录整体重载——
+/// 已挂 clip 强制重建键帧（跳过缓存与 .geanim 烘焙）并同步场景内所有同源实体，
+/// 保持共享不变，保留各 ClipInstance 的通道目标实体与场景级事件表；
+/// 源文件里新增的动画作为新 clip 追加到该组件（通道目标按同文件既存 clip 的
+/// nodeIndex 映射解析，未出现过的节点洞掉为绑定姿态）。
+/// 单文件加载失败时该文件全部 clip 保留旧数据并告警。返回是否至少成功一条。
 bool ReloadClipSource(entt::registry &registry, entt::entity entity);
 
 } // namespace AnimationSystem

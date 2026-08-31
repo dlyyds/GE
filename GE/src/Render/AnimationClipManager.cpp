@@ -139,6 +139,18 @@ std::shared_ptr<AnimationClip> AnimationClipManager::LoadByKey(const std::string
 
 std::shared_ptr<AnimationClip> AnimationClipManager::Reload(const std::string &filepath,
                                                             size_t animIdx) {
+    tinygltf::Model model;
+    std::string err;
+    if (!GLTF::LoadModel(filepath, model, &err)) {
+        GE_CORE_ERROR("[Anim] clip '{}' 源文件加载失败: {}", MakeKey(filepath, animIdx), err);
+        return nullptr;
+    }
+    return Reload(filepath, animIdx, model);
+}
+
+std::shared_ptr<AnimationClip> AnimationClipManager::Reload(const std::string &filepath,
+                                                            size_t animIdx,
+                                                            const tinygltf::Model &model) {
     const std::string key = MakeKey(filepath, animIdx);
     // 清缓存键与烘焙产物，强制从源重建；旧 clip 若仍被实体持有会继续存活，
     // 但管理器/烘焙此后指向新版本（旧键帧只在持有者内存中留存）。
@@ -147,12 +159,6 @@ std::shared_ptr<AnimationClip> AnimationClipManager::Reload(const std::string &f
     {
         std::error_code ec;
         std::filesystem::remove(bakePath, ec); // 删旧烘焙，让 BuildAndCache 重写新数据
-    }
-    tinygltf::Model model;
-    std::string err;
-    if (!GLTF::LoadModel(filepath, model, &err)) {
-        GE_CORE_ERROR("[Anim] clip '{}' 源文件加载失败: {}", key, err);
-        return nullptr;
     }
     return BuildAndCache(filepath, animIdx, model);
 }

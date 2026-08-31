@@ -3,7 +3,9 @@
 
 #include "Scene/Components.h"     // TransformComponent（采样写局部 TRS）
 #include "Scene/ScriptEngine.h"   // FireEvents → DispatchAnimationEvent
-#include "Render/AnimationClipManager.h" // ReloadClipSource → 按源键强制重建 clip
+#include "Render/AnimationClipManager.h" // ReloadClipSource → 按源文件枚举重载 + 补齐新增
+#include "Render/GLTFLoader.h"    // ReloadClipSource → 重读源文件枚举 model.animations
+#include "tinygltf/tiny_gltf.h"   // tinygltf::Model（前述头只前向声明）
 #include "Core/Log.h"             // GE_CORE_WARN（CUBICSPLINE 近似提示）
 
 #include <algorithm> // std::upper_bound / std::clamp
@@ -496,41 +498,113 @@ bool ReloadClipSource(entt::registry &registry, entt::entity entity) {
     if (!ac) {
         return false;
     }
-    // 收集本组件各 clip 的源键；同源键只重载一次（避免重复读盘重建）
-    std::vector<std::string> keys;
+
+    // 收集组件各 clip 的源键，并拆出去重后的独立源文件列表。
+    // clips 里的旧键看不出"多了一条"——新增动画只能靠重读文件枚举 model.animations 发现。
+    std::vector<std::string> keys;      // 组件已有源键（判断已挂 / 新增）
+    std::vector<std::string> filepaths; // 独立源文件（每个只 LoadModel 一次）
     for (const auto &inst : ac->clips) {
-        if (inst.clip && !inst.clip->source.empty()
-            && std::find(keys.begin(), keys.end(), inst.clip->source) == keys.end()) {
-            keys.push_back(inst.clip->source);
+        if (!inst.clip || inst.clip->source.empty()) {
+            continue;
+        }
+        keys.push_back(inst.clip->source);
+        const size_t hashPos = inst.clip->source.rfind('#');
+        const std::string filepath = (hashPos == std::string::npos)
+            ? inst.clip->source : inst.clip->source.substr(0, hashPos);
+        if (std::find(filepaths.begin(), filepaths.end(), filepath) == filepaths.end()) {
+            filepaths.push_back(filepath);
         }
     }
-    if (keys.empty()) {
+    if (filepaths.empty()) {
         GE_CORE_WARN("[Anim] 无可重载的片段源（空组件 / clip 无源键）");
         return false;
     }
+    const auto hasKey = [&](const std::string &k) {
+        return std::find(keys.begin(), keys.end(), k) != keys.end();
+    };
 
     bool reloaded = false;
-    for (const auto &key : keys) {
-        const std::shared_ptr<AnimationClip> fresh =
-            AnimationClipManager::Get().ReloadByKey(key);
-        if (!fresh) {
-            GE_CORE_WARN("[Anim] 片段源 '{}' 重载失败，保留旧数据", key);
+    for (const auto &filepath : filepaths) {
+        std::string loadErr;
+        tinygltf::Model model;
+        if (!GLTF::LoadModel(filepath, model, &loadErr)) {
+            GE_CORE_WARN("[Anim] 片段源 '{}' 源文件加载失败，该文件全部 clip 保留旧数据: {}",
+                         filepath, loadErr);
             continue;
         }
-        reloaded = true;
-        // 同步场景内全部持有该源键的实体：换 clip 指针 + 重建 keyHints 采样缓存，
-        // 保留通道目标实体与场景级事件表（重载只刷新键帧数据，不重解析目标）。
-        // 目标实体按前缀复用：同源重载 channel 序/量不变则映射仍成立；若源结构变化
-        // 导致数量不符，多出的通道无目标（该部位退化为绑定姿态），余量目标被忽略。
-        const auto view = registry.view<AnimationComponent>();
-        for (auto e : view) {
-            auto &c = view.get<AnimationComponent>(e);
-            for (auto &inst : c.clips) {
-                if (inst.clip && inst.clip->source == key) {
-                    inst.clip = fresh;
-                    inst.keyHints.assign(inst.clip->channels.size(), 0u);
-                    c.timeApplied = false; // 强制下一帧重新采样（时间未变会被 appliedTime 优化跳过）
+
+        // 本文件 nodeIndex → 实体映射：来自组件里同源 clip 的既有通道目标。
+        // glTF nodeIndex 只在各自文件内有意义，故按文件分别建表，避免跨文件索引碰撞。
+        std::unordered_map<int, entt::entity> nodeMap;
+        for (const auto &inst : ac->clips) {
+            if (!inst.clip) {
+                continue;
+            }
+            const size_t hashPos = inst.clip->source.rfind('#');
+            if (hashPos == std::string::npos
+                || inst.clip->source.substr(0, hashPos) != filepath) {
+                continue;
+            }
+            const auto &chs = inst.clip->channels;
+            for (size_t ci = 0; ci < chs.size() && ci < inst.channelTargets.size(); ++ci) {
+                const entt::entity t = inst.channelTargets[ci];
+                if (t != entt::null && registry.try_get<TransformComponent>(t)) {
+                    nodeMap[chs[ci].nodeIndex] = t;
                 }
+            }
+        }
+
+        // 以本文件 model 的动画目录为准：已挂的同步重建，新增的补齐到发起组件
+        for (size_t ai = 0; ai < model.animations.size(); ++ai) {
+            const std::string key = AnimationClipManager::MakeKey(filepath, ai);
+            const std::shared_ptr<AnimationClip> fresh =
+                AnimationClipManager::Get().Reload(filepath, ai, model); // 复用已解析 model
+            if (!fresh) {
+                continue; // 无合法 channel：跳过该索引
+            }
+            reloaded = true;
+
+            if (hasKey(key)) {
+                // 已挂 clip：重建数据 → 同步场景内全部同源实体（保持共享一致）。
+                // 通道目标、事件表保留，仅换键帧数据。
+                const auto view = registry.view<AnimationComponent>();
+                for (auto e : view) {
+                    auto &c = view.get<AnimationComponent>(e);
+                    for (auto &inst : c.clips) {
+                        if (inst.clip && inst.clip->source == key) {
+                            inst.clip = fresh;
+                            inst.keyHints.assign(inst.clip->channels.size(), 0u);
+                            c.timeApplied = false; // 强制下一帧重采样（时间未变会被 appliedTime 跳过）
+                        }
+                    }
+                }
+            } else {
+                // 源文件新增动画：作为新 clip 追加到发起组件（不动其它实体）。
+                // 通道目标按 nodeMap 解析；本文件未出现过的节点洞掉（退化为绑定姿态）。
+                ClipInstance inst;
+                inst.clip = fresh;
+                inst.channelTargets.reserve(fresh->channels.size());
+                size_t validTargets = 0;
+                for (const auto &ch : fresh->channels) {
+                    const auto it = nodeMap.find(ch.nodeIndex);
+                    if (it != nodeMap.end()) {
+                        inst.channelTargets.push_back(it->second);
+                        ++validTargets;
+                    } else {
+                        inst.channelTargets.push_back(entt::null);
+                    }
+                }
+                inst.keyHints.assign(fresh->channels.size(), 0u);
+                ac->clips.push_back(std::move(inst));
+                // 把新映射并入 nodeMap，供本文件后续新增动画复用（同批新增可互相引用）
+                const auto &ni = ac->clips.back();
+                for (size_t ci = 0; ci < ni.clip->channels.size(); ++ci) {
+                    if (ci < ni.channelTargets.size() && ni.channelTargets[ci] != entt::null) {
+                        nodeMap[ni.clip->channels[ci].nodeIndex] = ni.channelTargets[ci];
+                    }
+                }
+                GE_CORE_INFO("[Anim] 重载发现新增动画 '{}'（{} channel, 有效目标 {} 个）",
+                             fresh->name, fresh->channels.size(), validTargets);
             }
         }
     }

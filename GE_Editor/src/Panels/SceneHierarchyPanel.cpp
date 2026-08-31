@@ -379,7 +379,7 @@ void SceneHierarchyPanel::DrawAnimationComponent(Entity entity, AnimationCompone
         clip = component.activeClip(); // 键帧已替换，刷新本地指针供本帧后续 UI 使用
     }
     ImGui::SameLine();
-    ImGui::TextDisabled("从源文件重建，同步场景内同源实体");
+    ImGui::TextDisabled("从源文件重建，同步同源实体并补齐新增动画");
 
     // 片段选择行（单片段也显示，便于删除）：选中即切换，默认走过渡淡化，填 0 即硬切。
     // 状态机开态下整行被「运行中」占位替代；手动切/删片段 = 外部覆盖、先关停 ASM。

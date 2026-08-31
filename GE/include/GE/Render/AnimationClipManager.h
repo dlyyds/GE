@@ -78,6 +78,16 @@ public:
     std::shared_ptr<AnimationClip> Reload(const std::string &filepath, size_t animIdx);
 
     /**
+     * @brief 同 Reload，但复用调用方已解析的 model。
+     *
+     * AnimationSystem::ReloadClipSource 做「按源文件整体重载」时会先 LoadModel 一次，
+     * 再逐动画索引调用本重载，避免同一文件每个索引各读一次盘。其它语义与无 model
+     * 版本一致。
+     */
+    std::shared_ptr<AnimationClip> Reload(const std::string &filepath, size_t animIdx,
+                                          const tinygltf::Model &model);
+
+    /**
      * @brief 同 Reload，但按完整源键 "path#N" 操作（拆出 filepath + animIdx 后走 Reload）。
      */
     std::shared_ptr<AnimationClip> ReloadByKey(const std::string &key);

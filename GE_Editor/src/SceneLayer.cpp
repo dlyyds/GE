@@ -655,45 +655,6 @@ void SceneLayer::DrawColliders(const glm::vec2 &imagePos) {
             const glm::vec3 center = tc.Translation + rot * box->Offset;
             const glm::vec3 half = box->HalfExtents * tc.Scale;
 
-            // 沿某轴画均匀内切片网格：在 [-h,h] 内取 i/n 处画矩形线框环，
-            // 环的四条边都平行于盒子的棱（轴对齐截面，随刚体旋转），让大地这类
-            // 大碰撞框的边界不再只是孤零零的 12 条外棱。条数按该轴尺寸自适应：
-            // < 4 单位不加，越大加得越密（上限 10）。
-            const auto subdivFor = [](float h) -> int {
-                const float size = 2.0f * h;
-                if (size < 4.0f) {
-                    return 0;
-                }
-                return std::clamp(static_cast<int>(size / 2.0f), 2, 10);
-            };
-            const auto drawSlices = [&](int axis, int n) {
-                for (int i = 1; i < n; ++i) {
-                    const float pos = -half[axis] + (2.0f * half[axis] * i) / n;
-                    glm::vec3 v[4];
-                    for (int k = 0; k < 4; ++k) {
-                        glm::vec3 p(0.0f);
-                        p[axis] = pos;
-                        int idx = 0;
-                        for (int a = 0; a < 3; ++a) {
-                            if (a == axis) {
-                                continue;
-                            }
-                            p[a] = ((k >> idx) & 1) ? half[a] : -half[a];
-                            ++idx;
-                        }
-                        v[k] = center + rot * p;
-                    }
-                    // 环的四条边（0-1-2-3-0）
-                    static const int kLoop[4][2] = {{0, 1}, {1, 2}, {2, 3}, {3, 0}};
-                    for (int e = 0; e < 4; ++e) {
-                        drawWorldSegment(v[kLoop[e][0]], v[kLoop[e][1]]);
-                    }
-                }
-            };
-            drawSlices(0, subdivFor(half.x));
-            drawSlices(1, subdivFor(half.y));
-            drawSlices(2, subdivFor(half.z));
-
             // 外棱：12 条边（角点序与 kEdges 一致：bit0=X, bit1=Y, bit2=Z）
             const glm::vec3 wc[8] = {
                 center + rot * (half * glm::vec3(-1.0f, -1.0f, -1.0f)),

@@ -1665,6 +1665,25 @@ void SceneHierarchyPanel::DrawCharacterControllerComponent(
                             ? (component.IsGrounded ? " / on ground" : " / in air")
                             : "");
 
+    // 胶囊轴向（模型实际"上"不在局部 Y 时选 X/Z；改变胶囊朝向 → 重建角色）
+    {
+        const char *axisStrings[] = {"Y", "X", "Z"};
+        const int currentAxis = static_cast<int>(component.Axis);
+        if (ImGui::BeginCombo("Direction", axisStrings[currentAxis])) {
+            for (int i = 0; i < 3; i++) {
+                const bool isSelected = currentAxis == i;
+                if (ImGui::Selectable(axisStrings[i], isSelected)) {
+                    component.Axis = static_cast<CapsuleAxis>(i);
+                    if (physicsWorld)
+                        physicsWorld->RebuildCharacter(entityHandle);
+                }
+                if (isSelected)
+                    ImGui::SetItemDefaultFocus();
+            }
+            ImGui::EndCombo();
+        }
+    }
+
     // 半径/总高/最大坡度改变胶囊形状 → 销毁重建角色（取当前 Transform 作初始位置）
     if (ImGui::DragFloat("Radius", &component.Radius, 0.05f, 0.001f, 100.0f)) {
         if (physicsWorld)

@@ -537,9 +537,28 @@ void PhysicsWorld::ProcessPendingCharacters() {
         else
             capsule = new JPH::SphereShape(cc->Radius);
 
-        // 上移 H/2 让底部落回局部 (0,0,0)：CharacterBaseSettings 硬约束 shape 底部在原点
+        // 轴向烘焙（与 CapsuleCollider 一致：X=绕局部 Z -90°使 Y→X，Z=绕局部 X +90°使 Y→Z），
+        // 并沿所选轴把胶囊底部抬到局部原点 —— CharacterBaseSettings 硬约束 shape 底部在 (0,0,0)，
+        // 使 Transform.Translation 仍是「脚底」。选轴应保证该轴经实体旋转后指向世界 up
+        //（角色仍沿世界 Y 行走/贴地，只旋转胶囊几何）。
+        glm::quat axisRot(1.0f, 0.0f, 0.0f, 0.0f);
+        glm::vec3 shift(0.0f);
+        constexpr float kSqrtHalf = 0.707106781f;
+        switch (cc->Axis) {
+        case CapsuleAxis::X:
+            axisRot = glm::quat(kSqrtHalf, 0.0f, 0.0f, -kSqrtHalf);
+            shift = {cc->Height * 0.5f, 0.0f, 0.0f};
+            break;
+        case CapsuleAxis::Z:
+            axisRot = glm::quat(kSqrtHalf, kSqrtHalf, 0.0f, 0.0f);
+            shift = {0.0f, 0.0f, cc->Height * 0.5f};
+            break;
+        default: // Y（默认）：胶囊主轴沿局部 Y，沿 Y 抬升 H/2
+            shift = {0.0f, cc->Height * 0.5f, 0.0f};
+            break;
+        }
         JPH::RotatedTranslatedShapeSettings shifted(
-            JPH::Vec3(0.0f, cc->Height * 0.5f, 0.0f), JPH::Quat::sIdentity(), capsule);
+            ToJoltVec3(shift), ToJoltQuat(axisRot), capsule);
         auto shiftedResult = shifted.Create();
         if (!shiftedResult.IsValid()) {
             stillPending.push_back(entity);

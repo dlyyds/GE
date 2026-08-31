@@ -506,41 +506,6 @@ struct RigidBodyComponent {
 };
 
 /**
- * @brief 角色控制器组件 —— 基于 Jolt CharacterVirtual 的可操控角色。
- *
- * 与 RigidBodyComponent 二选一：角色实体只挂 TransformComponent +
- * CharacterControllerComponent，不挂 RigidBodyComponent（避免与 Kinematic 的
- * MoveKinematic 抢占位移）。CharacterVirtual 自管位置、重力和碰撞滑动，脚本
- * 只提供水平期望速度与跳跃请求，引擎每物理子步积分重力并驱动 ExtendedUpdate
- * （自动上楼 + 贴地吸附）。TransformComponent.Translation 即角色「脚底」位置
- * （胶囊底部对齐原点），与 CharacterVirtual 的 mPosition 语义一致。
- *
- * 运行时字段不参与 .scene 序列化（见 docs/角色控制器CharacterVirtual计划书.md）。
- */
-struct CharacterControllerComponent {
-    // 配置（参与序列化）
-    float Radius        = 0.35f; ///< 胶囊半径（米）
-    float Height        = 1.80f; ///< 胶囊总高（含两端半球，米）
-    float MaxSlopeAngle = 45.0f; ///< 可上坡最大倾角（度）
-    float MaxJumpSpeed  = 5.0f;  ///< 跳跃初速（m/s，character.jump 使用）
-
-    // 运行时（不参与序列化）
-    bool      IsInitialized = false;        ///< CharacterVirtual 已创建
-    glm::vec3 WishVelocity  = {0.0f, 0.0f, 0.0f}; ///< 脚本每帧写入的水平期望速度（引擎只看 x/z）
-    bool      JumpRequested = false;        ///< 脚本置位，引擎贴地时消费一次
-    bool      IsGrounded    = false;        ///< 引擎每子步回写（贴地/斜坡/悬空）
-    glm::vec3 Velocity      = {0.0f, 0.0f, 0.0f}; ///< 最近一次真实速度（character.get_velocity 回读）
-    float     GroundNormalY = 1.0f;         ///< 最近一次地面法线 Y（character.get_ground_normal_y 回读）
-
-    CharacterControllerComponent() = default;
-
-    CharacterControllerComponent(const CharacterControllerComponent &) = default;
-
-    explicit CharacterControllerComponent(float radius) : Radius(radius) {
-    }
-};
-
-/**
  * @brief 盒子碰撞体组件。
  *
  * HalfExtents 是半尺寸，即从中心到各面的距离。
@@ -620,6 +585,46 @@ struct CapsuleColliderComponent {
     CapsuleColliderComponent(const CapsuleColliderComponent &) = default;
 
     explicit CapsuleColliderComponent(float radius) : Radius(radius) {
+    }
+};
+
+/**
+ * @brief 角色控制器组件 —— 基于 Jolt CharacterVirtual 的可操控角色。
+ *
+ * 与 RigidBodyComponent 二选一：角色实体只挂 TransformComponent +
+ * CharacterControllerComponent，不挂 RigidBodyComponent（避免与 Kinematic 的
+ * MoveKinematic 抢占位移）。CharacterVirtual 自管位置、重力和碰撞滑动，脚本
+ * 只提供水平期望速度与跳跃请求，引擎每物理子步积分重力并驱动 ExtendedUpdate
+ * （自动上楼 + 贴地吸附）。TransformComponent.Translation 即角色「脚底」位置
+ * （胶囊底部对齐原点），与 CharacterVirtual 的 mPosition 语义一致。
+ *
+ * Axis 语义同 CapsuleColliderComponent：模型实际"上"不在局部 Y 时（如 Z-up 模型
+ * 经旋转转正后），选 X/Z 让胶囊沿对应轴放置，且选轴应保证该轴经实体旋转后指向
+ * 世界 up（角色仍沿世界 Y 行走/贴地，只旋转胶囊几何）。
+ *
+ * 运行时字段不参与 .scene 序列化（见 docs/角色控制器CharacterVirtual计划书.md）。
+ */
+struct CharacterControllerComponent {
+    // 配置（参与序列化）
+    float Radius        = 0.35f; ///< 胶囊半径（米）
+    float Height        = 1.80f; ///< 胶囊总高（含两端半球，米）
+    CapsuleAxis Axis    = CapsuleAxis::Y; ///< 胶囊主轴方向（局部坐标）
+    float MaxSlopeAngle = 45.0f; ///< 可上坡最大倾角（度）
+    float MaxJumpSpeed  = 5.0f;  ///< 跳跃初速（m/s，character.jump 使用）
+
+    // 运行时（不参与序列化）
+    bool      IsInitialized = false;              ///< CharacterVirtual 已创建
+    glm::vec3 WishVelocity  = {0.0f, 0.0f, 0.0f}; ///< 脚本每帧写入的水平期望速度（引擎只看 x/z）
+    bool      JumpRequested = false;              ///< 脚本置位，引擎贴地时消费一次
+    bool      IsGrounded    = false;              ///< 引擎每子步回写（贴地/斜坡/悬空）
+    glm::vec3 Velocity      = {0.0f, 0.0f, 0.0f}; ///< 最近一次真实速度（character.get_velocity 回读）
+    float     GroundNormalY = 1.0f;               ///< 最近一次地面法线 Y（character.get_ground_normal_y 回读）
+
+    CharacterControllerComponent() = default;
+
+    CharacterControllerComponent(const CharacterControllerComponent &) = default;
+
+    explicit CharacterControllerComponent(float radius) : Radius(radius) {
     }
 };
 

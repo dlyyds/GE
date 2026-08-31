@@ -774,9 +774,25 @@ void SceneLayer::DrawColliders(const glm::vec2 &imagePos) {
         const auto &cc = charView.get<CharacterControllerComponent>(entity);
 
         const float cylHalf = std::max(cc.Height * 0.5f - cc.Radius, 0.0f);
-        const glm::vec3 center =
-            tc.Translation + tc.Rotation * glm::vec3(0.0f, cc.Height * 0.5f, 0.0f);
-        drawCapsuleMesh(center, tc.Rotation, cc.Radius, cylHalf);
+        // 轴向烘焙 + 沿所选轴把底部抬到脚底（与 ProcessPendingCharacters 的形状构建一致）
+        glm::quat axisRot(1.0f, 0.0f, 0.0f, 0.0f);
+        glm::vec3 shift(0.0f);
+        constexpr float kSqrtHalf = 0.707106781f;
+        switch (cc.Axis) {
+        case CapsuleAxis::X:
+            axisRot = glm::quat(kSqrtHalf, 0.0f, 0.0f, -kSqrtHalf);
+            shift = {cc.Height * 0.5f, 0.0f, 0.0f};
+            break;
+        case CapsuleAxis::Z:
+            axisRot = glm::quat(kSqrtHalf, kSqrtHalf, 0.0f, 0.0f);
+            shift = {0.0f, 0.0f, cc.Height * 0.5f};
+            break;
+        default: // Y（默认）
+            shift = {0.0f, cc.Height * 0.5f, 0.0f};
+            break;
+        }
+        const glm::vec3 center = tc.Translation + tc.Rotation * shift;
+        drawCapsuleMesh(center, tc.Rotation * axisRot, cc.Radius, cylHalf);
     }
 }
 

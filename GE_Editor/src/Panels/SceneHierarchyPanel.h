@@ -76,7 +76,7 @@ private:
     void DrawSkinComponent(SkinComponent &component);
 
     /// 绘制 Animation（骨骼动画）组件属性（需读取同实体 ASM 状态做运行中占位 / 手动覆盖处置）
-    static void DrawAnimationComponent(Entity entity, AnimationComponent &component);
+    static void DrawAnimationComponent(Entity entity, AnimationComponent &component, Scene *scene);
 
     /// 绘制 AnimStateMachine（动画状态机）组件属性：状态/转换/条件表 + 调试参数驱动
     void DrawAnimStateMachine(Entity entity, AnimStateMachineComponent &component);

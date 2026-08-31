@@ -359,7 +359,7 @@ void SceneHierarchyPanel::DrawSkinComponent(SkinComponent &component) {
 // ============================================================
 // Animation 组件（骨骼动画阶段 B/C 新增）
 // ============================================================
-void SceneHierarchyPanel::DrawAnimationComponent(Entity entity, AnimationComponent &component) {
+void SceneHierarchyPanel::DrawAnimationComponent(Entity entity, AnimationComponent &component, Scene *scene) {
     const AnimationClip *clip = component.activeClip();
 
     // 无动画片段（手动 Add Component / 空组件）：占位说明
@@ -373,7 +373,7 @@ void SceneHierarchyPanel::DrawAnimationComponent(Entity entity, AnimationCompone
     // 不改变 clip 数量与名字，仅刷新数据，故 ASM 运行中也可安全执行。
     if (ImGui::Button("重载片段源")) {
         GE_CORE_INFO("[Anim][Editor] 重载片段源: '{}'", clip->source);
-        if (AnimationSystem::ReloadClipSource(m_Context->Reg(), static_cast<entt::entity>(entity))) {
+        if (AnimationSystem::ReloadClipSource(scene->Reg(), static_cast<entt::entity>(entity))) {
             GE_CORE_INFO("[Anim][Editor] 片段源重载完成");
         }
         clip = component.activeClip(); // 键帧已替换，刷新本地指针供本帧后续 UI 使用
@@ -889,7 +889,7 @@ void SceneHierarchyPanel::DrawComponents(Entity entity) {
         [this](auto &c) { DrawSkinComponent(c); });
 
     DrawComponent<AnimationComponent>("Animation", entity,
-        [&](auto &c) { DrawAnimationComponent(entity, c); });
+        [&](auto &c) { DrawAnimationComponent(entity, c, m_Context); });
 
     DrawComponent<AnimStateMachineComponent>("Anim State Machine", entity,
         [this, entity](auto &c) { DrawAnimStateMachine(entity, c); });

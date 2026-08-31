@@ -609,6 +609,7 @@ struct CharacterControllerComponent {
     float Radius        = 0.35f; ///< 胶囊半径（米）
     float Height        = 1.80f; ///< 胶囊总高（含两端半球，米）
     CapsuleAxis Axis    = CapsuleAxis::Y; ///< 胶囊主轴方向（局部坐标）
+    glm::vec3 Offset    = {0.0f, 0.0f, 0.0f}; ///< 胶囊相对脚底的局部偏移（角色局部帧）
     float MaxSlopeAngle = 45.0f; ///< 可上坡最大倾角（度）
     float MaxJumpSpeed  = 5.0f;  ///< 跳跃初速（m/s，character.jump 使用）
 

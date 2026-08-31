@@ -752,7 +752,7 @@ void SceneLayer::DrawColliders(const glm::vec2 &imagePos) {
             shift = {0.0f, cc.Height * 0.5f, 0.0f};
             break;
         }
-        const glm::vec3 center = tc.Translation + tc.Rotation * shift;
+        const glm::vec3 center = tc.Translation + tc.Rotation * (shift + cc.Offset);
         drawCapsuleMesh(center, tc.Rotation * axisRot, cc.Radius, cylHalf);
     }
 }

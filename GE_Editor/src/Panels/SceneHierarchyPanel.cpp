@@ -1693,6 +1693,10 @@ void SceneHierarchyPanel::DrawCharacterControllerComponent(
         if (physicsWorld)
             physicsWorld->RebuildCharacter(entityHandle);
     }
+    if (DrawVec3Control("Offset", component.Offset, 0.0f, 120)) {
+        if (physicsWorld)
+            physicsWorld->RebuildCharacter(entityHandle);
+    }
     if (ImGui::DragFloat("Max Slope (deg)", &component.MaxSlopeAngle, 0.5f, 0.0f, 89.0f)) {
         if (physicsWorld)
             physicsWorld->RebuildCharacter(entityHandle);

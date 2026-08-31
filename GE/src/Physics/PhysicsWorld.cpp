@@ -557,8 +557,10 @@ void PhysicsWorld::ProcessPendingCharacters() {
             shift = {0.0f, cc->Height * 0.5f, 0.0f};
             break;
         }
+        // 轴向用 RotatedTranslatedShape 的位置（外局部帧即角色局部帧）叠加用户 Offset，
+        // 使胶囊可相对脚底偏移（与 CapsuleCollider 的 Offset 语义一致）
         JPH::RotatedTranslatedShapeSettings shifted(
-            ToJoltVec3(shift), ToJoltQuat(axisRot), capsule);
+            ToJoltVec3(shift) + ToJoltVec3(cc->Offset), ToJoltQuat(axisRot), capsule);
         auto shiftedResult = shifted.Create();
         if (!shiftedResult.IsValid()) {
             stillPending.push_back(entity);

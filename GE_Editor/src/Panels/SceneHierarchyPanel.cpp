@@ -1718,8 +1718,9 @@ void SceneHierarchyPanel::DrawCharacterControllerComponent(
             physicsWorld->RebuildCharacter(entityHandle);
     }
 
-    // 跳跃初速不改形状：无需重建（引擎每子步实时读组件值）
+    // 跳跃初速 / 重力缩放不改形状：无需重建（引擎每子步实时读组件值）
     ImGui::DragFloat("Max Jump Speed", &component.MaxJumpSpeed, 0.1f, 0.0f, 100.0f);
+    ImGui::DragFloat("Gravity Scale", &component.GravityScale, 0.05f, 0.0f, 20.0f);
 
     // 朝向移动：每子步实时读组件值，无需重建
     ImGui::Checkbox("Face Movement", &component.FaceMovement);

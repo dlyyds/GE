@@ -644,7 +644,7 @@ void PhysicsWorld::UpdateCharacters(float dt) {
         } else {
             vel = vert;
         }
-        vel += ToJoltVec3(m_Gravity) * dt;   // 重力（每子步）
+        vel += ToJoltVec3(m_Gravity) * cc->GravityScale * dt;   // 重力（每子步，×组件重力缩放）
         vel += ToJoltVec3(cc->WishVelocity); // 脚本水平输入
         cv->SetLinearVelocity(vel);
         cv->ExtendedUpdate(dt, ToJoltVec3(m_Gravity), extSettings,

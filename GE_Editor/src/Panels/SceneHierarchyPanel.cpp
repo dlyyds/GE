@@ -673,12 +673,17 @@ void SceneHierarchyPanel::DrawAnimStateMachine(Entity entity, AnimStateMachineCo
         // 第一行只放 From/To：各占可用宽一半。不按预览文本自适应宽度（长状态名会把某侧下拉
         // 撑爆整行、另一侧被裁掉）；下拉弹层仍按最长的选项自适应，超宽预览在框内截断。
         const float spacing = ImGui::GetStyle().ItemSpacing.x;
+        const float innerSpacing = ImGui::GetStyle().ItemInnerSpacing.x;
         // 先 NewLine 把光标压到新行起点再量可用宽：上游遗留的行尾光标会让 GetContentRegionAvail
         // 测到残余宽度，导致下拉过窄、或 To 右侧顶出窗口被裁。NewLine 自带一档行距，正好分隔各转换行。
         ImGui::NewLine();
         const float rowW = ImGui::GetContentRegionAvail().x;
+        // BeginCombo 的内联标签（From/To）渲染在框右侧且计入控件布局宽度（total_bb），
+        // 这里必须为两个标签预留 label 宽 + ItemInnerSpacing，否则整行实际宽度超出 rowW，
+        // 会把第二个下拉框（To）向右顶出面板被裁掉。
+        const float labelW = ImGui::CalcTextSize("From").x + ImGui::CalcTextSize("To").x;
         const float comboW = std::max(40.0f,
-            (rowW - ImGui::CalcTextSize("→").x - 2.0f * spacing) * 0.5f);
+            (rowW - ImGui::CalcTextSize("→").x - labelW - 2.0f * innerSpacing - 2.0f * spacing) * 0.5f);
         ImGui::SetNextItemWidth(comboW);
         if (ImGui::BeginCombo("From", fromPreview)) {
             if (ImGui::Selectable("ANY (全局)", tr.from == SIZE_MAX)) {

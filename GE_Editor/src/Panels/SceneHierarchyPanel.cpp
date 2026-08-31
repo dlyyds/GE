@@ -369,6 +369,17 @@ void SceneHierarchyPanel::DrawAnimationComponent(Entity entity, AnimationCompone
     }
 
     ImGui::Text("片段源: %s", clip->source.c_str());
+    // 重载片段源：源 glTF 在磁盘更新后，按源键强制重建键帧并同步场景内同源实体。
+    // 不改变 clip 数量与名字，仅刷新数据，故 ASM 运行中也可安全执行。
+    if (ImGui::Button("重载片段源")) {
+        GE_CORE_INFO("[Anim][Editor] 重载片段源: '{}'", clip->source);
+        if (AnimationSystem::ReloadClipSource(m_Context->Reg(), static_cast<entt::entity>(entity))) {
+            GE_CORE_INFO("[Anim][Editor] 片段源重载完成");
+        }
+        clip = component.activeClip(); // 键帧已替换，刷新本地指针供本帧后续 UI 使用
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("从源文件重建，同步场景内同源实体");
 
     // 片段选择行（单片段也显示，便于删除）：选中即切换，默认走过渡淡化，填 0 即硬切。
     // 状态机开态下整行被「运行中」占位替代；手动切/删片段 = 外部覆盖、先关停 ASM。

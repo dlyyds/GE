@@ -17,6 +17,27 @@
 
 namespace GE {
 
+namespace {
+
+/// 拆分源键 "path#N" → (filepath, animIdx)；格式非法返回 false（告警已打）
+bool SplitSourceKey(const std::string &key, std::string &outFilepath, size_t &outAnimIdx) {
+    const size_t hashPos = key.rfind('#');
+    if (hashPos == std::string::npos) {
+        GE_CORE_WARN("[Anim] clip 源键 '{}' 缺少 '#' 分隔", key);
+        return false;
+    }
+    outFilepath = key.substr(0, hashPos);
+    try {
+        outAnimIdx = static_cast<size_t>(std::stoull(key.substr(hashPos + 1)));
+    } catch (...) {
+        GE_CORE_WARN("[Anim] clip 源键 '{}' 动画索引非法", key);
+        return false;
+    }
+    return true;
+}
+
+} // namespace
+
 AnimationClipManager &AnimationClipManager::Get() {
     static AnimationClipManager instance;
     return instance;
@@ -108,21 +129,41 @@ std::shared_ptr<AnimationClip> AnimationClipManager::Load(const std::string &fil
 }
 
 std::shared_ptr<AnimationClip> AnimationClipManager::LoadByKey(const std::string &key) {
-    // 源键格式 "path#N"：从最后的 '#' 拆出文件路径与动画索引
-    const size_t hashPos = key.rfind('#');
-    if (hashPos == std::string::npos) {
-        GE_CORE_WARN("[Anim] clip 源键 '{}' 缺少 '#' 分隔", key);
-        return nullptr;
-    }
-    const std::string filepath = key.substr(0, hashPos);
+    std::string filepath;
     size_t animIdx = 0;
-    try {
-        animIdx = static_cast<size_t>(std::stoull(key.substr(hashPos + 1)));
-    } catch (...) {
-        GE_CORE_WARN("[Anim] clip 源键 '{}' 动画索引非法", key);
+    if (!SplitSourceKey(key, filepath, animIdx)) {
         return nullptr;
     }
     return Load(filepath, animIdx);
+}
+
+std::shared_ptr<AnimationClip> AnimationClipManager::Reload(const std::string &filepath,
+                                                            size_t animIdx) {
+    const std::string key = MakeKey(filepath, animIdx);
+    // 清缓存键与烘焙产物，强制从源重建；旧 clip 若仍被实体持有会继续存活，
+    // 但管理器/烘焙此后指向新版本（旧键帧只在持有者内存中留存）。
+    m_Clips.erase(key);
+    const std::string bakePath = DeriveAnimationBakePath(key);
+    {
+        std::error_code ec;
+        std::filesystem::remove(bakePath, ec); // 删旧烘焙，让 BuildAndCache 重写新数据
+    }
+    tinygltf::Model model;
+    std::string err;
+    if (!GLTF::LoadModel(filepath, model, &err)) {
+        GE_CORE_ERROR("[Anim] clip '{}' 源文件加载失败: {}", key, err);
+        return nullptr;
+    }
+    return BuildAndCache(filepath, animIdx, model);
+}
+
+std::shared_ptr<AnimationClip> AnimationClipManager::ReloadByKey(const std::string &key) {
+    std::string filepath;
+    size_t animIdx = 0;
+    if (!SplitSourceKey(key, filepath, animIdx)) {
+        return nullptr;
+    }
+    return Reload(filepath, animIdx);
 }
 
 } // namespace GE

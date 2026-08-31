@@ -66,6 +66,22 @@ public:
      */
     std::shared_ptr<AnimationClip> LoadByKey(const std::string &key);
 
+    /**
+     * @brief 强制从源文件重建指定动画（跳过既有缓存与 .geanim 烘焙产物）。
+     *
+     * 编辑器「重载片段源」用：源 glTF 在磁盘上更新后，期望拿到最新键帧而非弱缓存
+     * 里的旧 clip。先清缓存键与烘焙文件，再读源模型构建并重新烘焙，缓存指向新版本。
+     * 调用方 / 其它实体若仍持有旧 shared_ptr，旧 clip 继续存活但不再被任何新加载
+     * 引用（重载的同步由 AnimationSystem::ReloadClipSource 负责，不一致仅在跨场景时）。
+     * 源文件缺失 / 无合法 channel 返回 nullptr（该键不再处于缓存）。
+     */
+    std::shared_ptr<AnimationClip> Reload(const std::string &filepath, size_t animIdx);
+
+    /**
+     * @brief 同 Reload，但按完整源键 "path#N" 操作（拆出 filepath + animIdx 后走 Reload）。
+     */
+    std::shared_ptr<AnimationClip> ReloadByKey(const std::string &key);
+
 private:
     AnimationClipManager() = default;
 

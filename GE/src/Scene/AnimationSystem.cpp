@@ -3,6 +3,7 @@
 
 #include "Scene/Components.h"     // TransformComponent（采样写局部 TRS）
 #include "Scene/ScriptEngine.h"   // FireEvents → DispatchAnimationEvent
+#include "Render/AnimationClipManager.h" // ReloadClipSource → 按源键强制重建 clip
 #include "Core/Log.h"             // GE_CORE_WARN（CUBICSPLINE 近似提示）
 
 #include <algorithm> // std::upper_bound / std::clamp
@@ -488,6 +489,52 @@ void UpdateAnimations(entt::registry &registry, ScriptEngine &scriptEngine, Time
             }
         }
     }
+}
+
+bool ReloadClipSource(entt::registry &registry, entt::entity entity) {
+    auto *ac = registry.try_get<AnimationComponent>(entity);
+    if (!ac) {
+        return false;
+    }
+    // 收集本组件各 clip 的源键；同源键只重载一次（避免重复读盘重建）
+    std::vector<std::string> keys;
+    for (const auto &inst : ac->clips) {
+        if (inst.clip && !inst.clip->source.empty()
+            && std::find(keys.begin(), keys.end(), inst.clip->source) == keys.end()) {
+            keys.push_back(inst.clip->source);
+        }
+    }
+    if (keys.empty()) {
+        GE_CORE_WARN("[Anim] 无可重载的片段源（空组件 / clip 无源键）");
+        return false;
+    }
+
+    bool reloaded = false;
+    for (const auto &key : keys) {
+        const std::shared_ptr<AnimationClip> fresh =
+            AnimationClipManager::Get().ReloadByKey(key);
+        if (!fresh) {
+            GE_CORE_WARN("[Anim] 片段源 '{}' 重载失败，保留旧数据", key);
+            continue;
+        }
+        reloaded = true;
+        // 同步场景内全部持有该源键的实体：换 clip 指针 + 重建 keyHints 采样缓存，
+        // 保留通道目标实体与场景级事件表（重载只刷新键帧数据，不重解析目标）。
+        // 目标实体按前缀复用：同源重载 channel 序/量不变则映射仍成立；若源结构变化
+        // 导致数量不符，多出的通道无目标（该部位退化为绑定姿态），余量目标被忽略。
+        const auto view = registry.view<AnimationComponent>();
+        for (auto e : view) {
+            auto &c = view.get<AnimationComponent>(e);
+            for (auto &inst : c.clips) {
+                if (inst.clip && inst.clip->source == key) {
+                    inst.clip = fresh;
+                    inst.keyHints.assign(inst.clip->channels.size(), 0u);
+                    c.timeApplied = false; // 强制下一帧重新采样（时间未变会被 appliedTime 优化跳过）
+                }
+            }
+        }
+    }
+    return reloaded;
 }
 
 } // namespace AnimationSystem

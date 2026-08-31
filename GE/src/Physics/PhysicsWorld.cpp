@@ -487,6 +487,14 @@ void PhysicsWorld::DestroyCharacter(entt::entity entity) {
         std::remove(m_PendingCharacters.begin(), m_PendingCharacters.end(), entity),
         m_PendingCharacters.end());
     m_Characters.erase(entity); // unique_ptr 析构 → CharacterVirtual 自动清 inner body
+
+    // 复位初始化标记：RebuildCharacter 依赖它被清掉才能在下次 Step 重新创建。
+    // 组件正在被移除/实体销毁时 try_get 返回 nullptr，自动跳过（该路径无需重建）。
+    if (m_Scene) {
+        if (auto *cc = m_Scene->Reg().try_get<CharacterControllerComponent>(entity)) {
+            cc->IsInitialized = false;
+        }
+    }
 }
 
 void PhysicsWorld::RebuildCharacter(entt::entity entity) {

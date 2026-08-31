@@ -31,7 +31,6 @@
 #include <Jolt/Physics/Collision/Shape/StaticCompoundShape.h>
 #include <Jolt/Physics/Collision/Shape/RotatedTranslatedShape.h>
 #include <Jolt/Physics/Collision/BroadPhase/BroadPhaseLayer.h>
-#include <Jolt/Physics/Collision/BroadPhase/ObjectVsBroadPhaseLayerFilterTable.h>
 #include <Jolt/Physics/Collision/ObjectLayer.h>
 #include <Jolt/Physics/Collision/ContactListener.h>
 #include <Jolt/Physics/Collision/Shape/SubShapeIDPair.h>
@@ -89,30 +88,21 @@ private:
     JPH::BroadPhaseLayer m_ObjectToBroadPhase[NUM_BROAD_PHASE_LAYERS];
 };
 
-/// 判断两个 ObjectLayer 之间是否可以碰撞
+/// 判断两个 ObjectLayer 之间是否可以碰撞。
+/// 当前所有刚体统一放 Default 层；Trigger 语义由传感器标记（mIsSensor）承担——
+/// 传感器照常产生接触事件但不参与物理求解，故这里放行所有层对（按 Jolt 示例默认）。
 class EngineObjectLayerPairFilter final : public JPH::ObjectLayerPairFilter {
 public:
-    bool ShouldCollide(JPH::ObjectLayer inLayer1, JPH::ObjectLayer inLayer2) const override {
-        // Trigger 层不与其他层发生物理碰撞（仅触发事件）
-        // 但 Trigger 之间也不碰撞
-        if (inLayer1 == static_cast<JPH::ObjectLayer>(CollisionLayer::Trigger)
-            || inLayer2 == static_cast<JPH::ObjectLayer>(CollisionLayer::Trigger)) {
-            return false;
-        }
-        // 其余层之间都可以碰撞
+    bool ShouldCollide(JPH::ObjectLayer, JPH::ObjectLayer) const override {
         return true;
     }
 };
 
-/// 判断 ObjectLayer 与 BroadPhaseLayer 是否可以碰撞
+/// 判断 ObjectLayer 与 BroadPhaseLayer 是否可以碰撞。
+/// 同 ObjectLayerPairFilter：默认全放行，后续需要按层剔除时再在此补充。
 class EngineObjectVsBroadPhaseLayerFilter final : public JPH::ObjectVsBroadPhaseLayerFilter {
 public:
-    bool ShouldCollide(JPH::ObjectLayer inLayer1, JPH::BroadPhaseLayer inLayer2) const override {
-        // Trigger 层不参与 broad phase 碰撞
-        if (inLayer1 == static_cast<JPH::ObjectLayer>(CollisionLayer::Trigger)) {
-            return false;
-        }
-        // 其余层都参与碰撞
+    bool ShouldCollide(JPH::ObjectLayer, JPH::BroadPhaseLayer) const override {
         return true;
     }
 };

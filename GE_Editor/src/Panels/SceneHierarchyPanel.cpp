@@ -370,54 +370,84 @@ void SceneHierarchyPanel::DrawAnimationComponent(Entity entity, AnimationCompone
 
     ImGui::Text("片段源: %s", clip->source.c_str());
 
-    // 多 clip 下拉切换（单片段时隐藏）：选中即切换，默认走过渡淡化——衔接旧「选中即切」手感，
-    // 「过渡(s)」填 0 即硬切；过渡期展示 α 进度便于验证（阶段 C）。
-    // 状态机开态（阶段 D）下该下拉区块被「运行中」占位替代；手动切片段 = 外部覆盖、先关停 ASM。
-    if (component.clips.size() > 1) {
-        const bool asmRunning = entity.HasComponent<AnimStateMachineComponent>()
-            && entity.GetComponent<AnimStateMachineComponent>().enabled;
-        if (asmRunning) {
-            const auto &asmc = entity.GetComponent<AnimStateMachineComponent>();
-            const char *stateName = (asmc.current != SIZE_MAX && asmc.current < asmc.states.size())
-                ? asmc.states[asmc.current].name.c_str() : "(未进入)";
-            ImGui::Text("状态机运行中：%s　stateTime %.2fs", stateName, asmc.stateTime);
-            ImGui::TextDisabled("手动改播片段需先在 ASM 面板关停状态机");
-        } else {
-            const std::string preview = component.clips[component.active].clip
-                ? component.clips[component.active].clip->name
-                : ("Clip " + std::to_string(component.active));
+    // 片段选择行（单片段也显示，便于删除）：选中即切换，默认走过渡淡化，填 0 即硬切。
+    // 状态机开态下整行被「运行中」占位替代；手动切/删片段 = 外部覆盖、先关停 ASM。
+    const bool asmRunning = entity.HasComponent<AnimStateMachineComponent>()
+        && entity.GetComponent<AnimStateMachineComponent>().enabled;
+    if (asmRunning) {
+        const auto &asmc = entity.GetComponent<AnimStateMachineComponent>();
+        const char *stateName = (asmc.current != SIZE_MAX && asmc.current < asmc.states.size())
+            ? asmc.states[asmc.current].name.c_str() : "(未进入)";
+        ImGui::Text("状态机运行中：%s　stateTime %.2fs", stateName, asmc.stateTime);
+        ImGui::TextDisabled("改播/删除片段需先在 ASM 面板关停状态机");
+    } else {
+        const std::string preview = component.clips[component.active].clip
+            ? component.clips[component.active].clip->name
+            : ("Clip " + std::to_string(component.active));
 
-            // 过渡时长输入：带步进按钮会占用设定宽度一部分，给足余量避免数字截断
-            ImGui::SetNextItemWidth(150.0f);
-            ImGui::InputFloat("过渡(s)", &component.uiBlendSec, 0.01f, 0.1f, "%.2f");
-            ImGui::SameLine();
-            ImGui::Text("片段");
-            ImGui::SameLine();
-            // 下拉框占满本行剩余宽度；标签用 ## 隐藏，避免挤在框右侧还额外占宽导致溢出截断
-            ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
-            if (ImGui::BeginCombo("##播放片段", preview.c_str())) {
-                for (size_t i = 0; i < component.clips.size(); ++i) {
-                    const bool selected = (i == component.active);
-                    const std::string label = component.clips[i].clip
-                        ? component.clips[i].clip->name
-                        : ("Clip " + std::to_string(i));
-                    if (ImGui::Selectable(label.c_str(), selected)) {
-                        // 手动切 clip = 外部覆盖：若状态机在跑，先关停（决策 9.5）
-                        if (entity.HasComponent<AnimStateMachineComponent>()) {
-                            auto &asmc = entity.GetComponent<AnimStateMachineComponent>();
-                            if (asmc.enabled) {
-                                asmc.enabled = false;
-                                GE_CORE_WARN("[Anim][Editor] 手动切片段，已关停动画状态机（决策 9.5）");
-                            }
+        // 过渡时长输入：带步进按钮会占用设定宽度一部分，给足余量避免数字截断
+        ImGui::SetNextItemWidth(150.0f);
+        ImGui::InputFloat("过渡(s)", &component.uiBlendSec, 0.01f, 0.1f, "%.2f");
+        ImGui::SameLine();
+        ImGui::Text("片段");
+        ImGui::SameLine();
+        // 下拉框占满「片段」标签右侧余量，尾部让出「删除片段」按钮宽度；
+        // 标签用 ## 隐藏，避免挤在框右侧还额外占宽导致溢出截断。
+        const float delBtnW = ImGui::CalcTextSize("删除片段").x + 2.0f * ImGui::GetStyle().FramePadding.x;
+        ImGui::SetNextItemWidth(std::max(60.0f,
+            ImGui::GetContentRegionAvail().x - delBtnW - ImGui::GetStyle().ItemSpacing.x));
+        if (ImGui::BeginCombo("##播放片段", preview.c_str())) {
+            for (size_t i = 0; i < component.clips.size(); ++i) {
+                const bool selected = (i == component.active);
+                const std::string label = component.clips[i].clip
+                    ? component.clips[i].clip->name
+                    : ("Clip " + std::to_string(i));
+                if (ImGui::Selectable(label.c_str(), selected)) {
+                    // 手动切 clip = 外部覆盖：若状态机在跑，先关停（决策 9.5）
+                    if (entity.HasComponent<AnimStateMachineComponent>()) {
+                        auto &asmc = entity.GetComponent<AnimStateMachineComponent>();
+                        if (asmc.enabled) {
+                            asmc.enabled = false;
+                            GE_CORE_WARN("[Anim][Editor] 手动切片段，已关停动画状态机（决策 9.5）");
                         }
-                        GE_CORE_INFO("[Anim][Editor] 切换 → clip {0}（{1:.2f}s 过渡）", i, component.uiBlendSec);
-                        component.PlayClip(i, component.uiBlendSec);
                     }
-                    if (selected) {
-                        ImGui::SetItemDefaultFocus();
-                    }
+                    GE_CORE_INFO("[Anim][Editor] 切换 → clip {0}（{1:.2f}s 过渡）", i, component.uiBlendSec);
+                    component.PlayClip(i, component.uiBlendSec);
                 }
-                ImGui::EndCombo();
+                if (selected) {
+                    ImGui::SetItemDefaultFocus();
+                }
+            }
+            ImGui::EndCombo();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("删除片段")) {
+            // 删除当前选中片段 = 外部覆盖：先关停状态机（决策 9.5），再清理下标避免悬空。
+            if (entity.HasComponent<AnimStateMachineComponent>()) {
+                auto &asmc = entity.GetComponent<AnimStateMachineComponent>();
+                if (asmc.enabled) {
+                    asmc.enabled = false;
+                    GE_CORE_WARN("[Anim][Editor] 删除片段前已关停动画状态机（决策 9.5）");
+                }
+            }
+            const size_t idx = component.active;
+            if (idx < component.clips.size()) {
+                GE_CORE_INFO("[Anim][Editor] 删除片段 → clips[{0}]", idx);
+                component.clips.erase(component.clips.begin() + idx);
+                // 源片段被删 → 清过渡状态（同 PlayClip 硬切路径）
+                component.transitionFrom = SIZE_MAX;
+                component.transitionFromTime = 0.0f;
+                component.transitionElapsed = 0.0f;
+                component.transitionDuration = 0.0f;
+                if (component.clips.empty()) {
+                    component.active = 0;
+                } else if (component.active >= component.clips.size()) {
+                    component.active = component.clips.size() - 1;
+                }
+                component.time = 0.0f;
+                component.timeApplied = false;
+                // 被删 clip 的共享键帧可能已无引用而释放，立即刷新本地指针避免悬空
+                clip = component.activeClip();
             }
         }
 
@@ -430,8 +460,13 @@ void SceneHierarchyPanel::DrawAnimationComponent(Entity entity, AnimationCompone
             snprintf(overlay, sizeof(overlay), "%d%%", static_cast<int>(alpha * 100.0f));
             ImGui::ProgressBar(alpha, ImVec2(-1.0f, 0.0f), overlay);
         }
-        ImGui::Separator();
     }
+
+    // 最后一个片段也被删 → 本帧直接结束，下帧走空占位分支（clips 为空时上方已 return）
+    if (!clip) {
+        return;
+    }
+    ImGui::Separator();
 
     // 播放控制行：播放/暂停按钮 + 循环开关
     if (ImGui::Button(component.playing ? "暂停" : "播放")) {

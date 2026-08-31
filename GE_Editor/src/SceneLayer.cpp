@@ -585,6 +585,57 @@ void SceneLayer::DrawColliders(const glm::vec2 &imagePos) {
         }
     };
 
+    // 画胶囊线框：N 条经线剖面（上球帽弧 + 圆柱母线 + 下球帽弧）+ 三条圆环（±H 赤道 / y=0 中段）。
+    // center 为胶囊中心，capsuleRot 为胶囊轴向旋转（沿局部 Y），radius 半径，halfHeight 圆柱段半高。
+    // 刚体胶囊与角色控制器胶囊共用，保证两处线框形态一致。
+    const auto drawCapsuleMesh = [&](const glm::vec3 &center, const glm::quat &capsuleRot,
+                                     float radius, float halfHeight) {
+        constexpr int kMeri = 8;    // 经线数量
+        constexpr int kArcSegs = 8; // 每条半球帽弧的分段数
+        for (int m = 0; m < kMeri; ++m) {
+            const float ang = (2.0f * kPi * m) / kMeri;
+            const float dx = std::cos(ang), dz = std::sin(ang);
+            // 上球帽弧：极点 (0, +H+R) → 赤道 (R, +H)
+            glm::vec3 prev = center + capsuleRot * glm::vec3(0.0f, halfHeight + radius, 0.0f);
+            for (int i = 1; i <= kArcSegs; ++i) {
+                const float a = (static_cast<float>(i) / kArcSegs) * kPi * 0.5f;
+                const glm::vec3 cur = center + capsuleRot * glm::vec3(
+                    std::sin(a) * radius * dx,
+                    halfHeight + std::cos(a) * radius,
+                    std::sin(a) * radius * dz);
+                drawWorldSegment(prev, cur);
+                prev = cur;
+            }
+            // 圆柱母线：下赤道 → 上赤道
+            drawWorldSegment(
+                center + capsuleRot * glm::vec3(radius * dx, +halfHeight, radius * dz),
+                center + capsuleRot * glm::vec3(radius * dx, -halfHeight, radius * dz));
+            // 下球帽弧：赤道 (R, -H) → 极点 (0, -H-R)
+            glm::vec3 prev2 = center + capsuleRot * glm::vec3(radius * dx, -halfHeight, radius * dz);
+            for (int i = 1; i <= kArcSegs; ++i) {
+                const float a = (static_cast<float>(i) / kArcSegs) * kPi * 0.5f;
+                const glm::vec3 cur = center + capsuleRot * glm::vec3(
+                    std::sin(a) * radius * dx,
+                    -halfHeight - std::cos(a) * radius,
+                    std::sin(a) * radius * dz);
+                drawWorldSegment(prev2, cur);
+                prev2 = cur;
+            }
+        }
+        // 圆环绕 y = ±H（赤道/圆柱边）与 y = 0（圆柱中段）各画一圈
+        constexpr int kSegs = 24; // 圆环分段数
+        for (int ring = 0; ring < 3; ++ring) {
+            const float y = (ring == 0) ? -halfHeight : ((ring == 1) ? 0.0f : halfHeight);
+            for (int i = 0; i < kSegs; ++i) {
+                const float a0 = (2.0f * kPi * i) / kSegs;
+                const float a1 = (2.0f * kPi * (i + 1)) / kSegs;
+                drawWorldSegment(
+                    center + capsuleRot * glm::vec3(std::cos(a0) * radius, y, std::sin(a0) * radius),
+                    center + capsuleRot * glm::vec3(std::cos(a1) * radius, y, std::sin(a1) * radius));
+            }
+        }
+    };
+
     // 遍历刚体实体，仅绘制真正进入了物理世界的碰撞体（需同时具备刚体 + 碰撞体）。
     // 变换语义与 PhysicsWorld::BuildShapeForEntity 一致：用实体局部 TRS，
     // 半尺寸/半径乘比例烘焙进形状，Offset 只旋转不乘比例。
@@ -709,53 +760,23 @@ void SceneLayer::DrawColliders(const glm::vec2 &imagePos) {
                 axisRot = glm::quat(kSqrtHalf, kSqrtHalf, 0.0f, 0.0f);
             const glm::quat capsuleRot = rot * axisRot;
 
-            // N 条经线剖面（球帽弧 + 圆柱母线 + 下半球帽弧），凸显胶囊轮廓
-            constexpr int kMeri = 8;    // 经线数量
-            constexpr int kArcSegs = 8; // 每条半球帽弧的分段数
-            for (int m = 0; m < kMeri; ++m) {
-                const float ang = (2.0f * kPi * m) / kMeri;
-                const float dx = std::cos(ang), dz = std::sin(ang);
-                // 上球帽弧：极点 (0, +H+R) → 赤道 (R, +H)
-                glm::vec3 prev = center + capsuleRot * glm::vec3(0.0f, halfHeight + radius, 0.0f);
-                for (int i = 1; i <= kArcSegs; ++i) {
-                    const float a = (static_cast<float>(i) / kArcSegs) * kPi * 0.5f;
-                    const glm::vec3 cur = center + capsuleRot * glm::vec3(
-                        std::sin(a) * radius * dx,
-                        halfHeight + std::cos(a) * radius,
-                        std::sin(a) * radius * dz);
-                    drawWorldSegment(prev, cur);
-                    prev = cur;
-                }
-                // 圆柱母线：下赤道 → 上赤道
-                drawWorldSegment(
-                    center + capsuleRot * glm::vec3(radius * dx, +halfHeight, radius * dz),
-                    center + capsuleRot * glm::vec3(radius * dx, -halfHeight, radius * dz));
-                // 下球帽弧：赤道 (R, -H) → 极点 (0, -H-R)
-                glm::vec3 prev2 = center + capsuleRot * glm::vec3(radius * dx, -halfHeight, radius * dz);
-                for (int i = 1; i <= kArcSegs; ++i) {
-                    const float a = (static_cast<float>(i) / kArcSegs) * kPi * 0.5f;
-                    const glm::vec3 cur = center + capsuleRot * glm::vec3(
-                        std::sin(a) * radius * dx,
-                        -halfHeight - std::cos(a) * radius,
-                        std::sin(a) * radius * dz);
-                    drawWorldSegment(prev2, cur);
-                    prev2 = cur;
-                }
-            }
-
-            // 圆环绕 y = ±H（赤道/圆柱边）与 y = 0（圆柱中段）各画一圈
-            constexpr int kSegs = 24; // 圆环分段数
-            for (int ring = 0; ring < 3; ++ring) {
-                const float y = (ring == 0) ? -halfHeight : ((ring == 1) ? 0.0f : halfHeight);
-                for (int i = 0; i < kSegs; ++i) {
-                    const float a0 = (2.0f * kPi * i) / kSegs;
-                    const float a1 = (2.0f * kPi * (i + 1)) / kSegs;
-                    drawWorldSegment(
-                        center + capsuleRot * glm::vec3(std::cos(a0) * radius, y, std::sin(a0) * radius),
-                        center + capsuleRot * glm::vec3(std::cos(a1) * radius, y, std::sin(a1) * radius));
-                }
-            }
+            drawCapsuleMesh(center, capsuleRot, radius, halfHeight);
         }
+    }
+
+    // ---- 角色控制器胶囊（CharacterVirtual）：角色实体不挂 RigidBodyComponent，单独遍历 ----
+    // 形状语义与 PhysicsWorld::ProcessPendingCharacters 一致：半径 = cc.Radius（不乘实体比例），
+    // 圆柱半高 = H/2 - R，胶囊底部对齐脚底（Transform.Translation），中心在脚底上方 H/2 处。
+    const auto charView = m_Context->Scene->Reg().view<
+        TransformComponent, CharacterControllerComponent>();
+    for (auto entity : charView) {
+        const auto &tc = charView.get<TransformComponent>(entity);
+        const auto &cc = charView.get<CharacterControllerComponent>(entity);
+
+        const float cylHalf = std::max(cc.Height * 0.5f - cc.Radius, 0.0f);
+        const glm::vec3 center =
+            tc.Translation + tc.Rotation * glm::vec3(0.0f, cc.Height * 0.5f, 0.0f);
+        drawCapsuleMesh(center, tc.Rotation, cc.Radius, cylHalf);
     }
 }
 

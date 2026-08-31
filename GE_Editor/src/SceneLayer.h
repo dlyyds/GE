@@ -3,6 +3,7 @@
 #include "GE/GE.h"
 #include "GE/Scene/Scene.h"
 #include "GE/Scene/Entity.h"
+#include "GE/Render/Camera.h"
 
 #include "EditorContext.h"
 #include "SceneViewport.h"
@@ -17,8 +18,9 @@ class GizmoController; // 前向声明，避免在头文件引入实现
 
 /// 场景层 —— 只负责场景渲染（离屏视口 + 相机）与 文件操作（保存/加载/新建）。
 ///
-/// 场景状态（Scene / 序列化器 / 相机实体）放在共享的 EditorContext 中，
-/// 层级面板等由各自的 Layer 承载并共享该上下文。启动时从文件加载默认场景。
+/// 场景状态（Scene / 序列化器）放在共享的 EditorContext 中，编辑器导航相机
+/// 由 EditorContext.EditorCamera 独立持有（工具视角，不进场景）。层级面板等由
+/// 各自的 Layer 承载并共享该上下文。启动时从文件加载默认场景。
 /// 网格/纹理/材质由全局管理器加载持有，场景本身不拥有资源。
 class SceneLayer : public Layer {
 public:
@@ -35,6 +37,10 @@ public:
     void OnEvent(Event &event) override;
 
     void OnImGuiRender() override;
+
+    /// 当前视口使用的相机：Play → 场景主玩法相机（无则回退编辑器相机）；Edit → 编辑器相机。
+    /// 渲染、gizmo、包围盒/碰撞体线框叠加共用同一来源，保证叠加与画面一致。
+    Camera &GetActiveViewCamera();
 
     /// 保存场景到文件（弹出文件对话框），供顶部菜单调用
     void SaveScene();

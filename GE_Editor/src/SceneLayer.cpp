@@ -65,6 +65,13 @@ SceneLayer::SceneLayer(std::shared_ptr<EditorContext> context) : Layer("SceneLay
 SceneLayer::~SceneLayer() = default;
 
 void SceneLayer::OnAttach() {
+    // 编辑器导航相机初始化：工具视角，独立于场景内容（不进场景、不序列化）。
+    // 宽高比每帧随视口尺寸更新，见 OnUpdate。
+    m_Context->EditorCamera.SetMode(Camera::Mode::Orbit);
+    m_Context->EditorCamera.SetPerspective(60.0f, 16.0f / 9.0f);
+    m_Context->EditorCamera.SetTarget(glm::vec3(0.0f, 0.5f, 0.0f));
+    m_Context->EditorCamera.SetOrbit(0.0f, 25.0f, 8.0f);
+
 #if GE_EDITOR_BUILD_SCENE_FROM_CODE
     // 从代码程序化构建默认场景（网格/纹理/材质由全局管理器持有）
     BuildDefaultSceneFromCode();
@@ -80,21 +87,12 @@ void SceneLayer::OnAttach() {
 #endif
 }
 
-// 从代码程序化构建一个用于测试 OBJ+MTL 加载的默认场景：相机 + 方向光 + 环境光 +
+// 从代码程序化构建一个用于测试 OBJ+MTL 加载的默认场景：方向光 + 环境光 +
 // Datsun 280Z 车模。网格/纹理/材质均由全局管理器加载持有，场景组件仅持非拥有指针。
+// 注意：不经此路径创建相机会让场景在 Play 态回退编辑器相机（无玩法相机）。
 void SceneLayer::BuildDefaultSceneFromCode() {
     // 先重置实体引用，避免悬空
-    m_Context->CameraEntity = {};
     m_Context->Scene = std::make_unique<Scene>();
-
-    // 相机实体（Orbit 模式，绕场景中心观测）
-    auto camera = m_Context->Scene->CreateEntity("Camera");
-    auto &cc = camera.AddComponent<CameraComponent>();
-    cc.Primary = true;
-    cc.CameraInstance.SetMode(Camera::Mode::Orbit);
-    cc.CameraInstance.SetTarget(glm::vec3(0.0f, 0.5f, 0.0f));
-    cc.CameraInstance.SetOrbit(0.0f, 25.0f, 8.0f);
-    m_Context->CameraEntity = camera;
 
     // 方向光实体（-60° 绕 X 轴：从上前方照下）。强度提至 2.0，给金属提供
     // 一个明显的锐利高光（金属无漫反射，靠高光与环境显形）。
@@ -122,7 +120,6 @@ void SceneLayer::BuildDefaultSceneFromCode() {
 }
 
 void SceneLayer::OnDetach() {
-    m_Context->CameraEntity = {};
     m_Viewport.reset(); // 释放离屏渲染目标（GPU 资源）
     m_Context->Scene.reset();
 }
@@ -164,31 +161,28 @@ void SceneLayer::OnUpdate(Timestep &ts) {
     Renderer::Get3DRenderer().SetRenderTarget(m_Viewport->GetRenderTarget());
     Renderer::Get2DRenderer().SetRenderTarget(m_Viewport->GetRenderTarget());
 
-    // 场景中没有相机实体时，使用默认视角清屏
-    if (!m_Context->CameraEntity) {
-        glm::mat4 view(1.0f);
-        glm::mat4 projection = glm::perspective(glm::radians(60.0f), aspect, 0.1f, 100.0f);
-        projection[1][1] *= -1.0f; // Vulkan Y 翻转
-        glm::vec3 cameraPos{0.0f, 0.0f, 3.0f};
-        glm::vec4 clearColor{0.1f, 0.1f, 0.15f, 1.0f};
-        m_Context->Scene->OnUpdate3D(ts, view, projection, cameraPos, clearColor);
-        Renderer::Get3DRenderer().SetRenderTarget(nullptr);
-        Renderer::Get2DRenderer().SetRenderTarget(nullptr);
-        return;
+    // 选取本帧视口相机与宽高比：
+    //   Edit → 编辑器导航相机（EditorContext.EditorCamera，工具视角）；
+    //   Play → 场景主玩法相机（CameraComponent 实体，游戏视角）；场景无相机则回退编辑器相机。
+    Camera *activeCam = nullptr;
+    if (m_Context->Scene->IsPlaying()) {
+        if (Entity gameCam = m_Context->Scene->GetPrimaryCameraEntity();
+            gameCam && gameCam.HasComponent<CameraComponent>()) {
+            auto &cc = gameCam.GetComponent<CameraComponent>();
+            if (!cc.FixedAspectRatio) {
+                cc.CameraInstance.SetAspect(aspect);
+            }
+            activeCam = &cc.CameraInstance;
+        }
+    }
+    if (!activeCam) {
+        m_Context->EditorCamera.SetAspect(aspect);
+        activeCam = &m_Context->EditorCamera;
     }
 
-    // 从相机组件获取视图与投影矩阵
-    auto &cameraComp = m_Context->CameraEntity.GetComponent<CameraComponent>();
-    auto &camera = cameraComp.CameraInstance;
-
-    // 同步宽高比（使用视口窗口比例）
-    if (!cameraComp.FixedAspectRatio) {
-        camera.SetAspect(aspect);
-    }
-
-    glm::mat4 view = camera.GetView();
-    glm::mat4 projection = camera.GetProj();
-    glm::vec3 cameraPos = camera.GetPosition();
+    glm::mat4 view = activeCam->GetView();
+    glm::mat4 projection = activeCam->GetProj();
+    glm::vec3 cameraPos = activeCam->GetPosition();
     glm::vec4 clearColor{0.1f, 0.1f, 0.15f, 1.0f};
 
     m_Context->Scene->OnUpdate3D(ts, view, projection, cameraPos, clearColor);
@@ -199,45 +193,74 @@ void SceneLayer::OnUpdate(Timestep &ts) {
 }
 
 void SceneLayer::OnEvent(Event &event) {
-    if (m_Context->Scene) {
-        // 仅当鼠标悬停在 Scene 视口内时才把输入事件转发给场景（影响脚本 + 相机）；
-        // 窗口尺寸变化等非输入事件始终会转发给场景。
-        const bool inViewport = m_SceneWindowHovered;
-        // 相机额外要求未在拖 gizmo，避免拖 gizmo 时相机跟着转。
-        const bool cameraActive = inViewport && !(m_Gizmo && ImGuizmo::IsOver());
-        m_Context->Scene->SetProcessCameraInput(cameraActive);
+    if (!m_Context->Scene) {
+        return;
+    }
+    const bool inViewport = m_SceneWindowHovered;
+    const bool playing = m_Context->Scene->IsPlaying();
+    // 相机额外要求未在拖 gizmo，避免拖 gizmo 时相机跟着转。
+    const bool cameraActive = inViewport && !(m_Gizmo && ImGuizmo::IsOver());
+    // 相机导航输入目标：Edit → 编辑器相机（EditorContext 独立持有）；Play → 场景主玩法相机。
+    // Edit 下场景相机实体一律不收输入，避免编辑导航越权到游戏相机。
+    m_Context->Scene->SetProcessCameraInput(playing && cameraActive);
 
-        if (!event.Handled) {
-            // 记录在视口内按下的鼠标按键并跟踪释放：用于把「拖出视口后松开」的释放事件
-            // 仍回传给相机，避免相机内部按键状态（m_LeftDown）卡在按下态，导致之后在
-            // 视口内移动鼠标时相机持续旋转（此时鼠标其实已松开）。
-            bool releaseStartedInViewport = false;
-            EventDispatcher disp(event);
-            disp.Dispatch<MouseButtonPressedEvent>([&](MouseButtonPressedEvent &e) {
-                if (inViewport) {
-                    m_ViewportCapturedButtons |= (1u << e.GetMouseButton());
-                }
-                return false;
-            });
-            disp.Dispatch<MouseButtonReleasedEvent>([&](MouseButtonReleasedEvent &e) {
-                uint16_t bit = 1u << e.GetMouseButton();
-                releaseStartedInViewport = (m_ViewportCapturedButtons & bit) != 0;
-                m_ViewportCapturedButtons &= ~bit;
-                return false;
-            });
+    if (event.Handled) {
+        return;
+    }
 
-            // 未悬停时直接不转发输入事件给场景
-            if (!inViewport && event.IsInCategory(EventCategoryInput)) {
-                // 例外：松开的是视口内按下的按键时，仍回传释放事件，让相机按键状态复位。
-                if (releaseStartedInViewport) {
-                    m_Context->Scene->SetProcessCameraInput(true);
-                    m_Context->Scene->OnEvent(event);
-                }
-                return;
-            }
+    // 记录在视口内按下的鼠标按键并跟踪释放：用于把「拖出视口后松开」的释放事件
+    // 仍回传给相机，避免相机内部按键状态（m_LeftDown）卡在按下态，导致之后在
+    // 视口内移动鼠标时相机持续旋转（此时鼠标其实已松开）。
+    bool releaseStartedInViewport = false;
+    EventDispatcher disp(event);
+    disp.Dispatch<MouseButtonPressedEvent>([&](MouseButtonPressedEvent &e) {
+        if (inViewport) {
+            m_ViewportCapturedButtons |= (1u << e.GetMouseButton());
+        }
+        return false;
+    });
+    disp.Dispatch<MouseButtonReleasedEvent>([&](MouseButtonReleasedEvent &e) {
+        uint16_t bit = 1u << e.GetMouseButton();
+        releaseStartedInViewport = (m_ViewportCapturedButtons & bit) != 0;
+        m_ViewportCapturedButtons &= ~bit;
+        return false;
+    });
+
+    // 输入路由：Scene 只记脚本输入快照（相机是否消费由 SetProcessCameraInput 门控）；
+    // 编辑器相机的导航输入在场景之外直接喂给 EditorCamera。
+    const auto routeInput = [&](bool feedCamera) {
+        if (playing) {
+            m_Context->Scene->SetProcessCameraInput(feedCamera);
             m_Context->Scene->OnEvent(event);
+        } else {
+            m_Context->Scene->OnEvent(event); // 仅脚本输入快照
+            if (feedCamera) {
+                m_Context->EditorCamera.OnEvent(event);
+            }
+        }
+    };
+
+    // 未悬停时直接不转发输入事件给场景
+    if (!inViewport && event.IsInCategory(EventCategoryInput)) {
+        // 例外：松开的是视口内按下的按键时，仍回传释放事件，让相机按键状态复位。
+        if (releaseStartedInViewport) {
+            routeInput(true);
+        }
+        return;
+    }
+    routeInput(cameraActive);
+}
+
+Camera &SceneLayer::GetActiveViewCamera() {
+    // Play：优先场景主玩法相机（CameraComponent.Primary==true，无则第一个相机实体）；
+    // 场景没有相机实体则回退编辑器相机（保证视口不黑屏）。Edit：一律编辑器相机。
+    if (m_Context->Scene && m_Context->Scene->IsPlaying()) {
+        if (Entity gameCam = m_Context->Scene->GetPrimaryCameraEntity();
+            gameCam && gameCam.HasComponent<CameraComponent>()) {
+            return gameCam.GetComponent<CameraComponent>().CameraInstance;
         }
     }
+    return m_Context->EditorCamera;
 }
 
 void SceneLayer::OnImGuiRender() {
@@ -270,18 +293,17 @@ void SceneLayer::OnImGuiRender() {
             // GetWindowPos() 会因标题栏偏移使 gizmo 偏高。
             // 阶段 C：Play（运行）中禁用 gizmo 拖拽——动态体每帧被物理写回 Transform，
             // 拖了也白拖还制造困惑，显式隐藏（决策 5.4）。
-            if (m_Gizmo && m_Context->CameraEntity && m_Context->Scene && !m_Context->Scene->IsPlaying()) {
-                auto &cameraComp = m_Context->CameraEntity.GetComponent<CameraComponent>();
-                m_Gizmo->Render(cameraComp.CameraInstance, glm::vec2(imagePos.x, imagePos.y), m_ViewportSize);
+            if (m_Gizmo && m_Context->Scene && !m_Context->Scene->IsPlaying()) {
+                m_Gizmo->Render(GetActiveViewCamera(), glm::vec2(imagePos.x, imagePos.y), m_ViewportSize);
             }
 
             // 包围盒线框叠加：世界 AABB（静态盒 + 蒙皮绑定盒，与视锥剔除用同一盒）
-            if (m_ShowBounds && m_Context->CameraEntity) {
+            if (m_ShowBounds) {
                 DrawWorldBounds(glm::vec2(imagePos.x, imagePos.y));
             }
 
             // 物理碰撞体线框叠加：盒子 12 棱 + 球体正交圆环（青绿色）
-            if (m_ShowColliders && m_Context->CameraEntity) {
+            if (m_ShowColliders) {
                 DrawColliders(glm::vec2(imagePos.x, imagePos.y));
             }
 
@@ -362,11 +384,10 @@ void SceneLayer::OnImGuiRender() {
 // ============================================================
 
 void SceneLayer::DrawWorldBounds(const glm::vec2 &imagePos) {
-    if (!m_Context->Scene || !m_Context->CameraEntity) {
+    if (!m_Context->Scene) {
         return;
     }
-    auto &cc = m_Context->CameraEntity.GetComponent<CameraComponent>();
-    const Camera &camera = cc.CameraInstance;
+    const Camera &camera = GetActiveViewCamera();
 
     // 还原 OpenGL 投影（渲染/剔除用 Vulkan Y 翻转投影；ImGuizmo 同款还原保证对齐）
     glm::mat4 projGL = camera.GetProj();
@@ -551,11 +572,10 @@ void SceneLayer::DrawWorldBounds(const glm::vec2 &imagePos) {
 // ============================================================
 
 void SceneLayer::DrawColliders(const glm::vec2 &imagePos) {
-    if (!m_Context->Scene || !m_Context->CameraEntity) {
+    if (!m_Context->Scene) {
         return;
     }
-    auto &cc = m_Context->CameraEntity.GetComponent<CameraComponent>();
-    const Camera &camera = cc.CameraInstance;
+    const Camera &camera = GetActiveViewCamera();
 
     // 还原 OpenGL 投影（与 DrawWorldBounds 同款，保证线与画面/gizmo 对齐）
     glm::mat4 projGL = camera.GetProj();
@@ -818,9 +838,6 @@ void SceneLayer::SaveScene() {
 }
 
 bool SceneLayer::LoadSceneFromFile(std::string_view filepath) {
-    // 先重置实体引用，避免悬空
-    m_Context->CameraEntity = {};
-
     // 如果场景不存在，先创建
     if (!m_Context->Scene) {
         m_Context->Scene = std::make_unique<Scene>();
@@ -832,9 +849,6 @@ bool SceneLayer::LoadSceneFromFile(std::string_view filepath) {
     if (!serializer.Deserialize(filepath.data())) {
         return false;
     }
-
-    // 重新绑定主相机实体（Primary=true，否则取第一个相机实体）
-    m_Context->CameraEntity = m_Context->Scene->GetPrimaryCameraEntity();
     return true;
 }
 
@@ -850,9 +864,6 @@ void SceneLayer::LoadScene() {
 }
 
 void SceneLayer::NewScene() {
-    // 重置实体引用
-    m_Context->CameraEntity = {};
-
     // 创建新场景（序列化器无状态，仅在保存/加载时按需创建局部变量）
     m_Context->Scene = std::make_unique<Scene>();
 }

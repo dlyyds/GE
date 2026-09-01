@@ -43,10 +43,10 @@ function M.OnUpdate(self, ts)
     end
     character.set_move(wx, wz)
 
-    -- 诊断（临时）：按 W 时打印相机 yaw 与角色累计偏航 FacingYaw，排查"脸朝反方向"
+    -- 诊断（临时）：按 W 时打印相机 yaw 与角色累计偏航 FacingYaw
+    -- 两者应一致（收敛后）；若模型脸仍与相机相反，是 FrontAxis 配置不符模型"脸"朝向
     if input.is_held(Key.W) then
-        log.warn(string.format("[FPS] cam_yaw=%.1f facing=%.1f (facing_yaw_deg=%.1f)",
-            camera.get_yaw(), math.deg(camera.get_facing()), math.deg(camera.get_facing())))
+        log.warn(string.format("[FPS] cam_yaw=%.1f facing=%.1f", camera.get_yaw(), math.deg(camera.get_facing())))
     end
 
     -- 空格起跳：仅贴地时生效（character.jump 已做贴地判定，空中按压不缓冲）

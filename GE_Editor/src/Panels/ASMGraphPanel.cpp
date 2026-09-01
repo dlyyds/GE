@@ -101,11 +101,14 @@ void ASMGraphPanel::OnImGuiRender() {
 
     AnimStateMachineComponent &asmc = selected.GetComponent<AnimStateMachineComponent>();
 
-    // 顶栏（实体名 + 状态机开关 + 重新布局）放在外层 Child：若放进 ed::Begin 内部，
-    // 画布的 GetContentRegionAvail() 会在按钮下方量高度，画布撑不满窗口。外层 Child
-    // 用 BeginChild("ASMBody", ImVec2(0,0), ...) 先占掉整窗剩余区域，ed::Begin 在
-    // Child 内的可用区即整窗剩余高度（官方 basic-interaction 同款结构）。
-    ImGui::BeginChild("##asmTopBar", ImVec2(0, 0), false,
+    // 整个面板内容放外层 Child（占满窗口）：
+    //   - 顶栏一行（实体名 / 状态机开关 / 重新布局）
+    //   - ed::Begin 画布在 Child 内、顶栏之后，GetContentRegionAvail() 量到的是
+    //     Child 剩余全部区域 → 画布撑满窗口剩余；且 Child 尺寸稳定（= 窗口尺寸），
+    //     NavigateAction 的尺寸连续化不漂移，缩放/平移不乱跑。
+    // 注意：ed::Begin 必须也在 Child 内。若画布留在 Child 外（EndChild 之后），
+    // 主窗口剩余高度只剩一行，画布高度 ≈ 0，节点全部被裁 → 什么都看不见。
+    ImGui::BeginChild("##asmBody", ImVec2(0, 0), false,
                       ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
     {
         ImGui::TextUnformatted(selected.GetComponent<TagComponent>().Tag.c_str());
@@ -121,10 +124,11 @@ void ASMGraphPanel::OnImGuiRender() {
             // 由下一帧画布导航聚焦内容（重新布局按钮也支持直接触发 NavigateToContent）
             m_RequestNavigateContent = true;
         }
+
+        // 画布：ed::Begin 之前不插其它控件，GetContentRegionAvail() 即 Child 剩余全部区域
+        DrawASMGraph(asmc);
     }
     ImGui::EndChild();
-
-    DrawASMGraph(asmc);
 
     ImGui::End();
 }

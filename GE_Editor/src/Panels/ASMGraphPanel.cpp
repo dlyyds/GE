@@ -146,8 +146,10 @@ void ASMGraphPanel::DrawASMGraph(AnimStateMachineComponent &asmc) {
     const uintptr_t entityId = static_cast<uintptr_t>(entt::to_integral(handle));
     m_EntityId = entityId;
 
-    // 首次布局标记：实体切换 / 状态增删时复位，下帧对坐标仍在原点的节点补一次网格布局
-    if (m_LastEntityId != entityId || m_LastStateCount != states.size()) {
+    // 首次布局标记：实体切换 / 状态增删时复位，下帧对坐标仍在原点的节点补一次网格布局。
+    // 首次见到实体时 ANY 节点也要摆到固定角落（避免与状态0都在 (0,0) 重叠，ANY 被盖住拖不动）。
+    const bool firstSeenEntity = (m_LastEntityId != entityId);
+    if (firstSeenEntity || m_LastStateCount != states.size()) {
         m_LastEntityId = entityId;
         m_LastStateCount = states.size();
         m_NeedsInitialLayout = true;
@@ -159,8 +161,11 @@ void ASMGraphPanel::DrawASMGraph(AnimStateMachineComponent &asmc) {
         ed::NavigateToContent();
     }
 
-    // ---- 虚拟 ANY 节点：固定画布左上，作为 from==SIZE_MAX 连线的公共源 ----
+    // ---- 虚拟 ANY 节点：固定画布左上（首次布局 / 重新布局时重置到角落），from==SIZE_MAX 的公共源 ----
     const ed::NodeId anyNodeId(EncodeNodeId(entityId, kStateIndexMask));
+    if (firstSeenEntity || m_NeedsInitialLayout) {
+        ed::SetNodePosition(anyNodeId, ImVec2(20.0f, 20.0f));
+    }
     {
         ed::BeginNode(anyNodeId);
         ImGui::Text("ANY");
@@ -179,9 +184,10 @@ void ASMGraphPanel::DrawASMGraph(AnimStateMachineComponent &asmc) {
         const ed::PinId outPin(EncodePinId(entityId, i, true));
         const ed::PinId inPin(EncodePinId(entityId, i, false));
 
-        // 首次见到该状态（位置在原点）→ 按声明序网格摆放，避免叠在原点
+        // 首次见到该状态（位置在原点）→ 按声明序网格摆放，避免叠在原点。
+        // 注意：只有「原点」才触发布局，实体切换后已有坐标的状态保持原位置（计划书 D1）。
         const ImVec2 pos = ed::GetNodePosition(nodeId);
-        if ((pos.x == 0.0f && pos.y == 0.0f) || m_NeedsInitialLayout) {
+        if (pos.x == 0.0f && pos.y == 0.0f) {
             LayoutNode(i);
         }
 
@@ -246,6 +252,7 @@ void ASMGraphPanel::DrawASMGraph(AnimStateMachineComponent &asmc) {
         ed::Link(linkId, startPin, endPin, linkColor, 2.0f);
     }
 
+    // 复位首次布局标记（ANY 节点首帧已摆到角落）
     m_NeedsInitialLayout = false;
 
     ed::End();

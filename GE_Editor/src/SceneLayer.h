@@ -112,6 +112,14 @@ private:
 
     /// 当前是否已锁定鼠标（防重复 glfwSetInputMode）
     bool m_MouseCaptured = false;
+
+    /// 在 Scene 视口内叠加绘制第一人称视点标记（十字 + 到脚底的虚线）。
+    /// 视点世界坐标 = 角色脚底 + EyeOffset（与 UpdateFirstPersonCamera 一致），
+    /// 用于摆放时直观确认视点高度/过肩偏移。
+    void DrawFirstPersonEyes(const glm::vec2 &imagePos);
+
+    /// 是否叠加第一人称视点标记（依赖 FirstPersonCameraComponent 实体存在）
+    bool m_ShowFPSEyes = true;
 };
 
 } // namespace GE

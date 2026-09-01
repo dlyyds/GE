@@ -366,6 +366,11 @@ void SceneLayer::OnImGuiRender() {
                 DrawColliders(glm::vec2(imagePos.x, imagePos.y));
             }
 
+            // 第一人称视点标记叠加：十字 + 到脚底的虚线（世界 EyeOffset 投影）
+            if (m_ShowFPSEyes) {
+                DrawFirstPersonEyes(glm::vec2(imagePos.x, imagePos.y));
+            }
+
             // 阶段 C：Play 运行中在视口左下角叠"▶ 运行中"徽标（gizmo 已隐藏，一眼可见当前处于模拟）
             if (m_Context->Scene && m_Context->Scene->IsPlaying()) {
                 ImDrawList *dl = ImGui::GetWindowDrawList();
@@ -431,6 +436,8 @@ void SceneLayer::OnImGuiRender() {
         ImGui::Checkbox("关节露点", &m_ShowJointDots);
         // 物理碰撞体线框开关（叠加在视口上：盒子/球体青绿色）
         ImGui::Checkbox("显示碰撞体", &m_ShowColliders);
+        // 第一人称视点标记开关（叠加在视口上：EyeOffset 十字 + 到脚底虚线）
+        ImGui::Checkbox("显示视点", &m_ShowFPSEyes);
 
         ImGui::TextDisabled("提示：先在左侧 Hierarchy/Properties 中调整实体，再保存/加载验证");
     }
@@ -867,6 +874,59 @@ void SceneLayer::DrawColliders(const glm::vec2 &imagePos) {
         }
         const glm::vec3 center = tc.Translation + tc.Rotation * (shift + cc.Offset);
         drawCapsuleMesh(center, tc.Rotation * axisRot, cc.Radius, cylHalf);
+    }
+}
+
+void SceneLayer::DrawFirstPersonEyes(const glm::vec2 &imagePos) {
+    if (!m_Context->Scene) {
+        return;
+    }
+    const Camera &camera = GetActiveViewCamera();
+
+    // 还原 OpenGL 投影（与 DrawColliders/DrawWorldBounds 同款，保证标记与画面/gizmo 对齐）
+    glm::mat4 projGL = camera.GetProj();
+    projGL[1][1] *= -1.0f;
+    const glm::mat4 viewProjGL = projGL * camera.GetView();
+
+    const glm::vec2 origin{imagePos.x, imagePos.y};
+    const glm::vec2 size{m_ViewportSize.x, m_ViewportSize.y};
+    ImDrawList *dl = ImGui::GetWindowDrawList();
+
+    // 视点世界坐标投影到屏幕。坐标 = 角色脚底 + EyeOffset（与 Scene::UpdateFirstPersonCamera
+    // 一致：角色 yaw 每帧与相机同步后，绕 up 旋转 EyeOffset 恒等于原向量）。
+    // 单个投影点不裁剪（点若在相机背面，投影后屏幕坐标越界、AddLine 自然不画）。
+    const auto projectPoint = [&](const glm::vec3 &world) -> glm::vec2 {
+        const glm::vec4 c = viewProjGL * glm::vec4(world, 1.0f);
+        return glm::vec2(origin.x + (0.5f + c.x / c.w * 0.5f) * size.x,
+                         origin.y + (0.5f - c.y / c.w * 0.5f) * size.y);
+    };
+
+    // 视点标记颜色（橙，区分青绿碰撞体/灰盒/红绑定盒）
+    const ImU32 eyeColor = ImGui::ColorConvertFloat4ToU32(ImVec4(1.00f, 0.65f, 0.10f, 1.0f));
+    const ImU32 footColor = ImGui::ColorConvertFloat4ToU32(ImVec4(1.00f, 0.65f, 0.10f, 0.45f));
+
+    const auto fpsView = m_Context->Scene->Reg().view<TransformComponent, CharacterControllerComponent,
+                                                        FirstPersonCameraComponent>();
+    for (auto entity : fpsView) {
+        const auto &tc = fpsView.get<TransformComponent>(entity);
+        const auto &fp = fpsView.get<FirstPersonCameraComponent>(entity);
+        if (!fp.Enabled) {
+            continue; // 关闭视点的角色不画
+        }
+        const glm::vec3 foot = tc.Translation;
+        const glm::vec3 eye = foot + fp.EyeOffset;
+        const glm::vec2 sEye = projectPoint(eye);
+        const glm::vec2 sFoot = projectPoint(foot);
+
+        // 到脚底的虚线：先画粗的深色底（压场景高亮），再叠半透明橙色，视觉更清楚
+        dl->AddLine(ImVec2(sFoot.x, sFoot.y), ImVec2(sEye.x, sEye.y), IM_COL32(0, 0, 0, 160), 3.0f);
+        dl->AddLine(ImVec2(sFoot.x, sFoot.y), ImVec2(sEye.x, sEye.y), footColor, 1.5f,
+                    ImDrawFlags_None);
+
+        // 视点十字（水平 12px × 垂直 12px），随屏幕朝向、不随角色旋转
+        constexpr float kHalf = 6.0f;
+        dl->AddLine(ImVec2(sEye.x - kHalf, sEye.y), ImVec2(sEye.x + kHalf, sEye.y), eyeColor, 2.0f);
+        dl->AddLine(ImVec2(sEye.x, sEye.y - kHalf), ImVec2(sEye.x, sEye.y + kHalf), eyeColor, 2.0f);
     }
 }
 

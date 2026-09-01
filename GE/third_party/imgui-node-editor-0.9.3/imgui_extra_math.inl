@@ -19,6 +19,10 @@
 
 
 //------------------------------------------------------------------------------
+// imgui 1.89.5+ 的 IMGUI_DEFINE_MATH_OPERATORS 已提供这些 ImVec2 运算符，
+// 本库 0.9.3 无条件重定义会与新版 imgui（引擎为 1.92.8）重复定义 → 编译期跳过，
+// 改用 imgui.h 自带的运算符实现。
+# if IMGUI_VERSION_NUM < 18955
 inline bool operator==(const ImVec2& lhs, const ImVec2& rhs)
 {
     return lhs.x == rhs.x && lhs.y == rhs.y;
@@ -34,7 +38,6 @@ inline ImVec2 operator*(const float lhs, const ImVec2& rhs)
     return ImVec2(lhs * rhs.x, lhs * rhs.y);
 }
 
-# if IMGUI_VERSION_NUM < 18955
 inline ImVec2 operator-(const ImVec2& lhs)
 {
     return ImVec2(-lhs.x, -lhs.y);

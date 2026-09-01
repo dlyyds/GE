@@ -251,6 +251,7 @@ void RegisterApi(Impl &eng) {
     animT["trigger"] = [&eng](const std::string &name) {
         if (auto *asmc = ActiveAnimStateMachine(eng)) {
             asmc->triggers.insert(name);
+            GE_CORE_INFO("[ASM] 脚本注入 trigger '{}'", name);
         } else {
             GE_CORE_WARN("[Lua] anim.trigger: 实体无 AnimStateMachine 组件");
         }

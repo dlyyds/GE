@@ -640,7 +640,7 @@ void Scene::UpdateFirstPersonCamera() {
         fp.EyeOffset.x * std::cos(yawRad) + fp.EyeOffset.z * std::sin(yawRad),
         fp.EyeOffset.y,
         -fp.EyeOffset.x * std::sin(yawRad) + fp.EyeOffset.z * std::cos(yawRad));
-    cam.SetPosition(tc.Translation + offset);
+    //cam.SetPosition(tc.Translation + offset);
 }
 
 void Scene::StepPhysics(Timestep ts) {

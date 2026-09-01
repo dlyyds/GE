@@ -30,10 +30,12 @@ struct ImLine
 
 
 //------------------------------------------------------------------------------
+// imgui 1.89.5+ 的 IMGUI_DEFINE_MATH_OPERATORS 已提供这些 ImVec2 运算符，
+// 本库 0.9.3 在此处的前置声明会与新版 imgui.h 的运算符定义重复 → 编译期跳过。
+# if IMGUI_VERSION_NUM < 18955
 inline bool operator==(const ImVec2& lhs, const ImVec2& rhs);
 inline bool operator!=(const ImVec2& lhs, const ImVec2& rhs);
 inline ImVec2 operator*(const float lhs, const ImVec2& rhs);
-# if IMGUI_VERSION_NUM < 18955
 inline ImVec2 operator-(const ImVec2& lhs);
 # endif
 

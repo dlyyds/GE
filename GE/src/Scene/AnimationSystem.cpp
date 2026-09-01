@@ -398,12 +398,30 @@ void UpdateAnimations(entt::registry &registry, ScriptEngine &scriptEngine, Time
                             continue;
                         }
                         if (t.to != asmc->current && t.to < asmc->states.size()) {
+                            const size_t fromState = asmc->current;
                             EnterState(*asmc, ac, t.to, t.blendSec);
+                            // 诊断：本帧实际触发了转换，打印命中的边与是否消费了 trigger 脉冲
+                            std::string readNames;
+                            for (const auto &rn : consumedTriggers) {
+                                readNames += (readNames.empty() ? "" : ",") + rn;
+                            }
+                            GE_CORE_INFO("[ASM] 状态 {} → {}（blend {:.2f}s）触发, 读取 trigger: {}",
+                                         asmc->states[fromState].name, asmc->states[t.to].name,
+                                         t.blendSec, readNames.empty() ? "-" : readNames);
                         }
                         break; // 声明序首达优先
                     }
                     for (const std::string &name : consumedTriggers) {
                         asmc->triggers.erase(name); // 帧末统一消费
+                    }
+                    // 诊断：帧末仍有未消费的 trigger 残留 → 说明有脉冲既未被任何边命中、
+                    // 也没有随转换被消费（可能就是我们怀疑的"读到未触发却提前清除"反例，或外部注入）
+                    if (!asmc->triggers.empty()) {
+                        std::string pending;
+                        for (const auto &tn : asmc->triggers) {
+                            pending += tn + " ";
+                        }
+                        GE_CORE_INFO("[ASM] 帧末残留未消费 trigger: {}", pending);
                     }
                 }
             }

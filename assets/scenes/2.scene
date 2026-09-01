@@ -175,16 +175,16 @@ Scene:
         FixedAspectRatio: false
         Mode: FPS
         Fov: 60
-        Aspect: 1.4305949
+        Aspect: 1.3522191
         Near: 0.1
         Far: 100
         Target: [20.311443, 1.0204772, -3.2527063]
         Theta: 368.7024
         Phi: 9.449544
         Distance: 33
-        Position: [-23.71559, 16.036264, -5.4033747]
-        Yaw: 237.89948
-        Pitch: -29.50005
+        Position: [-4.697946, 16.478474, 16.070837]
+        Yaw: 23.900154
+        Pitch: -29.200033
     - Name: car1
       Id: 74295f1eb52dc8d990ef849959ce39687bdf3e73091957880a02af4b4b758dc1
       Transform:
@@ -239,7 +239,7 @@ Scene:
       Parent: 403c89a23cac231607e67faa2902d9b939c63cda6e672f0e70e40a400e9c15f2
       Transform:
         Translation: [-2.5967927e-06, 20.199995, 3.352988e-06]
-        Rotation: [0.9167963, 0.39766318, 0.035378296, 0.0098462375]
+        Rotation: [0.91683203, 0.39757907, 0.035400987, 0.009830851]
         Scale: [0.9999998, 0.99999994, 0.99999994]
       Joint:
         JointIndex: 9
@@ -248,7 +248,7 @@ Scene:
       Parent: 6bdb17db1cdcc60f461db28f2f0cfeed7ebe1c03929344fc7dec39a00e3d8eec
       Transform:
         Translation: [2.2026973e-06, 37.492996, 9.3012346e-07]
-        Rotation: [0.7874787, 0.5976798, 0.11041512, 0.10229772]
+        Rotation: [0.78861356, 0.5961072, 0.11066514, 0.1024607]
         Scale: [1, 1.0000001, 1]
       Joint:
         JointIndex: 8
@@ -257,7 +257,7 @@ Scene:
       Parent: 4f60fb70452d9685e4d3222fad87676f033e9285e154e20e70b78abd37c3b8fb
       Transform:
         Translation: [4.6747152e-07, 41.151672, 6.5190005e-07]
-        Rotation: [0.93494016, -0.3464336, 0.07362912, -0.021200553]
+        Rotation: [0.93450886, -0.3473436, 0.074605376, -0.021900188]
         Scale: [1, 0.99999964, 0.9999996]
       Joint:
         JointIndex: 7
@@ -266,7 +266,7 @@ Scene:
       Parent: ba4466419ebfece170ef3772aa58d8215fdca000f91fb2abe5a8d02241e68d20
       Transform:
         Translation: [6.2642508, 12.592015, -1.4592793]
-        Rotation: [0.38933954, 0.5879258, 0.40774965, -0.5800846]
+        Rotation: [0.3869982, 0.5948136, 0.39933124, -0.5804859]
         Scale: [0.9999995, 0.99999946, 0.9999998]
       Joint:
         JointIndex: 14
@@ -275,7 +275,7 @@ Scene:
       Parent: 3527431b36af2f91bfce80a28aadf2f1daab26cb5ffa5a0c5b79c0314fc348d0
       Transform:
         Translation: [-5.271286e-07, 14.038224, 4.1269794e-07]
-        Rotation: [0.9860886, 0.14472482, 0.08048015, -0.01438836]
+        Rotation: [0.9858496, 0.14613418, 0.080812514, -0.0146519095]
         Scale: [0.99999994, 1, 1]
       Joint:
         JointIndex: 13
@@ -284,7 +284,7 @@ Scene:
       Parent: eefe3b1557946629d3206e6f928738d03d7b987105733ddb5ed854851604a82b
       Transform:
         Translation: [-7.109586e-07, 12.1748085, -1.19209105e-07]
-        Rotation: [0.9918612, 0.0976077, 0.08107405, -0.01053993]
+        Rotation: [0.9916897, 0.099026784, 0.08141845, -0.010787354]
         Scale: [1, 1.0000001, 1]
       Joint:
         JointIndex: 12
@@ -293,7 +293,7 @@ Scene:
       Parent: 2990d6ee1ca647838ad82cd2153bc7a37ced7dc4287fe3e09f37001131dd3a90
       Transform:
         Translation: [0.012400919, 10.4452305, -0.9962743]
-        Rotation: [0.99914086, 0.0012935024, 0.04092181, -0.0064225853]
+        Rotation: [0.9991313, 0.0020089457, 0.04109925, -0.0065879896]
         Scale: [1, 1, 1]
       Joint:
         JointIndex: 11
@@ -302,7 +302,7 @@ Scene:
       Parent: 007190e17fcaefdd6b7feaaa73e81b19df7bb2bffd8e5928c388a720385e0c2b
       Transform:
         Translation: [-2.8032408, 13.619135, 0.61431265]
-        Rotation: [0.99783105, 0.033926573, -0.0054016374, 0.05615127]
+        Rotation: [0.9976269, 0.041844245, -0.0071950234, 0.05420219]
         Scale: [0.9999998, 0.99999994, 1]
       Joint:
         JointIndex: 18
@@ -311,7 +311,7 @@ Scene:
       Parent: 0623e3b0be0a6ac4497033cd69449429c0bf48d164dda1b2ed9439e1a64d0d1f
       Transform:
         Translation: [-7.297378e-06, 26.464098, 2.0083203e-06]
-        Rotation: [0.9821931, -0.12821998, 0.13677375, 0.012217651]
+        Rotation: [0.9766201, -0.16332173, 0.1392101, 0.012640068]
         Scale: [0.99999994, 0.9999998, 0.99999994]
       Joint:
         JointIndex: 17
@@ -320,7 +320,7 @@ Scene:
       Parent: 5c9d4f78468a22ca26b92f3fb259986302dbf29e2a8512329f99fac4a1f1bff3
       Transform:
         Translation: [2.0687921e-06, 21.773022, -3.4423506e-06]
-        Rotation: [0.9054009, -0.010516728, 0.061266772, 0.41998234]
+        Rotation: [0.9068108, -0.012395803, 0.060301896, 0.41701832]
         Scale: [1.0000001, 1, 1]
       Joint:
         JointIndex: 16
@@ -329,7 +329,7 @@ Scene:
       Parent: dbaab97497e400426f15ec4375c2ec254edd7ccedfa0917858df64d93855d4d6
       Transform:
         Translation: [-9.875323e-06, 13.826992, 1.3065663e-05]
-        Rotation: [0.90121514, 0.41620845, -0.10397054, 0.061416216]
+        Rotation: [0.90261304, 0.41249824, -0.10630808, 0.06191536]
         Scale: [1, 1.0000002, 1.0000004]
       Joint:
         JointIndex: 15
@@ -338,7 +338,7 @@ Scene:
       Parent: 2990d6ee1ca647838ad82cd2153bc7a37ced7dc4287fe3e09f37001131dd3a90
       Transform:
         Translation: [-10.015143, -5.802842, -0.5826999]
-        Rotation: [0.13287275, -0.121781185, 0.02010476, 0.9834175]
+        Rotation: [0.13222222, -0.121468075, 0.022824222, 0.9834845]
         Scale: [0.9999999, 0.9999998, 1.000001]
       Joint:
         JointIndex: 6
@@ -356,7 +356,7 @@ Scene:
       Parent: b3d7dec37e1da4e675f44e8e9e734329ff79e77845144568f9f5867ad2cbcd70
       Transform:
         Translation: [-1.2010584e-06, 20.19999, 5.102912e-07]
-        Rotation: [0.9132197, 0.40534368, -0.020670705, -0.036041096]
+        Rotation: [0.913724, 0.40444118, -0.01818933, -0.034711067]
         Scale: [0.99999976, 0.99999994, 1]
       Joint:
         JointIndex: 4
@@ -365,7 +365,7 @@ Scene:
       Parent: f6dc86489a0c55db562fb0f35a4bf52fbaba4a70589650257f046a34af41c73c
       Transform:
         Translation: [-4.6568684e-06, 37.492992, 2.2952831e-06]
-        Rotation: [0.8716208, 0.48483977, -0.07051588, -0.015337401]
+        Rotation: [0.8731919, 0.4820695, -0.070199974, -0.014725514]
         Scale: [0.99999994, 1, 0.9999999]
       Joint:
         JointIndex: 3
@@ -383,7 +383,7 @@ Scene:
       Parent: 007190e17fcaefdd6b7feaaa73e81b19df7bb2bffd8e5928c388a720385e0c2b
       Transform:
         Translation: [2.8652747, 12.981088, -0.31295124]
-        Rotation: [0.9549948, 0.26881495, -0.01601983, -0.12436545]
+        Rotation: [0.9539438, 0.2720164, -0.014288023, -0.12567441]
         Scale: [0.9999999, 1.0000001, 0.99999994]
       Joint:
         JointIndex: 30
@@ -392,7 +392,7 @@ Scene:
       Parent: ecab2722b9bff996581dbebbdc25a5b1db016930793d561333c7600644107f9f
       Transform:
         Translation: [5.6468724e-07, 2.592457, 7.1484264e-06]
-        Rotation: [0.95947725, 0.28075495, 0.0016804485, 0.024023019]
+        Rotation: [0.9602738, 0.27803227, 0.0016567257, 0.023864876]
         Scale: [1.0000001, 0.9999999, 0.99999994]
       Joint:
         JointIndex: 31
@@ -410,7 +410,7 @@ Scene:
       Parent: 655a3ccae5c1564fd5e74b1fee419a17b1497fee9fb2093261bd1acbaff6b26d
       Transform:
         Translation: [5.3170584e-06, 1.8336645, 5.624259e-07]
-        Rotation: [0.9406294, 0.33276913, 0.017512428, 0.064609565]
+        Rotation: [0.94156593, 0.33011973, 0.01734513, 0.06460474]
         Scale: [1, 0.99999994, 1]
       Joint:
         JointIndex: 27
@@ -419,7 +419,7 @@ Scene:
       Parent: 657c5e1149295d3a855526d5750eaefe38ac4406f0c78bed0729e8bb37b74b87
       Transform:
         Translation: [-2.2626545e-33, 7.0131626, 0.91843796]
-        Rotation: [0.98326653, -0.037146263, 0.17821951, -0.0067028436]
+        Rotation: [0.98247474, -0.058225892, 0.17686558, -0.008463902]
         Scale: [1, 0.9999999, 1.0000001]
       Joint:
         JointIndex: 39
@@ -428,7 +428,7 @@ Scene:
       Parent: ba4466419ebfece170ef3772aa58d8215fdca000f91fb2abe5a8d02241e68d20
       Transform:
         Translation: [0.049887557, 15.686722, -1.4916565]
-        Rotation: [0.9996969, -0.022396522, -0.010125131, 0.0013412142]
+        Rotation: [0.99945396, -0.031394497, -0.010287818, 0.0006352822]
         Scale: [1, 1, 0.9999999]
       Joint:
         JointIndex: 38
@@ -455,7 +455,7 @@ Scene:
       Parent: ba4466419ebfece170ef3772aa58d8215fdca000f91fb2abe5a8d02241e68d20
       Transform:
         Translation: [-6.1681876, 12.592014, -1.5240226]
-        Rotation: [0.41055247, 0.6340422, -0.37284362, 0.5389106]
+        Rotation: [0.4072614, 0.6409564, -0.36430213, 0.5390705]
         Scale: [1, 1, 1.0000001]
       Joint:
         JointIndex: 43
@@ -491,7 +491,7 @@ Scene:
       Parent: 51e2da7d27f743c769fa6adbb5a1938065c1535ecb3c103e510f284c9a4c3eca
       Transform:
         Translation: [2.9655752, 13.623698, 0.47133055]
-        Rotation: [0.9985487, 0.052853078, 0.009984029, 0.002738712]
+        Rotation: [0.9992759, 0.036479115, 0.009836694, 0.004491964]
         Scale: [0.9999999, 0.9999998, 0.99999994]
       Joint:
         JointIndex: 47
@@ -500,7 +500,7 @@ Scene:
       Parent: 8a683214b333bf3ac6e97b8c7e413e324b19411aae054c7c78835e310c002ed8
       Transform:
         Translation: [8.461065e-07, 26.395052, 3.2302817e-06]
-        Rotation: [0.9891617, 0.09824252, -0.05676467, -0.093196236]
+        Rotation: [0.99295956, 0.0910041, -0.049139436, -0.05774923]
         Scale: [0.99999994, 1, 0.9999999]
       Joint:
         JointIndex: 46
@@ -509,7 +509,7 @@ Scene:
       Parent: 116127681d4ac7e04d890a13db081f7d5f53935d601af3df3c336506b44c29e8
       Transform:
         Translation: [-2.0935903e-07, 21.68007, -1.5820259e-06]
-        Rotation: [0.9292757, 0.055050332, 0.012118828, -0.36506075]
+        Rotation: [0.9289817, 0.049619444, 0.030781953, -0.3654908]
         Scale: [0.99999964, 0.99999976, 0.99999976]
       Joint:
         JointIndex: 45
@@ -518,7 +518,7 @@ Scene:
       Parent: 4062184a68bc10503a2c24f750467761cf4db4c0f13ecc5caa909e3e342d776c
       Transform:
         Translation: [-1.0499164e-05, 13.922129, -2.5484946e-06]
-        Rotation: [0.899631, 0.38750646, 0.11045535, 0.16823351]
+        Rotation: [0.89997286, 0.3845451, 0.11380738, 0.17094412]
         Scale: [1, 1, 1]
       Joint:
         JointIndex: 44
@@ -527,7 +527,7 @@ Scene:
       Parent: 51e2da7d27f743c769fa6adbb5a1938065c1535ecb3c103e510f284c9a4c3eca
       Transform:
         Translation: [0.112465285, 13.970368, -0.033342756]
-        Rotation: [0.9927362, 0.118150406, 0.007751376, 0.021334961]
+        Rotation: [0.992695, 0.11848293, 0.007752282, 0.021411637]
         Scale: [1, 1, 1]
       Joint:
         JointIndex: 51
@@ -554,7 +554,7 @@ Scene:
       Parent: 11e6e27978f8f43ff9f8728839ba40ac450732e7ddda42da707f31c5f92977c4
       Transform:
         Translation: [-8.905257e-07, 2.4450455, 5.664813e-06]
-        Rotation: [0.98110056, 0.1934236, 0.0013425031, 0.0052329167]
+        Rotation: [0.9891593, 0.1465078, 0.00015471241, 0.009970028]
         Scale: [1, 1.0000001, 1.0000001]
       Joint:
         JointIndex: 48
@@ -563,7 +563,7 @@ Scene:
       Parent: 51e2da7d27f743c769fa6adbb5a1938065c1535ecb3c103e510f284c9a4c3eca
       Transform:
         Translation: [-4.565398, 11.387088, 0.47880855]
-        Rotation: [0.9695874, 0.22174945, -0.009773467, 0.10311139]
+        Rotation: [0.9696897, 0.2212822, -0.009773564, 0.10315238]
         Scale: [1, 1, 1]
       Joint:
         JointIndex: 55
@@ -590,7 +590,7 @@ Scene:
       Parent: 22e54074eecde414cb81ea77e8b9a909f46366bf0612ebbbb2a2cd87546f1fa7
       Transform:
         Translation: [-5.115462e-07, 2.734258, 2.7073067e-06]
-        Rotation: [0.9643335, 0.26311338, -0.0021209014, -0.028772794]
+        Rotation: [0.96015805, 0.27782708, -0.0021989576, -0.030063717]
         Scale: [0.9999997, 0.99999964, 0.99999976]
       Joint:
         JointIndex: 52
@@ -599,7 +599,7 @@ Scene:
       Parent: 567c04d693f5440c7ea79650ac0c1d42a5700c5e8c79c7d86b50bcf15efb4fb3
       Transform:
         Translation: [6.1583532e-06, 3.9019506, -2.4183244e-05]
-        Rotation: [0.99978715, 0.019614713, 0.0005163536, -0.00638689]
+        Rotation: [0.9996519, 0.024825064, 0.0014683871, -0.008813248]
         Scale: [1.0000001, 1, 1.0000002]
       Joint:
         JointIndex: 35
@@ -608,7 +608,7 @@ Scene:
       Parent: 007190e17fcaefdd6b7feaaa73e81b19df7bb2bffd8e5928c388a720385e0c2b
       Transform:
         Translation: [-2.0807278, 3.8894079, 1.8793728]
-        Rotation: [0.9346382, 0.26982996, 0.120857395, 0.19757761]
+        Rotation: [0.9344139, 0.27762488, 0.12409724, 0.18545906]
         Scale: [0.99999976, 0.9999999, 1]
       Joint:
         JointIndex: 34
@@ -635,7 +635,7 @@ Scene:
       Parent: 7f2703a33cd56c4620f4b3ec6b6405e0b63df8468891d55ff6505e944c292e96
       Transform:
         Translation: [-2.4857206e-06, 41.151733, -6.7875817e-06]
-        Rotation: [0.9257452, -0.3570158, 0.12002106, -0.033624098]
+        Rotation: [0.92626476, -0.35578457, 0.11976954, -0.033259388]
         Scale: [0.9999998, 0.9999997, 0.9999992]
       Joint:
         JointIndex: 2
@@ -644,7 +644,7 @@ Scene:
       Parent: 2990d6ee1ca647838ad82cd2153bc7a37ced7dc4287fe3e09f37001131dd3a90
       Transform:
         Translation: [10.128667, -5.8028316, -0.5827037]
-        Rotation: [0.10693156, -0.07835056, -0.22808692, -0.96457404]
+        Rotation: [0.10616598, -0.077462174, -0.23018545, -0.9642319]
         Scale: [1.0000001, 1.0000002, 1.0000011]
       Joint:
         JointIndex: 1
@@ -652,8 +652,8 @@ Scene:
       Id: 2990d6ee1ca647838ad82cd2153bc7a37ced7dc4287fe3e09f37001131dd3a90
       Parent: 2425661bf391e96b3f47dfbbee1fefd165aa3d817f57cf7b2807375d43406623
       Transform:
-        Translation: [-0.82161456, 0.24587831, -90.60902]
-        Rotation: [0.6297504, -0.6835464, -0.26970473, 0.2518692]
+        Translation: [-0.4870657, 0.08341026, -90.624275]
+        Rotation: [0.6303377, -0.68348134, -0.2695066, 0.25078648]
         Scale: [1, 1, 1]
       Joint:
         JointIndex: 0
@@ -662,7 +662,7 @@ Scene:
       Parent: 282e7c7becaee9be87c12441d25c15df4f00ec77e030f2786f36eab64242dca9
       Transform:
         Translation: [5.6245273e-08, 2.4558194, -1.4369295e-05]
-        Rotation: [0.94706285, 0.3192718, -0.0023250855, -0.03364518]
+        Rotation: [0.94457173, 0.32650506, -0.0023713985, -0.03425119]
         Scale: [0.9999998, 0.9999999, 0.9999998]
       Joint:
         JointIndex: 60
@@ -671,7 +671,7 @@ Scene:
       Parent: 51e2da7d27f743c769fa6adbb5a1938065c1535ecb3c103e510f284c9a4c3eca
       Transform:
         Translation: [-2.7493682, 13.308053, -0.012113576]
-        Rotation: [0.97899944, 0.18974486, -0.00760078, 0.07415717]
+        Rotation: [0.9776631, 0.19685979, -0.006903699, 0.07330412]
         Scale: [1, 1, 1.0000001]
       Joint:
         JointIndex: 59
@@ -698,7 +698,7 @@ Scene:
       Parent: 43db0401887cfd46c9b70b28f5166e079d842bbdc119a6183fc43611f9c0af45
       Transform:
         Translation: [-2.512147e-08, 2.2283227, 3.1208172e-06]
-        Rotation: [0.93762887, 0.33729747, -0.018286621, -0.08214714]
+        Rotation: [0.93485194, 0.34479174, -0.018755432, -0.082576044]
         Scale: [1, 0.99999976, 0.9999998]
       Joint:
         JointIndex: 56
@@ -716,7 +716,7 @@ Scene:
       Parent: 65aec32e1f761f655a457a1c8b96f04d32d10264c4b1a15ea9c857b16b9c59cd
       Transform:
         Translation: [-9.844321e-06, 4.0464725, -2.160401e-05]
-        Rotation: [0.9791699, 0.046490878, -0.0054776445, 0.19757262]
+        Rotation: [0.9811301, 0.044012234, -0.0045455196, 0.18821763]
         Scale: [1, 0.9999999, 1]
       Joint:
         JointIndex: 64
@@ -725,7 +725,7 @@ Scene:
       Parent: 51e2da7d27f743c769fa6adbb5a1938065c1535ecb3c103e510f284c9a4c3eca
       Transform:
         Translation: [2.3528247, 4.06006, 1.9054917]
-        Rotation: [0.9537786, 0.18847793, 0.018463908, -0.2333275]
+        Rotation: [0.95106256, 0.19000179, 0.018287383, -0.24299167]
         Scale: [1, 1, 0.99999994]
       Joint:
         JointIndex: 63
@@ -758,7 +758,7 @@ Scene:
         Color: [1, 1, 1, 1]
         Mesh: F:\yxy\project\GameEngine\assets\models\people3\people.gemesh
       Skin:
-        Id: 65d8d3cf31fc069679fe7040a76f2a98842b0fe9899bef6a124cd55104cf07b3
+        Id: bb1a73761ae7ea66ecabf46c157591e6c74ccc71c34de791c9b47d99231abdb6
         Mesh: F:\yxy\project\GameEngine\assets\models\people3\people.gemesh
     - Name: mixamorig:RightHandThumb4
       Id: 9d6ee64d87deeefb7631ae568e0dca3d1ed7e51156eb305de9a0634e4c205be8
@@ -780,16 +780,16 @@ Scene:
         FixedAspectRatio: false
         Mode: FPS
         Fov: 45
-        Aspect: 1.4419264
+        Aspect: 1.4305949
         Near: 0.1
         Far: 100
         Target: [0, 0, 0]
         Theta: 0
         Phi: 0
         Distance: 2
-        Position: [20.572277, 8.536266, -22.017206]
-        Yaw: 142.49965
-        Pitch: -76.50006
+        Position: [-4.697946, 16.478474, 16.070837]
+        Yaw: 47.89983
+        Pitch: -34.499973
       CharacterController:
         Radius: 3.45
         Height: 17.7
@@ -819,7 +819,7 @@ Scene:
             Value: 10.5
       Animation:
         Active: 1
-        Time: 6.396759
+        Time: 7.689453
         Speed: 1
         Playing: true
         Loop: true
@@ -854,28 +854,61 @@ Scene:
             Loop: true
             Speed: 1
         Transitions:
-          - From: "*"
+          - From: idle
             To: run
-            BlendSec: 0.08
+            BlendSec: 0.25
             Conditions:
               - Type: FloatCmp
                 Param: speed
                 Cmp: Greater
                 Value: 0.2
-          - From: "*"
+          - From: run
             To: idle
-            BlendSec: 0.36
+            BlendSec: 0.25
             Conditions:
               - Type: FloatCmp
                 Param: speed
                 Cmp: Less
                 Value: 0.1
+          - From: "*"
+            To: jump
+            BlendSec: 0.25
+            Conditions:
+              - Type: Bool
+                Param: jump
+                Expect: true
+          - From: jump
+            To: idle
+            BlendSec: 0.25
+            Conditions:
+              - Type: Bool
+                Param: on_ground
+                Expect: true
+              - Type: StateTime
+                Value: 0.3
+              - Type: FloatCmp
+                Param: speed
+                Cmp: Less
+                Value: 0.2
+          - From: jump
+            To: run
+            BlendSec: 0.25
+            Conditions:
+              - Type: Bool
+                Param: on_ground
+                Expect: true
+              - Type: StateTime
+                Value: 0.3
+              - Type: FloatCmp
+                Param: speed
+                Cmp: Greater
+                Value: 0.2
     - Name: mixamorig:LeftHandMiddle1
       Id: 155a49065c79ec1197cf479e6343f99e55aa711f27d1dee86a78649bb7bffca6
       Parent: 007190e17fcaefdd6b7feaaa73e81b19df7bb2bffd8e5928c388a720385e0c2b
       Transform:
         Translation: [-0.061487213, 13.711576, -0.13313632]
-        Rotation: [0.9878502, 0.12989128, 0.003903759, -0.08523646]
+        Rotation: [0.98710144, 0.13398588, 0.004507898, -0.0875126]
         Scale: [0.99999976, 1, 0.99999994]
       Joint:
         JointIndex: 22
@@ -902,7 +935,7 @@ Scene:
       Parent: a67dd657096b42ea02db1bbef2756d4a807170d7d57033d2768b54cd26fcb182
       Transform:
         Translation: [6.5343693e-06, 2.4450896, -6.520344e-06]
-        Rotation: [0.9885372, 0.1508447, -0.0009064948, -0.0062530865]
+        Rotation: [0.9894002, 0.14504528, -0.0007905438, -0.0069627734]
         Scale: [1.0000001, 1.0000002, 1]
       Joint:
         JointIndex: 19
@@ -911,7 +944,7 @@ Scene:
       Parent: 007190e17fcaefdd6b7feaaa73e81b19df7bb2bffd8e5928c388a720385e0c2b
       Transform:
         Translation: [5.564865, 12.410241, 0.64168507]
-        Rotation: [0.9411786, 0.29547817, -0.018738313, -0.16286369]
+        Rotation: [0.94063884, 0.29595596, -0.017036675, -0.16528319]
         Scale: [0.99999994, 0.9999999, 1.0000001]
       Joint:
         JointIndex: 26
@@ -938,7 +971,7 @@ Scene:
       Parent: 155a49065c79ec1197cf479e6343f99e55aa711f27d1dee86a78649bb7bffca6
       Transform:
         Translation: [-2.4376791e-07, 2.7342236, 1.1696883e-05]
-        Rotation: [0.9743773, 0.2229528, 0.0012832426, 0.02965783]
+        Rotation: [0.9804474, 0.19496363, 0.0011101312, 0.026658967]
         Scale: [0.99999994, 1, 1]
       Joint:
         JointIndex: 23
@@ -952,7 +985,7 @@ Scene:
       Joint:
         JointIndex: 10
   Skins:
-    - Id: 65d8d3cf31fc069679fe7040a76f2a98842b0fe9899bef6a124cd55104cf07b3
+    - Id: bb1a73761ae7ea66ecabf46c157591e6c74ccc71c34de791c9b47d99231abdb6
       Joints: [2990d6ee1ca647838ad82cd2153bc7a37ced7dc4287fe3e09f37001131dd3a90, 7f2703a33cd56c4620f4b3ec6b6405e0b63df8468891d55ff6505e944c292e96, f6dc86489a0c55db562fb0f35a4bf52fbaba4a70589650257f046a34af41c73c, b3d7dec37e1da4e675f44e8e9e734329ff79e77845144568f9f5867ad2cbcd70, 89e5cfe76ca5b15ac17087a51a3aeabc3202f0274deb0981ec8e65155ecc7e50, ba0e563efab5820be5359ac2e1df9b3eba7c25356c54de080402fcb1c4ca8e4b, 4f60fb70452d9685e4d3222fad87676f033e9285e154e20e70b78abd37c3b8fb, 6bdb17db1cdcc60f461db28f2f0cfeed7ebe1c03929344fc7dec39a00e3d8eec, 403c89a23cac231607e67faa2902d9b939c63cda6e672f0e70e40a400e9c15f2, 4c9a4670e96e320a07febc0ccd99e43520de20419be36007a072ebf1265c82b8, 9f02f3ee6a5653f5efae7d6dc4efb488683e8f5cfea00873a10fa6661c999e45, eefe3b1557946629d3206e6f928738d03d7b987105733ddb5ed854851604a82b, 3527431b36af2f91bfce80a28aadf2f1daab26cb5ffa5a0c5b79c0314fc348d0, ba4466419ebfece170ef3772aa58d8215fdca000f91fb2abe5a8d02241e68d20, dbaab97497e400426f15ec4375c2ec254edd7ccedfa0917858df64d93855d4d6, 5c9d4f78468a22ca26b92f3fb259986302dbf29e2a8512329f99fac4a1f1bff3, 0623e3b0be0a6ac4497033cd69449429c0bf48d164dda1b2ed9439e1a64d0d1f, 007190e17fcaefdd6b7feaaa73e81b19df7bb2bffd8e5928c388a720385e0c2b, a67dd657096b42ea02db1bbef2756d4a807170d7d57033d2768b54cd26fcb182, 280bf88320e960009b0a7a9d4ed3dcdb479dfd2052e85f97787237aef3f1c562, 6790b3c577e0fe328d9e1eb9e8e6d8b360e4087f1eec70c4a6577a1e85d4ccc7, 906111f5f96169943f8e15d750a80989bac23d7664a2abc6c008fa7c3afe47b3, 155a49065c79ec1197cf479e6343f99e55aa711f27d1dee86a78649bb7bffca6, b4aaa32cdedc524051b015f76b1f7d66bf993cb2153de37595284785eb0ad2b9, 13a95958bbbf610803a09d2b6bb11bb88bd8b66b47816073fd96f5c092c61415, 90a22178ec63830e0a29639b26657e72cb55d1df47bf65d1cc2bd8c619c680e5, 655a3ccae5c1564fd5e74b1fee419a17b1497fee9fb2093261bd1acbaff6b26d, 7419e87a0de530f2a167e1355cfab8c31528bb5443a5f75f42a5b55ef813c9d8, 3344205de28aceafa74ef762d7ea324db194444a3cc3c3aaf76b45cfc55d26ce, 92a54be41f8fe8b0eb876c1cef70cc83740e7e578cb6b8831bf3baf12a9dc4c1, ecab2722b9bff996581dbebbdc25a5b1db016930793d561333c7600644107f9f, a10d412a196bdced762a9ea1f1b781a2356f464541c0e85e9cfe37ab866fd28f, 59382ce64cff09bfd20d737dca5d5d33cdd91d1a3f06889238279b14fdba1c08, 0e38b306340a53f962be22354d73f4df6398fccb760f035a5363dac0961d1825, 567c04d693f5440c7ea79650ac0c1d42a5700c5e8c79c7d86b50bcf15efb4fb3, f4e2ce97618953187711710297cf87499a5e25914ada1cfa5ce707452e68e03f, 4858396a874ad089b5879f16592427c8eff1b1405244ce9bb0c962f448f66adb, f445fe56431f1dce543ab8d31998c7e3fd020b71d12184737e8cf1129eec16c4, 657c5e1149295d3a855526d5750eaefe38ac4406f0c78bed0729e8bb37b74b87, 5c996d719a2f214c0e61d2adcdfa244329418b1c3880db8a49aa69bf2c321d45, b07c5ee9df47233b752719eab9b0356c0ab75f22e2e9efb76eb09317ab4fd3ed, 250e7863c9b8241f81134963782178601c733aa6d8946b39d5de97cd1bfa7553, bee0313d96f1e06669b569f76b11d1317195bacfd73a8d7d49124bbacd414acd, 4062184a68bc10503a2c24f750467761cf4db4c0f13ecc5caa909e3e342d776c, 116127681d4ac7e04d890a13db081f7d5f53935d601af3df3c336506b44c29e8, 8a683214b333bf3ac6e97b8c7e413e324b19411aae054c7c78835e310c002ed8, 51e2da7d27f743c769fa6adbb5a1938065c1535ecb3c103e510f284c9a4c3eca, 11e6e27978f8f43ff9f8728839ba40ac450732e7ddda42da707f31c5f92977c4, 692945424c49094f18c6937b6184f5da626a3a30fdca0f80eedfccf05e6b5f68, 022225a8744e665ec8f3ae87915ee3a27b037d87a90a49f504072e6e8874bccb, ba6726034a6c40e6a53e64d524b3b22cba6fec91e9c65d222ad40c4672476919, 22e54074eecde414cb81ea77e8b9a909f46366bf0612ebbbb2a2cd87546f1fa7, 61fe47e86caa1f5dbc159b67b8106c21b76276e41c217f5238f9ff78e36679c2, 8f4835e3aab04e206e910f526b6cfb5227697eccb2bb07bace8bec5d97d0b9ed, 88672a76b9ed4f2fc307405dd968b944717119284e30b2dfa41a934c98cd7c06, 43db0401887cfd46c9b70b28f5166e079d842bbdc119a6183fc43611f9c0af45, 83039e0b71815692bf6b4f1efd5a1b0d6f60cea1ab7ff05be609b325b4c1020e, f6bf4f44ec4e124678382875a77a0678d865b169677af32dea6aa743c256f673, 7ca1a9e7a5f86841f7b799bd6fdf0966b5ce4da98ae0be453065be3a4daac22e, 282e7c7becaee9be87c12441d25c15df4f00ec77e030f2786f36eab64242dca9, 5f003e3ad7718d7d596e4ece452fed9cd8c3a8370de7f48455494f01bcf405b4, 12ff987546006c0b42b9ac1c54a9a26722c751bcc1f3b4ea830690dac7c9e25d, 42491ab76558e2e8280eeaadb82d914cfda777b23bff743a446bba3cc959550d, 65aec32e1f761f655a457a1c8b96f04d32d10264c4b1a15ea9c857b16b9c59cd, 9ff95899b675ab65f0e734c7b23f21bd9833506a2b741ac2bdbb932117218b11, 6b7bce6c3c3eb7361b1e69dcabbc1852ef9039f9eda882e716b5c2674650fb0f, 9d6ee64d87deeefb7631ae568e0dca3d1ed7e51156eb305de9a0634e4c205be8]
       InverseBindMatrices:
         - [100, -0.00016411452, -1.2360266e-05, -0, 0.00016411452, 100, 7.5497696e-06, -0, 1.2360253e-05, -7.5497887e-06, 100, -0, 0.05660569, -98.25526, -0.65341324, 1]

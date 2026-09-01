@@ -4,6 +4,8 @@
 
 #include "EditorContext.h"
 
+#include "imgui.h" // ImGuiID / DockBuilder 系列需要 imgui.h（与 GizmoController 同款 include 模式）
+
 #include <memory>
 
 namespace GE {

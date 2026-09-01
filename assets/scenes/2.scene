@@ -106,7 +106,8 @@ Scene:
         Radius: 3.45
         Height: 17.7
         Axis: 2
-        FrontAxis: 1
+        FrontAxis: 2
+        InvertFront: true
         Offset: [0, -0.1, -17.7]
         MaxSlopeAngle: 45
         MaxJumpSpeed: 4.5

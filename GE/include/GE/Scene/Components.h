@@ -616,6 +616,7 @@ struct CharacterControllerComponent {
     bool  FaceMovement  = true;  ///< 是否朝向水平移动方向（脚本有水平输入时绕 up 缓转）
     float TurnSpeed     = 540.0f; ///< 转向速率（度/秒，FaceMovement 生效时的最大偏航角速度）
     CapsuleAxis FrontAxis = CapsuleAxis::Z; ///< 模型前向基准轴（决定面朝方向对齐哪个局部轴）
+    bool InvertFront = false;               ///< 前向轴取反：模型"脸"在 FrontAxis 的反方向时置 true
 
     // 运行时（不参与序列化）
     bool      IsInitialized = false;              ///< CharacterVirtual 已创建

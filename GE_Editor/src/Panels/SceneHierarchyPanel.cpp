@@ -1714,6 +1714,8 @@ void SceneHierarchyPanel::DrawCharacterControllerComponent(
             ImGui::EndCombo();
         }
     }
+    // 前向轴取反：模型"脸"在 FrontAxis 反方向时勾选（如角色初始旋转后正面朝 -Z）
+    ImGui::Checkbox("Invert Front", &component.InvertFront);
 
     // 半径/总高/最大坡度改变胶囊形状 → 销毁重建角色（取当前 Transform 作初始位置）
     if (ImGui::DragFloat("Radius", &component.Radius, 0.05f, 0.001f, 100.0f)) {

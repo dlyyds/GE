@@ -675,6 +675,9 @@ void PhysicsWorld::UpdateCharacters(float dt) {
                 case CapsuleAxis::Y: configured = {0.0f, 1.0f, 0.0f}; break;
                 default: configured = {0.0f, 0.0f, 1.0f}; break;
                 }
+                if (cc->InvertFront) {
+                    configured = -configured; // 与 Scene 侧 modelYaw 的 InvertFront 语义一致
+                }
                 const glm::vec3 tryAxes[3] = {configured, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f, 0.0f}};
                 for (const auto &ax : tryAxes) {
                     const glm::vec3 wv = cc->BaseRotation * ax;

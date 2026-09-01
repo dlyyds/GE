@@ -873,6 +873,7 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
             ccNode["GravityScale"] = ccc.GravityScale;
             ccNode["FaceMovement"] = ccc.FaceMovement;
             ccNode["TurnSpeed"] = ccc.TurnSpeed;
+            ccNode["InvertFront"] = ccc.InvertFront;
         }
 
         // ---- FirstPersonCameraComponent ----
@@ -1421,6 +1422,7 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
             ccc.GravityScale = ccNode["GravityScale"] ? ccNode["GravityScale"].as<float>(1.0f) : 1.0f;
             ccc.FaceMovement = ccNode["FaceMovement"] ? ccNode["FaceMovement"].as<bool>(true) : true;
             ccc.TurnSpeed = ccNode["TurnSpeed"] ? ccNode["TurnSpeed"].as<float>(540.0f) : 540.0f;
+            ccc.InvertFront = ccNode["InvertFront"] ? ccNode["InvertFront"].as<bool>(false) : false;
         }
 
         // ---- FirstPersonCameraComponent ----

@@ -296,6 +296,9 @@ void Scene::Play() {
             case CapsuleAxis::Y: configured = {0.0f, 1.0f, 0.0f}; break;
             default:             configured = {0.0f, 0.0f, 1.0f}; break;
             }
+            if (cc.InvertFront) {
+                configured = -configured; // 与 UpdateFirstPersonCamera 的 modelYaw 保持一致
+            }
             const glm::vec3 wv = cc.BaseRotation * configured;
             const float modelYaw = std::atan2(wv.x, wv.z);
             const float initYaw = glm::degrees(cc.FacingYaw + modelYaw);
@@ -609,6 +612,9 @@ void Scene::UpdateFirstPersonCamera() {
         case CapsuleAxis::X: configured = {1.0f, 0.0f, 0.0f}; break;
         case CapsuleAxis::Y: configured = {0.0f, 1.0f, 0.0f}; break;
         default:             configured = {0.0f, 0.0f, 1.0f}; break;
+        }
+        if (cc.InvertFront) {
+            configured = -configured; // 模型"脸"在 FrontAxis 反方向
         }
         const glm::vec3 wv = cc.BaseRotation * configured;
         const float modelYaw = std::atan2(wv.x, wv.z); // 模型前向固有朝向角

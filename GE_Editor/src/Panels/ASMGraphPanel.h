@@ -72,6 +72,9 @@ private:
     /// 本帧需补一次首次布局（实体切换 / 状态数变化后置位，DrawASMGraph 末尾复位）
     bool m_NeedsInitialLayout = false;
 
+    /// 重新布局按钮请求导航（置位后由下帧画布内触发 NavigateToContent，按钮在画布外）
+    bool m_RequestNavigateContent = false;
+
     /// 网格列数（按状态数自适应，≥1）
     static constexpr int kGridColumns = 4;
 };

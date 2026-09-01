@@ -101,27 +101,30 @@ void ASMGraphPanel::OnImGuiRender() {
 
     AnimStateMachineComponent &asmc = selected.GetComponent<AnimStateMachineComponent>();
 
-    // 画布
-    ed::SetCurrentEditor(m_EditorCtx);
-    ed::Begin("ASM Graph");
-
-    // 顶栏：实体名 + ASM 开关（与列表面板写同一组件，实时互通）+ 重新布局
-    ImGui::TextUnformatted(selected.GetComponent<TagComponent>().Tag.c_str());
-    ImGui::SameLine();
-    ImGui::Checkbox("状态机", &asmc.enabled);
-    ImGui::SameLine();
-    if (ImGui::Button("重新布局")) {
-        // 兜底：中间增删状态导致 NodeId 下标错位时，按声明序重置所有节点坐标
-        for (size_t i = 0; i < asmc.states.size(); ++i) {
-            LayoutNode(i);
+    // 顶栏（实体名 + 状态机开关 + 重新布局）放在外层 Child：若放进 ed::Begin 内部，
+    // 画布的 GetContentRegionAvail() 会在按钮下方量高度，画布撑不满窗口。外层 Child
+    // 用 BeginChild("ASMBody", ImVec2(0,0), ...) 先占掉整窗剩余区域，ed::Begin 在
+    // Child 内的可用区即整窗剩余高度（官方 basic-interaction 同款结构）。
+    ImGui::BeginChild("##asmTopBar", ImVec2(0, 0), false,
+                      ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+    {
+        ImGui::TextUnformatted(selected.GetComponent<TagComponent>().Tag.c_str());
+        ImGui::SameLine();
+        ImGui::Checkbox("状态机", &asmc.enabled);
+        ImGui::SameLine();
+        if (ImGui::Button("重新布局")) {
+            // 兜底：中间增删状态导致 NodeId 下标错位时，按声明序重置所有节点坐标
+            for (size_t i = 0; i < asmc.states.size(); ++i) {
+                LayoutNode(i);
+            }
+            // DrawASMGraph 的 ed::Begin/End 在设置布局后紧跟执行，此处只置位标志，
+            // 由下一帧画布导航聚焦内容（重新布局按钮也支持直接触发 NavigateToContent）
+            m_RequestNavigateContent = true;
         }
-        ed::NavigateToContent();
     }
+    ImGui::EndChild();
 
     DrawASMGraph(asmc);
-
-    ed::End();
-    ed::SetCurrentEditor(nullptr);
 
     ImGui::End();
 }
@@ -129,6 +132,10 @@ void ASMGraphPanel::OnImGuiRender() {
 void ASMGraphPanel::DrawASMGraph(AnimStateMachineComponent &asmc) {
     const auto &states = asmc.states;
     const auto &transitions = asmc.transitions;
+
+    // 画布：ed::Begin 之前不插任何控件，GetContentRegionAvail() 即外层 Child 剩余全部区域
+    ed::SetCurrentEditor(m_EditorCtx);
+    ed::Begin("ASM Graph", ImVec2(0.0f, 0.0f));
 
     // ---- 实体 id（NodeId 高位，跨实体隔离）----
     const entt::entity handle = static_cast<entt::entity>(m_Hierarchy->GetSelectedEntity());
@@ -140,6 +147,12 @@ void ASMGraphPanel::DrawASMGraph(AnimStateMachineComponent &asmc) {
         m_LastEntityId = entityId;
         m_LastStateCount = states.size();
         m_NeedsInitialLayout = true;
+    }
+
+    // 重新布局按钮的导航请求：在 Begin/End 内部触发（需 current editor 已设置）
+    if (m_RequestNavigateContent) {
+        m_RequestNavigateContent = false;
+        ed::NavigateToContent();
     }
 
     // ---- 虚拟 ANY 节点：固定画布左上，作为 from==SIZE_MAX 连线的公共源 ----
@@ -230,6 +243,9 @@ void ASMGraphPanel::DrawASMGraph(AnimStateMachineComponent &asmc) {
     }
 
     m_NeedsInitialLayout = false;
+
+    ed::End();
+    ed::SetCurrentEditor(nullptr);
 }
 
 } // namespace GE

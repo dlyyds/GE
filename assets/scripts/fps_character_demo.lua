@@ -30,9 +30,9 @@ function M.OnUpdate(self, ts)
     if input.is_held(Key.D) then ix = ix + 1 end
 
     -- 绕 Y 旋转到相机朝向系：W/S 沿相机前向，A/D 沿相机右向。
-    -- 前向 = (-sin yaw, 0, -cos yaw)，右向 = (cos yaw, 0, -sin yaw)
+    -- 相机前向（FPS 模式）= (-sin yaw, 0, -cos yaw)；右向 = 前向 × 世界up = (-cos yaw, 0, sin yaw)
     local fx, fz = -math.sin(ry), -math.cos(ry)
-    local rx, rz =  math.cos(ry), -math.sin(ry)
+    local rx, rz = -math.cos(ry),  math.sin(ry)
     local wx = fx * (-iz) + rx * ix
     local wz = fz * (-iz) + rz * ix
 

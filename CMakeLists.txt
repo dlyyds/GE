@@ -38,6 +38,7 @@ add_subdirectory(GE/third_party/glfw)
 add_subdirectory(GE/third_party/yaml-cpp)
 add_subdirectory(GE/third_party/imgui)
 add_subdirectory(GE/third_party/ImGuizmo)
+add_subdirectory(GE/third_party/imgui-node-editor-0.9.3)
 
 
 add_subdirectory(GE/third_party/tracy)
@@ -247,8 +248,10 @@ set(Editor_SRC
         ${CMAKE_SOURCE_DIR}/GE_Editor/src/HierarchyLayer.cpp
         ${CMAKE_SOURCE_DIR}/GE_Editor/src/GizmoController.cpp
         ${CMAKE_SOURCE_DIR}/GE_Editor/src/ResourceLayer.cpp
+        ${CMAKE_SOURCE_DIR}/GE_Editor/src/ASMGraphLayer.cpp
         ${CMAKE_SOURCE_DIR}/GE_Editor/src/Panels/SceneHierarchyPanel.cpp
         ${CMAKE_SOURCE_DIR}/GE_Editor/src/Panels/ResourcePanel.cpp
+        ${CMAKE_SOURCE_DIR}/GE_Editor/src/Panels/ASMGraphPanel.cpp
 )
 
 add_executable(${Editor_NAME} ${Editor_SRC})
@@ -259,6 +262,7 @@ target_include_directories(${Editor_NAME} PRIVATE
 
 
 target_link_libraries(${Editor_NAME} PRIVATE ${GE_NAME})
+target_link_libraries(${Editor_NAME} PRIVATE imgui_node_editor)
 
 #gemesh CLI（.obj → .gemesh 离线导出工具）
 # ==============================================

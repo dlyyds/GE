@@ -265,7 +265,7 @@ void Scene::Play() {
     //    位置钉到角色视点，避免相机从默认姿态"跳"到角色朝向。
     auto fpView = m_Registry.view<TransformComponent, CharacterControllerComponent,
                                   FirstPersonCameraComponent>();
-    if (!fpView.empty()) {
+    if (fpView.begin() != fpView.end()) {
         Entity fpCamEnt = GetPrimaryCameraEntity();
         if (fpCamEnt && fpCamEnt.HasComponent<CameraComponent>()) {
             const entt::entity player = fpView.front();
@@ -556,7 +556,7 @@ void Scene::UpdateFirstPersonCamera() {
     // 2. 找挂 FPS 组件的角色实体（本场景约定至多一台；多台取第一个）
     auto view = m_Registry.view<TransformComponent, CharacterControllerComponent,
                                 FirstPersonCameraComponent>();
-    if (view.empty()) {
+    if (view.begin() == view.end()) {
         return;
     }
     entt::entity player = view.front();
@@ -1074,6 +1074,10 @@ void Scene::OnComponentAdded<AmbientLightComponent>(Entity entity, AmbientLightC
 
 template <>
 void Scene::OnComponentAdded<EnvironmentComponent>(Entity entity, EnvironmentComponent &component) {
+}
+
+template <>
+void Scene::OnComponentAdded<FirstPersonCameraComponent>(Entity entity, FirstPersonCameraComponent &component) {
 }
 
 template <>

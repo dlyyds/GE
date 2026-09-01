@@ -104,6 +104,14 @@ private:
 
     /// 从代码程序化构建默认场景（编译期开关 GE_EDITOR_BUILD_SCENE_FROM_CODE 控制）
     void BuildDefaultSceneFromCode();
+
+    /// Play 态第一人称相机：锁定/解锁鼠标光标（GLFW_CURSOR_DISABLED），
+    /// 并在切换瞬间重置 InputState 增量基准，防首帧 delta 爆值。
+    /// 无 FPS 组件的场景不锁定（保持编辑器鼠标自由）。
+    void UpdateMouseCapture();
+
+    /// 当前是否已锁定鼠标（防重复 glfwSetInputMode）
+    bool m_MouseCaptured = false;
 };
 
 } // namespace GE

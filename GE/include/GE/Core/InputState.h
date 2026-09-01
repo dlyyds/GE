@@ -48,6 +48,9 @@ struct InputState {
     /// 焦点/视口离开：清空 held（防粘键）与全部帧态/累积，增量基准对齐。
     void FlushAll();
 
+    /// 重置鼠标增量基准到给定位置（光标锁定/解锁后调用，防首帧 delta 爆值）。
+    void ResetMouseBaseline(const glm::vec2 &pos);
+
     // == 脚本查询 ==
     bool IsHeld(KeyCode key) const;
     bool JustPressed(KeyCode key) const;
@@ -131,6 +134,12 @@ inline void InputState::FlushAll() {
     mouseDelta = {0.0f, 0.0f};
     frameScroll = 0.0f;
     m_AccumScroll = 0.0f;
+}
+
+inline void InputState::ResetMouseBaseline(const glm::vec2 &pos) {
+    m_PrevMousePos = pos;
+    mousePos = pos;
+    mouseDelta = {0.0f, 0.0f};
 }
 
 inline bool InputState::IsHeld(KeyCode key) const {

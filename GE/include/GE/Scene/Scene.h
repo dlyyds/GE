@@ -111,6 +111,9 @@ public:
     /// 输入快照：脚本查询入口（IsHeld/JustPressed/…），每场景一份
     const InputState &GetInputState() const { return m_InputState; }
 
+    /// 可写输入快照（SceneLayer 在鼠标锁定/解锁瞬间重置增量基准用；脚本仍走 const 查询）。
+    InputState &GetMutableInputState() { return m_InputState; }
+
     /// Lua 脚本引擎（Scene 持有，每场景共享一个 Lua 状态）
     ScriptEngine &GetScriptEngine() { return m_ScriptEngine; }
 

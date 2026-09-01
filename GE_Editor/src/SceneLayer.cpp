@@ -240,7 +240,7 @@ void SceneLayer::OnEvent(Event &event) {
         EventDispatcher escDisp(event);
         bool escPressed = false;
         escDisp.Dispatch<KeyPressedEvent>([&](KeyPressedEvent &e) {
-            if (e.GetKeyCode() == KeyCode::Escape) {
+            if (e.GetKeyCode() == Key::Escape) {
                 escPressed = true;
                 return true;
             }
@@ -920,8 +920,7 @@ void SceneLayer::DrawFirstPersonEyes(const glm::vec2 &imagePos) {
 
         // 到脚底的虚线：先画粗的深色底（压场景高亮），再叠半透明橙色，视觉更清楚
         dl->AddLine(ImVec2(sFoot.x, sFoot.y), ImVec2(sEye.x, sEye.y), IM_COL32(0, 0, 0, 160), 3.0f);
-        dl->AddLine(ImVec2(sFoot.x, sFoot.y), ImVec2(sEye.x, sEye.y), footColor, 1.5f,
-                    ImDrawFlags_None);
+        dl->AddLine(ImVec2(sFoot.x, sFoot.y), ImVec2(sEye.x, sEye.y), footColor, 1.5f);
 
         // 视点十字（水平 12px × 垂直 12px），随屏幕朝向、不随角色旋转
         constexpr float kHalf = 6.0f;

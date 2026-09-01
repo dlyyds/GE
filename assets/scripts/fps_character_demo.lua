@@ -1,12 +1,14 @@
--- fps_character_demo.lua —— 第一人称跟随角色示例：鼠标视角 + 相机相对 WASD 移动
+-- fps_character_demo.lua —— 第一人称跟随角色示例：鼠标视角 + 相机相对 WASD 移动 + ASM 动画
 -- 前置：
 --   角色实体：TransformComponent + CharacterControllerComponent +
---             FirstPersonCameraComponent（不挂 RigidBodyComponent）
+--             FirstPersonCameraComponent + AnimStateMachineComponent +
+--             AnimationComponent（不挂 RigidBodyComponent）
 --   相机实体：CameraComponent（Primary = true）；由引擎 UpdateFirstPersonCamera
 --             每帧把相机钉到角色视点、把相机朝向写回角色朝向（FacingYaw 通道）。
 -- 分工：
 --   camera.*  → 主相机只读查询（视角由引擎每帧从鼠标增量更新，脚本只读 yaw 旋转输入）
---   character.* → 角色控制器：水平期望速度 set_move + 起跳 jump
+--   character.* → 角色控制器：水平期望速度 set_move + 起跳 jump / 回读 get_*
+--   anim.*    → ASM 参数表：floats(速度)、bools(贴地)、triggers(跳跃脉冲)
 --   引擎侧 UpdateFirstPersonCamera 负责"脸朝相机 + 位置跟随"，脚本只管移动方向。
 local M = {}
 
@@ -14,6 +16,12 @@ local M = {}
 M.PUBLIC_FIELDS = {
     speed = { type = "number", default = 4.0 },
 }
+
+function M.OnCreate(self)
+    -- 初值：ASM 参数表随创建重填（不序列化）；贴地态先按"脚底着地"假设
+    anim.set("speed", 0.0)
+    anim.set_bool("on_ground", true)
+end
 
 function M.OnUpdate(self, ts)
     local speed = public.get("speed") or 4.0
@@ -49,9 +57,20 @@ function M.OnUpdate(self, ts)
         log.warn(string.format("[FPS] cam_yaw=%.1f facing=%.1f", camera.get_yaw(), math.deg(camera.get_facing())))
     end
 
+    -- 动画：ASM 参数驱动（同 character_asm_demo 约定）
+    -- speed   = 真实水平合速度（顶墙被挡时物理速度≈0 → 动画回 idle）
+    -- on_ground = 贴地态（引擎每物理子步回写）
+    -- jump    = 一次性脉冲，仅贴地起跳成功才发（空中误触不跳动效）
+    local vx, vy, vz = character.get_velocity()
+    local hspd = math.sqrt(vx * vx + vz * vz)
+    anim.set("speed", hspd)
+    anim.set_bool("on_ground", character.get_grounded())
+
     -- 空格起跳：仅贴地时生效（character.jump 已做贴地判定，空中按压不缓冲）
     if input.just_pressed(Key.Space) then
-        character.jump()
+        if character.jump() then
+            anim.trigger("jump")
+        end
     end
 end
 

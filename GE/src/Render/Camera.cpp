@@ -139,7 +139,7 @@ void Camera::OnMouseMove(float dx, float dy, bool left_down, bool right_down) {
 
     if (m_Mode == Mode::FPS) {
         m_Yaw -= dx * MouseSensitivity * 0.1f;
-        m_Pitch += dy * MouseSensitivity * 0.1f;
+        m_Pitch -= dy * MouseSensitivity * 0.1f;
         m_Pitch = std::clamp(m_Pitch, MinPitch, MaxPitch);
     } else {
         m_Theta -= dx * MouseSensitivity * 0.1f;

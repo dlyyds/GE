@@ -28,7 +28,6 @@
 namespace GE {
 
 
-
 Scene::Scene() {
     // 创建物理世界
     m_PhysicsWorld = std::make_unique<Physics::PhysicsWorld>(this);
@@ -292,9 +291,12 @@ void Scene::Play() {
             // target = 相机yaw − modelYaw 互为逆运算，见计划书 §4）。
             glm::vec3 configured(0.0f, 0.0f, 1.0f);
             switch (cc.FrontAxis) {
-            case CapsuleAxis::X: configured = {1.0f, 0.0f, 0.0f}; break;
-            case CapsuleAxis::Y: configured = {0.0f, 1.0f, 0.0f}; break;
-            default:             configured = {0.0f, 0.0f, 1.0f}; break;
+            case CapsuleAxis::X: configured = {1.0f, 0.0f, 0.0f};
+                break;
+            case CapsuleAxis::Y: configured = {0.0f, 1.0f, 0.0f};
+                break;
+            default: configured = {0.0f, 0.0f, 1.0f};
+                break;
             }
             if (cc.InvertFront) {
                 configured = -configured; // 与 UpdateFirstPersonCamera 的 modelYaw 保持一致
@@ -464,7 +466,6 @@ void Scene::UpdateSkins() {
 }
 
 
-
 void Scene::UpdateAnimations(Timestep ts) {
     // 动画采样/事件/过渡混合 + ASM 求值 已抽取到 AnimationSystem 模块（Scene/AnimationSystem.cpp）
     AnimationSystem::UpdateAnimations(m_Registry, m_ScriptEngine, ts);
@@ -587,10 +588,11 @@ void Scene::UpdateFirstPersonCamera() {
     cam.MaxPitch = fp.MaxPitch;
 
     // 4. 鼠标视角 → yaw/pitch（读本帧输入快照的鼠标增量；灵敏度单位 = 度/像素）
+    //    GLFW 窗口坐标 y 向下为正，鼠标上移 → mouseDelta.y 为负；减号让上移 → pitch 增大 → 抬头。
     const glm::vec2 mouseDelta = m_InputState.GetMouseDelta();
     const float yawSign = (fp.InvertY ? -1.0f : 1.0f);
     float yaw = cam.GetYaw() - mouseDelta.x * fp.YawSpeed;
-    float pitch = cam.GetPitch() + yawSign * mouseDelta.y * fp.PitchSpeed;
+    float pitch = cam.GetPitch() - yawSign * mouseDelta.y * fp.PitchSpeed;
     cam.SetYawPitch(yaw, pitch); // SetYawPitch 内部按 MinPitch/MaxPitch clamp
 
     // 5. 相机朝向 → 角色朝向：让角色脸朝相机看的方向。
@@ -601,34 +603,34 @@ void Scene::UpdateFirstPersonCamera() {
     //    FacingYaw 限速逼近机制，让 CharacterVirtual 自己完成旋转。
     //    modelYaw = FrontAxis 局部前向轴（经 BaseRotation 旋转后）的水平朝向角，
     //               与 FaceMovement 的 globalFrontYaw（PhysicsWorld.cpp:689）同语义。
-    {
-        constexpr float kPi = 3.14159265358979f;
-        // 单帧最大转向增量（弧度）：相机每秒 yaw 变化即限速上限，
-        // 保证转身跟手、不因高灵敏度瞬转鬼畜。
-        constexpr float kTurnMaxStep = glm::radians(720.0f);
-
-        glm::vec3 configured(0.0f, 0.0f, 1.0f);
-        switch (cc.FrontAxis) {
-        case CapsuleAxis::X: configured = {1.0f, 0.0f, 0.0f}; break;
-        case CapsuleAxis::Y: configured = {0.0f, 1.0f, 0.0f}; break;
-        default:             configured = {0.0f, 0.0f, 1.0f}; break;
-        }
-        if (cc.InvertFront) {
-            configured = -configured; // 模型"脸"在 FrontAxis 反方向
-        }
-        const glm::vec3 wv = cc.BaseRotation * configured;
-        const float modelYaw = std::atan2(wv.x, wv.z); // 模型前向固有朝向角
-        // 让模型前向(水平) = 相机前向(水平)：角色世界前向角 = FacingYaw + modelYaw，
-        // 令其等于 cam.GetYaw()（Camera::GetForward 的水平朝向角）→ target = yaw − modelYaw。
-        // 若模型仍与相机朝向相反，说明此角色 FrontAxis 的"前向"与视觉朝向相反
-        //（模型默认 -Z 是脸、FrontAxis 却配了 +Z），需把 configured 换成反轴。
-        float target = glm::radians(cam.GetYaw()) - modelYaw;
-        float diff = target - cc.FacingYaw;
-        while (diff > kPi)  diff -= 2.0f * kPi;
-        while (diff < -kPi) diff += 2.0f * kPi;
-        cc.FacingYaw += std::clamp(diff, -kTurnMaxStep, kTurnMaxStep);
-        // 不直接调 cv->SetRotation：下个子步 UpdateCharacters 用 FacingYaw 重建旋转。
-    }
+    // {
+    //     constexpr float kPi = 3.14159265358979f;
+    //     // 单帧最大转向增量（弧度）：相机每秒 yaw 变化即限速上限，
+    //     // 保证转身跟手、不因高灵敏度瞬转鬼畜。
+    //     constexpr float kTurnMaxStep = glm::radians(720.0f);
+    //
+    //     glm::vec3 configured(0.0f, 0.0f, 1.0f);
+    //     switch (cc.FrontAxis) {
+    //     case CapsuleAxis::X: configured = {1.0f, 0.0f, 0.0f}; break;
+    //     case CapsuleAxis::Y: configured = {0.0f, 1.0f, 0.0f}; break;
+    //     default:             configured = {0.0f, 0.0f, 1.0f}; break;
+    //     }
+    //     if (cc.InvertFront) {
+    //         configured = -configured; // 模型"脸"在 FrontAxis 反方向
+    //     }
+    //     const glm::vec3 wv = cc.BaseRotation * configured;
+    //     const float modelYaw = std::atan2(wv.x, wv.z); // 模型前向固有朝向角
+    //     // 让模型前向(水平) = 相机前向(水平)：角色世界前向角 = FacingYaw + modelYaw，
+    //     // 令其等于 cam.GetYaw()（Camera::GetForward 的水平朝向角）→ target = yaw − modelYaw。
+    //     // 若模型仍与相机朝向相反，说明此角色 FrontAxis 的"前向"与视觉朝向相反
+    //     //（模型默认 -Z 是脸、FrontAxis 却配了 +Z），需把 configured 换成反轴。
+    //     float target = glm::radians(cam.GetYaw()) - modelYaw;
+    //     float diff = target - cc.FacingYaw;
+    //     while (diff > kPi)  diff -= 2.0f * kPi;
+    //     while (diff < -kPi) diff += 2.0f * kPi;
+    //     cc.FacingYaw += std::clamp(diff, -kTurnMaxStep, kTurnMaxStep);
+    //     // 不直接调 cv->SetRotation：下个子步 UpdateCharacters 用 FacingYaw 重建旋转。
+    // }
 
     // 6. 角色位置 → 相机位置（角色局部 EyeOffset 随朝向旋转后加到脚底；
     //    yaw 每帧已与相机同步，绕 up 旋转等于绕相机朝向系旋转 → 纯 +Y 不变，
@@ -637,7 +639,7 @@ void Scene::UpdateFirstPersonCamera() {
     const glm::vec3 offset(
         fp.EyeOffset.x * std::cos(yawRad) + fp.EyeOffset.z * std::sin(yawRad),
         fp.EyeOffset.y,
-       -fp.EyeOffset.x * std::sin(yawRad) + fp.EyeOffset.z * std::cos(yawRad));
+        -fp.EyeOffset.x * std::sin(yawRad) + fp.EyeOffset.z * std::cos(yawRad));
     cam.SetPosition(tc.Translation + offset);
 }
 

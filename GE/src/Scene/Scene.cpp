@@ -261,6 +261,40 @@ void Scene::Play() {
     //    无需再在 UI 线程补同步（SyncBodiesToTransforms 此刻无已初始化体，重复调用无副作用）。
     m_PhysicsWorld->ResetAccumulator();
 
+    // 4. 第一人称相机初始化：切 FPS 姿态模式、用角色当前朝向初始化 yaw/pitch、
+    //    位置钉到角色视点，避免相机从默认姿态"跳"到角色朝向。
+    auto fpView = m_Registry.view<TransformComponent, CharacterControllerComponent,
+                                  FirstPersonCameraComponent>();
+    if (!fpView.empty()) {
+        Entity fpCamEnt = GetPrimaryCameraEntity();
+        if (fpCamEnt && fpCamEnt.HasComponent<CameraComponent>()) {
+            const entt::entity player = fpView.front();
+            const auto &tc = fpView.get<TransformComponent>(player);
+            const auto &cc = fpView.get<CharacterControllerComponent>(player);
+            const auto &fp = fpView.get<FirstPersonCameraComponent>(player);
+            auto &camComp = fpCamEnt.GetComponent<CameraComponent>();
+            Camera &cam = camComp.CameraInstance;
+
+            cam.SetMode(Camera::Mode::FPS);
+            cam.MinPitch = fp.MinPitch;
+            cam.MaxPitch = fp.MaxPitch;
+            // 相机 yaw 初始化为角色朝向：FacingYaw 是相对 BaseRotation 的累计偏航，
+            // 反解出相机绝对朝向 = FacingYaw + modelYaw（与 UpdateFirstPersonCamera 的
+            // target = 相机yaw − modelYaw 互为逆运算，见计划书 §4）。
+            glm::vec3 configured(0.0f, 0.0f, 1.0f);
+            switch (cc.FrontAxis) {
+            case CapsuleAxis::X: configured = {1.0f, 0.0f, 0.0f}; break;
+            case CapsuleAxis::Y: configured = {0.0f, 1.0f, 0.0f}; break;
+            default:             configured = {0.0f, 0.0f, 1.0f}; break;
+            }
+            const glm::vec3 wv = cc.BaseRotation * configured;
+            const float modelYaw = std::atan2(wv.x, wv.z);
+            const float initYaw = glm::degrees(cc.FacingYaw + modelYaw);
+            cam.SetYawPitch(initYaw, 0.0f);
+            cam.SetPosition(tc.Translation + fp.EyeOffset);
+        }
+    }
+
     m_SimulationState = SimulationState::Playing;
 }
 
@@ -467,6 +501,11 @@ void Scene::OnUpdate3D(Timestep ts,
     // ── 物理步进 ──
     StepPhysics(ts);
 
+    // ── 第一人称跟随相机 ─────────────────────────────────────────────
+    // 放在物理步进之后：相机侧写的 FacingYaw 落在物理子步消费【之后】，
+    // 下一帧物理才用到；位置取角色最新脚底。世界矩阵在其后重算，渲染即用最新姿态。
+    UpdateFirstPersonCamera();
+
     // ── 动画更新：采样键帧写目标实体的局部 TRS ────────────────────────
     // 放在物理之后、UpdateWorldTransforms 之前：动画写的是局部 TRS，稍后 DFS
     // 重算 world，蒙皮随之拿到最新关节矩阵（时序见计划书 §10）。
@@ -498,6 +537,89 @@ void Scene::OnUpdate3D(Timestep ts,
 void Scene::UpdateScripts(Timestep ts) {
     // Lua 脚本每帧推进（输入查询由引擎注入的 input.* 在脚本 OnUpdate 内完成）
     m_ScriptEngine.OnUpdate(ts);
+}
+
+void Scene::UpdateFirstPersonCamera() {
+    // 编辑态不跟随：FPS 相机只服务 Play 模拟（编辑视角由 EditorCamera 独立持有）
+    if (m_SimulationState != SimulationState::Playing) {
+        return;
+    }
+
+    // 1. 取场景主相机（Primary 优先；沿用 GetPrimaryCameraEntity 语义）
+    Entity camEnt = GetPrimaryCameraEntity();
+    if (!camEnt || !camEnt.HasComponent<CameraComponent>()) {
+        return;
+    }
+    auto &camComp = camEnt.GetComponent<CameraComponent>();
+    Camera &cam = camComp.CameraInstance;
+
+    // 2. 找挂 FPS 组件的角色实体（本场景约定至多一台；多台取第一个）
+    auto view = m_Registry.view<TransformComponent, CharacterControllerComponent,
+                                FirstPersonCameraComponent>();
+    if (view.empty()) {
+        return;
+    }
+    entt::entity player = view.front();
+    auto &tc = view.get<TransformComponent>(player);
+    auto &cc = view.get<CharacterControllerComponent>(player);
+    auto &fp = view.get<FirstPersonCameraComponent>(player);
+    if (!fp.Enabled) {
+        return;
+    }
+
+    // 3. 相机切到 FPS 姿态模式（若尚未）；俯仰钳位跟随组件字段
+    if (cam.GetMode() != Camera::Mode::FPS) {
+        cam.SetMode(Camera::Mode::FPS);
+    }
+    cam.MinPitch = fp.MinPitch;
+    cam.MaxPitch = fp.MaxPitch;
+
+    // 4. 鼠标视角 → yaw/pitch（读本帧输入快照的鼠标增量；灵敏度单位 = 度/像素）
+    const glm::vec2 mouseDelta = m_InputState.GetMouseDelta();
+    const float yawSign = (fp.InvertY ? -1.0f : 1.0f);
+    float yaw = cam.GetYaw() - mouseDelta.x * fp.YawSpeed;
+    float pitch = cam.GetPitch() + yawSign * mouseDelta.y * fp.PitchSpeed;
+    cam.SetYawPitch(yaw, pitch); // SetYawPitch 内部按 MinPitch/MaxPitch clamp
+
+    // 5. 相机朝向 → 角色朝向：让角色脸朝相机看的方向。
+    //    引擎只允许 CharacterVirtual 驱动朝向（UpdateCharacters 每子步
+    //    cv->SetRotation 写回 Transform，PhysicsWorld.cpp:697）——相机侧若直接
+    //    改 Transform.Rotation 会被下个子步覆盖。因此走组件通道：把相机 yaw
+    //    换算成"模型前向应指向的水平角" target，复用 FaceMovement 的
+    //    FacingYaw 限速逼近机制，让 CharacterVirtual 自己完成旋转。
+    //    modelYaw = FrontAxis 局部前向轴（经 BaseRotation 旋转后）的水平朝向角，
+    //               与 FaceMovement 的 globalFrontYaw（PhysicsWorld.cpp:689）同语义。
+    {
+        constexpr float kPi = 3.14159265358979f;
+        // 单帧最大转向增量（弧度）：相机每秒 yaw 变化即限速上限，
+        // 保证转身跟手、不因高灵敏度瞬转鬼畜。
+        constexpr float kTurnMaxStep = glm::radians(720.0f);
+
+        glm::vec3 configured(0.0f, 0.0f, 1.0f);
+        switch (cc.FrontAxis) {
+        case CapsuleAxis::X: configured = {1.0f, 0.0f, 0.0f}; break;
+        case CapsuleAxis::Y: configured = {0.0f, 1.0f, 0.0f}; break;
+        default:             configured = {0.0f, 0.0f, 1.0f}; break;
+        }
+        const glm::vec3 wv = cc.BaseRotation * configured;
+        const float modelYaw = std::atan2(wv.x, wv.z); // 模型前向固有朝向角
+        float target = glm::radians(cam.GetYaw()) - modelYaw;
+        float diff = target - cc.FacingYaw;
+        while (diff > kPi)  diff -= 2.0f * kPi;
+        while (diff < -kPi) diff += 2.0f * kPi;
+        cc.FacingYaw += std::clamp(diff, -kTurnMaxStep, kTurnMaxStep);
+        // 不直接调 cv->SetRotation：下个子步 UpdateCharacters 用 FacingYaw 重建旋转。
+    }
+
+    // 6. 角色位置 → 相机位置（角色局部 EyeOffset 随朝向旋转后加到脚底；
+    //    yaw 每帧已与相机同步，绕 up 旋转等于绕相机朝向系旋转 → 纯 +Y 不变，
+    //    带水平分量自动成"过肩视角"：相机向后拉、随角色转身）
+    const float yawRad = glm::radians(cam.GetYaw());
+    const glm::vec3 offset(
+        fp.EyeOffset.x * std::cos(yawRad) + fp.EyeOffset.z * std::sin(yawRad),
+        fp.EyeOffset.y,
+       -fp.EyeOffset.x * std::sin(yawRad) + fp.EyeOffset.z * std::cos(yawRad));
+    cam.SetPosition(tc.Translation + offset);
 }
 
 void Scene::StepPhysics(Timestep ts) {

@@ -311,6 +311,38 @@ void RegisterApi(Impl &eng) {
     };
     lua["character"] = charT;
 
+    // ---- camera → 场景主相机只读查询（第一人称脚本组合移动方向用）----
+    // 只读、无副作用；取 Primary 优先的主相机（无主相机则第一个相机实体）。
+    // 视角本身由引擎侧 UpdateFirstPersonCamera 每帧更新，脚本只需读 yaw 来
+    // 把 WASD 输入旋转到相机朝向系。
+    auto activeCamera = [&eng]() -> Camera * {
+        if (!eng.scene)
+            return nullptr;
+        Entity camEnt = eng.scene->GetPrimaryCameraEntity();
+        if (!camEnt || !camEnt.HasComponent<CameraComponent>())
+            return nullptr;
+        return &camEnt.GetComponent<CameraComponent>().CameraInstance;
+    };
+    sol::table camT = lua.create_table();
+    camT["get_yaw"] = [activeCamera]() -> float {
+        if (auto *cam = activeCamera())
+            return cam->GetYaw();
+        return 0.0f;
+    };
+    camT["get_pitch"] = [activeCamera]() -> float {
+        if (auto *cam = activeCamera())
+            return cam->GetPitch();
+        return 0.0f;
+    };
+    camT["get_position"] = [activeCamera]() {
+        if (auto *cam = activeCamera()) {
+            const glm::vec3 p = cam->GetPosition();
+            return std::make_tuple(p.x, p.y, p.z);
+        }
+        return std::make_tuple(0.0f, 0.0f, 0.0f);
+    };
+    lua["camera"] = camT;
+
     // ---- entity → 挂载实体的基本查询 ----
     auto hasAny = [&eng](const char *name) -> bool {
         if (!eng.scene || eng.activeEntity == entt::null)

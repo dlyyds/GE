@@ -636,4 +636,39 @@ struct CharacterControllerComponent {
     }
 };
 
+
+/**
+ * @brief 第一人称跟随相机组件 —— 挂在角色实体上，让主相机跟随角色视点。
+ *
+ * 与 CameraComponent 的关系：本组件【不】自带 Camera 实例，而是标记
+ * "场景里那台 Primary Camera 跟着我"。渲染仍用 CameraComponent 的实例，
+ * 本组件只在每帧末尾把相机位置钉到角色视点、把相机朝向（鼠标控制）
+ * 回写为角色朝向。实现见 Scene::UpdateFirstPersonCamera。
+ *
+ * 配置（参与 .scene 序列化）：
+ *   Enabled        总开关（关闭则相机不跟随，角色也不被相机驱动朝向）
+ *   EyeOffset      视点偏移（角色局部系，绕 up 随朝向旋转；默认 (0,1.65,0) = 纯抬高）
+ *   YawSpeed/PitchSpeed  鼠标偏航/俯仰灵敏度（度/像素）
+ *   MinPitch/MaxPitch    俯仰上下限（度）
+ *   InvertY        俯仰反转（可选，默认 false）
+ *
+ * 运行时（不参与序列化）：无——姿态全部存在 CameraComponent 的 Camera 里。
+ */
+struct FirstPersonCameraComponent {
+    bool  Enabled    = true;      ///< 总开关
+    glm::vec3 EyeOffset = {0.0f, 1.65f, 0.0f}; ///< 视点偏移（角色局部系，绕 up 随朝向旋转；纯第一人称 = +Y 抬高）
+    float YawSpeed   = 0.10f;     ///< 偏航灵敏度（度/像素）
+    float PitchSpeed = 0.10f;     ///< 俯仰灵敏度（度/像素）
+    float MinPitch   = -89.0f;    ///< 俯仰下限（度）
+    float MaxPitch   = 89.0f;     ///< 俯仰上限（度）
+    bool  InvertY    = false;     ///< 俯仰是否反转
+
+    FirstPersonCameraComponent() = default;
+
+    FirstPersonCameraComponent(const FirstPersonCameraComponent &) = default;
+
+    explicit FirstPersonCameraComponent(const glm::vec3 &eyeOffset) : EyeOffset(eyeOffset) {
+    }
+};
+
 }

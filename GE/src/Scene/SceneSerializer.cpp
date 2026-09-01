@@ -875,6 +875,20 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
             ccNode["TurnSpeed"] = ccc.TurnSpeed;
         }
 
+        // ---- FirstPersonCameraComponent ----
+        // 纯配置字段，无运行时数据（姿态存在 CameraComponent 的 Camera 里，不落盘）
+        if (entity.HasComponent<FirstPersonCameraComponent>()) {
+            const auto &fpc = entity.GetComponent<FirstPersonCameraComponent>();
+            YAML::Node fpNode = entityNode["FirstPersonCamera"];
+            fpNode["Enabled"] = fpc.Enabled;
+            fpNode["EyeOffset"] = SerializeVec3(fpc.EyeOffset);
+            fpNode["YawSpeed"] = fpc.YawSpeed;
+            fpNode["PitchSpeed"] = fpc.PitchSpeed;
+            fpNode["MinPitch"] = fpc.MinPitch;
+            fpNode["MaxPitch"] = fpc.MaxPitch;
+            fpNode["InvertY"] = fpc.InvertY;
+        }
+
         // ---- BoxColliderComponent ----
         if (entity.HasComponent<BoxColliderComponent>()) {
             const auto &bcc = entity.GetComponent<BoxColliderComponent>();
@@ -1407,6 +1421,21 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
             ccc.GravityScale = ccNode["GravityScale"] ? ccNode["GravityScale"].as<float>(1.0f) : 1.0f;
             ccc.FaceMovement = ccNode["FaceMovement"] ? ccNode["FaceMovement"].as<bool>(true) : true;
             ccc.TurnSpeed = ccNode["TurnSpeed"] ? ccNode["TurnSpeed"].as<float>(540.0f) : 540.0f;
+        }
+
+        // ---- FirstPersonCameraComponent ----
+        // AddComponent 触发 OnComponentAdded（纯配置，无物理重建）
+        if (entityNode["FirstPersonCamera"]) {
+            YAML::Node fpNode = entityNode["FirstPersonCamera"];
+            auto &fpc = entity.AddComponent<FirstPersonCameraComponent>();
+
+            fpc.Enabled = fpNode["Enabled"] ? fpNode["Enabled"].as<bool>(true) : true;
+            fpc.EyeOffset = DeserializeVec3(fpNode["EyeOffset"], {0.0f, 1.65f, 0.0f});
+            fpc.YawSpeed = fpNode["YawSpeed"] ? fpNode["YawSpeed"].as<float>(0.10f) : 0.10f;
+            fpc.PitchSpeed = fpNode["PitchSpeed"] ? fpNode["PitchSpeed"].as<float>(0.10f) : 0.10f;
+            fpc.MinPitch = fpNode["MinPitch"] ? fpNode["MinPitch"].as<float>(-89.0f) : -89.0f;
+            fpc.MaxPitch = fpNode["MaxPitch"] ? fpNode["MaxPitch"].as<float>(89.0f) : 89.0f;
+            fpc.InvertY = fpNode["InvertY"] ? fpNode["InvertY"].as<bool>(false) : false;
         }
 
         // ---- BoxColliderComponent ----

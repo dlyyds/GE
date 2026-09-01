@@ -915,6 +915,9 @@ void SceneHierarchyPanel::DrawComponents(Entity entity) {
     DrawComponent<CharacterControllerComponent>("Character Controller", entity,
         [&](auto &c) { DrawCharacterControllerComponent(entity, c); });
 
+    DrawComponent<FirstPersonCameraComponent>("First Person Camera", entity,
+        [&](auto &c) { DrawFirstPersonCameraComponent(c); });
+
     DrawComponent<BoxColliderComponent>("Box Collider", entity,
         [&](auto &c) { DrawBoxColliderComponent(entity, c); });
 
@@ -955,6 +958,7 @@ void SceneHierarchyPanel::DrawAddComponentPopup() {
     TryAddComponent<EnvironmentComponent>("Environment");
     TryAddComponent<RigidBodyComponent>("Rigid Body");
     TryAddComponent<CharacterControllerComponent>("Character Controller");
+    TryAddComponent<FirstPersonCameraComponent>("First Person Camera");
     TryAddComponent<BoxColliderComponent>("Box Collider");
     TryAddComponent<SphereColliderComponent>("Sphere Collider");
     TryAddComponent<CapsuleColliderComponent>("Capsule Collider");
@@ -1738,6 +1742,24 @@ void SceneHierarchyPanel::DrawCharacterControllerComponent(
     if (component.FaceMovement) {
         ImGui::DragFloat("Turn Speed (deg/s)", &component.TurnSpeed, 10.0f, 1.0f, 1080.0f);
     }
+}
+
+// ============================================================
+// First Person Camera 组件（纯配置，无物理重建需求）
+// ============================================================
+void SceneHierarchyPanel::DrawFirstPersonCameraComponent(FirstPersonCameraComponent &component) {
+    ImGui::Checkbox("Enabled", &component.Enabled);
+    ImGui::Separator();
+
+    DrawVec3Control("Eye Offset", component.EyeOffset, 0.05f, 120);
+    ImGui::TextDisabled("相机相对角色的局部偏移（默认 +Y = 角色头顶上方）");
+
+    ImGui::DragFloat("Yaw Speed (deg/px)", &component.YawSpeed, 0.01f, 0.0f, 1.0f);
+    ImGui::DragFloat("Pitch Speed (deg/px)", &component.PitchSpeed, 0.01f, 0.0f, 1.0f);
+    ImGui::DragFloat("Min Pitch (deg)", &component.MinPitch, 1.0f, -89.0f, 0.0f);
+    ImGui::DragFloat("Max Pitch (deg)", &component.MaxPitch, 1.0f, 0.0f, 89.0f);
+    ImGui::Checkbox("Invert Y", &component.InvertY);
+    ImGui::TextDisabled("鼠标控制视角；相机钉在角色视点，角色朝向跟随相机");
 }
 
 // ============================================================

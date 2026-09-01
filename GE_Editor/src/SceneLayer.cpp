@@ -6,6 +6,7 @@
 #include "SceneLayer.h"
 
 #include "GE/Core/Application.h"
+#include "GE/Events/KeyEvent.h"
 #include "GE/Events/MouseEvent.h"
 #include "GE/Render/Renderer.h"
 #include "GE/Render/AssetManager.h"
@@ -232,6 +233,26 @@ void SceneLayer::OnEvent(Event &event) {
     }
     const bool inViewport = m_SceneWindowHovered;
     const bool playing = m_Context->Scene->IsPlaying();
+
+    // Play 态按 ESC 退出运行：编辑器快捷键，不落入游戏脚本/相机输入。
+    // Stop() 回滚到摆放姿态，随后 UpdateMouseCapture 因 hasFps 变 false 自动解锁鼠标。
+    if (playing) {
+        EventDispatcher escDisp(event);
+        bool escPressed = false;
+        escDisp.Dispatch<KeyPressedEvent>([&](KeyPressedEvent &e) {
+            if (e.GetKeyCode() == KeyCode::Escape) {
+                escPressed = true;
+                return true;
+            }
+            return false;
+        });
+        if (escPressed) {
+            m_Context->Scene->Stop();
+            event.Handled = true;
+            return;
+        }
+    }
+
     // 相机额外要求未在拖 gizmo，避免拖 gizmo 时相机跟着转。
     const bool cameraActive = inViewport && !(m_Gizmo && ImGuizmo::IsOver());
     // 相机导航输入目标：Edit → 编辑器相机（EditorContext 独立持有）；Play → 场景主玩法相机。

@@ -341,6 +341,20 @@ void RegisterApi(Impl &eng) {
         }
         return std::make_tuple(0.0f, 0.0f, 0.0f);
     };
+    // FPS 角色当前累计偏航 FacingYaw（相对 BaseRotation；引擎朝向写回通道）。
+    // 诊断用：对比 camera.get_yaw() 与角色实际朝向，排查"脸朝反方向"问题。
+    camT["get_facing"] = [&eng]() -> float {
+        if (!eng.scene)
+            return 0.0f;
+        auto view = eng.scene->Reg().view<TransformComponent, CharacterControllerComponent,
+                                           FirstPersonCameraComponent>();
+        if (view.begin() == view.end())
+            return 0.0f;
+        float yaw = 0.0f;
+        if (!eng.scene->GetCharacterFacingYaw(view.front(), yaw))
+            return 0.0f;
+        return yaw;
+    };
     lua["camera"] = camT;
 
     // ---- entity → 挂载实体的基本查询 ----

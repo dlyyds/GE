@@ -117,6 +117,10 @@ public:
     /// Lua 脚本引擎（Scene 持有，每场景共享一个 Lua 状态）
     ScriptEngine &GetScriptEngine() { return m_ScriptEngine; }
 
+    /// 取实体 CharacterControllerComponent 的当前累计偏航（FPS 朝向写回用）。
+    /// 返回 false 表示该实体无此组件。
+    bool GetCharacterFacingYaw(entt::entity entity, float &outYaw) const;
+
     /**
      * @brief 视锥剔除粒度。
      *

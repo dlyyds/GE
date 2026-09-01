@@ -222,6 +222,15 @@ Entity Scene::GetPrimaryCameraEntity() {
     return {};
 }
 
+bool Scene::GetCharacterFacingYaw(entt::entity entity, float &outYaw) const {
+    const auto *cc = m_Registry.try_get<CharacterControllerComponent>(entity);
+    if (!cc) {
+        return false;
+    }
+    outYaw = cc->FacingYaw;
+    return true;
+}
+
 void Scene::Play() {
     // 已 Playing：重复进入无操作（幂等）
     if (m_SimulationState == SimulationState::Playing)
@@ -603,6 +612,10 @@ void Scene::UpdateFirstPersonCamera() {
         }
         const glm::vec3 wv = cc.BaseRotation * configured;
         const float modelYaw = std::atan2(wv.x, wv.z); // 模型前向固有朝向角
+        // 让模型前向(水平) = 相机前向(水平)：角色世界前向角 = FacingYaw + modelYaw，
+        // 令其等于 cam.GetYaw()（Camera::GetForward 的水平朝向角）→ target = yaw − modelYaw。
+        // 若模型仍与相机朝向相反，说明此角色 FrontAxis 的"前向"与视觉朝向相反
+        //（模型默认 -Z 是脸、FrontAxis 却配了 +Z），需把 configured 换成反轴。
         float target = glm::radians(cam.GetYaw()) - modelYaw;
         float diff = target - cc.FacingYaw;
         while (diff > kPi)  diff -= 2.0f * kPi;

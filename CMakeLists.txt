@@ -254,6 +254,7 @@ set(Editor_SRC
         ${CMAKE_SOURCE_DIR}/GE_Editor/src/Panels/ASMGraphPanel.cpp
         ${CMAKE_SOURCE_DIR}/GE_Editor/src/NodeEditorUtils/drawing.cpp
         ${CMAKE_SOURCE_DIR}/GE_Editor/src/NodeEditorUtils/widgets.cpp
+        ${CMAKE_SOURCE_DIR}/GE_Editor/src/NodeEditorUtils/builders.cpp
 )
 
 add_executable(${Editor_NAME} ${Editor_SRC})

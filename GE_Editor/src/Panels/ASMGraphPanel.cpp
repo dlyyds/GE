@@ -19,6 +19,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio> // snprintf：连线标签格式化
 
 namespace GE {
 namespace ed = ax::NodeEditor;
@@ -120,6 +121,7 @@ void ASMGraphPanel::OnImGuiRender() {
         ed::Config cfg;
         cfg.SettingsFile = "asm_graph.json";
         m_EditorCtx = ed::CreateEditor(&cfg);
+        SetupStyle();
     }
 
     AnimStateMachineComponent &asmc = selected.GetComponent<AnimStateMachineComponent>();
@@ -156,9 +158,88 @@ void ASMGraphPanel::OnImGuiRender() {
     ImGui::End();
 }
 
+/// 画节点标题行的状态图标：实心圆 = 当前状态，空心圆 = 非当前，内点 = 初始状态。
+/// 用 ImGui 自带绘图原语手绘（不引 blueprints 的 utilities，避免增加编译依赖）。
+void ASMGraphPanel::DrawStateIcon(const ImVec2 &pos, float size, bool current, bool initial) {
+    ImDrawList *dl = ImGui::GetWindowDrawList();
+    const ImVec2 c(pos.x + size * 0.5f, pos.y + size * 0.5f);
+    const float r = size * 0.45f;
+
+    if (current) {
+        // 当前状态：绿色实心圆
+        dl->AddCircleFilled(c, r, ImColor(60, 220, 120, 255));
+        if (initial) {
+            dl->AddCircleFilled(c, r * 0.45f, ImColor(240, 160, 60, 255));
+        }
+    } else {
+        // 非当前：空心圆环；初始状态中心补一个橙色点
+        dl->AddCircle(c, r, ImColor(150, 160, 175, 255), 24, 2.0f);
+        if (initial) {
+            dl->AddCircleFilled(c, r * 0.4f, ImColor(240, 160, 60, 255));
+        }
+    }
+    ImGui::Dummy(ImVec2(size, size));
+}
+
+/// 画引脚类型图标：输入 = 空心圆环，输出 = 实心圆点（与 blueprints 的 Icon 风格一致）。
+void ASMGraphPanel::DrawPinIcon(bool input) {
+    const float size = 14.0f;
+    ImDrawList *dl = ImGui::GetWindowDrawList();
+    const ImVec2 pos = ImGui::GetCursorScreenPos();
+    const ImVec2 c(pos.x + size * 0.5f, pos.y + size * 0.5f);
+    const float r = size * 0.38f;
+
+    if (input) {
+        dl->AddCircle(c, r, ImColor(170, 180, 195, 255), 24, 2.0f);
+    } else {
+        dl->AddCircleFilled(c, r, ImColor(70, 180, 250, 255));
+    }
+    ImGui::Dummy(ImVec2(size, size));
+}
+
+/// 一次性配置节点图编辑器全局样式（深色主题 + 更明显的网格 + 节点/连线风格）。
+/// 在 CreateEditor 后调用一次；此后 Style 持续到 DestroyEditor（设置文件不含样式）。
+void ASMGraphPanel::SetupStyle() {
+    auto &style = ed::GetStyle();
+    style = ed::Style(); // 先重置回默认，再覆盖想改的项
+
+    // ---- 画布：深色背景 + 更清晰的网格 ----
+    style.Colors[ed::StyleColor_Bg]  = ImColor(18, 18, 22, 255);
+    style.Colors[ed::StyleColor_Grid] = ImColor(70, 70, 90, 60);
+
+    // ---- 节点：圆角卡片 + 更亮描边 ----
+    style.Colors[ed::StyleColor_NodeBg]     = ImColor(40, 40, 48, 235);
+    style.Colors[ed::StyleColor_NodeBorder] = ImColor(120, 130, 150, 160);
+    style.Colors[ed::StyleColor_HovNodeBorder] = ImColor(80, 200, 255, 255);
+    style.Colors[ed::StyleColor_SelNodeBorder] = ImColor(255, 190, 70, 255);
+    style.Colors[ed::StyleColor_NodeSelRect]    = ImColor(30, 90, 180, 80);
+    style.Colors[ed::StyleColor_NodeSelRectBorder] = ImColor(60, 140, 255, 150);
+    style.Colors[ed::StyleColor_PinRect]       = ImColor(70, 140, 200, 120);
+    style.Colors[ed::StyleColor_PinRectBorder] = ImColor(90, 170, 230, 160);
+
+    style.NodePadding = ImVec4(12.0f, 8.0f, 12.0f, 8.0f);
+    style.NodeRounding = 8.0f;
+    style.NodeBorderWidth = 1.5f;
+    style.HoveredNodeBorderWidth = 3.0f;
+    style.SelectedNodeBorderWidth = 3.5f;
+    style.PinRounding = 4.0f;
+    style.PinBorderWidth = 0.0f;
+
+    // ---- 连线：更强的弯曲，出/进线方向让竖排节点上下走线更顺 ----
+    style.LinkStrength = 140.0f;
+    style.SourceDirection = ImVec2(1.0f, 0.0f);   // 输出引脚 → 向右出线
+    style.TargetDirection = ImVec2(-1.0f, 0.0f);  // 输入引脚 → 从左侧进线
+    style.HighlightConnectedLinks = 0.0f;          // 关掉自动高亮，由我们自己画活跃路径
+
+    // ---- 连线点击/悬停配色 ----
+    style.Colors[ed::StyleColor_HovLinkBorder] = ImColor(90, 210, 255, 255);
+    style.Colors[ed::StyleColor_SelLinkBorder] = ImColor(255, 190, 70, 255);
+}
+
 void ASMGraphPanel::DrawASMGraph(AnimStateMachineComponent &asmc) {
     const auto &states = asmc.states;
     const auto &transitions = asmc.transitions;
+    const auto &style = ed::GetStyle(); // 节点描边基准值（SetupStyle 设过一次）
 
     // 画布：ed::Begin 之前不插任何控件，GetContentRegionAvail() 即外层 Child 剩余全部区域
     ed::SetCurrentEditor(m_EditorCtx);
@@ -190,14 +271,57 @@ void ASMGraphPanel::DrawASMGraph(AnimStateMachineComponent &asmc) {
         ed::SetNodePosition(anyNodeId, ImVec2(20.0f, -60.0f));
     }
     {
+        const bool isHovered = ed::GetHoveredNode() == anyNodeId;
+        const bool isSelected = ed::IsNodeSelected(anyNodeId);
+
+        // ANY 节点用「全局」配色（蓝），悬停/选中同普通节点逻辑
+        ImVec4 anyBorder = ImColor(90, 160, 230, 255);
+        float anyBorderWidth = style.NodeBorderWidth;
+        if (isHovered || isSelected) {
+            anyBorder.x = std::min(anyBorder.x * 1.4f, 1.0f);
+            anyBorder.y = std::min(anyBorder.y * 1.4f, 1.0f);
+            anyBorder.z = std::min(anyBorder.z * 1.4f, 1.0f);
+            anyBorder.w = 1.0f;
+            anyBorderWidth = (isHovered ? style.HoveredNodeBorderWidth : style.SelectedNodeBorderWidth);
+        }
+
+        ed::PushStyleColor(ed::StyleColor_NodeBorder, anyBorder);
+        ed::PushStyleVar(ed::StyleVar_NodeBorderWidth, anyBorderWidth);
+
         ed::BeginNode(anyNodeId);
-        ImGui::Text("ANY");
-        ImGui::TextDisabled("全局");
-        // 输出引脚（右侧）：作为 from==ANY 转换的源
+
+        ImGui::BeginGroup(); // 标题行：左图标 + 文字
+        {
+            ImGui::BeginGroup();
+            {
+                const float iconSize = 18.0f;
+                const ImVec2 iconPos = ImGui::GetCursorScreenPos();
+                DrawStateIcon(iconPos, iconSize, false, false);
+            }
+            ImGui::EndGroup();
+            ImGui::SameLine();
+            ImGui::BeginGroup();
+            {
+                ImGui::Text("ANY");
+                ImGui::TextDisabled("全局");
+            }
+            ImGui::EndGroup();
+        }
+        ImGui::EndGroup();
+
+        ImGui::Spacing();
+
+        // 输出引脚（右侧）：圆点图标 + 文本，作为 from==ANY 转换的源
         ed::BeginPin(ed::PinId(EncodePinId(entityId, kStateIndexMask, true)), ed::PinKind::Output);
-        ImGui::Text("输入");
+        DrawPinIcon(false);
+        ImGui::SameLine();
+        ImGui::Text("输出");
         ed::EndPin();
+
         ed::EndNode();
+
+        ed::PopStyleVar();
+        ed::PopStyleColor();
     }
 
     // ---- 状态节点：标题 + 初始★/当前▶ 标记 + 输入/输出引脚 ----
@@ -219,35 +343,85 @@ void ASMGraphPanel::DrawASMGraph(AnimStateMachineComponent &asmc) {
         // 标题行：状态名 + 初始★/当前▶ 标记；当前状态用醒目颜色描边
         const bool isInitial = (st.name == asmc.initialState);
         const bool isCurrent = (asmc.current == i);
-        ImGui::BeginGroup();
+        const bool isHovered = ed::GetHoveredNode() == nodeId;
+        const bool isSelected = ed::IsNodeSelected(nodeId);
+
+        // ---- 节点描边：默认灰边；当前状态绿色、初始状态橙色、悬停/选中更亮更粗 ----
+        // 注意 PushStyleColor 会覆盖 Hovered/Selected 配色，但 GetHoveredNode() 由库维护，
+        // 这里手动补一笔"悬停/选中变亮"（只调亮度，不改色相），避免和默认主题打架。
+        ImVec4 nodeBorder = ImColor(120, 130, 150, 160);
+        float borderWidth = style.NodeBorderWidth;
+        if (isCurrent) {
+            nodeBorder = ImColor(60, 220, 120, 255);
+        } else if (isInitial) {
+            nodeBorder = ImColor(240, 160, 60, 255);
+        }
+        if (isHovered || isSelected) {
+            nodeBorder.x = std::min(nodeBorder.x * 1.4f, 1.0f);
+            nodeBorder.y = std::min(nodeBorder.y * 1.4f, 1.0f);
+            nodeBorder.z = std::min(nodeBorder.z * 1.4f, 1.0f);
+            nodeBorder.w = 1.0f;
+            borderWidth = (isHovered ? style.HoveredNodeBorderWidth : style.SelectedNodeBorderWidth);
+        }
+
+        ed::PushStyleColor(ed::StyleColor_NodeBorder, nodeBorder);
+        ed::PushStyleVar(ed::StyleVar_NodeBorderWidth, borderWidth);
+
+        ed::BeginNode(nodeId);
+
+        ImGui::BeginGroup(); // 标题行：左图标 + 状态名 + 标记
         {
-            if (isCurrent) {
-                // 当前状态标题：高亮色文字 + 左侧▶
-                ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.3f, 1.0f), "▶ ");
-                ImGui::SameLine();
+            const float iconSize = 18.0f;
+            ImGui::BeginGroup();
+            {
+                // 左边缘对齐图标：标题行图标 + 每行一个
+                const ImVec2 iconPos = ImGui::GetCursorScreenPos();
+                DrawStateIcon(iconPos, iconSize, isCurrent, isInitial);
             }
-            ImGui::TextUnformatted(st.name.empty() ? "(未命名)" : st.name.c_str());
-            if (isInitial) {
-                ImGui::SameLine();
-                ImGui::TextDisabled("★");
+            ImGui::EndGroup();
+            ImGui::SameLine();
+
+            ImGui::BeginGroup(); // 右列：标题 + 子信息
+            {
+                // 标题行：状态名 + 初始★/当前▶ 标记；当前状态用醒目颜色文字
+                if (isCurrent) {
+                    ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.3f, 1.0f), "▶ ");
+                    ImGui::SameLine();
+                }
+                ImGui::TextUnformatted(st.name.empty() ? "(未命名)" : st.name.c_str());
+                if (isInitial) {
+                    ImGui::SameLine();
+                    ImGui::TextDisabled("★");
+                }
+                if (isCurrent) {
+                    ImGui::SameLine();
+                    ImGui::TextDisabled("stateTime %.2fs", asmc.stateTime);
+                }
             }
-            if (isCurrent) {
-                ImGui::TextDisabled("stateTime %.2fs", asmc.stateTime);
-            }
+            ImGui::EndGroup();
         }
         ImGui::EndGroup();
 
-        // 输入引脚（左侧）：作为转换目标
+        ImGui::Spacing();
+
+        // 输入引脚（左侧）：圆环图标 + 文本，作为转换目标
         ed::BeginPin(inPin, ed::PinKind::Input);
+        DrawPinIcon(true);
+        ImGui::SameLine();
         ImGui::Text("输入");
         ed::EndPin();
 
-        // 输出引脚（右侧）：作为转换源
+        // 输出引脚（右侧）：实心圆点图标 + 文本，作为转换源
         ed::BeginPin(outPin, ed::PinKind::Output);
+        DrawPinIcon(false);
+        ImGui::SameLine();
         ImGui::Text("输出");
         ed::EndPin();
 
         ed::EndNode();
+
+        ed::PopStyleVar();
+        ed::PopStyleColor();
     }
 
     // ---- 连线：每条转换一条 Link（from==SIZE_MAX 从 ANY 输出引脚出发）----
@@ -266,13 +440,46 @@ void ASMGraphPanel::DrawASMGraph(AnimStateMachineComponent &asmc) {
                                        : ed::PinId(EncodePinId(entityId, tr.from, true)); // 源状态输出引脚
         const ed::PinId endPin = ed::PinId(EncodePinId(entityId, tr.to, false)); // 目标状态输入引脚
 
-        // 连线上标签：过渡时长 + 条件数
-        const ImVec4 linkColor = (tr.from == SIZE_MAX)
-                                     ? ImVec4(0.3f, 0.6f, 1.0f, 1.0f) // ANY 连线：蓝色
-                                     : ImVec4(0.5f, 0.8f, 0.5f, 1.0f); // 普通连线：绿色
+        // ---- 连线配色/粗细：ANY 连线蓝色、普通连线绿色；当前状态发出的（活跃路径）更亮更粗 ----
+        const bool fromAny = (tr.from == SIZE_MAX);
+        const bool isActive = (asmc.current != SIZE_MAX) && (tr.from == asmc.current);
+        ImVec4 linkColor = fromAny ? ImVec4(0.30f, 0.60f, 1.00f, 1.00f)
+                                   : ImVec4(0.45f, 0.80f, 0.45f, 1.00f);
+        if (isActive) {
+            // 活跃路径：提亮 + 加粗（当前状态 → 目标状态的潜在下一跳）
+            linkColor = ImVec4(0.35f, 1.00f, 0.55f, 1.00f);
+        }
 
         const ed::LinkId linkId(static_cast<uintptr_t>(j));
-        ed::Link(linkId, startPin, endPin, linkColor, 2.0f);
+        ed::Link(linkId, startPin, endPin, linkColor, isActive ? 3.5f : 2.0f);
+
+        // ---- 连线标签：过渡时长 + 条件数（两节点中点 ≈ 连线中点，用库前景层画底板+文字）----
+        if (tr.blendSec > 0.0f || !tr.conditions.empty()) {
+            // 无 GetPinPosition 公开 API，用节点坐标近似连线中点：源节点右侧中点 ↔ 目标节点左侧中点
+            const ImVec2 srcPos = ed::GetNodePosition(tr.from == SIZE_MAX ? anyNodeId
+                                                                          : ed::NodeId(EncodeNodeId(entityId, tr.from)));
+            const ImVec2 dstPos = ed::GetNodePosition(ed::NodeId(EncodeNodeId(entityId, tr.to)));
+            const ImVec2 srcMid = ed::CanvasToScreen(ImVec2(srcPos.x + 80.0f, srcPos.y + 32.0f));
+            const ImVec2 dstMid = ed::CanvasToScreen(ImVec2(dstPos.x - 80.0f, dstPos.y + 32.0f));
+            const ImVec2 mid = ImVec2((srcMid.x + dstMid.x) * 0.5f, (srcMid.y + dstMid.y) * 0.5f);
+
+            char label[64];
+            if (tr.conditions.empty()) {
+                snprintf(label, sizeof(label), "%.2fs", tr.blendSec);
+            } else {
+                snprintf(label, sizeof(label), "%.2fs · %zu cond", tr.blendSec, tr.conditions.size());
+            }
+            const ImVec2 labelSize = ImGui::CalcTextSize(label);
+            ImU32 labelBg = ImColor(20, 22, 28, 220);
+            ImU32 labelFg = fromAny ? ImColor(130, 190, 255, 255)
+                                    : ImColor(160, 220, 160, 255);
+            ImDrawList *bg = ed::GetHintBackgroundDrawList(); // 背景层：标签底板
+            bg->AddRectFilled(ImVec2(mid.x - labelSize.x * 0.5f - 3.0f, mid.y - labelSize.y * 0.5f - 2.0f),
+                              ImVec2(mid.x + labelSize.x * 0.5f + 3.0f, mid.y + labelSize.y * 0.5f + 2.0f),
+                              labelBg, 3.0f);
+            ImDrawList *fg = ed::GetHintForegroundDrawList(); // 前景层：标签文字
+            fg->AddText(ImVec2(mid.x - labelSize.x * 0.5f, mid.y - labelSize.y * 0.5f), labelFg, label);
+        }
     }
 
     // 复位首次布局标记（ANY 节点首帧已摆到角落）

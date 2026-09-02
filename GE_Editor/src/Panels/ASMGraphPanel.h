@@ -54,6 +54,15 @@ private:
     /// 按声明序网格布局一个节点（首次见到某状态 / 手动重新布局时用）
     void LayoutNode(size_t stateIndex);
 
+    /// 一次性配置节点图编辑器全局样式（深色主题 / 网格 / 节点描边 / 连线方向）
+    void SetupStyle();
+
+    /// 画节点标题行图标（实心圆=当前状态 / 空心圆=普通 / 内点=初始状态）
+    void DrawStateIcon(const ImVec2 &pos, float size, bool current, bool initial);
+
+    /// 画引脚图标（输入=空心圆环 / 输出=实心圆点）
+    void DrawPinIcon(bool input);
+
     void DrawASMGraph(AnimStateMachineComponent &asmc);
 
     std::shared_ptr<EditorContext> m_Context; ///< 共享场景上下文（非拥有）

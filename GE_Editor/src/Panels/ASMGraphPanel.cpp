@@ -26,6 +26,7 @@
 #include "NodeEditorUtils/builders.h" // ax::NodeEditor::Utilities::BlueprintNodeBuilder（阶段 4 节点骨架）
 
 #include "imgui.h"
+#include "imgui_internal.h"
 
 #include <algorithm>
 #include <cmath>
@@ -241,10 +242,10 @@ void ASMGraphPanel::OnImGuiRender() {
         const float splitWidth = ImGui::GetContentRegionAvail().x;
         const ImVec2 splitMax(splitMin.x + splitWidth, splitMin.y + kSplitterH);
 
-        // 命中/拖动处理（手动实现，方向为「下拖=属性区变高」，无 SplitterBehavior 的
-        // 方向反转与「条随分区移动→累积误差」问题）：
-        // 拖拽基准在按下瞬间记录（m_PropDragStartH/Y），高度 = 基准 + 鼠标位移，拖动中
-        // 鼠标移出条带也持续跟随（m_PropDragging），直到松开。上限给画布留 kCanvasMinH。
+        // 命中/拖动处理（手动实现）：分割条位于属性区顶边，往上拖 = 属性区变高，
+        // 故用「基准 − 鼠标位移」（上移 y 减小 → 高度增大）。拖拽基准在按下瞬间记录
+        //（m_PropDragStartH/Y），拖动中鼠标移出条带也持续跟随（m_PropDragging），
+        // 直到松开。上限给画布留 kCanvasMinH。
         const ImVec2 &mp = ImGui::GetIO().MousePos;
         const bool hover = mp.x >= splitMin.x && mp.x <= splitMax.x &&
                            mp.y >= splitMin.y - 2.0f && mp.y <= splitMax.y + 2.0f;
@@ -255,7 +256,7 @@ void ASMGraphPanel::OnImGuiRender() {
         }
         if (m_PropDragging) {
             if (ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
-                m_PropHeight = ImClamp(m_PropDragStartH + (mp.y - m_PropDragStartY),
+                m_PropHeight = ImClamp(m_PropDragStartH - (mp.y - m_PropDragStartY),
                                        kPropMinHeight, maxPropH);
             } else {
                 m_PropDragging = false;
@@ -266,8 +267,9 @@ void ASMGraphPanel::OnImGuiRender() {
         // 自绘分割条：按住亮 / 悬停亮 / 平时暗（与 dock 分割条观感一致）
         ImU32 splitCol = m_PropDragging
                              ? ImGui::GetColorU32(ImGuiCol_SeparatorActive)
-                             : hover ? ImGui::GetColorU32(ImGuiCol_SeparatorHovered)
-                                     : ImGui::GetColorU32(ImGuiCol_Separator);
+                             : hover
+                             ? ImGui::GetColorU32(ImGuiCol_SeparatorHovered)
+                             : ImGui::GetColorU32(ImGuiCol_Separator);
         ImGui::GetWindowDrawList()->AddRectFilled(splitMin, splitMax, splitCol);
 
         // 占位推进：本行高 kSplitterH（手动控件不自动占位，用 ItemSize 让出）

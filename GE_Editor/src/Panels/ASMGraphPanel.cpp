@@ -116,12 +116,13 @@ void ASMGraphPanel::OnImGuiRender() {
         return;
     }
 
-    // 懒创建节点图编辑器上下文（带 SettingsFile：节点坐标自动落盘跨启动保持）
+    // 懒创建节点图编辑器上下文（带 SettingsFile：节点坐标自动落盘跨启动保持）。
+    // 注意：样式不能在这里配 —— GetStyle() 依赖「当前编辑器」s_Editor，需 SetCurrentEditor
+    // 之后才能取到，见 DrawASMGraph 首帧的 SetupStyle。
     if (!m_EditorCtx) {
         ed::Config cfg;
         cfg.SettingsFile = "asm_graph.json";
         m_EditorCtx = ed::CreateEditor(&cfg);
-        SetupStyle();
     }
 
     AnimStateMachineComponent &asmc = selected.GetComponent<AnimStateMachineComponent>();
@@ -204,17 +205,17 @@ void ASMGraphPanel::SetupStyle() {
     style = ed::Style(); // 先重置回默认，再覆盖想改的项
 
     // ---- 画布：深色背景 + 更清晰的网格 ----
-    style.Colors[ed::StyleColor_Bg]  = ImColor(18, 18, 22, 255);
+    style.Colors[ed::StyleColor_Bg] = ImColor(18, 18, 22, 255);
     style.Colors[ed::StyleColor_Grid] = ImColor(70, 70, 90, 60);
 
     // ---- 节点：圆角卡片 + 更亮描边 ----
-    style.Colors[ed::StyleColor_NodeBg]     = ImColor(40, 40, 48, 235);
+    style.Colors[ed::StyleColor_NodeBg] = ImColor(40, 40, 48, 235);
     style.Colors[ed::StyleColor_NodeBorder] = ImColor(120, 130, 150, 160);
     style.Colors[ed::StyleColor_HovNodeBorder] = ImColor(80, 200, 255, 255);
     style.Colors[ed::StyleColor_SelNodeBorder] = ImColor(255, 190, 70, 255);
-    style.Colors[ed::StyleColor_NodeSelRect]    = ImColor(30, 90, 180, 80);
+    style.Colors[ed::StyleColor_NodeSelRect] = ImColor(30, 90, 180, 80);
     style.Colors[ed::StyleColor_NodeSelRectBorder] = ImColor(60, 140, 255, 150);
-    style.Colors[ed::StyleColor_PinRect]       = ImColor(70, 140, 200, 120);
+    style.Colors[ed::StyleColor_PinRect] = ImColor(70, 140, 200, 120);
     style.Colors[ed::StyleColor_PinRectBorder] = ImColor(90, 170, 230, 160);
 
     style.NodePadding = ImVec4(12.0f, 8.0f, 12.0f, 8.0f);
@@ -227,9 +228,9 @@ void ASMGraphPanel::SetupStyle() {
 
     // ---- 连线：更强的弯曲，出/进线方向让竖排节点上下走线更顺 ----
     style.LinkStrength = 140.0f;
-    style.SourceDirection = ImVec2(1.0f, 0.0f);   // 输出引脚 → 向右出线
-    style.TargetDirection = ImVec2(-1.0f, 0.0f);  // 输入引脚 → 从左侧进线
-    style.HighlightConnectedLinks = 0.0f;          // 关掉自动高亮，由我们自己画活跃路径
+    style.SourceDirection = ImVec2(1.0f, 0.0f); // 输出引脚 → 向右出线
+    style.TargetDirection = ImVec2(-1.0f, 0.0f); // 输入引脚 → 从左侧进线
+    style.HighlightConnectedLinks = 0.0f; // 关掉自动高亮，由我们自己画活跃路径
 
     // ---- 连线点击/悬停配色 ----
     style.Colors[ed::StyleColor_HovLinkBorder] = ImColor(90, 210, 255, 255);
@@ -239,10 +240,18 @@ void ASMGraphPanel::SetupStyle() {
 void ASMGraphPanel::DrawASMGraph(AnimStateMachineComponent &asmc) {
     const auto &states = asmc.states;
     const auto &transitions = asmc.transitions;
-    const auto &style = ed::GetStyle(); // 节点描边基准值（SetupStyle 设过一次）
 
     // 画布：ed::Begin 之前不插任何控件，GetContentRegionAvail() 即外层 Child 剩余全部区域
     ed::SetCurrentEditor(m_EditorCtx);
+
+    // 样式首帧应用一次：GetStyle() 依赖 s_Editor（当前编辑器），必须在 SetCurrentEditor 之后。
+    // 只应用一次，避免每帧 style = ed::Style() 重置用户手改的样式/布局。
+    if (!m_StyleApplied) {
+        SetupStyle();
+        m_StyleApplied = true;
+    }
+    const auto &style = ed::GetStyle(); // 节点描边基准值（SetupStyle 设过一次）
+
     ed::Begin("ASM Graph", ImVec2(0.0f, 0.0f));
 
     // ---- 实体 id（NodeId 高位，跨实体隔离）----
@@ -443,8 +452,9 @@ void ASMGraphPanel::DrawASMGraph(AnimStateMachineComponent &asmc) {
         // ---- 连线配色/粗细：ANY 连线蓝色、普通连线绿色；当前状态发出的（活跃路径）更亮更粗 ----
         const bool fromAny = (tr.from == SIZE_MAX);
         const bool isActive = (asmc.current != SIZE_MAX) && (tr.from == asmc.current);
-        ImVec4 linkColor = fromAny ? ImVec4(0.30f, 0.60f, 1.00f, 1.00f)
-                                   : ImVec4(0.45f, 0.80f, 0.45f, 1.00f);
+        ImVec4 linkColor = fromAny
+                               ? ImVec4(0.30f, 0.60f, 1.00f, 1.00f)
+                               : ImVec4(0.45f, 0.80f, 0.45f, 1.00f);
         if (isActive) {
             // 活跃路径：提亮 + 加粗（当前状态 → 目标状态的潜在下一跳）
             linkColor = ImVec4(0.35f, 1.00f, 0.55f, 1.00f);
@@ -456,8 +466,9 @@ void ASMGraphPanel::DrawASMGraph(AnimStateMachineComponent &asmc) {
         // ---- 连线标签：过渡时长 + 条件数（两节点中点 ≈ 连线中点，用库前景层画底板+文字）----
         if (tr.blendSec > 0.0f || !tr.conditions.empty()) {
             // 无 GetPinPosition 公开 API，用节点坐标近似连线中点：源节点右侧中点 ↔ 目标节点左侧中点
-            const ImVec2 srcPos = ed::GetNodePosition(tr.from == SIZE_MAX ? anyNodeId
-                                                                          : ed::NodeId(EncodeNodeId(entityId, tr.from)));
+            const ImVec2 srcPos = ed::GetNodePosition(tr.from == SIZE_MAX
+                                                          ? anyNodeId
+                                                          : ed::NodeId(EncodeNodeId(entityId, tr.from)));
             const ImVec2 dstPos = ed::GetNodePosition(ed::NodeId(EncodeNodeId(entityId, tr.to)));
             const ImVec2 srcMid = ed::CanvasToScreen(ImVec2(srcPos.x + 80.0f, srcPos.y + 32.0f));
             const ImVec2 dstMid = ed::CanvasToScreen(ImVec2(dstPos.x - 80.0f, dstPos.y + 32.0f));
@@ -471,8 +482,9 @@ void ASMGraphPanel::DrawASMGraph(AnimStateMachineComponent &asmc) {
             }
             const ImVec2 labelSize = ImGui::CalcTextSize(label);
             ImU32 labelBg = ImColor(20, 22, 28, 220);
-            ImU32 labelFg = fromAny ? ImColor(130, 190, 255, 255)
-                                    : ImColor(160, 220, 160, 255);
+            ImU32 labelFg = fromAny
+                                ? ImColor(130, 190, 255, 255)
+                                : ImColor(160, 220, 160, 255);
             ImDrawList *bg = ed::GetHintBackgroundDrawList(); // 背景层：标签底板
             bg->AddRectFilled(ImVec2(mid.x - labelSize.x * 0.5f - 3.0f, mid.y - labelSize.y * 0.5f - 2.0f),
                               ImVec2(mid.x + labelSize.x * 0.5f + 3.0f, mid.y + labelSize.y * 0.5f + 2.0f),

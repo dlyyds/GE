@@ -57,6 +57,10 @@ private:
     /// 一次性配置节点图编辑器全局样式（深色主题 / 网格 / 节点描边 / 连线方向）
     void SetupStyle();
 
+    /// 样式已应用标记：SetupStyle 需在 SetCurrentEditor 之后调用（GetStyle 依赖当前编辑器），
+    /// 首帧在 DrawASMGraph 内 set current 后应用一次，之后不再重置
+    bool m_StyleApplied = false;
+
     /// 画节点标题行图标（实心圆=当前状态 / 空心圆=普通 / 内点=初始状态）
     void DrawStateIcon(const ImVec2 &pos, float size, bool current, bool initial);
 

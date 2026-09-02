@@ -124,6 +124,22 @@ private:
     SelKind m_SelKind = SelKind::None;   ///< 当前选中类型（QuerySelection 每帧刷新）
     size_t m_SelState = SIZE_MAX;        ///< 选中状态下标（SelKind==State 时有效）
     size_t m_SelLink = SIZE_MAX;         ///< 选中转换下标（SelKind==Link 时有效）
+
+    /// 画布/属性区可拖拽分割条厚度（像素）
+    static constexpr float kSplitterH = 4.0f;
+    /// 底部属性区高度（像素；无选中为 0=画布撑满）。点选展开后从初始高度（210）起步，
+    /// 用户拖拽分割条实时改此值并跨选中记忆。
+    float m_PropHeight = 210.0f;
+    /// 分割条拖拽基准：按下瞬间的属性区高度（高度 = 基准 + 鼠标位移，避免拖动抖动）
+    float m_PropDragStartH = 0.0f;
+    /// 分割条拖拽基准：按下瞬间的鼠标屏幕 y
+    float m_PropDragStartY = 0.0f;
+    /// 分割条是否正在被拖动（按下后即使鼠标移出条也继续，直到松开）
+    bool m_PropDragging = false;
+    /// 底部属性区高度下限（像素，避免拖没）
+    static constexpr float kPropMinHeight = 80.0f;
+    /// 画布区最小高度（像素）：拖拽分割条时始终给画布留至少这么高
+    static constexpr float kCanvasMinH = 60.0f;
 };
 
 } // namespace GE

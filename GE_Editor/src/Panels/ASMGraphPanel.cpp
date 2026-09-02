@@ -95,9 +95,6 @@ constexpr uintptr_t kNamespacePinIn = 3u; // 输入引脚
 constexpr float kGridSpacingX = 320.0f;
 constexpr float kGridSpacingY = 260.0f;
 
-/// 底部属性区固定高度（像素）：点选状态/连线时展开，高度不足内部滚动
-constexpr float kPropHeight = 210.0f;
-
 /// 解码统一辅助：任意 NodeId/PinId 编码都形如
 /// (实体id << 32) | (命名空间 << 16) | 下标，这里只取「命名空间」与「下标」两段
 ///（实体 id 高位在解码中不参与 —— 删除/选中都发生在同一选中实体上）。
@@ -196,14 +193,10 @@ void ASMGraphPanel::OnImGuiRender() {
 
     AnimStateMachineComponent &asmc = selected.GetComponent<AnimStateMachineComponent>();
 
-    // ---- 画布与底部属性区垂直拆分 ----
-    // 画布区高度 = 剩余可用 − 底部属性区高度（负数 = 从底部预留）。属性区用「上一帧选中态」
-    // 决定高度，与 DrawProperties 渲染的 m_SelKind 保持一致 → 同帧内布局不跳变；
-    // 首次点选会晚一帧展开属性区（选中本身在画布内即帧更新，属性区慢一帧无碍）。
+    // ---- 画布与底部属性区垂直拆分（属性区可拖拽高度）----
+    // 属性区用「上一帧选中态」决定是否展开，与 DrawProperties 渲染的 m_SelKind 保持一致 →
+    // 同帧内布局不跳变；首次点选会晚一帧展开属性区（选中本身在画布内即帧更新，属性区慢一帧无碍）。
     const bool hasPropArea = (m_SelKind == SelKind::State || m_SelKind == SelKind::Link);
-    const float propHeight = hasPropArea ? kPropHeight : 0.0f;
-    // ImGui::BeginChild("##asmBody", ImVec2(0, 0), false,
-    //                   ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
 
     {
         ImGui::BeginChild("##asmBody", ImVec2(0, 40), false,
@@ -225,31 +218,73 @@ void ASMGraphPanel::OnImGuiRender() {
         ImGui::EndChild();
     }
 
-    // 画布：ed::Begin 之前不插其它控件，GetContentRegionAvail() 即画布 Child 剩余全部区域。
-    // 高度减掉底部属性区 → 画布不缩不裁，节点图在剩余区域内自由缩放/平移。
-    ImGui::BeginChild("##asmCanvas", ImVec2(0, -kPropHeight), false,
+    // 画布与属性区分割：先算父剩余可用高。画布高度 = 总高 − 分割条 − 属性区
+    //（无属性区则画布吃满）。属性区高度帧初钳到 [min, 可用高−画布最小高−分割条]，
+    // 与拖拽上限一致，避免拖到超限后下一帧跳回。
+    const float availH = ImGui::GetContentRegionAvail().y;
+    const float maxPropH = ImMax(kPropMinHeight, availH - kSplitterH - kCanvasMinH);
+    const float propH = hasPropArea ? ImClamp(m_PropHeight, kPropMinHeight, maxPropH) : 0.0f;
+    const float canvasSize = hasPropArea
+                                 ? ImMax(kCanvasMinH, availH - kSplitterH - propH)
+                                 : availH;
+
+    ImGui::BeginChild("##asmCanvas", ImVec2(0, canvasSize), false,
                       ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
     ImGui::Button("神秘", ImVec2(0.1, 0.1));
     DrawASMGraph(asmc);
     ImGui::EndChild();
 
-    // 底部属性区：点选状态/连线时展开（可编辑）。无选中不建 Child，画布独占全高。
+    // 底部属性区 + 其上可拖拽分割条：点选状态/连线时展开（可编辑）。无选中不建，画布独占全高。
     if (hasPropArea) {
-        {
-            ImGui::BeginChild("##asmProp", ImVec2(0, 0), false);
-            ImGui::Button("神秘", ImVec2(0.1, 0.1));
+        // ---- 分割条：画布 EndChild 后游标已在画布底，此处即条顶（占高 kSplitterH）----
+        const ImVec2 splitMin = ImGui::GetCursorScreenPos();
+        const float splitWidth = ImGui::GetContentRegionAvail().x;
+        const ImVec2 splitMax(splitMin.x + splitWidth, splitMin.y + kSplitterH);
 
-            // 同实体 AnimationComponent 的 clip 名列表：状态「片段」下拉数据源。
-            // Entity 关联的 Scene 必然非空（能取到组件就说明注册表可用），比 EditorContext::Scene 更可靠。
-            Scene *scene = selected.GetScene();
-            const AnimationComponent *ac = scene
-                                               ? scene->Reg().try_get<AnimationComponent>(
-                                                   static_cast<entt::entity>(selected))
-                                               : nullptr;
-            DrawProperties(asmc, ac);
-            ImGui::EndChild();
+        // 命中/拖动处理（手动实现，方向为「下拖=属性区变高」，无 SplitterBehavior 的
+        // 方向反转与「条随分区移动→累积误差」问题）：
+        // 拖拽基准在按下瞬间记录（m_PropDragStartH/Y），高度 = 基准 + 鼠标位移，拖动中
+        // 鼠标移出条带也持续跟随（m_PropDragging），直到松开。上限给画布留 kCanvasMinH。
+        const ImVec2 &mp = ImGui::GetIO().MousePos;
+        const bool hover = mp.x >= splitMin.x && mp.x <= splitMax.x &&
+                           mp.y >= splitMin.y - 2.0f && mp.y <= splitMax.y + 2.0f;
+        if (hover && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !m_PropDragging) {
+            m_PropDragging = true;
+            m_PropDragStartH = m_PropHeight;
+            m_PropDragStartY = mp.y;
         }
+        if (m_PropDragging) {
+            if (ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+                m_PropHeight = ImClamp(m_PropDragStartH + (mp.y - m_PropDragStartY),
+                                       kPropMinHeight, maxPropH);
+            } else {
+                m_PropDragging = false;
+            }
+        }
+        if (m_PropDragging || hover)
+            ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNS);
+        // 自绘分割条：按住亮 / 悬停亮 / 平时暗（与 dock 分割条观感一致）
+        ImU32 splitCol = m_PropDragging
+                             ? ImGui::GetColorU32(ImGuiCol_SeparatorActive)
+                             : hover ? ImGui::GetColorU32(ImGuiCol_SeparatorHovered)
+                                     : ImGui::GetColorU32(ImGuiCol_Separator);
+        ImGui::GetWindowDrawList()->AddRectFilled(splitMin, splitMax, splitCol);
 
+        // 占位推进：本行高 kSplitterH（手动控件不自动占位，用 ItemSize 让出）
+        ImGui::ItemSize(ImVec2(0.0f, kSplitterH));
+
+        ImGui::BeginChild("##asmProp", ImVec2(0, m_PropHeight), false);
+        ImGui::Button("神秘", ImVec2(0.1, 0.1));
+
+        // 同实体 AnimationComponent 的 clip 名列表：状态「片段」下拉数据源。
+        // Entity 关联的 Scene 必然非空（能取到组件就说明注册表可用），比 EditorContext::Scene 更可靠。
+        Scene *scene = selected.GetScene();
+        const AnimationComponent *ac = scene
+                                           ? scene->Reg().try_get<AnimationComponent>(
+                                               static_cast<entt::entity>(selected))
+                                           : nullptr;
+        DrawProperties(asmc, ac);
+        ImGui::EndChild();
     }
 
     ImGui::End();

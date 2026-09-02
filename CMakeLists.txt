@@ -102,7 +102,7 @@ set(KTX_FEATURE_JS OFF CACHE BOOL "" FORCE)
 set(KTX_FEATURE_LOADTEST_APPS "" CACHE STRING "" FORCE)
 set(KTX_FEATURE_TOOLS_CTS OFF CACHE BOOL "" FORCE)
 set(BUILD_SHARED_LIBS OFF)  # 静态链接，与 GE 静态库保持一致
-add_subdirectory(GE/third_party/KTX-Software-main KTX-Software EXCLUDE_FROM_ALL)
+add_subdirectory(GE/third_party/KTX-Software-4.4.2 KTX-Software EXCLUDE_FROM_ALL)
 
 
 #GE lib

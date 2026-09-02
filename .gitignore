@@ -96,6 +96,16 @@ assets/environments/
 assets/HDRI/
 
 # ============================================
+# KTX-Software 测试资源（纯第三方库自带测试数据，不入版本库）
+# ============================================
+GE/third_party/KTX-Software-4.4.2/tests/
+GE/third_party/KTX-Software-4.4.2/external/astc-encoder/Test/
+GE/third_party/KTX-Software-4.4.2/external/basisu/test_files/
+GE/third_party/KTX-Software-4.4.2/external/basisu/webgl/
+GE/third_party/KTX-Software-4.4.2/external/basisu/webgl_videotest/
+GE/third_party/KTX-Software-4.4.2/external/basisu/bin/
+
+# ============================================
 # Old/outdated paths (kept for safety)
 # ============================================
 engin/vendor/

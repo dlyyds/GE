@@ -6,6 +6,7 @@
 
 #include "imgui.h" // ImGuiID / DockBuilder 系列需要 imgui.h（与 GizmoController 同款 include 模式）
 #include "imgui_node_editor.h" // ax::NodeEditor：节点图画布（阶段 B 起）
+#include "NodeEditorUtils/widgets.h" // ax::Widgets::Icon：引脚图标（阶段 4）
 
 #include <memory>
 #include <vector>
@@ -61,13 +62,37 @@ private:
     /// 首帧在 DrawASMGraph 内 set current 后应用一次，之后不再重置
     bool m_StyleApplied = false;
 
-    /// 画节点标题行图标（实心圆=当前状态 / 空心圆=普通 / 内点=初始状态）
-    void DrawStateIcon(const ImVec2 &pos, float size, bool current, bool initial);
-
-    /// 画引脚图标（输入=空心圆环 / 输出=实心圆点）
-    void DrawPinIcon(bool input);
+    /// 画单个状态节点（Builder：Header 色条 + 左输入/右输出引脚 Icon）
+    void DrawStateNode(AnimStateMachineComponent &asmc, size_t stateIndex,
+                       const ax::NodeEditor::NodeId &nodeId, const ax::NodeEditor::PinId &inPin,
+                       const ax::NodeEditor::PinId &outPin);
 
     void DrawASMGraph(AnimStateMachineComponent &asmc);
+
+    // ---- 阶段 C：交互编辑（拖拽建转换 / Del 删除 / 点选改属性）----
+
+    /// 画布内拖拽建转换（C1）：BeginCreate 循环里 QueryNewLink，输出 pin → 输入 pin 校验后
+    /// push AnimTransitionDef{from, to, 0.25f, {}}；重复 (from,to)/同实体不匹配/同向引脚拒绝。
+    void HandleCreateTransition(AnimStateMachineComponent &asmc);
+
+    /// 画布内响应 Del 删除（C2）：收集被删状态集合 A（NodeId 解码）与被删连线集合 B
+    /// （LinkId==转换下标），过滤后一次性 ApplyRemovals 重写。ANY 虚拟节点不可删，RejectDeletedItem。
+    void HandleDeleteSelection(AnimStateMachineComponent &asmc);
+
+    /// 批量删除并维护引用一致：states 剔除 A、transitions 剔除 from/to 引用 A 状态者
+    /// 及下标在 B 者，再统一重编号。语义与 SceneHierarchyPanel 列表面板删状态一致
+    /// （计划书 C2 / §2.4）；A/B 必须已升序去重。ANY（from==SIZE_MAX）永不为下标。
+    void ApplyRemovals(AnimStateMachineComponent &asmc,
+                       const std::vector<size_t> &statesToErase,
+                       const std::vector<size_t> &linksToErase);
+
+    /// 底部属性编辑区（C3）：按 m_SelKind 渲染选中状态（name/clip/loop/speed/设初始）
+    /// 或转换（blendSec + 条件列表）的属性编辑；无选中/多选显示提示。
+    void DrawProperties(AnimStateMachineComponent &asmc, const AnimationComponent *ac);
+
+    /// 画布内查询当前选中项并记录到 m_SelKind/m_SelState/m_SelLink（Begin 后调用，
+    /// 属性编辑区在 ed::End 之后据此渲染）。单类型单选才可编辑，多选置 Mixed。
+    void QuerySelection(AnimStateMachineComponent &asmc);
 
     std::shared_ptr<EditorContext> m_Context; ///< 共享场景上下文（非拥有）
     HierarchyLayer *m_Hierarchy = nullptr;    ///< 选中实体来源（每帧轮询，非拥有）
@@ -93,6 +118,12 @@ private:
 
     /// 网格列数（按状态数自适应，≥1）
     static constexpr int kGridColumns = 4;
+
+    /// 选中内容类型（C3 底部属性编辑区按此分支渲染）
+    enum class SelKind { None, State, Link, Mixed };
+    SelKind m_SelKind = SelKind::None;   ///< 当前选中类型（QuerySelection 每帧刷新）
+    size_t m_SelState = SIZE_MAX;        ///< 选中状态下标（SelKind==State 时有效）
+    size_t m_SelLink = SIZE_MAX;         ///< 选中转换下标（SelKind==Link 时有效）
 };
 
 } // namespace GE

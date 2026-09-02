@@ -3,26 +3,73 @@
 // 阶段 A：占位窗口 —— 停靠「动画状态机图」窗口，无选中/无 ASM 时占位提示。
 // 阶段 B：只读图渲染 —— 把 AnimStateMachineComponent 的 states 画成节点（含虚拟 ANY
 //         节点）、transitions 画成连线；当前状态节点实时高亮 + 显示 stateTime。
-//         交互编辑（拖拽建转换 / 删除 / 选中改属性）在阶段 C 落地。
+// 阶段 C：交互编辑 —— 拖拽两状态引脚建转换（ANY 输出 → 目标输入）、Del 删连线/删状态、
+//         点选节点/连线后在窗口底部属性区编辑（状态 name/clip/loop/speed/设初始，
+//         转换 blendSec + 条件列表）。
+// 阶段 4：节点改用 BlueprintNodeBuilder（Header 色条 + 左右列）+ ax::Widgets::Icon
+//         引脚图标；删除手绘 DrawStateIcon/DrawPinIcon。
 //
-// 仅用 ax::NodeEditor 的只读 API：CreateEditor / Begin / BeginNode / BeginPin /
-// Link / GetNodePosition / SetNodePosition 等。交互类 API（BeginCreate/BeginDelete
-// 等）留给阶段 C，本阶段不触碰选中/删除。
+// 交互 API 用法遵循 imgui-node-editor blueprints-example 的模式：
+//   建转换：ed::BeginCreate → QueryNewLink → 校验输出→输入 → AcceptNewItem/RejectNewItem
+//   删除：  ed::BeginDelete → QueryDeletedLink（连线）/ QueryDeletedNode（状态）→
+//           AcceptDeletedItem/RejectDeletedItem
+// 删除的坑：库删节点会自动把它的关联连线排进同一批删除候选（DeleteDeadLinks），而我们的
+// LinkId == transitions 下标；删状态会重排下标导致旧 LinkId 失效，故 HandleDeleteSelection
+// 先把所有候选收集成「删状态集合 A + 删连线集合 B」，再统一 ApplyRemovals 重写，避免下标漂移。
 //
 
 #include "Panels/ASMGraphPanel.h"
 
 #include "HierarchyLayer.h"
 #include "GE/Scene/AnimationComponents.h"
+#include "GE/Scene/Scene.h" // Scene::Reg：读同实体 AnimationComponent 的 clips（clip 下拉数据源）
+#include "NodeEditorUtils/builders.h" // ax::NodeEditor::Utilities::BlueprintNodeBuilder（阶段 4 节点骨架）
 
 #include "imgui.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdio> // snprintf：连线标签格式化
+#include <cstring> // strncpy_s：条件/状态名输入缓冲
+#include <vector>
 
 namespace GE {
 namespace ed = ax::NodeEditor;
+namespace util = ax::NodeEditor::Utilities;
+
+/// 条件编辑器下拉项（照 SceneHierarchyPanel::DrawAnimStateMachine 同款枚举串）
+static const char *kCondTypeItems = "FloatCmp\0Bool\0StateTime\0StateEnded\0";
+static const char *kCmpItems = "Greater\0GreaterEq\0Less\0LessEq\0NearEq\0Not\0";
+
+// ---- 节点语义配色（阶段 4 视觉：Header 色条）----
+namespace {
+/// 把颜色提亮（乘以系数并封顶），用于悬停/选中态叠加
+ImVec4 Brighten(const ImVec4 &c, float k = 1.25f) {
+    return ImVec4(std::min(c.x * k, 1.0f), std::min(c.y * k, 1.0f),
+                  std::min(c.z * k, 1.0f), 1.0f);
+}
+
+/// 画一个 18px 状态语义图标（当前=绿实心 / 初始=橙点 / 其它=中灰空环）
+void DrawStatusGlyph(ImU32 color, bool filled) {
+    ImDrawList *dl = ImGui::GetWindowDrawList();
+    const ImVec2 a = ImGui::GetCursorScreenPos();
+    const float size = 18.0f;
+    const ImVec2 c(a.x + size * 0.5f, a.y + size * 0.5f);
+    const float r = size * 0.42f;
+    if (filled) {
+        dl->AddCircleFilled(c, r, color);
+    } else {
+        dl->AddCircle(c, r, color, 24, 2.0f);
+    }
+    ImGui::Dummy(ImVec2(size, size));
+}
+
+/// 画状态节点引脚图标（与 ANY 输出同款：18px 空心浅蓝 Flow ▶）
+void DrawPinGlyph() {
+    ax::Widgets::Icon(ImVec2(18, 18), ax::Widgets::IconType::Flow, false,
+                      ImColor(120, 190, 255), ImColor(120, 190, 255));
+}
+} // namespace
 
 // ---- ID 编码常量（与计划书 §2.2 一致）----
 // NodeId / PinId 都是 uintptr_t。为避免多实体共享同一编辑器上下文时撞 ID，统一编码为
@@ -44,9 +91,27 @@ constexpr uintptr_t kNamespaceState = 1u; // 普通状态节点
 constexpr uintptr_t kNamespacePinOut = 2u; // 输出引脚
 constexpr uintptr_t kNamespacePinIn = 3u; // 输入引脚
 
-/// 状态默认网格间距（像素）
-constexpr float kGridSpacingX = 300.0f;
-constexpr float kGridSpacingY = 220.0f;
+/// 状态默认网格间距（像素）—— 阶段 4 起节点含 Header 色条更高，纵向间距加大避免连线穿节点
+constexpr float kGridSpacingX = 320.0f;
+constexpr float kGridSpacingY = 260.0f;
+
+/// 底部属性区固定高度（像素）：点选状态/连线时展开，高度不足内部滚动
+constexpr float kPropHeight = 210.0f;
+
+/// 解码统一辅助：任意 NodeId/PinId 编码都形如
+/// (实体id << 32) | (命名空间 << 16) | 下标，这里只取「命名空间」与「下标」两段
+///（实体 id 高位在解码中不参与 —— 删除/选中都发生在同一选中实体上）。
+
+/// 取 16-31 位命名空间（区分 ANY/状态节点/输出/输入引脚）
+uintptr_t IdNamespace(uintptr_t encoded) {
+    return (encoded >> kNamespaceShift) & 0xFFFFu;
+}
+
+/// 取低 16 位下标（状态下标；输出引脚恒为 kNamespacePinOut=2 / 输入 =3，下标段才是状态引用；
+/// ANY 输出引脚的下标段存 kStateIndexMask 哨兵）
+size_t IdIndex(uintptr_t encoded) {
+    return static_cast<size_t>(encoded & kStateIndexMask);
+}
 } // namespace
 
 uintptr_t ASMGraphPanel::EncodeNodeId(size_t entityId, size_t stateIndex) {
@@ -100,7 +165,11 @@ void ASMGraphPanel::OnImGuiRender() {
     }
 
     ImGui::SetNextWindowDockID(m_DockSpaceID, ImGuiCond_FirstUseEver);
-    ImGui::Begin("动画状态机图");
+    ImGuiWindowFlags windowFlags =
+        ImGuiWindowFlags_NoScrollbar |
+        ImGuiWindowFlags_NoScrollWithMouse;
+
+    ImGui::Begin("动画状态机图", nullptr, windowFlags);
 
     // 无场景 / 无选中实体 / 选中实体无 ASM 组件 → 占位提示
     if (!m_Context || !m_Hierarchy) {
@@ -127,16 +196,19 @@ void ASMGraphPanel::OnImGuiRender() {
 
     AnimStateMachineComponent &asmc = selected.GetComponent<AnimStateMachineComponent>();
 
-    // 整个面板内容放外层 Child（占满窗口）：
-    //   - 顶栏一行（实体名 / 状态机开关 / 重新布局）
-    //   - ed::Begin 画布在 Child 内、顶栏之后，GetContentRegionAvail() 量到的是
-    //     Child 剩余全部区域 → 画布撑满窗口剩余；且 Child 尺寸稳定（= 窗口尺寸），
-    //     NavigateAction 的尺寸连续化不漂移，缩放/平移不乱跑。
-    // 注意：ed::Begin 必须也在 Child 内。若画布留在 Child 外（EndChild 之后），
-    // 主窗口剩余高度只剩一行，画布高度 ≈ 0，节点全部被裁 → 什么都看不见。
-    ImGui::BeginChild("##asmBody", ImVec2(0, 0), false,
-                      ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+    // ---- 画布与底部属性区垂直拆分 ----
+    // 画布区高度 = 剩余可用 − 底部属性区高度（负数 = 从底部预留）。属性区用「上一帧选中态」
+    // 决定高度，与 DrawProperties 渲染的 m_SelKind 保持一致 → 同帧内布局不跳变；
+    // 首次点选会晚一帧展开属性区（选中本身在画布内即帧更新，属性区慢一帧无碍）。
+    const bool hasPropArea = (m_SelKind == SelKind::State || m_SelKind == SelKind::Link);
+    const float propHeight = hasPropArea ? kPropHeight : 0.0f;
+    // ImGui::BeginChild("##asmBody", ImVec2(0, 0), false,
+    //                   ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+
     {
+        ImGui::BeginChild("##asmBody", ImVec2(0, 40), false,
+                          ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+        //topBar
         ImGui::TextUnformatted(selected.GetComponent<TagComponent>().Tag.c_str());
         ImGui::SameLine();
         ImGui::Checkbox("状态机", &asmc.enabled);
@@ -150,52 +222,38 @@ void ASMGraphPanel::OnImGuiRender() {
             // 由下一帧画布导航聚焦内容（重新布局按钮也支持直接触发 NavigateToContent）
             m_RequestNavigateContent = true;
         }
-
-        // 画布：ed::Begin 之前不插其它控件，GetContentRegionAvail() 即 Child 剩余全部区域
-        DrawASMGraph(asmc);
+        ImGui::EndChild();
     }
+
+    // 画布：ed::Begin 之前不插其它控件，GetContentRegionAvail() 即画布 Child 剩余全部区域。
+    // 高度减掉底部属性区 → 画布不缩不裁，节点图在剩余区域内自由缩放/平移。
+    ImGui::BeginChild("##asmCanvas", ImVec2(0, -kPropHeight), false,
+                      ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+    ImGui::Button("神秘", ImVec2(0.1, 0.1));
+    DrawASMGraph(asmc);
     ImGui::EndChild();
 
+    // 底部属性区：点选状态/连线时展开（可编辑）。无选中不建 Child，画布独占全高。
+    if (hasPropArea) {
+        {
+            ImGui::BeginChild("##asmProp", ImVec2(0, 0), false);
+            ImGui::Button("神秘", ImVec2(0.1, 0.1));
+
+            // 同实体 AnimationComponent 的 clip 名列表：状态「片段」下拉数据源。
+            // Entity 关联的 Scene 必然非空（能取到组件就说明注册表可用），比 EditorContext::Scene 更可靠。
+            Scene *scene = selected.GetScene();
+            const AnimationComponent *ac = scene
+                                               ? scene->Reg().try_get<AnimationComponent>(
+                                                   static_cast<entt::entity>(selected))
+                                               : nullptr;
+            DrawProperties(asmc, ac);
+            ImGui::EndChild();
+        }
+
+    }
+
     ImGui::End();
-}
 
-/// 画节点标题行的状态图标：实心圆 = 当前状态，空心圆 = 非当前，内点 = 初始状态。
-/// 用 ImGui 自带绘图原语手绘（不引 blueprints 的 utilities，避免增加编译依赖）。
-void ASMGraphPanel::DrawStateIcon(const ImVec2 &pos, float size, bool current, bool initial) {
-    ImDrawList *dl = ImGui::GetWindowDrawList();
-    const ImVec2 c(pos.x + size * 0.5f, pos.y + size * 0.5f);
-    const float r = size * 0.45f;
-
-    if (current) {
-        // 当前状态：绿色实心圆
-        dl->AddCircleFilled(c, r, ImColor(60, 220, 120, 255));
-        if (initial) {
-            dl->AddCircleFilled(c, r * 0.45f, ImColor(240, 160, 60, 255));
-        }
-    } else {
-        // 非当前：空心圆环；初始状态中心补一个橙色点
-        dl->AddCircle(c, r, ImColor(150, 160, 175, 255), 24, 2.0f);
-        if (initial) {
-            dl->AddCircleFilled(c, r * 0.4f, ImColor(240, 160, 60, 255));
-        }
-    }
-    ImGui::Dummy(ImVec2(size, size));
-}
-
-/// 画引脚类型图标：输入 = 空心圆环，输出 = 实心圆点（与 blueprints 的 Icon 风格一致）。
-void ASMGraphPanel::DrawPinIcon(bool input) {
-    const float size = 14.0f;
-    ImDrawList *dl = ImGui::GetWindowDrawList();
-    const ImVec2 pos = ImGui::GetCursorScreenPos();
-    const ImVec2 c(pos.x + size * 0.5f, pos.y + size * 0.5f);
-    const float r = size * 0.38f;
-
-    if (input) {
-        dl->AddCircle(c, r, ImColor(170, 180, 195, 255), 24, 2.0f);
-    } else {
-        dl->AddCircleFilled(c, r, ImColor(70, 180, 250, 255));
-    }
-    ImGui::Dummy(ImVec2(size, size));
 }
 
 /// 一次性配置节点图编辑器全局样式（深色主题 + 更明显的网格 + 节点/连线风格）。
@@ -209,7 +267,8 @@ void ASMGraphPanel::SetupStyle() {
     style.Colors[ed::StyleColor_Grid] = ImColor(70, 70, 90, 60);
 
     // ---- 节点：圆角卡片 + 更亮描边 ----
-    style.Colors[ed::StyleColor_NodeBg] = ImColor(40, 40, 48, 235);
+    // 节点内容有 Header 色条铺底（纯色），主体底色压到更暗让色条更突出
+    style.Colors[ed::StyleColor_NodeBg] = ImColor(36, 36, 44, 235);
     style.Colors[ed::StyleColor_NodeBorder] = ImColor(120, 130, 150, 160);
     style.Colors[ed::StyleColor_HovNodeBorder] = ImColor(80, 200, 255, 255);
     style.Colors[ed::StyleColor_SelNodeBorder] = ImColor(255, 190, 70, 255);
@@ -283,59 +342,55 @@ void ASMGraphPanel::DrawASMGraph(AnimStateMachineComponent &asmc) {
         const bool isHovered = ed::GetHoveredNode() == anyNodeId;
         const bool isSelected = ed::IsNodeSelected(anyNodeId);
 
-        // ANY 节点用「全局」配色（蓝），悬停/选中同普通节点逻辑
+        // ANY 节点用「全局」蓝色：Header 蓝、描边蓝；悬停/选中提亮加粗
         ImVec4 anyBorder = ImColor(90, 160, 230, 255);
         float anyBorderWidth = style.NodeBorderWidth;
         if (isHovered || isSelected) {
-            anyBorder.x = std::min(anyBorder.x * 1.4f, 1.0f);
-            anyBorder.y = std::min(anyBorder.y * 1.4f, 1.0f);
-            anyBorder.z = std::min(anyBorder.z * 1.4f, 1.0f);
-            anyBorder.w = 1.0f;
+            anyBorder = Brighten(anyBorder, 1.4f);
             anyBorderWidth = (isHovered ? style.HoveredNodeBorderWidth : style.SelectedNodeBorderWidth);
         }
-
         ed::PushStyleColor(ed::StyleColor_NodeBorder, anyBorder);
         ed::PushStyleVar(ed::StyleVar_NodeBorderWidth, anyBorderWidth);
 
-        ed::BeginNode(anyNodeId);
-
-        ImGui::BeginGroup(); // 标题行：左图标 + 文字
-        {
-            ImGui::BeginGroup();
-            {
-                const float iconSize = 18.0f;
-                const ImVec2 iconPos = ImGui::GetCursorScreenPos();
-                DrawStateIcon(iconPos, iconSize, false, false);
-            }
-            ImGui::EndGroup();
-            ImGui::SameLine();
-            ImGui::BeginGroup();
-            {
-                ImGui::Text("ANY");
-                ImGui::TextDisabled("全局");
-            }
-            ImGui::EndGroup();
+        // Header 底色用「全局」蓝，悬停/选中提亮
+        ImVec4 anyHeader = ImColor(52, 110, 190, 255);
+        if (isHovered || isSelected) {
+            anyHeader = Brighten(anyHeader, 1.25f);
         }
-        ImGui::EndGroup();
+        util::BlueprintNodeBuilder builder;
+        builder.Begin(anyNodeId);
+        {
+            builder.Header(anyHeader);
+            {
+                ImGui::Spring(1);
+                DrawStatusGlyph(ImColor(150, 205, 255), true);
+                ImGui::Spring(1);
+                ImGui::TextUnformatted("ANY");
+                ImGui::Spring(1);
+                ImGui::TextDisabled("全局");
+                ImGui::Spring(1);
+            }
+            builder.EndHeader();
 
-        ImGui::Spacing();
-
-        // 输出引脚（右侧）：圆点图标 + 文本，作为 from==ANY 转换的源
-        ed::BeginPin(ed::PinId(EncodePinId(entityId, kStateIndexMask, true)), ed::PinKind::Output);
-        DrawPinIcon(false);
-        ImGui::SameLine();
-        ImGui::Text("输出");
-        ed::EndPin();
-
-        ed::EndNode();
+            builder.Output(ed::PinId(EncodePinId(entityId, kStateIndexMask, true)));
+            {
+                ImGui::Spring(0);
+                ImGui::TextUnformatted("全局");
+                ImGui::Spring(0);
+                ax::Widgets::Icon(ImVec2(18, 18), ax::Widgets::IconType::Flow, false,
+                                  ImColor(120, 190, 255), ImColor(120, 190, 255));
+                ImGui::Spring(0);
+            }
+            builder.EndOutput();
+        }
+        builder.End();
 
         ed::PopStyleVar();
         ed::PopStyleColor();
     }
 
-    // ---- 状态节点：标题 + 初始★/当前▶ 标记 + 输入/输出引脚 ----
+    // ---- 状态节点：Builder Header 色条（当前绿/初始橙/普通深灰）+ 输入/输出引脚 ----
     for (size_t i = 0; i < states.size(); ++i) {
-        const AnimStateDef &st = states[i];
         const ed::NodeId nodeId(EncodeNodeId(entityId, i));
         const ed::PinId outPin(EncodePinId(entityId, i, true));
         const ed::PinId inPin(EncodePinId(entityId, i, false));
@@ -347,88 +402,7 @@ void ASMGraphPanel::DrawASMGraph(AnimStateMachineComponent &asmc) {
             LayoutNode(i);
         }
 
-        // 标题行：状态名 + 初始★/当前▶ 标记；当前状态用醒目颜色描边
-        const bool isInitial = (st.name == asmc.initialState);
-        const bool isCurrent = (asmc.current == i);
-        const bool isHovered = ed::GetHoveredNode() == nodeId;
-        const bool isSelected = ed::IsNodeSelected(nodeId);
-
-        // ---- 节点描边：默认灰边；当前状态绿色、初始状态橙色、悬停/选中更亮更粗 ----
-        // 注意 PushStyleColor 会覆盖 Hovered/Selected 配色，但 GetHoveredNode() 由库维护，
-        // 这里手动补一笔"悬停/选中变亮"（只调亮度，不改色相），避免和默认主题打架。
-        ImVec4 nodeBorder = ImColor(120, 130, 150, 160);
-        float borderWidth = style.NodeBorderWidth;
-        if (isCurrent) {
-            nodeBorder = ImColor(60, 220, 120, 255);
-        } else if (isInitial) {
-            nodeBorder = ImColor(240, 160, 60, 255);
-        }
-        if (isHovered || isSelected) {
-            nodeBorder.x = std::min(nodeBorder.x * 1.4f, 1.0f);
-            nodeBorder.y = std::min(nodeBorder.y * 1.4f, 1.0f);
-            nodeBorder.z = std::min(nodeBorder.z * 1.4f, 1.0f);
-            nodeBorder.w = 1.0f;
-            borderWidth = (isHovered ? style.HoveredNodeBorderWidth : style.SelectedNodeBorderWidth);
-        }
-
-        ed::PushStyleColor(ed::StyleColor_NodeBorder, nodeBorder);
-        ed::PushStyleVar(ed::StyleVar_NodeBorderWidth, borderWidth);
-
-        ed::BeginNode(nodeId);
-
-        ImGui::BeginGroup(); // 标题行：左图标 + 状态名 + 标记
-        {
-            const float iconSize = 18.0f;
-            ImGui::BeginGroup();
-            {
-                // 左边缘对齐图标：标题行图标 + 每行一个
-                const ImVec2 iconPos = ImGui::GetCursorScreenPos();
-                DrawStateIcon(iconPos, iconSize, isCurrent, isInitial);
-            }
-            ImGui::EndGroup();
-            ImGui::SameLine();
-
-            ImGui::BeginGroup(); // 右列：标题 + 子信息
-            {
-                // 标题行：状态名 + 初始★/当前▶ 标记；当前状态用醒目颜色文字
-                if (isCurrent) {
-                    ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.3f, 1.0f), "▶ ");
-                    ImGui::SameLine();
-                }
-                ImGui::TextUnformatted(st.name.empty() ? "(未命名)" : st.name.c_str());
-                if (isInitial) {
-                    ImGui::SameLine();
-                    ImGui::TextDisabled("★");
-                }
-                if (isCurrent) {
-                    ImGui::SameLine();
-                    ImGui::TextDisabled("stateTime %.2fs", asmc.stateTime);
-                }
-            }
-            ImGui::EndGroup();
-        }
-        ImGui::EndGroup();
-
-        ImGui::Spacing();
-
-        // 输入引脚（左侧）：圆环图标 + 文本，作为转换目标
-        ed::BeginPin(inPin, ed::PinKind::Input);
-        DrawPinIcon(true);
-        ImGui::SameLine();
-        ImGui::Text("输入");
-        ed::EndPin();
-
-        // 输出引脚（右侧）：实心圆点图标 + 文本，作为转换源
-        ed::BeginPin(outPin, ed::PinKind::Output);
-        DrawPinIcon(false);
-        ImGui::SameLine();
-        ImGui::Text("输出");
-        ed::EndPin();
-
-        ed::EndNode();
-
-        ed::PopStyleVar();
-        ed::PopStyleColor();
+        DrawStateNode(asmc, i, nodeId, inPin, outPin);
     }
 
     // ---- 连线：每条转换一条 Link（from==SIZE_MAX 从 ANY 输出引脚出发）----
@@ -450,6 +424,7 @@ void ASMGraphPanel::DrawASMGraph(AnimStateMachineComponent &asmc) {
         // ---- 连线配色/粗细：ANY 连线蓝色、普通连线绿色；当前状态发出的（活跃路径）更亮更粗 ----
         const bool fromAny = (tr.from == SIZE_MAX);
         const bool isActive = (asmc.current != SIZE_MAX) && (tr.from == asmc.current);
+        // 色值沿用旧手绘时代语义，保证既有场景观感一致
         ImVec4 linkColor = fromAny
                                ? ImVec4(0.30f, 0.60f, 1.00f, 1.00f)
                                : ImVec4(0.45f, 0.80f, 0.45f, 1.00f);
@@ -463,13 +438,18 @@ void ASMGraphPanel::DrawASMGraph(AnimStateMachineComponent &asmc) {
 
         // ---- 连线标签：过渡时长 + 条件数（两节点中点 ≈ 连线中点，用库前景层画底板+文字）----
         if (tr.blendSec > 0.0f || !tr.conditions.empty()) {
-            // 无 GetPinPosition 公开 API，用节点坐标近似连线中点：源节点右侧中点 ↔ 目标节点左侧中点
-            const ImVec2 srcPos = ed::GetNodePosition(tr.from == SIZE_MAX
-                                                          ? anyNodeId
-                                                          : ed::NodeId(EncodeNodeId(entityId, tr.from)));
-            const ImVec2 dstPos = ed::GetNodePosition(ed::NodeId(EncodeNodeId(entityId, tr.to)));
-            const ImVec2 srcMid = ed::CanvasToScreen(ImVec2(srcPos.x + 80.0f, srcPos.y + 32.0f));
-            const ImVec2 dstMid = ed::CanvasToScreen(ImVec2(dstPos.x - 80.0f, dstPos.y + 32.0f));
+            // 无 GetPinPosition 公开 API，用节点坐标近似连线中点：源节点右侧中点 ↔ 目标节点左侧中点。
+            // 节点含 Header 色条更高，Y 偏移按各节点实际高度取（GetNodeSize 需节点已绘，标签在节点之后画）。
+            const ed::NodeId srcNode = (tr.from == SIZE_MAX) ? anyNodeId : ed::NodeId(EncodeNodeId(entityId, tr.from));
+            const ed::NodeId dstNode = ed::NodeId(EncodeNodeId(entityId, tr.to));
+            const ImVec2 srcPos = ed::GetNodePosition(srcNode);
+            const ImVec2 dstPos = ed::GetNodePosition(dstNode);
+            const ImVec2 srcSize = ed::GetNodeSize(srcNode);
+            const ImVec2 dstSize = ed::GetNodeSize(dstNode);
+            const float srcY = (srcSize.y > 0.0f) ? srcPos.y + srcSize.y * 0.5f : srcPos.y + 40.0f;
+            const float dstY = (dstSize.y > 0.0f) ? dstPos.y + dstSize.y * 0.5f : dstPos.y + 40.0f;
+            const ImVec2 srcMid = ed::CanvasToScreen(ImVec2(srcPos.x + srcSize.x, srcY));
+            const ImVec2 dstMid = ed::CanvasToScreen(ImVec2(dstPos.x, dstY));
             const ImVec2 mid = ImVec2((srcMid.x + dstMid.x) * 0.5f, (srcMid.y + dstMid.y) * 0.5f);
 
             char label[64];
@@ -496,11 +476,517 @@ void ASMGraphPanel::DrawASMGraph(AnimStateMachineComponent &asmc) {
         }
     }
 
+    // ---- 阶段 C 交互：拖拽建转换 / Del 删除 / 选中查询（都需在节点/连线绘制之后的画布内）----
+    // 顺序不能错：
+    //   1) HandleCreateTransition —— BeginCreate 循环在用户松键拖拽完时给出新连线候选；
+    //   2) HandleDeleteSelection —— BeginDelete 处理 Del 键删除（库的删除候选是上帧/本帧选中）。
+    //      必须先删（改动 transitions/states）再查询选中，否则删完再查会拿到刚删的悬空选中；
+    //   3) QuerySelection —— 读当前选中节点/连线，缓存到成员供 End 之后属性区渲染。
+    //    HandleCreateTransition(asmc);
+    //    HandleDeleteSelection(asmc);
+    QuerySelection(asmc);
+
     // 复位首次布局标记（ANY 节点首帧已摆到角落）
     m_NeedsInitialLayout = false;
 
     ed::End();
     ed::SetCurrentEditor(nullptr);
+}
+
+/// 画单个状态节点（BlueprintNodeBuilder：Header 色条 + 左输入/右输出引脚 Icon）。
+/// 当前状态=绿、初始状态=橙、普通=中性深灰 Header；悬停/选中提亮加粗描边。
+/// 引脚：输入(被进入)=灰空心圆环在左、输出(离开)=蓝实心圆点在右。
+void ASMGraphPanel::DrawStateNode(AnimStateMachineComponent &asmc, size_t stateIndex,
+                                  const ed::NodeId &nodeId, const ed::PinId &inPin,
+                                  const ed::PinId &outPin) {
+    const AnimStateDef &st = asmc.states[stateIndex];
+    const bool isInitial = (st.name == asmc.initialState);
+    const bool isCurrent = (asmc.current == stateIndex);
+    const bool isHovered = ed::GetHoveredNode() == nodeId;
+    const bool isSelected = ed::IsNodeSelected(nodeId);
+    const bool isLit = isHovered || isSelected;
+
+    // ---- Header 语义配色：当前=绿 / 初始=橙 / 普通=中性深灰；悬停/选中提亮 ----
+    ImVec4 headerCol;
+    if (isCurrent)
+        headerCol = ImColor(50, 175, 100, 255);
+    else if (isInitial)
+        headerCol = ImColor(215, 150, 50, 255);
+    else
+        headerCol = ImColor(72, 76, 92, 255);
+    if (isLit)
+        headerCol = Brighten(headerCol, 1.25f);
+
+    // ---- 节点描边：跟随 Header 色系（普通态半透明、语义态加实）----
+    const auto &style = ed::GetStyle();
+    ImVec4 borderCol = headerCol;
+    borderCol.w = (isCurrent || isInitial) ? 0.95f : 0.75f;
+    if (isLit)
+        borderCol = Brighten(borderCol, 1.2f);
+    const float borderWidth = isHovered
+                                  ? style.HoveredNodeBorderWidth
+                                  : isSelected
+                                  ? style.SelectedNodeBorderWidth
+                                  : style.NodeBorderWidth;
+
+    ed::PushStyleColor(ed::StyleColor_NodeBorder, borderCol);
+    ed::PushStyleVar(ed::StyleVar_NodeBorderWidth, borderWidth);
+
+    util::BlueprintNodeBuilder builder;
+    builder.Begin(nodeId);
+    {
+        // ---- Header 行：状态图标 + ▶/★ 标记 + 名称 +（当前）stateTime ----
+        builder.Header(headerCol);
+        {
+            ImGui::Spring(1);
+            if (isCurrent)
+                DrawStatusGlyph(ImColor(235, 255, 242, 255), true);
+            else if (isInitial)
+                DrawStatusGlyph(ImColor(255, 225, 160, 255), false);
+            else
+                DrawStatusGlyph(ImColor(255, 255, 255, 110), false);
+            ImGui::Spring(1);
+
+            ImGui::PushStyleColor(ImGuiCol_Text, ImU32(ImColor(255, 255, 255, 235)));
+            if (isCurrent) {
+                ImGui::Text("▶ ");
+                ImGui::Spring(0);
+            }
+            ImGui::TextUnformatted(st.name.empty() ? "(未命名)" : st.name.c_str());
+            if (isInitial) {
+                ImGui::Spring(0);
+                ImGui::Text("★");
+            }
+            if (isCurrent) {
+                ImGui::Spring(1);
+                ImGui::Text("stateTime %.2fs", asmc.stateTime);
+            }
+            ImGui::PopStyleColor();
+            ImGui::Spring(1);
+        }
+        builder.EndHeader();
+
+        // ---- 内容行：左输入引脚（目标）/ 右输出引脚（源）----
+        builder.Input(inPin);
+        {
+            ImGui::Spring(0);
+            DrawPinGlyph();
+            ImGui::Spring(0);
+            ImGui::TextDisabled("输入");
+        }
+        builder.EndInput();
+
+        builder.Output(outPin);
+        {
+            ImGui::TextDisabled("输出");
+            ImGui::Spring(0);
+            DrawPinGlyph();
+            ImGui::Spring(0);
+        }
+        builder.EndOutput();
+    }
+    builder.End();
+
+    ed::PopStyleVar();
+    ed::PopStyleColor();
+}
+
+// ============================================================
+// 阶段 C：交互编辑
+// ============================================================
+
+/// 拖拽建转换（C1）：BeginCreate → QueryNewLink → 校验 → AcceptNewItem。
+/// 在画布内、所有节点/连线绘制之后调用（库的拖拽交互发生在绘制期）。
+void ASMGraphPanel::HandleCreateTransition(AnimStateMachineComponent &asmc) {
+    if (!ed::BeginCreate(ImColor(255, 255, 255), 2.0f))
+        return;
+
+    ed::PinId startPinId = 0, endPinId = 0;
+    if (ed::QueryNewLink(&startPinId, &endPinId)) {
+        // 命名空间解码：输出引脚 ns=2、输入引脚 ns=3；拖拽方向不保证 start=输出，
+        // 交换使 start=输出引脚（源）、end=输入引脚（目标），与官方示例语义一致。
+        const uintptr_t startVal = startPinId.Get();
+        const uintptr_t endVal = endPinId.Get();
+        uintptr_t outVal = startVal, inVal = endVal;
+        if (IdNamespace(startVal) == kNamespacePinIn && IdNamespace(endVal) == kNamespacePinOut)
+            std::swap(outVal, inVal);
+
+        // 各校验不通过就 Reject（拖拽仍可继续到别的目标引脚；库在 End 前都保持候选）
+        bool ok = true;
+        size_t from = SIZE_MAX; // 解析出的源状态；ANY 输出引脚的下标段存 kStateIndexMask 哨兵
+        size_t to = SIZE_MAX;
+
+        const bool startIsOut = (IdNamespace(outVal) == kNamespacePinOut);
+        const bool endIsIn = (IdNamespace(inVal) == kNamespacePinIn);
+        if (!startIsOut || !endIsIn) {
+            ok = false; // 同向引脚（输出→输出 / 输入→输入）
+        } else {
+            const size_t outIdx = IdIndex(outVal);
+            if (outIdx != kStateIndexMask) {
+                // 非 ANY 源 → 必须是界内状态输出
+                if (outIdx >= asmc.states.size())
+                    ok = false; // 越界源引脚（旧场景残留）
+                else
+                    from = outIdx;
+            }
+
+            to = IdIndex(inVal);
+            if (to >= asmc.states.size())
+                ok = false; // 越界目标
+
+            if (ok && from != SIZE_MAX && from == to)
+                ok = false; // 自环（源==目标，不含 ANY）无意义
+
+            // 已存在同 (from,to) 转换 → 拒绝，避免图上重叠连线
+            if (ok) {
+                const bool dup = std::any_of(asmc.transitions.begin(), asmc.transitions.end(),
+                                             [from, to](const AnimTransitionDef &tr) {
+                                                 return tr.from == from && tr.to == to;
+                                             });
+                if (dup)
+                    ok = false;
+            }
+        }
+
+        if (!ok) {
+            ed::RejectNewItem(ImColor(255, 0, 0), 2.0f);
+        } else if (ed::AcceptNewItem(ImColor(128, 255, 128), 4.0f)) {
+            AnimTransitionDef t;
+            t.from = from;
+            t.to = to;
+            t.blendSec = 0.25f; // 默认过渡时长，与列表面板「添加转换」默认一致
+            asmc.transitions.push_back(t);
+        }
+    }
+
+    ed::EndCreate();
+}
+
+/// Del 删除（C2）：收集被删状态集合 A 与被删连线集合 B，统一 ApplyRemovals 重写。
+/// 库的删除候选分两阶段给出：QueryDeletedNode 先逐个收状态节点，Accept 一个状态节点后
+/// 库自动把它的关联连线追加进候选（DeleteDeadLinks），随后 QueryDeletedLink 才轮到连线。
+/// 故先收完 A、再收完 B，两阶段内都不改数组，最后统一重写 —— 避免删连线（B 用删除前下标）
+/// 与删状态（A 会重排下标）交错时 LinkId 失效。
+void ASMGraphPanel::HandleDeleteSelection(AnimStateMachineComponent &asmc) {
+    if (!ed::BeginDelete())
+        return;
+
+    std::vector<size_t> statesToErase;
+    std::vector<size_t> linksToErase;
+
+    // 阶段 1：状态节点。ANY 虚拟节点不可删（无对应 states 数据），Reject。
+    {
+        ed::NodeId nodeId = 0;
+        while (ed::QueryDeletedNode(&nodeId)) {
+            const uintptr_t val = nodeId.Get();
+            if (IdNamespace(val) == kNamespaceAny) {
+                ed::RejectDeletedItem();
+                continue;
+            }
+            const size_t idx = IdIndex(val);
+            if (idx >= asmc.states.size()) {
+                // 越界（不该发生）→ 拒绝保平安
+                ed::RejectDeletedItem();
+                continue;
+            }
+            statesToErase.push_back(idx);
+            ed::AcceptDeletedItem();
+        }
+    }
+
+    // 阶段 2：连线。此时状态尚未删除、下标未重排，B 用的是删除前下标，可靠。
+    {
+        ed::LinkId linkId = 0;
+        while (ed::QueryDeletedLink(&linkId)) {
+            const size_t idx = IdIndex(linkId.Get());
+            if (idx < asmc.transitions.size()) // 仅收集仍在界的；越界/悬空忽略（已随节点删除而删）
+                linksToErase.push_back(idx);
+            ed::AcceptDeletedItem(); // 库内部清理照做（勿 Reject 否则残留内部状态）
+        }
+    }
+
+    ed::EndDelete();
+
+    // 统一去重升序（Query 顺序无保证），再一次性重写
+    std::sort(statesToErase.begin(), statesToErase.end());
+    statesToErase.erase(std::unique(statesToErase.begin(), statesToErase.end()),
+                        statesToErase.end());
+    std::sort(linksToErase.begin(), linksToErase.end());
+    linksToErase.erase(std::unique(linksToErase.begin(), linksToErase.end()),
+                       linksToErase.end());
+
+    if (!statesToErase.empty() || !linksToErase.empty())
+        ApplyRemovals(asmc, statesToErase, linksToErase);
+}
+
+/// 批量删除状态 + 连线并重编号（见头文件注释；A/B 须已升序去重）。
+void ASMGraphPanel::ApplyRemovals(AnimStateMachineComponent &asmc,
+                                  const std::vector<size_t> &statesToErase,
+                                  const std::vector<size_t> &linksToErase) {
+    const auto stateErased = [&statesToErase](size_t idx) {
+        return std::binary_search(statesToErase.begin(), statesToErase.end(), idx);
+    };
+    const auto linkErased = [&linksToErase](size_t idx) {
+        return std::binary_search(linksToErase.begin(), linksToErase.end(), idx);
+    };
+    // 状态下标重映射：old → new（被删 → SIZE_MAX）
+    auto remapState = [&statesToErase](size_t oldIdx) -> size_t {
+        size_t newIdx = oldIdx;
+        for (size_t removed : statesToErase) {
+            if (removed < oldIdx)
+                --newIdx;
+            else if (removed == oldIdx)
+                return SIZE_MAX; // 该状态被删
+        }
+        return newIdx;
+    };
+
+    // 1) 过滤 states
+    std::vector<AnimStateDef> newStates;
+    newStates.reserve(asmc.states.size() - statesToErase.size());
+    for (size_t i = 0; i < asmc.states.size(); ++i) {
+        if (!stateErased(i))
+            newStates.push_back(std::move(asmc.states[i]));
+    }
+
+    // 2) current 修正（列表面板语义：删了当前 → 复位；被删之前的 current 左移）
+    if (asmc.current != SIZE_MAX) {
+        if (stateErased(asmc.current)) {
+            asmc.current = SIZE_MAX; // 下帧求值回初始状态
+        } else {
+            asmc.current = remapState(asmc.current);
+        }
+    }
+
+    // 3) 过滤 + 重编号 transitions：删掉下标在 B 的，以及 from/to 引用 A 状态的
+    std::vector<AnimTransitionDef> newTransitions;
+    newTransitions.reserve(asmc.transitions.size());
+    for (size_t j = 0; j < asmc.transitions.size(); ++j) {
+        const AnimTransitionDef &tr = asmc.transitions[j];
+        if (linkErased(j))
+            continue;
+        if (stateErased(tr.to))
+            continue; // 目标状态被删
+        if (tr.from != SIZE_MAX && stateErased(tr.from))
+            continue; // 源状态被删（ANY 源永不删）
+
+        AnimTransitionDef nt = tr;
+        if (nt.from != SIZE_MAX)
+            nt.from = remapState(nt.from);
+        nt.to = remapState(nt.to);
+        newTransitions.push_back(std::move(nt));
+    }
+
+    asmc.states = std::move(newStates);
+    asmc.transitions = std::move(newTransitions);
+    // states.size() 已变 → 下帧 DrawASMGraph 开头的 m_LastStateCount 比较自然触发
+    // m_NeedsInitialLayout，对新下标补一次布局（阶段 B 既有机制，无需在此重复置位）。
+}
+
+/// 画布内查询当前选中（Begin 内调用；返回后成员含选中缓存）。
+void ASMGraphPanel::QuerySelection(AnimStateMachineComponent &asmc) {
+    m_SelKind = SelKind::None;
+    m_SelState = SIZE_MAX;
+    m_SelLink = SIZE_MAX;
+
+    // 缓冲大小取库当前选中对象数（可能同时含节点+连线）
+    const int cap = ed::GetSelectedObjectCount();
+    if (cap <= 0) {
+        m_SelKind = SelKind::None;
+        return;
+    }
+    std::vector<ed::NodeId> nodes(static_cast<size_t>(cap));
+    std::vector<ed::LinkId> links(static_cast<size_t>(cap));
+    const int nodeCount = ed::GetSelectedNodes(nodes.data(), cap);
+    const int linkCount = ed::GetSelectedLinks(links.data(), cap);
+
+    // 记录选中的普通状态节点下标（ANY 节点不可编辑，忽略）
+    std::vector<size_t> stateSel;
+    for (int i = 0; i < nodeCount; ++i) {
+        const uintptr_t val = nodes[i].Get();
+        if (IdNamespace(val) != kNamespaceState)
+            continue;
+        const size_t idx = IdIndex(val);
+        if (idx < asmc.states.size())
+            stateSel.push_back(idx);
+    }
+
+    if (stateSel.empty() && linkCount == 0) {
+        m_SelKind = SelKind::None;
+    } else if (stateSel.size() == 1 && linkCount == 0) {
+        m_SelKind = SelKind::State;
+        m_SelState = stateSel[0];
+    } else if (stateSel.empty() && linkCount == 1) {
+        const size_t idx = IdIndex(links[0].Get());
+        if (idx < asmc.transitions.size()) {
+            m_SelKind = SelKind::Link;
+            m_SelLink = idx;
+        }
+    } else {
+        m_SelKind = SelKind::Mixed; // 多选 / 节点连线混选 → 属性区只提示
+    }
+}
+
+/// 底部属性区（C3）：按选中类型渲染状态或转换的属性编辑；未选中/多选只提示。
+void ASMGraphPanel::DrawProperties(AnimStateMachineComponent &asmc, const AnimationComponent *ac) {
+    ImGui::Separator();
+    if (asmc.states.empty())
+        return;
+
+    switch (m_SelKind) {
+    case SelKind::State: {
+        if (m_SelState >= asmc.states.size()) {
+            m_SelKind = SelKind::None;
+            ImGui::TextDisabled("（选中状态已删除）");
+            return;
+        }
+        AnimStateDef &st = asmc.states[m_SelState];
+
+        ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.35f, 1.0f), "状态属性");
+        ImGui::SameLine();
+        ImGui::TextDisabled("#%zu", m_SelState);
+
+        // 名称
+        char nameBuf[128] = {};
+        strncpy_s(nameBuf, sizeof(nameBuf), st.name.c_str(), _TRUNCATE);
+        if (ImGui::InputText("名称", nameBuf, sizeof(nameBuf))) {
+            st.name = nameBuf;
+        }
+        // 设初始状态（若名空则跳过 —— initialState 需非空才可作引用）
+        ImGui::SameLine();
+        if (ImGui::Button("设为初始状态") && !st.name.empty()) {
+            asmc.initialState = st.name;
+        }
+
+        // clip 下拉：读同实体 AnimationComponent::clips（列表面板同款）
+        if (ac && !ac->clips.empty()) {
+            const std::string clipPreview = st.clipName.empty() ? "(选片段)" : st.clipName;
+            if (ImGui::BeginCombo("片段", clipPreview.c_str())) {
+                for (const auto &inst : ac->clips) {
+                    if (!inst.clip)
+                        continue;
+                    const bool sel = (inst.clip->name == st.clipName);
+                    if (ImGui::Selectable(inst.clip->name.c_str(), sel))
+                        st.clipName = inst.clip->name;
+                }
+                ImGui::EndCombo();
+            }
+        } else {
+            ImGui::TextDisabled("无动画片段");
+        }
+
+        ImGui::Checkbox("循环", &st.loop);
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(110.0f);
+        ImGui::DragFloat("速度", &st.speed, 0.05f, 0.0f, 10.0f, "%.2f");
+        ImGui::SameLine();
+        ImGui::TextDisabled("当前状态: %s", asmc.current == m_SelState ? "是" : "否");
+
+        // 删除该状态（含重编号关联转换）。等价的画布操作是点选节点按 Del。
+        if (ImGui::Button("删除该状态")) {
+            ApplyRemovals(asmc, {m_SelState}, {});
+            m_SelKind = SelKind::None;
+            m_SelState = SIZE_MAX;
+            return; // st 引用已被 ApplyRemovals 换表 → 悬空，立即返回
+        }
+    }
+    break;
+
+    case SelKind::Link: {
+        if (m_SelLink >= asmc.transitions.size()) {
+            m_SelKind = SelKind::None;
+            ImGui::TextDisabled("（选中连线已删除）");
+            return;
+        }
+        AnimTransitionDef &tr = asmc.transitions[m_SelLink];
+
+        ImGui::TextColored(ImVec4(0.35f, 0.75f, 1.0f, 1.0f), "转换属性");
+        ImGui::SameLine();
+        // from → to 只读预览（ANY → 名字）
+        const char *fromName = (tr.from == SIZE_MAX)
+                                   ? "ANY"
+                                   : (tr.from < asmc.states.size() ? asmc.states[tr.from].name.c_str() : "(无效)");
+        const char *toName = (tr.to < asmc.states.size()) ? asmc.states[tr.to].name.c_str() : "(无效)";
+        ImGui::TextDisabled("%s → %s", fromName, toName);
+
+        ImGui::SetNextItemWidth(120.0f);
+        ImGui::DragFloat("过渡时长(s)", &tr.blendSec, 0.01f, 0.0f, 10.0f, "%.2f");
+
+        ImGui::SameLine();
+        if (ImGui::Button("删除该转换")) {
+            ApplyRemovals(asmc, {}, {m_SelLink});
+            m_SelKind = SelKind::None;
+            m_SelLink = SIZE_MAX;
+            return; // tr 引用已被 ApplyRemovals 换表 → 悬空，立即返回
+        }
+
+        // ---- 条件列表（AND 全满足才触发；字段照列表面板）----
+        ImGui::Text("条件 (AND)");
+        ImGui::Separator();
+        int removeCond = -1;
+        for (int ci = 0; ci < static_cast<int>(tr.conditions.size()); ++ci) {
+            AnimCondition &cond = tr.conditions[ci];
+            ImGui::PushID(ci);
+            int typeIdx = static_cast<int>(cond.type);
+            if (ImGui::Combo("类型", &typeIdx, kCondTypeItems)) {
+                cond.type = static_cast<AnimCondition::Type>(typeIdx);
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("删除"))
+                removeCond = ci;
+
+            switch (cond.type) {
+            case AnimCondition::Type::FloatCmp: {
+                char pbuf[64] = {};
+                strncpy_s(pbuf, sizeof(pbuf), cond.param.c_str(), _TRUNCATE);
+                if (ImGui::InputText("参数", pbuf, sizeof(pbuf)))
+                    cond.param = pbuf;
+                int cmpIdx = static_cast<int>(cond.cmp);
+                if (ImGui::Combo("比较", &cmpIdx, kCmpItems))
+                    cond.cmp = static_cast<AnimCondition::Cmp>(cmpIdx);
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(90.0f);
+                ImGui::DragFloat("阈值", &cond.value, 0.01f, -100.0f, 100.0f, "%.2f");
+            }
+            break;
+            case AnimCondition::Type::Bool: {
+                char pbuf[64] = {};
+                strncpy_s(pbuf, sizeof(pbuf), cond.param.c_str(), _TRUNCATE);
+                if (ImGui::InputText("参数", pbuf, sizeof(pbuf)))
+                    cond.param = pbuf;
+                ImGui::SameLine();
+                const char *expectPreview = cond.expect ? "true" : "false";
+                if (ImGui::BeginCombo("期望", expectPreview)) {
+                    if (ImGui::Selectable("true", cond.expect))
+                        cond.expect = true;
+                    if (ImGui::Selectable("false", !cond.expect))
+                        cond.expect = false;
+                    ImGui::EndCombo();
+                }
+            }
+            break;
+            case AnimCondition::Type::StateTime: ImGui::SetNextItemWidth(110.0f);
+                ImGui::DragFloat("驻留(秒)", &cond.value, 0.01f, 0.0f, 100.0f, "%.2f");
+                break;
+            case AnimCondition::Type::StateEnded: ImGui::TextDisabled("当前动画播放到末尾后离开（需非循环）");
+                break;
+            }
+            ImGui::PopID();
+        }
+        if (removeCond >= 0)
+            tr.conditions.erase(tr.conditions.begin() + removeCond);
+        if (ImGui::Button("+ 添加条件"))
+            tr.conditions.push_back(AnimCondition{});
+    }
+    break;
+
+    case SelKind::Mixed: ImGui::TextDisabled("多选不可编辑，单选节点或连线后此处编辑属性");
+        break;
+
+    case SelKind::None:
+    default: ImGui::TextDisabled("点选状态节点或转换连线后，在此处编辑属性");
+        break;
+    }
 }
 
 } // namespace GE

@@ -362,6 +362,11 @@ void ASMGraphPanel::DrawASMGraph(AnimStateMachineComponent &asmc) {
         m_LastEntityId = entityId;
         m_LastStateCount = states.size();
         m_NeedsInitialLayout = true;
+        // 实体切换：旧实体的状态/连线下标不再有意义，清空属性区展示目标
+        //（否则新实体属性区会残留上个实体的旧选中，越界保护虽能兜底但显式清更干净）。
+        // 注意只清选中，不动布局：位置由 SettingsFile 按 NodeId 恢复。
+        if (firstSeenEntity)
+            ResetSelection();
     }
 
     // 重新布局按钮的导航请求：在 Begin/End 内部触发（需 current editor 已设置）
@@ -820,48 +825,74 @@ void ASMGraphPanel::ApplyRemovals(AnimStateMachineComponent &asmc,
     // m_NeedsInitialLayout，对新下标补一次布局（阶段 B 既有机制，无需在此重复置位）。
 }
 
-/// 画布内查询当前选中（Begin 内调用；返回后成员含选中缓存）。
+/// 画布内查询当前选中（Begin 内调用）。本函数把「画布即时选中」映射为底部属性区的
+/// 「展示目标」（m_SelKind/m_SelState/m_SelLink）。仅当出现明确的单选状态 / 单选连线时
+/// 才切换展示目标；点空白、点 ANY、框选多选、选中越界对象 → 一律保留上一帧展示目标，
+/// 使属性窗口不随这些操作关闭。实体切换由调用方在 firstSeenEntity 时 ResetSelection。
 void ASMGraphPanel::QuerySelection(AnimStateMachineComponent &asmc) {
-    m_SelKind = SelKind::None;
-    m_SelState = SIZE_MAX;
-    m_SelLink = SIZE_MAX;
+    // 本帧画布真实选中类型（局部；不直接写成员，避免点空白/ANY/多选清掉展示目标）
+    SelKind curKind = SelKind::None;
+    size_t curState = SIZE_MAX;
+    size_t curLink = SIZE_MAX;
 
     // 缓冲大小取库当前选中对象数（可能同时含节点+连线）
     const int cap = ed::GetSelectedObjectCount();
-    if (cap <= 0) {
-        m_SelKind = SelKind::None;
-        return;
-    }
-    std::vector<ed::NodeId> nodes(static_cast<size_t>(cap));
-    std::vector<ed::LinkId> links(static_cast<size_t>(cap));
-    const int nodeCount = ed::GetSelectedNodes(nodes.data(), cap);
-    const int linkCount = ed::GetSelectedLinks(links.data(), cap);
+    if (cap > 0) {
+        std::vector<ed::NodeId> nodes(static_cast<size_t>(cap));
+        std::vector<ed::LinkId> links(static_cast<size_t>(cap));
+        const int nodeCount = ed::GetSelectedNodes(nodes.data(), cap);
+        const int linkCount = ed::GetSelectedLinks(links.data(), cap);
 
-    // 记录选中的普通状态节点下标（ANY 节点不可编辑，忽略）
-    std::vector<size_t> stateSel;
-    for (int i = 0; i < nodeCount; ++i) {
-        const uintptr_t val = nodes[i].Get();
-        if (IdNamespace(val) != kNamespaceState)
-            continue;
-        const size_t idx = IdIndex(val);
-        if (idx < asmc.states.size())
-            stateSel.push_back(idx);
-    }
-
-    if (stateSel.empty() && linkCount == 0) {
-        m_SelKind = SelKind::None;
-    } else if (stateSel.size() == 1 && linkCount == 0) {
-        m_SelKind = SelKind::State;
-        m_SelState = stateSel[0];
-    } else if (stateSel.empty() && linkCount == 1) {
-        const size_t idx = IdIndex(links[0].Get());
-        if (idx < asmc.transitions.size()) {
-            m_SelKind = SelKind::Link;
-            m_SelLink = idx;
+        // 记录选中的普通状态节点下标（ANY 节点不可编辑，忽略 → 视为 None 保留旧展示）
+        std::vector<size_t> stateSel;
+        for (int i = 0; i < nodeCount; ++i) {
+            const uintptr_t val = nodes[i].Get();
+            if (IdNamespace(val) != kNamespaceState)
+                continue;
+            const size_t idx = IdIndex(val);
+            if (idx < asmc.states.size())
+                stateSel.push_back(idx);
         }
-    } else {
-        m_SelKind = SelKind::Mixed; // 多选 / 节点连线混选 → 属性区只提示
+
+        if (stateSel.empty() && linkCount == 0) {
+            curKind = SelKind::None; // 无选中 / 只选中 ANY 等不可编辑对象
+        } else if (stateSel.size() == 1 && linkCount == 0) {
+            curKind = SelKind::State;
+            curState = stateSel[0];
+        } else if (stateSel.empty() && linkCount == 1) {
+            const size_t idx = IdIndex(links[0].Get());
+            if (idx < asmc.transitions.size()) {
+                curKind = SelKind::Link;
+                curLink = idx;
+            }
+            // 越界连线 → curKind 保持 None
+        } else {
+            curKind = SelKind::Mixed; // 多选 / 节点连线混选
+        }
     }
+
+    // 写入展示目标：
+    //   State/Link —— 明确的单选，切换展示目标；
+    //   Mixed（框选多选）—— 清掉旧单选展示，属性区显示「多选不可编辑」提示；
+    //   None（点空白 / 点 ANY / 选到已删对象）—— 不写成员，保留上一帧展示目标，
+    //   使属性窗口不随这些操作关闭。
+    if (curKind == SelKind::State) {
+        m_SelKind = SelKind::State;
+        m_SelState = curState;
+    } else if (curKind == SelKind::Link) {
+        m_SelKind = SelKind::Link;
+        m_SelLink = curLink;
+    } else if (curKind == SelKind::Mixed) {
+        m_SelKind = SelKind::Mixed;
+    }
+    // else (None)：保留旧展示目标
+}
+
+/// 清空属性区展示目标（实体切换时调用；旧实体的状态下标/连线下标不再有意义）
+void ASMGraphPanel::ResetSelection() {
+    m_SelKind = SelKind::None;
+    m_SelState = SIZE_MAX;
+    m_SelLink = SIZE_MAX;
 }
 
 /// 底部属性区（C3）：按选中类型渲染状态或转换的属性编辑；未选中/多选只提示。

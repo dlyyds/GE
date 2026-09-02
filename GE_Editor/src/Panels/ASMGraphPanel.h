@@ -90,9 +90,14 @@ private:
     /// 或转换（blendSec + 条件列表）的属性编辑；无选中/多选显示提示。
     void DrawProperties(AnimStateMachineComponent &asmc, const AnimationComponent *ac);
 
-    /// 画布内查询当前选中项并记录到 m_SelKind/m_SelState/m_SelLink（Begin 后调用，
-    /// 属性编辑区在 ed::End 之后据此渲染）。单类型单选才可编辑，多选置 Mixed。
+    /// 画布内查询当前选中（Begin 后调用，属性编辑区在 ed::End 之后据此渲染）。
+    /// m_SelKind/m_SelState/m_SelLink 是属性区「展示目标」：仅当画布出现明确的单选
+    /// 状态/连线时才切换；点空白 / 点 ANY / 选到已删对象保留上一帧展示目标（属性窗不关），
+    /// 框选多选置 Mixed 并清掉旧单选展示。
     void QuerySelection(AnimStateMachineComponent &asmc);
+
+    /// 清空属性区展示目标（实体切换时调用：旧实体的状态/连线下标不再有意义）
+    void ResetSelection();
 
     std::shared_ptr<EditorContext> m_Context; ///< 共享场景上下文（非拥有）
     HierarchyLayer *m_Hierarchy = nullptr;    ///< 选中实体来源（每帧轮询，非拥有）
@@ -119,11 +124,11 @@ private:
     /// 网格列数（按状态数自适应，≥1）
     static constexpr int kGridColumns = 4;
 
-    /// 选中内容类型（C3 底部属性编辑区按此分支渲染）
+    /// 属性区展示目标类型（QuerySelection 每帧按画布选中更新；点空白/ANY 保留旧值）
     enum class SelKind { None, State, Link, Mixed };
-    SelKind m_SelKind = SelKind::None;   ///< 当前选中类型（QuerySelection 每帧刷新）
-    size_t m_SelState = SIZE_MAX;        ///< 选中状态下标（SelKind==State 时有效）
-    size_t m_SelLink = SIZE_MAX;         ///< 选中转换下标（SelKind==Link 时有效）
+    SelKind m_SelKind = SelKind::None;   ///< 当前展示目标（State/Link 时属性区编辑之）
+    size_t m_SelState = SIZE_MAX;        ///< 展示状态下标（SelKind==State 时有效）
+    size_t m_SelLink = SIZE_MAX;         ///< 展示连线下标（SelKind==Link 时有效）
 
     /// 画布/属性区可拖拽分割条厚度（像素）
     static constexpr float kSplitterH = 4.0f;

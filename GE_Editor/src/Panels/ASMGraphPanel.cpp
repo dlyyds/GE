@@ -65,10 +65,19 @@ void DrawStatusGlyph(ImU32 color, bool filled) {
     ImGui::Dummy(ImVec2(size, size));
 }
 
-/// 画状态节点引脚图标（与 ANY 输出同款：18px 空心浅蓝 Flow ▶）
+/// 画状态节点引脚图标（与 ANY 输出同款：18px 空心浅蓝 Flow ▶）。
+/// 注意：不能走 ax::Widgets::Icon —— 它在内部先 IsRectVisible(尺寸) 判定，节点处在画布
+/// 边缘/被 Canvas 局部裁剪时该判定会误报「不可见」而跳过绘制（节点主体由 node-editor 用
+/// 整体包围盒强制绘制仍可见），导致边缘节点的引脚图标消失。这里直接画图标、仅保留占位。
 void DrawPinGlyph() {
-    ax::Widgets::Icon(ImVec2(18, 18), ax::Widgets::IconType::Flow, false,
-                      ImColor(120, 190, 255), ImColor(120, 190, 255));
+    const ImVec2 a = ImGui::GetCursorScreenPos();
+    const ImVec2 size(18.0f, 18.0f);
+    ax::Drawing::DrawIcon(ImGui::GetWindowDrawList(), a,
+                          ImVec2(a.x + size.x, a.y + size.y),
+                          ax::Widgets::IconType::Flow, false,
+                          static_cast<ImU32>(ImColor(120, 190, 255)),
+                          static_cast<ImU32>(ImColor(120, 190, 255)));
+    ImGui::Dummy(size);
 }
 } // namespace
 
@@ -208,13 +217,11 @@ void ASMGraphPanel::OnImGuiRender() {
         ImGui::Checkbox("状态机", &asmc.enabled);
         ImGui::SameLine();
         if (ImGui::Button("重新布局")) {
-            // 兜底：中间增删状态导致 NodeId 下标错位时，按声明序重置所有节点坐标
-            for (size_t i = 0; i < asmc.states.size(); ++i) {
-                LayoutNode(i);
-            }
-            // DrawASMGraph 的 ed::Begin/End 在设置布局后紧跟执行，此处只置位标志，
-            // 由下一帧画布导航聚焦内容（重新布局按钮也支持直接触发 NavigateToContent）
-            m_RequestNavigateContent = true;
+            // 不能在此同步重摆：LayoutNode → ed::SetNodePosition 依赖库静态 s_Editor
+            //（当前编辑器），而按钮在 ed::Begin/End 之外执行时 s_Editor 为 nullptr，
+            // 会空指针崩溃。改为置位，由下帧 DrawASMGraph 画布内统一执行（见
+            // m_RequestRelayout 处理）。仅复位一次：节点坐标全部按声明序网格重摆。
+            m_RequestRelayout = true;
         }
         ImGui::EndChild();
     }
@@ -369,10 +376,24 @@ void ASMGraphPanel::DrawASMGraph(AnimStateMachineComponent &asmc) {
             ResetSelection();
     }
 
-    // 重新布局按钮的导航请求：在 Begin/End 内部触发（需 current editor 已设置）
+    // 重新布局按钮的导航请求：在 Begin/End 内部触发（需 current editor 已设置）。
+    // 注意此块必须位于重摆块之前：重摆块会置位本标志，本块若在置位之后才检查，
+    // 会与重摆同帧导航（此时新摆节点尺寸未定，包围盒不准）。隔一帧导航更稳。
     if (m_RequestNavigateContent) {
         m_RequestNavigateContent = false;
         ed::NavigateToContent();
+    }
+
+    // 画布内统一处理「重新布局」请求：按钮置位、此处执行（s_Editor 已由 ed::Begin 设好，
+    // m_EntityId 已刷新为当前实体）。强制按声明序网格重摆所有状态节点，并把 ANY 节点
+    // 摆到固定角落。重摆后置位导航请求 → 下帧（节点尺寸已定）才导航聚焦。
+    if (m_RequestRelayout) {
+        m_RequestRelayout = false;
+        for (size_t i = 0; i < states.size(); ++i) {
+            LayoutNode(i);
+        }
+        ed::SetNodePosition(EncodeAnyNodeId(entityId), ImVec2(20.0f, -60.0f));
+        m_RequestNavigateContent = true;
     }
 
     // ---- 虚拟 ANY 节点：固定画布左上（首次布局 / 重新布局时重置到角落），from==SIZE_MAX 的公共源 ----
@@ -419,8 +440,7 @@ void ASMGraphPanel::DrawASMGraph(AnimStateMachineComponent &asmc) {
                 ImGui::Spring(0);
                 ImGui::TextUnformatted("全局");
                 ImGui::Spring(0);
-                ax::Widgets::Icon(ImVec2(18, 18), ax::Widgets::IconType::Flow, false,
-                                  ImColor(120, 190, 255), ImColor(120, 190, 255));
+                DrawPinGlyph();
                 ImGui::Spring(0);
             }
             builder.EndOutput();
@@ -524,8 +544,8 @@ void ASMGraphPanel::DrawASMGraph(AnimStateMachineComponent &asmc) {
     //   2) HandleDeleteSelection —— BeginDelete 处理 Del 键删除（库的删除候选是上帧/本帧选中）。
     //      必须先删（改动 transitions/states）再查询选中，否则删完再查会拿到刚删的悬空选中；
     //   3) QuerySelection —— 读当前选中节点/连线，缓存到成员供 End 之后属性区渲染。
-    //    HandleCreateTransition(asmc);
-    //    HandleDeleteSelection(asmc);
+    HandleCreateTransition(asmc);
+    HandleDeleteSelection(asmc);
     QuerySelection(asmc);
 
     // 复位首次布局标记（ANY 节点首帧已摆到角落）
@@ -640,8 +660,10 @@ void ASMGraphPanel::DrawStateNode(AnimStateMachineComponent &asmc, size_t stateI
 /// 拖拽建转换（C1）：BeginCreate → QueryNewLink → 校验 → AcceptNewItem。
 /// 在画布内、所有节点/连线绘制之后调用（库的拖拽交互发生在绘制期）。
 void ASMGraphPanel::HandleCreateTransition(AnimStateMachineComponent &asmc) {
-    if (!ed::BeginCreate(ImColor(255, 255, 255), 2.0f))
+    if (!ed::BeginCreate(ImColor(255, 255, 255), 2.0f)) {
+        ed::EndCreate();
         return;
+    }
 
     ed::PinId startPinId = 0, endPinId = 0;
     if (ed::QueryNewLink(&startPinId, &endPinId)) {

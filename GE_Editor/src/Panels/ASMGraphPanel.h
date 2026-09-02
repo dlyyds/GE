@@ -118,7 +118,14 @@ private:
     /// 本帧需补一次首次布局（实体切换 / 状态数变化后置位，DrawASMGraph 末尾复位）
     bool m_NeedsInitialLayout = false;
 
-    /// 重新布局按钮请求导航（置位后由下帧画布内触发 NavigateToContent，按钮在画布外）
+    /// 重新布局请求：按钮置位，由下帧 DrawASMGraph 画布内（SetCurrentEditor 之后）统一
+    /// 重摆所有状态节点 + ANY 节点，随后置 m_RequestNavigateContent 让再下一帧导航聚焦。
+    /// 不能在按钮处直接做 —— ed::SetNodePosition 依赖库静态 s_Editor（当前编辑器），
+    /// 而按钮在 ed::Begin/End 之外执行时 s_Editor 为 nullptr，同步调用会空指针崩溃
+    ///（vector::data this==null）。
+    bool m_RequestRelayout = false;
+
+    /// 重新布局完成后导航到内容（置位后由下帧画布内触发 NavigateToContent）
     bool m_RequestNavigateContent = false;
 
     /// 网格列数（按状态数自适应，≥1）

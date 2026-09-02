@@ -347,8 +347,6 @@ void ASMGraphPanel::DrawASMGraph(AnimStateMachineComponent &asmc) {
             LayoutNode(i);
         }
 
-        ed::BeginNode(nodeId);
-
         // 标题行：状态名 + 初始★/当前▶ 标记；当前状态用醒目颜色描边
         const bool isInitial = (st.name == asmc.initialState);
         const bool isCurrent = (asmc.current == i);
@@ -485,12 +483,16 @@ void ASMGraphPanel::DrawASMGraph(AnimStateMachineComponent &asmc) {
             ImU32 labelFg = fromAny
                                 ? ImColor(130, 190, 255, 255)
                                 : ImColor(160, 220, 160, 255);
-            ImDrawList *bg = ed::GetHintBackgroundDrawList(); // 背景层：标签底板
-            bg->AddRectFilled(ImVec2(mid.x - labelSize.x * 0.5f - 3.0f, mid.y - labelSize.y * 0.5f - 2.0f),
+            // 注意：不能在这里用 ed::GetHintBackground/ForegroundDrawList —— Hint API 只在
+            // BeginGroupHint()…EndGroupHint() 之间有效，那是给 group 节点缩小时画"迷你框"用的，
+            // 我们这里没有 group 节点，m_CurrentNode 恒为 nullptr 会 IM_ASSERT 崩溃。
+            // 标签几何是我们按节点坐标在屏幕空间手算的，直接用 ImGui 窗口 draw list（即画布
+            // draw list）画在链接之上即可。
+            ImDrawList *dl = ImGui::GetWindowDrawList();
+            dl->AddRectFilled(ImVec2(mid.x - labelSize.x * 0.5f - 3.0f, mid.y - labelSize.y * 0.5f - 2.0f),
                               ImVec2(mid.x + labelSize.x * 0.5f + 3.0f, mid.y + labelSize.y * 0.5f + 2.0f),
                               labelBg, 3.0f);
-            ImDrawList *fg = ed::GetHintForegroundDrawList(); // 前景层：标签文字
-            fg->AddText(ImVec2(mid.x - labelSize.x * 0.5f, mid.y - labelSize.y * 0.5f), labelFg, label);
+            dl->AddText(ImVec2(mid.x - labelSize.x * 0.5f, mid.y - labelSize.y * 0.5f), labelFg, label);
         }
     }
 

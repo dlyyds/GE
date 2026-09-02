@@ -25,13 +25,23 @@ namespace ed = ax::NodeEditor;
 
 // ---- ID 编码常量（与计划书 §2.2 一致）----
 // NodeId / PinId 都是 uintptr_t。为避免多实体共享同一编辑器上下文时撞 ID，统一编码为
-// (实体 id << 16) | 状态下标；PinId 再用高位 bit 区分方向（输出 0x8000 / 输入 0x4000）。
-// LinkId 用转换下标（每帧按 transitions 重建）。状态下标只占低位 16 bit，单实体状态数
-// 上限 65536，足够。
+// (实体 id << 32) | (命名空间 << 16) | 状态下标；命名空间按类型分开，NodeId / PinId /
+// ANY 节点三区间互不相交，绝对不冲突。LinkId 用转换下标（每帧按 transitions 重建）。
+// 实体 id 限 32 bit、状态下标限 16 bit，单实体状态数上限 65536，足够。
 namespace {
-constexpr uintptr_t kPinOutputFlag = 0x8000u;
-constexpr uintptr_t kPinInputFlag  = 0x4000u;
+/// ID 位布局（64bit，绝对不冲突）：
+///   NodeId = (实体id << 32) | (命名空间 << 16) | 状态下标
+///   PinId  = NodeId | 引脚方向标记
+/// 命名空间按类型分开（kNsAny=0 / kNsState=1 / kNsPinOutput=2 / kNsPinInput=3），
+/// 三种 ID 区间互不相交；状态下标 16 bit，单实体状态数上限 65536。
+constexpr uintptr_t kNamespaceShift = 16u;
 constexpr uintptr_t kStateIndexMask = 0xFFFFu;
+constexpr uintptr_t kEntityIdShift = 32u;
+constexpr uintptr_t kEntityIdMask = 0xFFFFFFFFu; // 实体 id 限 32 bit
+constexpr uintptr_t kNamespaceAny = 0u; // ANY 虚拟节点
+constexpr uintptr_t kNamespaceState = 1u; // 普通状态节点
+constexpr uintptr_t kNamespacePinOut = 2u; // 输出引脚
+constexpr uintptr_t kNamespacePinIn = 3u; // 输入引脚
 
 /// 状态默认网格间距（像素）
 constexpr float kGridSpacingX = 300.0f;
@@ -39,11 +49,24 @@ constexpr float kGridSpacingY = 220.0f;
 } // namespace
 
 uintptr_t ASMGraphPanel::EncodeNodeId(size_t entityId, size_t stateIndex) {
-    return (static_cast<uintptr_t>(entityId) << 16) | static_cast<uintptr_t>(stateIndex & kStateIndexMask);
+    // 状态节点命名空间为 1；实体 id 限 32 bit、状态下标限 16 bit（见 k* 常量注释）
+    return (static_cast<uintptr_t>(entityId) << kEntityIdShift)
+           | (kNamespaceState << kNamespaceShift)
+           | static_cast<uintptr_t>(stateIndex & kStateIndexMask);
 }
 
 uintptr_t ASMGraphPanel::EncodePinId(size_t entityId, size_t stateIndex, bool output) {
-    return EncodeNodeId(entityId, stateIndex) | (output ? kPinOutputFlag : kPinInputFlag);
+    // 引脚单独占一个命名空间，PinId 与任何 NodeId 都不相等
+    const uintptr_t ns = output ? kNamespacePinOut : kNamespacePinIn;
+    return (static_cast<uintptr_t>(entityId) << kEntityIdShift)
+           | (ns << kNamespaceShift)
+           | static_cast<uintptr_t>(stateIndex & kStateIndexMask);
+}
+
+/// ANY 虚拟节点（kNamespaceAny）专用编码；不直接占用状态下标
+uintptr_t ASMGraphPanel::EncodeAnyNodeId(size_t entityId) {
+    return (static_cast<uintptr_t>(entityId) << kEntityIdShift)
+           | (kNamespaceAny << kNamespaceShift);
 }
 
 size_t ASMGraphPanel::DecodeStateIndex(uintptr_t encoded) {
@@ -162,9 +185,9 @@ void ASMGraphPanel::DrawASMGraph(AnimStateMachineComponent &asmc) {
     }
 
     // ---- 虚拟 ANY 节点：固定画布左上（首次布局 / 重新布局时重置到角落），from==SIZE_MAX 的公共源 ----
-    const ed::NodeId anyNodeId(EncodeNodeId(entityId, kStateIndexMask));
+    const ed::NodeId anyNodeId(EncodeAnyNodeId(entityId));
     if (firstSeenEntity || m_NeedsInitialLayout) {
-        ed::SetNodePosition(anyNodeId, ImVec2(20.0f, 20.0f));
+        ed::SetNodePosition(anyNodeId, ImVec2(20.0f, -60.0f));
     }
     {
         ed::BeginNode(anyNodeId);
@@ -172,7 +195,7 @@ void ASMGraphPanel::DrawASMGraph(AnimStateMachineComponent &asmc) {
         ImGui::TextDisabled("全局");
         // 输出引脚（右侧）：作为 from==ANY 转换的源
         ed::BeginPin(ed::PinId(EncodePinId(entityId, kStateIndexMask, true)), ed::PinKind::Output);
-        ed::PinPivotRect(ImVec2(0.0f, 0.0f), ImVec2(0.0f, 0.0f));
+        ImGui::Text("输入");
         ed::EndPin();
         ed::EndNode();
     }
@@ -239,14 +262,14 @@ void ASMGraphPanel::DrawASMGraph(AnimStateMachineComponent &asmc) {
         }
 
         const ed::PinId startPin = (tr.from == SIZE_MAX)
-            ? ed::PinId(EncodePinId(entityId, kStateIndexMask, true))   // ANY 输出引脚
-            : ed::PinId(EncodePinId(entityId, tr.from, true));          // 源状态输出引脚
+                                       ? ed::PinId(EncodePinId(entityId, kStateIndexMask, true)) // ANY 输出引脚
+                                       : ed::PinId(EncodePinId(entityId, tr.from, true)); // 源状态输出引脚
         const ed::PinId endPin = ed::PinId(EncodePinId(entityId, tr.to, false)); // 目标状态输入引脚
 
         // 连线上标签：过渡时长 + 条件数
         const ImVec4 linkColor = (tr.from == SIZE_MAX)
-            ? ImVec4(0.3f, 0.6f, 1.0f, 1.0f)   // ANY 连线：蓝色
-            : ImVec4(0.5f, 0.8f, 0.5f, 1.0f);  // 普通连线：绿色
+                                     ? ImVec4(0.3f, 0.6f, 1.0f, 1.0f) // ANY 连线：蓝色
+                                     : ImVec4(0.5f, 0.8f, 0.5f, 1.0f); // 普通连线：绿色
 
         const ed::LinkId linkId(static_cast<uintptr_t>(j));
         ed::Link(linkId, startPin, endPin, linkColor, 2.0f);

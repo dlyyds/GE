@@ -27,8 +27,9 @@ class HierarchyLayer; // 前向声明，避免循环包含（ASMGraphLayer 需 H
 /// 图↔数据映射（详见 docs/动画状态机节点图编辑器计划书.md §2）：
 ///   - 节点 = states[i]；虚拟 ANY 节点 = transitions[].from==SIZE_MAX 的公共源（不进 states）
 ///   - 连线 = transitions[j]（from==SIZE_MAX 的连线从 ANY 的输出引脚出发）
-///   - 多实体共享同一 ed::EditorContext：NodeId = (实体id << 16) | 状态下标；
-///     PinId 再用高位 bit 分方向（输出 0x8000 / 输入 0x4000）；LinkId = 转换下标
+///   - 多实体共享同一 ed::EditorContext：NodeId = (实体id << 32) | (命名空间 << 16) |
+///     状态下标；PinId 用独立命名空间区分方向（输出 / 输入），与 NodeId 区间不重叠；
+///     ANY 节点单独一个命名空间。LinkId = 转换下标
 ///   - 节点位置由库 SettingsFile 持久化（"asm_graph.json"），跨启动保持
 class ASMGraphPanel {
 public:
@@ -45,6 +46,8 @@ private:
     /// 节点/引脚 ID 编码（详见计划书 §2.2）
     static uintptr_t EncodeNodeId(size_t entityId, size_t stateIndex);
     static uintptr_t EncodePinId(size_t entityId, size_t stateIndex, bool output);
+    /// ANY 虚拟节点专用编码（独立命名空间，与状态节点/引脚区间不重叠）
+    static uintptr_t EncodeAnyNodeId(size_t entityId);
     /// 由编码反解状态下标（LinkId 解码 / 节点选中反查用）
     static size_t DecodeStateIndex(uintptr_t encoded);
 

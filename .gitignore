@@ -85,6 +85,11 @@ sandbox/sandbox.exe
 sandbox/imgui.ini
 
 # ============================================
+# Temporary test / scratch directories
+# ============================================
+tmp_gltf_test/
+
+# ============================================
 # Old/outdated paths (kept for safety)
 # ============================================
 engin/vendor/

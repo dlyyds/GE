@@ -106,6 +106,12 @@ GE/third_party/KTX-Software-4.4.2/external/basisu/webgl_videotest/
 GE/third_party/KTX-Software-4.4.2/external/basisu/bin/
 
 # ============================================
+# 模型 / 材质测试资产（体积大，不入版本库，仅本地保留）
+# ============================================
+assets/models/
+assets/materal/
+
+# ============================================
 # Old/outdated paths (kept for safety)
 # ============================================
 engin/vendor/

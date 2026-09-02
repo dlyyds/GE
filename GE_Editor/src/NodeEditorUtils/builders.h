@@ -8,6 +8,7 @@
 //   Written by Michal Cichon
 //   Source: imgui-node-editor 0.9.3 examples/blueprints-example/utilities
 //   改造：Header 贴图分支改为 HeaderColor 纯色色条（本工程无 BlueprintBackground 贴图）。
+//   适配：本工程 imgui 的 ImTextureID 为整型 ImU64（非指针），默认参数用 0 而非 nullptr。
 //------------------------------------------------------------------------------
 # pragma once
 
@@ -25,7 +26,7 @@ namespace Utilities {
 //------------------------------------------------------------------------------
 struct BlueprintNodeBuilder
 {
-    BlueprintNodeBuilder(ImTextureID texture = nullptr, int textureWidth = 0, int textureHeight = 0);
+    BlueprintNodeBuilder(ImTextureID texture = 0, int textureWidth = 0, int textureHeight = 0);
 
     void Begin(NodeId id);
     void End();

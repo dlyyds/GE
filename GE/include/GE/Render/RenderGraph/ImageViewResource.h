@@ -67,10 +67,6 @@ public:
     /// 本帧初始布局。
     vk::ImageLayout GetInitialLayout() const { return m_InitialLayout; }
 
-    /// 是否为帧 WSI 图像（见 SetFrameSwapchain 说明）。
-    bool IsFrameSwapchain() const { return m_FrameImage; }
-    void SetFrameSwapchain(bool flag) { m_FrameImage = flag; }
-
 private:
     std::string m_Name;
     VulkanImageView *m_View = nullptr;
@@ -80,8 +76,6 @@ private:
 
     vk::ImageLayout m_FinalLayout = vk::ImageLayout::eUndefined;
     bool            m_FinalLayoutValid = false;
-
-    bool m_FrameImage = false;  ///< 是否为「本帧 WSI 图像」（不允许跨帧记忆）
 };
 
 } // namespace GE

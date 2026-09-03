@@ -1,13 +1,13 @@
 /**
  * @file RenderGraph.h
- * @brief 渲染图（RenderGraph）核心：声明式 Pass 自动依赖 / 排序 / 屏障。
+ * @brief 渲染图（RenderGraph）核心：声明式 Pass 顺序执行 + 自动屏障。
  *
- * 理念：各 Pass 只声明「读哪些资源、写哪些资源」，RenderGraph 自动推导依赖
- * 与执行顺序，并自动插入全部图像布局转换与内存屏障。
+ * 理念：各 Pass 只声明「读哪些资源、写哪些资源」，RenderGraph 按声明序执行
+ * （声明序即执行序），并自动插入全部图像布局转换与内存屏障。
  *
  * v1（阶段1）范围：
  *   - 仅 Raster pass（动态渲染 beginRendering/endRendering）
- *   - 同步用经典 vk::ImageMemoryBarrier（对齐全引擎现有 image_layout_transition）
+ *   - 同步用 vk::ImageMemoryBarrier2（pipelineBarrier2）
  *   - 图按帧实例化、帧末析构；跨帧布局记忆由 ImageViewResource 状态机承载
  *
  * 用法（计划书 §6A.6 接线示意）：
@@ -42,8 +42,10 @@ class VulkanRenderFrame;
 // RenderGraph — 图本体
 // ============================================================================
 
-/// 渲染图：节点（pass）+ 资源表 + 依赖边 + 每资源布局状态机。
-/// 不拥有任何 GPU 资源；只编排同步与执行序。
+/// 渲染图：pass 序列 + 资源表。
+/// 不拥有任何 GPU 资源；只编排同步。
+/// 声明序即执行序：pass 必须按依赖序声明（读某资源须声明在其写者之后），
+/// 框架不自动重排、也不做环检测。依赖建图与拓扑排序已移除（v2 保留声明）。
 class RenderGraph {
 public:
     /// @param name 图名（调试/日志）
@@ -80,11 +82,10 @@ public:
     // 编译与执行
     // ========================================================================
 
-    /// 编译：依赖建图 → 稳定拓扑排序 → 检测环。编译前读写声明必须已完成。
-    /// 可重复调用。
+    /// 校验 pass 声明自洽。编译前读写声明必须已完成。可重复调用。
     bool Compile();
 
-    /// 按编译得到的执行序，把屏障与各 pass 的命令录制到 cmd（本帧已 Begin）。
+    /// 按声明序把屏障与各 pass 的命令录制到 cmd（本帧已 Begin）。
     /// @param cmd   目标 command buffer（当前帧）
     /// @param frame 当前帧（帧池缓冲/描述符来源，透传给 execute 回调）
     void Execute(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame);
@@ -96,14 +97,6 @@ public:
     const std::string &GetName() const { return m_Name; }
     bool IsCompiled() const { return m_Compiled; }
     size_t GetPassCount() const { return m_Passes.size(); }
-
-    /// 依赖边：src pass 写 → dst pass 读/写同一资源（§5.1 产出，调试访问用）。
-    struct GraphEdge {
-        uint32_t srcPass = 0;        ///< 写者 pass（依赖源）
-        uint32_t dstPass = 0;        ///< 读者/下一写者 pass（依赖目标）
-        ResourceHandle resource = kInvalidResource;
-        ResourceUsage  usage = ResourceUsage::ShaderRead;  ///< dstPass 侧的使用
-    };
 
     /// 资源表行：每行对应一个资源（外部或虚拟）。
     struct ResourceRecord {
@@ -117,21 +110,12 @@ public:
     /// 获取资源表（调试/访问）。
     const std::vector<ResourceRecord> &GetResources() const { return m_Resources; }
 
-    /// 获取依赖边（调试/访问）。
-    const std::vector<GraphEdge> &GetEdges() const { return m_Edges; }
-    /// 获取拓扑执行序（调试/访问）。
-    const std::vector<uint32_t> &GetExecutionOrder() const { return m_ExecutionOrder; }
-
     /// 按句柄查资源记录（越界/无效返回 nullptr）。
     ResourceRecord *FindResource(ResourceHandle handle);
     const ResourceRecord *FindResource(ResourceHandle handle) const;
 
 private:
     friend class RenderGraphBuilder;
-
-    // --- 编译内部子步骤 ---
-    void BuildDependencyEdges();     ///< §5.1：由读写声明建依赖边
-    void TopologicalSort();          ///< §5.2：稳定拓扑排序（Kahn）
 
     /// 从 pass 声明中查某资源的「写用法」（用于推导跨 pass 屏障的源侧掩码）。
     /// 找不到时返回 ColorAttachment（理论上每个被依赖的资源都来自某写者，不会缺失）。
@@ -143,16 +127,6 @@ private:
 
     std::vector<ResourceRecord> m_Resources;   ///< 资源表（句柄 = 下标 + 1）
     std::vector<RenderPassDesc> m_Passes;      ///< 节点（按声明序）
-    std::vector<GraphEdge>      m_Edges;       ///< 依赖边（§5.1 产出）
-    std::vector<uint32_t>       m_ExecutionOrder;  ///< 拓扑序（pass 下标）
-
-    /// pass 下标 → 该 pass 访问的资源集（{句柄, 用法, 是否写}），Compile 时构建，
-    /// Execute 用它计算每个资源在 pass 内的期望布局与首访转换。
-    struct Access {
-        ResourceUsage usage = ResourceUsage::ShaderRead;
-        bool write = false;
-    };
-    std::vector<std::vector<std::pair<ResourceHandle, Access>>> m_PassAccess;
 };
 
 // ============================================================================

@@ -24,7 +24,7 @@ namespace GE {
 /// 外部图像布局状态机（跨帧记忆布局）。
 class ImageViewResource {
 public:
-    /// 构造：默认帧首 Preserve 语义（内容需保留）。
+    /// 构造：默认无跨帧记忆，帧首兜底布局 = ShaderReadOnlyOptimal（采样态）。
     explicit ImageViewResource(const std::string &name) : m_Name(name) {}
 
     ImageViewResource(const ImageViewResource &) = delete;
@@ -35,11 +35,10 @@ public:
     /// 绑定目标图像视图（不拥有所有权）。view 为 null 时表示「本帧不渲染到它」。
     void SetView(VulkanImageView *view) { m_View = view; }
 
-    // --- 帧首状态 ---
+    // --- 帧首布局 ---
 
-    /// 设置本帧帧首状态。渲染图每帧开头按实际语义调用。
-    /// @param state 帧首语义；Preserve 时配合已知布局 startLayout 使用。
-    void SetInitialState(ExternalImageState state) { m_InitialState = state; }
+    /// 设置本帧帧首布局。渲染图在图像从未被记录过（无 finalLayout 记忆）时用它兜底；
+    /// 调用方把它设成该图当前的真实布局（如采样态 ShaderReadOnlyOptimal）。
     void SetInitialLayout(vk::ImageLayout layout) { m_InitialLayout = layout; }
 
     // --- 执行序后的收尾：跨帧记忆 ---
@@ -65,8 +64,7 @@ public:
         return m_View ? m_View->get_format() : vk::Format::eUndefined;
     }
 
-    /// 本帧初始状态与布局。
-    ExternalImageState GetInitialState() const { return m_InitialState; }
+    /// 本帧初始布局。
     vk::ImageLayout GetInitialLayout() const { return m_InitialLayout; }
 
     /// 是否为帧 WSI 图像（见 SetFrameSwapchain 说明）。
@@ -77,8 +75,8 @@ private:
     std::string m_Name;
     VulkanImageView *m_View = nullptr;
 
-    ExternalImageState m_InitialState = ExternalImageState::Preserve;
-    vk::ImageLayout    m_InitialLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+    /// 无跨帧记忆（从未被图记录过）时帧首兜底布局。
+    vk::ImageLayout m_InitialLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
 
     vk::ImageLayout m_FinalLayout = vk::ImageLayout::eUndefined;
     bool            m_FinalLayoutValid = false;

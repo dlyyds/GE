@@ -80,24 +80,18 @@ struct RenderGraphResourceDesc {
 
 enum class ExternalResourceType { Image, Buffer };
 
-/// 外部图像在帧首的实际布局（供转换起点 / 终点匹配）。
-enum class ExternalImageState {
-    Undefined,      ///< 允许丢弃旧内容（内容无关紧要，只关心本次写入结果）
-    LoadPreserve,   ///< 上次内容需保留，图像当前在 ShaderReadOnlyOptimal 等已知布局
-    Present,        ///< 当前处于呈现布局（present src）
-};
-
 // ============================================================================
 // 外部资源的图像视图（交由图接管其布局流转）
 // ============================================================================
 
-/// 图像视图资源句柄。图对其成员做布局转换，并在对齐阶段把相关状态
-/// 写回 *state（见 §4.6） —— 这实际就是那张图在运行期的持久布局状态机。
+/// 图像视图资源句柄。图对其成员做布局转换，并把最终布局写回 finalLayout
+/// （见 §4.6）—— 这实际就是那张图在运行期的持久布局状态机。
+/// 帧首布局来源：有跨帧记忆（finalLayoutValid）时用记忆，否则用 initialLayout 兜底。
 class ImageViewResource final {
     VulkanImageView *view;
-    vk::ImageLayout  initialLayout;
-    vk::ImageLayout  finalLayout;
-    ExternalImageState state = ExternalImageState::Undefined;
+    vk::ImageLayout  initialLayout;   ///< 无跨帧记忆时帧首兜底布局
+    vk::ImageLayout  finalLayout;     ///< 上一帧落点（跨帧记忆本体）
+    bool             finalLayoutValid;
 };
 
 // ============================================================================
@@ -195,11 +189,17 @@ public:
 - **虚拟资源**：中间结果（不常驻）。v1 可用场景 = 一次完整 frame 链中的中间纹理（如后处理 ping-pong、SSAO buffer、光照分量的离屏缓冲）。
 - **外部资源**：Pass 里要读要写、但所有权在别处的图（SceneViewport 离屏目标、swapchain 图、IBL 采样贴图等）。**这是本引擎 v1 的主流**。
 
-### 4.2 布局与访问（为什么需要 `ExternalImageState`，不只 `vk::ImageLayout`）
+### 4.2 布局与访问：外部图帧首布局从哪来
 
-`vk::ImageLayout` 描述**单个**状态。但 swapchain 图每帧首尾布局固定（`Undefined / PresentSrc`），中途若是 `ColorAttachmentOptimal`，一次 pass 完后要回 `Present`。而普通离屏颜色图帧首可能正是 `ShaderReadOnlyOptimal`（上一帧末被 UI 采样过）。**只给一个 `vk::ImageLayout` 无法表达「外部图现在的布局由上一帧决定，本帧可能是未知」**。
+`vk::ImageLayout` 描述**单个**状态。但 swapchain 图每帧首尾布局固定（`Undefined / PresentSrc`），中途若是 `ColorAttachmentOptimal`，一次 pass 完后要回 `Present`。而普通离屏颜色图帧首可能正是 `ShaderReadOnlyOptimal`（上一帧末被 UI 采样过）。**图必须知道「外部图现在停在哪个布局」，才能安排本帧首尾转换。**
 
-因此导入时带 `ExternalImageState` 三态，构建阶段把它翻译成具体的初始布局。这样一个外部图**可以**先被 pass A 当采样读、再被 pass B 当颜色附件写、最后回采样态 —— 图自动补齐 A→B、B→末态的转换。
+实现方案（相对早期设计稿的 `ExternalImageState` 三态语义枚举，落地时简化为两段式）：
+- **跨帧记忆**：`ImageViewResource` 记录上一帧结束时 `finalLayout`（§4.6）。有记忆时本帧帧首直接用记忆，这正是「上一帧决定本帧起点」的载体，已覆盖大多数情况。
+- **无记忆兜底**：图像从未被图记录过（首帧 / 重建后）时，用调用方设置的 `initialLayout` 作为帧首布局。
+
+「内容可否丢弃」（对应早期设计的 `Undefined` 态）由调用方把 `initialLayout` 设成 `eUndefined` 表达，不再需要独立枚举。
+
+这样一个外部图**可以**先被 pass A 当采样读、再被 pass B 当颜色附件写、最后回采样态 —— 图自动补齐 A→B、B→末态的转换。
 
 ### 4.3 属性（usage）声明决定「谁先谁后」
 
@@ -233,7 +233,7 @@ Pass 描述中：颜色附件 + `storeOp == eStore` 时，可以给一个**写�
 
 图做同步时需要知道「外部图上一帧结束时停在哪」。若只让图持有其内部布局（以帧为单位），**图无法知道自己上一帧干了什么**（图对象可能每帧重建）。
 
-因此对齐阶段在把布局转完后，**把最终布局写回 `ImageViewResource::finalLayout` / `ExternalImageState`**。这样即便 `RenderGraph` 每帧新建，它引用的**同一批** `ImageViewResource` 实例跨帧记住了自己的布局。这是自研渲染图里最容易被低估的一环 —— 帧间布局必须由「外部资源状态机」承接，而不是图本身。
+因此对齐阶段在把布局转完后，**把最终布局写回 `ImageViewResource::finalLayout`**。这样即便 `RenderGraph` 每帧新建，它引用的**同一批** `ImageViewResource` 实例跨帧记住了自己的布局。这是自研渲染图里最容易被低估的一环 —— 帧间布局必须由「外部资源状态机」承接，而不是图本身。
 
 ---
 
@@ -383,8 +383,8 @@ Pass "UIPass"         （把 3D+2D 合成结果当采样输入画到 swapchain�
 
 | 文件 | 内容 | 依赖 |
 |---|---|---|
-| `GE/include/GE/Render/RenderGraph/RenderGraphTypes.h` | 纯数据结构：`ResourceHandle`、`ExternalResourceType`、`ExternalImageState`、`ResourceUsage`、`AttachmentDesc`、`ImageInputDesc`、`PassType`、`RenderGraphResourceDesc` | `Render/VulkanBase/VulkanCommon.h`（vk 类型） |
-| `GE/include/GE/Render/RenderGraph/ImageViewResource.h` | `ImageViewResource`（外部图像布局状态机：持有 view 指针 + `initialLayout` / `finalLayout` / `ExternalImageState`，跨帧记住布局） | `RenderTarget.h` / `VulkanImageView.h` |
+| `GE/include/GE/Render/RenderGraph/RenderGraphTypes.h` | 纯数据结构：`ResourceHandle`、`ResourceType`、`ResourceUsage`、`AttachmentDesc`、`ImageInputDesc`、`PassType`、`RenderGraphResourceDesc` | `Render/VulkanBase/VulkanCommon.h`（vk 类型） |
+| `GE/include/GE/Render/RenderGraph/ImageViewResource.h` | `ImageViewResource`（外部图像布局状态机：持有 view 指针 + `initialLayout` / `finalLayout`，跨帧记住布局） | `RenderTarget.h` / `VulkanImageView.h` |
 | `GE/include/GE/Render/RenderGraph/RenderPassDesc.h` | `RenderPassDesc`（一个 pass 的全部声明 + `execute` 回调）+ `PassExecuteContext` | `RenderGraphTypes.h`、`Render/VulkanBase/VulkanCommandBuffer.h` |
 | `GE/include/GE/Render/RenderGraph/RenderGraph.h` | `RenderGraph`（图本体：节点/边/资源表）+ `RenderGraphBuilder`（Import / AddPass / Build / Compile） | 以上四个头文件 |
 | `GE/src/Render/RenderGraph/RenderGraph.cpp` | 依赖分析、拓扑排序、屏障生成、命令录制、资源布局状态机 | — |
@@ -443,7 +443,7 @@ Pass "UIPass"         （把 3D+2D 合成结果当采样输入画到 swapchain�
 | **S1** 骨架 | 建 `RenderGraphTypes / ImageViewResource / RenderPassDesc / RenderGraph(+Builder)`；编译器先实现建图 + 拓扑排序 + **空 execute** | 空图 `Compile`+`Execute` 不崩；断言的依赖/资源表空态正常 |
 | **S2** 视口 pass 化 | `SceneLayer.cpp` 里"先 3D 后 2D 画进离屏目标"改为：add 两个 raster pass（颜色附件 = 视口离屏图的 view；Scene3D 带深度附件 + `eClear`；Scene2D 附件 `eLoad` 不写深度）。`Renderer3D::EndScene` 落进 pass cmd | **编辑器视口画面与 S1 前逐帧一致**（这是本方案最重要的验收红线） |
 | **S3** 视口 → 采样 | 新增"合成 pass"：把离屏颜色图（`ShaderReadOnlyOptimal`）当采样画到 swapchain，UI 精灵与视口图同 pass；ImGui 仍直写 swapchain | ImGui 面板能正确叠在场景上（含视口图），顺序无错乱 |
-| **S4** 吸收 swapchain | `Renderer::BeginFrame` 的 `Undefined→ColorAttachmentOptimal`、`EndFrame` 的 `ColorAttachmentOptimal→PresentSrc` 改由图首尾态承接（首 `ExternalImageState::Undefined`、末 `finalLayout=ePresentSrcKHR`） | 纯渲染与编辑器双路径都无回归；屏障数量不增 |
+| **S4** 吸收 swapchain | `Renderer::BeginFrame` 的 `Undefined→ColorAttachmentOptimal`、`EndFrame` 的 `ColorAttachmentOptimal→PresentSrc` 改由图首尾态承接（首 `initialLayout=eUndefined`、末 `finalLayout=ePresentSrcKHR`，见 §4.2） | 纯渲染与编辑器双路径都无回归；屏障数量不增 |
 | **S5** 回归 | 对拍：编辑器 + 无编辑器两条路径，GPU 上 barrier 数 ≤ 迁移前 | 见 §6.4 断言，RenderDoc 目检 |
 
 **要点**：阶段1 不做 compute/transfer、不做虚拟资源实例、不做 ImGui pass 化。同步已提前到同步2（见 §7 附注）。执行时遇到问题先查 §6.4 断言，保证图结构可诊断。
@@ -489,7 +489,7 @@ EndFrame()                                              // 仅 submit + present
 
 ### 6.3 swapchain 与外部资源的接入
 
-swapchain 图像：导入时 `initialLayout = eUndefined`（引擎现在 BeginFrame 用 `eUndefined → eColorAttachmentOptimal` 是**丢弃型转换**），`ExternalImageState = Undefined`，frame 末图把 `ColorAttachmentOptimal / ShaderReadOnlyOptimal → PresentSrcKHR` 作为 **收尾转移**（由编译器安排，等价于现在 `Renderer.cpp:146` 的手工转换）。运行时 layout 由 ImageViewResource 状态机管理 —— 不再有「BeginFrame 手工转、EndFrame 手工转」这种全局命令位置依赖。
+swapchain 图像：导入时 `initialLayout = eUndefined`（引擎现在 BeginFrame 用 `eUndefined → eColorAttachmentOptimal` 是**丢弃型转换**），frame 末图把 `ColorAttachmentOptimal / ShaderReadOnlyOptimal → PresentSrcKHR` 作为 **收尾转移**（由编译器安排，等价于现在 `Renderer.cpp:146` 的手工转换）。运行时 layout 由 ImageViewResource 状态机管理 —— 不再有「BeginFrame 手工转、EndFrame 手工转」这种全局命令位置依赖。
 
 ### 6.4 错误报告（这一节让自研渲染图值得）
 

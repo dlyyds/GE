@@ -8,7 +8,7 @@
  * v1（阶段1）范围：
  *   - 仅 Raster pass（动态渲染 beginRendering/endRendering）
  *   - 同步用 vk::ImageMemoryBarrier2（pipelineBarrier2）
- *   - 图按帧实例化、帧末析构；跨帧布局记忆由 ImageViewResource 状态机承载
+ *   - 图按帧实例化、帧末析构；跨帧布局记忆由 VulkanImage 的 layout 字段承载
  *
  * 用法（计划书 §6A.6 接线示意）：
  * @code
@@ -20,7 +20,6 @@
 
 #pragma once
 
-#include "Render/RenderGraph/ImageViewResource.h"
 #include "Render/RenderGraph/RenderPassDesc.h"
 #include "Render/RenderGraph/RenderGraphTypes.h"
 
@@ -36,6 +35,7 @@
 namespace GE {
 
 class VulkanCommandBuffer;
+class VulkanImageView;
 class VulkanRenderFrame;
 
 // ============================================================================
@@ -59,9 +59,11 @@ public:
     // 资源与 Pass 注册（Builder 门面调用，或直接调用）
     // ========================================================================
 
-    /// 导入一张外部图像，登记进资源表。返回资源句柄。
-    /// @param res 调用方持有的 ImageViewResource（裸指针，不拥有；要求其生命周期 ≥ 本次执行）
-    ResourceHandle Import(ImageViewResource *res);
+    /// 导入一张外部图像视图，登记进资源表。返回资源句柄。
+    /// @param view 调用方持有的 VulkanImageView（裸指针，不拥有；要求其生命周期 ≥ 本次执行）。
+    ///            布局跨帧记忆经 view->get_image() 读写在其 VulkanImage 上。
+    /// @param name 可选资源名（调试）；缺省时回退到图像的 debug name / "external"。
+    ResourceHandle Import(VulkanImageView *view, const std::string &name = {});
 
     /// 创建帧内虚拟图像资源（v1 仅登记描述，不分配 GPU 内存）。返回句柄。
     ResourceHandle CreateVirtualResource(const RenderGraphResourceDesc &desc);
@@ -74,7 +76,7 @@ public:
     // ========================================================================
 
     /// 标记某外部资源为本帧 WSI swapchain 图。执行结束后其布局不写回
-    /// ImageViewResource（WSI 图每帧由 acquire 决定、跨帧记忆无意义，且可能已随
+    /// VulkanImage（WSI 图每帧由 acquire 决定、跨帧记忆无意义，且可能已随
     /// 重建失效）。参见计划书 §4.6 的取舍。
     void SetFrameSwapchain(ResourceHandle handle);
 
@@ -102,7 +104,7 @@ public:
     struct ResourceRecord {
         std::string name;                                  ///< 资源名（调试）
         ResourceType type = ResourceType::Image;           ///< v1 恒 Image
-        ImageViewResource *external = nullptr;             ///< 外部导入时非空
+        VulkanImageView *external = nullptr;               ///< 外部导入的图 view（经其 image 读写布局记忆）
         RenderGraphResourceDesc virtualDesc{};             ///< 虚拟资源描述（v1 不分配）
         bool isFrameSwapchain = false;                     ///< 是否本帧 WSI 图
     };
@@ -140,8 +142,10 @@ public:
     /// @param graph 目标图（要求存活至 Execute 结束）
     explicit RenderGraphBuilder(RenderGraph &graph) : m_Graph(graph) {}
 
-    /// 导入外部图像（转发到 RenderGraph::Import）。
-    ResourceHandle Import(ImageViewResource *res) { return m_Graph.Import(res); }
+    /// 导入外部图像视图（转发到 RenderGraph::Import）。
+    ResourceHandle Import(VulkanImageView *view, const std::string &name = {}) {
+        return m_Graph.Import(view, name);
+    }
 
     /// 创建虚拟图像资源（转发）。
     ResourceHandle CreateVirtualResource(const RenderGraphResourceDesc &desc) {

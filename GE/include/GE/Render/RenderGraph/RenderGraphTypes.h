@@ -2,7 +2,7 @@
  * @file RenderGraphTypes.h
  * @brief 渲染图（RenderGraph）基础数据类型。
  *
- * 全部为纯数据结构（无 GPU 资源、无逻辑），供 RenderGraph / ImageViewResource /
+ * 全部为纯数据结构（无 GPU 资源、无逻辑），供 RenderGraph /
  * RenderPassDesc 头文件共用，避免相互包含。所有 vk 类型来自 vulkan.hpp。
  */
 

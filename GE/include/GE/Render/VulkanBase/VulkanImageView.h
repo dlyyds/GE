@@ -61,6 +61,8 @@ public:
 
     VulkanImage const &get_image() const;
 
+    VulkanImage &get_image();
+
     void set_image(VulkanImage &image);
 
     vk::ImageSubresourceLayers get_subresource_layers() const;

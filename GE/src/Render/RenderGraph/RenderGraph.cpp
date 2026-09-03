@@ -17,6 +17,7 @@
 #include "Debug/Assert.h"
 #include "Render/VulkanBase/VulkanCommandBuffer.h"
 #include "Render/VulkanBase/VulkanImage.h"
+#include "Render/VulkanBase/VulkanImageView.h"
 #include "Render/VulkanBase/VulkanRenderFrame.h"
 #include "Render/VulkanBase/VulkanRenderingInfo.h"
 
@@ -173,12 +174,16 @@ RenderGraph::RenderGraph(std::string name) : m_Name(std::move(name)) {}
 // 资源与 Pass 注册
 // ---------------------------------------------------------------------------
 
-ResourceHandle RenderGraph::Import(ImageViewResource *res) {
-    GE_CORE_ASSERT(res != nullptr, "导入的外部图像不能为空");
+ResourceHandle RenderGraph::Import(VulkanImageView *view, const std::string &name) {
+    GE_CORE_ASSERT(view != nullptr, "导入的外部图像视图不能为空");
     ResourceRecord rec;
-    rec.name = res->GetName().empty() ? "external" : res->GetName();
+    // 取名优先级：显式 name → 图像 debug name → 兜底 "external"。
+    const std::string &imgDebugName = view->get_image().GetDebugName();
+    rec.name = !name.empty() ? name
+              : !imgDebugName.empty() ? imgDebugName
+                                      : "external";
     rec.type = ResourceType::Image;
-    rec.external = res;
+    rec.external = view;
     m_Resources.emplace_back(std::move(rec));
     return static_cast<ResourceHandle>(m_Resources.size());
 }
@@ -258,11 +263,7 @@ void RenderGraph::Execute(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame) {
         const ResourceHandle h = static_cast<ResourceHandle>(i + 1);
         PerResourceLayout pl;
         if (rec.external) {
-            if (rec.external->HasFinalLayout()) {
-                pl.layout = rec.external->GetFinalLayout();  // 上一帧落点
-            } else {
-                pl.layout = rec.external->GetInitialLayout();  // 调用方给的初始布局
-            }
+            pl.layout = rec.external->get_image().get_layout();  // 帧首起点 = image 最近停靠/初始
             pl.valid = true;
         }
         layout[h] = pl;
@@ -305,10 +306,10 @@ void RenderGraph::Execute(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame) {
         // 逐资源生成屏障。虚拟资源 v1 无真实图，跳过（阶段2 支持）。
         for (const auto &[h, usage] : accesses) {
             const ResourceRecord &rec = m_Resources[h - 1];
-            if (!rec.external || !rec.external->GetView()) {
+            if (!rec.external) {
                 continue;
             }
-            VulkanImageView &view = *rec.external->GetView();
+            VulkanImageView &view = *rec.external;
             PerResourceLayout &pl = layout[h];
 
             // 本 pass 对该资源是写还是读；写则停靠到写后布局，读则要求读布局。
@@ -392,7 +393,7 @@ void RenderGraph::Execute(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame) {
 
         for (const auto &att : pass.colorAttachments) {
             const ResourceRecord &rec = m_Resources[att.resource - 1];
-            if (!rec.external || !rec.external->GetView()) {
+            if (!rec.external) {
                 GE_CORE_WARN("pass [{}] 颜色附件引用了无效资源，跳过", pass.name);
                 continue;
             }
@@ -402,16 +403,16 @@ void RenderGraph::Execute(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame) {
             const vk::ImageLayout renderLayout = LayoutForWrite(ResourceUsage::ColorAttachment);
             vk::ClearValue cv;
             cv.color = att.clearValue.color;
-            rinfo.AddColorAttachment(rec.external->GetView()->GetHandle(),
+            rinfo.AddColorAttachment(rec.external->GetHandle(),
                                      att.loadOp, att.storeOp, cv, renderLayout);
         }
         if (pass.depthAttachment.has_value()) {
             const auto &datt = *pass.depthAttachment;
             const ResourceRecord &rec = m_Resources[datt.resource - 1];
-            if (rec.external && rec.external->GetView()) {
+            if (rec.external) {
                 vk::ClearDepthStencilValue clearDS{1.0f, 0};
                 const vk::ImageLayout renderLayout = LayoutForWrite(ResourceUsage::DepthStencilAttachment);
-                rinfo.SetDepthAttachment(rec.external->GetView()->GetHandle(),
+                rinfo.SetDepthAttachment(rec.external->GetHandle(),
                                          datt.loadOp, datt.storeOp, clearDS, renderLayout);
             }
         }
@@ -435,7 +436,7 @@ void RenderGraph::Execute(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame) {
         }
         auto it = layout.find(static_cast<ResourceHandle>(i + 1));
         if (it != layout.end() && it->second.valid) {
-            rec.external->RecordFinalLayout(it->second.layout);
+            rec.external->get_image().set_layout(it->second.layout);
         }
     }
 }

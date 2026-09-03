@@ -174,10 +174,16 @@ public:
 
     std::unordered_set<VulkanImageView *> &get_views();
 
+    /// 最近停靠/已知布局（跨帧，供 RenderGraph 帧首取起点；新分配图默认 Undefined）。
+    void set_layout(vk::ImageLayout layout) { m_CurrentLayout = layout; }
+    vk::ImageLayout get_layout() const { return m_CurrentLayout; }
+
 private:
     vk::ImageCreateInfo create_info;
     vk::ImageSubresource subresource;
     std::unordered_set<VulkanImageView *> views; ///< 引用此 Image 的 View
+
+    vk::ImageLayout m_CurrentLayout = vk::ImageLayout::eUndefined;
 };
 
 // ============================================================================

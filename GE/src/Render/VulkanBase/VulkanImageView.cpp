@@ -132,6 +132,13 @@ const VulkanImage &VulkanImageView::get_image() const {
     return *image;
 }
 
+VulkanImage &VulkanImageView::get_image() {
+    if (!image) {
+        throw std::runtime_error("VulkanImageView is referring an invalid image");
+    }
+    return *image;
+}
+
 void VulkanImageView::set_image(VulkanImage &img) {
     image = &img;
 }

@@ -270,15 +270,13 @@ void RenderGraph::BuildDependencyEdges() {
     for (const auto &[res, record] : use) {
         (void)res;
         for (const auto &[curPass, usage] : record.byPass) {
-            // 找 curPass 之前最近的写者
-            auto it = std::upper_bound(record.writerPasses.begin(), record.writerPasses.end(), curPass);
+            // 找 curPass 之前最近的写者：lower_bound 得第一个 >= curPass 的写者，
+            // 其前一个即「严格小于 curPass 的最近写者」（自动排除 curPass 自身的写）。
+            auto it = std::lower_bound(record.writerPasses.begin(), record.writerPasses.end(), curPass);
             if (it == record.writerPasses.begin()) {
-                continue;  // 没有更早的写者
+                continue;  // curPass 之前没有任何写者（自己是首写者或首读者）
             }
             --it;
-            if (*it == curPass) {
-                continue;  // 自己就是写者且无更早写者 → 无前驱
-            }
             GraphEdge e;
             e.srcPass = *it;
             e.dstPass = curPass;

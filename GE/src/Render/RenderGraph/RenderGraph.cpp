@@ -226,8 +226,10 @@ void RenderGraph::BuildDependencyEdges() {
     for (uint32_t p = 0; p < m_Passes.size(); ++p) {
         const auto &pass = m_Passes[p];
         const auto addAccess = [&](ResourceHandle h, ResourceUsage u) {
-            GE_CORE_ASSERT(h != kInvalidResource && h <= m_Resources.size(),
-                           "pass [%s] 引用了无效资源句柄 %u", pass.name.c_str(), h);
+            if (h == kInvalidResource || h > m_Resources.size()) {
+                GE_CORE_ERROR("pass [{}] 引用了无效资源句柄 {}", pass.name, h);
+                GE_CORE_ASSERT(false, "pass 引用了无效资源句柄");
+            }
             // 同一 pass 内同一资源多次出现：并集语义 —— 任一出现写即记为写。
             auto &accesses = m_PassAccess[p];
             auto it = std::find_if(accesses.begin(), accesses.end(),
@@ -337,7 +339,8 @@ bool RenderGraph::Compile() {
     TopologicalSort();
 
     if (m_ExecutionOrder.size() != m_Passes.size()) {
-        GE_CORE_ASSERT(false, "渲染图 [%s] 存在循环依赖，无法确定执行序", m_Name.c_str());
+        GE_CORE_ERROR("渲染图 [{}] 存在循环依赖，无法确定执行序", m_Name);
+        GE_CORE_ASSERT(false, "渲染图存在循环依赖");
         return false;
     }
 
@@ -378,7 +381,7 @@ ResourceUsage RenderGraph::FindUsageInPass(uint32_t passIndex, ResourceHandle ha
 }
 
 void RenderGraph::Execute(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame) {
-    GE_CORE_ASSERT(m_Compiled, "渲染图 [%s] 未编译即执行（请先 Compile()）", m_Name.c_str());
+    GE_CORE_ASSERT(m_Compiled, "渲染图未编译即执行，请先调用 Compile()");
     if (m_Passes.empty()) {
         return;  // 空图
     }
@@ -482,8 +485,8 @@ void RenderGraph::Execute(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame) {
                 pl.layout = target;
                 pl.valid = true;
             } else if (!pl.valid && target != vk::ImageLayout::eUndefined) {
-                GE_CORE_WARN("资源 [%s] 布局未知且被 pass [%s] 访问，跳过布局转换",
-                             rec.name.c_str(), pass.name.c_str());
+                GE_CORE_WARN("资源 [{}] 布局未知且被 pass [{}] 访问，跳过布局转换",
+                             rec.name, pass.name);
             }
 
             // 布局推进：写成为后续写者的源；读不改变布局（读目标即其停靠布局）。
@@ -514,7 +517,7 @@ void RenderGraph::Execute(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame) {
         // 渲染区域：声明无效时用 1x1 占位并告警（计划书 S2 由调用方填好）
         vk::Rect2D renderArea = pass.renderArea;
         if (renderArea.extent.width == 0 || renderArea.extent.height == 0) {
-            GE_CORE_WARN("渲染图 pass [%s] 未指定 renderArea，使用 1x1 占位", pass.name.c_str());
+            GE_CORE_WARN("渲染图 pass [{}] 未指定 renderArea，使用 1x1 占位", pass.name);
             renderArea = vk::Rect2D{{0, 0}, {1, 1}};
         }
 
@@ -525,7 +528,7 @@ void RenderGraph::Execute(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame) {
         for (const auto &att : pass.colorAttachments) {
             const ResourceRecord &rec = m_Resources[att.resource - 1];
             if (!rec.external || !rec.external->GetView()) {
-                GE_CORE_WARN("pass [%s] 颜色附件引用了无效资源，跳过", pass.name.c_str());
+                GE_CORE_WARN("pass [{}] 颜色附件引用了无效资源，跳过", pass.name);
                 continue;
             }
             // 附件渲染布局：必须是写后布局（附件写入发生在 ColorAttachmentOptimal）。

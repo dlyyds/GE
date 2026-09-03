@@ -113,6 +113,7 @@ file(GLOB GE_SRC
         ${CMAKE_SOURCE_DIR}/GE/src/ImGui/*.cpp
         ${CMAKE_SOURCE_DIR}/GE/src/Render/*.cpp
         ${CMAKE_SOURCE_DIR}/GE/src/Render/VulkanBase/*.cpp
+        ${CMAKE_SOURCE_DIR}/GE/src/Render/RenderGraph/*.cpp
         ${CMAKE_SOURCE_DIR}/GE/src/Scene/*.cpp
         ${CMAKE_SOURCE_DIR}/GE/src/Physics/*.cpp
         ${CMAKE_SOURCE_DIR}/GE/third_party/stb/stb_image.cpp

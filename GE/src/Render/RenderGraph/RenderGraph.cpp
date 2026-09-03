@@ -30,8 +30,8 @@ namespace GE {
 
 namespace {
 
-/// 「写」用法对应的输出阶段（写发生在哪条管线阶段）。
-vk::PipelineStageFlags OutputStage(ResourceUsage usage) {
+/// 「写」用法对应的写阶段（写入该资源的访问发生在哪条管线阶段）。
+vk::PipelineStageFlags WriteStage(ResourceUsage usage) {
     switch (usage) {
     case ResourceUsage::ColorAttachment:
         return vk::PipelineStageFlagBits::eColorAttachmentOutput;
@@ -42,12 +42,12 @@ vk::PipelineStageFlags OutputStage(ResourceUsage usage) {
     case ResourceUsage::TransferDst:
         return vk::PipelineStageFlagBits::eTransfer;
     default:
-        return {};  // 读用法无输出阶段
+        return {};  // 读用法无写阶段
     }
 }
 
-/// 用法对应的消费阶段（读/后继发生在这条管线阶段）。
-vk::PipelineStageFlags InputStage(ResourceUsage usage) {
+/// 「读」用法对应的读阶段（读取该资源的访问发生在哪条管线阶段）。
+vk::PipelineStageFlags ReadStage(ResourceUsage usage) {
     switch (usage) {
     case ResourceUsage::ColorAttachment:
         return vk::PipelineStageFlagBits::eColorAttachmentOutput;
@@ -457,8 +457,8 @@ void RenderGraph::Execute(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame) {
                 const bool needLayoutChange =
                     pl.valid && pl.layout != target && target != vk::ImageLayout::eUndefined;
                 PendingBarrier pb;
-                pb.srcStage = OutputStage(writerUsage);
-                pb.dstStage = passWrites ? OutputStage(passUsage) : InputStage(acc.usage);
+                pb.srcStage = WriteStage(writerUsage);
+                pb.dstStage = passWrites ? WriteStage(passUsage) : ReadStage(acc.usage);
                 pb.barrier = MakeBarrier(WriteAccess(writerUsage),
                                          passWrites ? WriteAccess(passUsage) : ReadAccess(acc.usage),
                                          needLayoutChange ? pl.layout : target,
@@ -472,7 +472,7 @@ void RenderGraph::Execute(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame) {
             } else if (pl.valid && pl.layout != target && target != vk::ImageLayout::eUndefined) {
                 // 本帧首次访问且需布局转换（无内存依赖）。
                 const vk::PipelineStageFlags dstStage =
-                    passWrites ? OutputStage(passUsage) : InputStage(acc.usage);
+                    passWrites ? WriteStage(passUsage) : ReadStage(acc.usage);
                 PendingBarrier pb;
                 // 首次转换无依赖源：eTopOfPipe 表示"等待此前全部命令完成"，
                 // 对丢弃型（Undefined 起点）是标准安全选择。

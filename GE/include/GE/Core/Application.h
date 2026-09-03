@@ -11,7 +11,6 @@
 
 #include "Core/Timestep.h"
 #include "Debug/Assert.h"
-#include "ImGui/ImGuiLayer.h"
 
 #include "Render/Renderer.h"
 
@@ -62,17 +61,8 @@ public:
 
     [[nodiscard]] float GetFPS() const { return m_FPS; }
 
-    /// 访问 Vulkan 全局上下文（转发给 Renderer，提供给 Layer 等创建 Vulkan 资源用）。
-    static VulkanContext &GetVulkanContext() { return Renderer::GetVulkanContext(); }
-
-    static const VulkanSwapchain &GetSwapchain() { return Renderer::GetSwapchain(); }
-    static VulkanRenderContext &GetRenderContext() { return Renderer::GetRenderContext(); }
-
-
-    /// 帧渲染辅助：当前帧的 command buffer 和 image view（转发给 Renderer）。
-    static VulkanCommandBuffer &GetFrameCmd() { return Renderer::GetFrameCmd(); }
-    static uint32_t GetFrameImageIndex() { return Renderer::GetFrameImageIndex(); }
-    static VulkanImageView &GetFrameImageView() { return Renderer::GetFrameImageView(); }
+    // ImGui 已归并 Renderer：帧渲染资源（cmd / image view / swapchain / Vulkan context）
+    // 一律通过 Renderer 访问，Application 不再承担中转。需要时调 Renderer::GetXXX。
 
 private:
     void Run();
@@ -85,8 +75,6 @@ private:
 
 private:
     ApplicationCommandLineArgs m_CommandLineArgs;
-
-    std::shared_ptr<ImGuiLayer> m_ImGuiLayer;
 
     bool m_Running = true;
     std::unique_ptr<Window> m_Window;

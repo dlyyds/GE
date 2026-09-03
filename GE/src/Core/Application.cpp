@@ -7,7 +7,6 @@
 #include "Core/MouseCodes.h"
 #include "Core/Timestep.h"
 #include "Debug/Assert.h"
-#include "ImGui/ImGuiLayer.h"
 
 #include "Debug/Profiler.h"
 
@@ -30,15 +29,17 @@ Application::Application(const std::string &name, ApplicationCommandLineArgs arg
     m_Window->SetVSync(VsyncMode::OFF);
     m_Window->SetEventCallback(GE_BIND_EVENT_FN(Application::OnEvent));
 
-    // 初始化渲染器（内部完成 VulkanContext → RenderContext → Prepare 完整初始化链）
+    // 初始化渲染器（内部完成 VulkanContext → RenderContext → Prepare → ImGui 初始化）
     m_Renderer = std::make_unique<Renderer>(*m_Window);
 
-    m_ImGuiLayer = std::make_shared<ImGuiLayer>();
-    // m_ImGuiLayer->BlockEvents(true);
-    PushOverlay(m_ImGuiLayer);
+    // ImGui 已归并 Renderer：把"遍历各 Layer 的 OnImGuiRender"作为回调注入，
+    // 由 Renderer::EndFrame 在 ImGui Begin 之后、上屏之前逐帧调用。
+    m_Renderer->SetFrameUI([this]() {
+        for (auto &layer : m_LayerStack)
+            layer->OnImGuiRender();
+    });
 
     m_Window->SetMaximized(true);
-
 }
 
 Application::~Application() {
@@ -50,9 +51,8 @@ Application::~Application() {
 
     // 2. Detach 所有层（层中的 Material/Mesh/Texture 持有 GPU 资源）
     m_LayerStack.Clear();
-    m_ImGuiLayer.reset();
 
-    // 3. 销毁渲染器（内部再次 waitIdle + 释放所有 Vulkan 资源）
+    // 3. 销毁渲染器（内部再次 waitIdle + 释放 ImGui 与所有 Vulkan 资源）
     m_Renderer.reset();
 
     s_Instance = nullptr;
@@ -96,16 +96,12 @@ void Application::Run() {
                     layer->OnUpdate(timestep);
             }
 
-            // 3. ImGui
-            {
-                GE_PROFILE_SCOPE("ImGuiRender");
-                ImGuiLayer::Begin();
-                for (auto &layer : m_LayerStack)
-                    layer->OnImGuiRender();
-                ImGuiLayer::End();
-            }
+            // 3. ImGui 已归并 Renderer：帧率等宿主数据喂给 Renderer，
+            //    Renderer::EndFrame 内会驱动 ImGui Begin → 各层 UI → 上屏。
 
-            //4. End frame — layout → Present + end cmd + submit + present
+            // 4. End frame — layout → Present + end cmd + submit + present
+            //    （ImGui 的 UI 提交回调在 EndFrame 内部被调用）
+            m_Renderer->SetFrameInfo(m_FPS);
             m_Renderer->EndFrame();
         }
         m_Window->OnUpdate();

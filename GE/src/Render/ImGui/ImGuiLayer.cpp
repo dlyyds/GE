@@ -1,14 +1,13 @@
 #include "pch.h"
 
-#include "ImGui/ImGuiLayer.h"
+#include "Render/ImGui/ImGuiLayer.h"
 
-
-#include "Core/Application.h"
 #include "Core/Log.h"
 
 #include "Render/Renderer.h"
 #include "Render/AssetManager.h"
 #include "Render/VulkanBase/VulkanRenderingInfo.h"
+#include "Render/VulkanBase/VulkanContext.h"
 
 #include "GLFW/glfw3.h"
 
@@ -20,13 +19,12 @@
 
 namespace GE {
 
-ImGuiLayer::ImGuiLayer() : Layer("ImGuiLayer") {
+ImGuiLayer::ImGuiLayer(Renderer &renderer) : m_Renderer(renderer) {
 }
 
 ImGuiLayer::~ImGuiLayer() = default;
 
 void ImGuiLayer::OnAttach() {
-
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO &io = ImGui::GetIO();
@@ -66,13 +64,12 @@ void ImGuiLayer::OnAttach() {
     SetDarkThemeColors();
 
     // ---- GLFW platform backend ----
-    Application &app = Application::Get();
-    auto *window = static_cast<GLFWwindow *>(app.GetWindow().GetGlfwWindow());
+    auto *window = static_cast<GLFWwindow *>(m_Renderer.GetWindowRef().GetGlfwWindow());
     ImGui_ImplGlfw_InitForOther(window, true);
 
     // ---- Vulkan renderer backend ----
-    auto &swapchain = Application::GetSwapchain();
-    auto &ctx = Application::GetVulkanContext();
+    auto &swapchain = Renderer::GetSwapchain();
+    auto &ctx = Renderer::GetVulkanContext();
 
     auto color_format = static_cast<VkFormat>(swapchain.GetFormat());
 
@@ -132,14 +129,6 @@ void ImGuiLayer::OnDetach() {
     ImGui::DestroyContext();
 }
 
-void ImGuiLayer::OnEvent(Event &e) {
-    if (m_BlockEvents) {
-        const ImGuiIO &io = ImGui::GetIO();
-        e.Handled |= e.IsInCategory(EventCategoryMouse) & io.WantCaptureMouse;
-        e.Handled |= e.IsInCategory(EventCategoryKeyboard) & io.WantCaptureKeyboard;
-    }
-}
-
 void ImGuiLayer::Begin() {
     ImGui_ImplVulkan_NewFrame();
     ImGui_ImplGlfw_NewFrame();
@@ -148,25 +137,29 @@ void ImGuiLayer::Begin() {
 
 void ImGuiLayer::End() {
     ImGuiIO &io = ImGui::GetIO();
-    Application &app = Application::Get();
-    io.DisplaySize = ImVec2(static_cast<float>(app.GetWindow().GetWidth()),
-                            static_cast<float>(app.GetWindow().GetHeight()));
+    io.DisplaySize = ImVec2(static_cast<float>(m_Renderer.GetWindowRef().GetWidth()),
+                            static_cast<float>(m_Renderer.GetWindowRef().GetHeight()));
 
     ImGui::Render();
 
-    auto &cmd = Application::GetFrameCmd();
+    auto &cmd = Renderer::GetFrameCmd();
     auto vkCmd = cmd.GetHandle();
 
     // Render ImGui on top with loadOp = eLoad to preserve the scene.
     VulkanRenderingInfo render_info;
     render_info.SetRenderArea(0, 0, static_cast<uint32_t>(io.DisplaySize.x),
                               static_cast<uint32_t>(io.DisplaySize.y));
-    render_info.AddColorAttachment(Application::GetFrameImageView().GetHandle(),
+    render_info.AddColorAttachment(Renderer::GetFrameImageView().GetHandle(),
                                    vk::AttachmentLoadOp::eLoad,
                                    vk::AttachmentStoreOp::eStore);
     render_info.Begin(vkCmd);
     ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), vkCmd);
     render_info.End(vkCmd);
+}
+
+bool ImGuiLayer::WantCaptureImGuiInput() const {
+    const ImGuiIO &io = ImGui::GetIO();
+    return io.WantCaptureMouse || io.WantCaptureKeyboard;
 }
 
 void ImGuiLayer::OnImGuiRender() {
@@ -175,9 +168,8 @@ void ImGuiLayer::OnImGuiRender() {
     ImGui::SetNextWindowDockID(ImGui::GetID("MainDockspace"), ImGuiCond_FirstUseEver);
     if (ImGui::Begin("渲染统计")) {
         const auto &stats = Renderer::GetStats();
-        const auto &app = Application::Get();
 
-        ImGui::Text("帧率: %.1f FPS", app.GetFPS());
+        ImGui::Text("帧率: %.1f FPS", Renderer::GetFPS());
 
         ImGui::Separator();
         ImGui::Text("2D（精灵批处理）");
@@ -196,6 +188,13 @@ void ImGuiLayer::OnImGuiRender() {
         ImGui::BulletText("三角形: %u", stats.TotalTriangles());
     }
     ImGui::End();
+}
+
+void ImGuiLayer::OnSwapchainRecreated() {
+    // ImGui 的 Vulkan backend 会在下次 ImGui_ImplVulkan_RenderDrawData 时
+    // 主动查询当前 swapchain image 的 framebuffer；重建后 image view 已换新，
+    // 无需额外刷新描述符。仅确保 resize 后 display size 来自新窗口尺寸。
+    // （显式留空：backend 内部在 CreateDeviceObjects/NewFrame 阶段会处理。）
 }
 
 void ImGuiLayer::SetDarkThemeColors() {

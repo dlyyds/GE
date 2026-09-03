@@ -6,6 +6,8 @@
 #include "Render/VulkanBase/VulkanCommandBuffer.h"
 #include "Render/AsyncUploadManager.h"
 
+#include <functional>
+
 namespace GE {
 
 class Window;
@@ -15,6 +17,7 @@ class AssetManager;
 class TextureManager;
 class MaterialManager;
 class MeshManager;
+class ImGuiLayer;
 
 /**
  * @brief 渲染统计（每帧由 BeginFrame 重置），2D / 3D 分开统计。
@@ -73,6 +76,29 @@ public:
     void EndFrame();
 
     // ========================================================================
+    // ImGui / UI 调度（Renderer 内部集成）
+    // ========================================================================
+
+    /**
+     * @brief 注入每帧 UI 提交回调（由宿主在构造后调用）。
+     *
+     * 归并 ImGui 后 Application 不再遍历 LayerStack 驱动 UI；改为把
+     * “遍历各 Layer 的 OnImGuiRender” 封装成回调注入 Renderer，
+     * 由 EndFrame 在 ImGui Begin 之后、上屏之前调用。
+     *
+     * @param callback 每帧 UI 提交函数（通常在 ImGui::NewFrame 之后执行窗口绘制）
+     */
+    void SetFrameUI(std::function<void()> callback);
+
+    /**
+     * @brief 注入每帧宿主帧信息（FPS 等，供 ImGui 统计面板显示）。
+     */
+    void SetFrameInfo(float fps);
+
+    /// 本帧 FPS（宿主经 SetFrameInfo 注入）。
+    [[nodiscard]] static float GetFPS();
+
+    // ========================================================================
     // Swapchain 管理
     // ========================================================================
 
@@ -99,6 +125,10 @@ public:
 
     /// 获取全局单例。
     static Renderer &Get();
+
+    /// 访问主窗口（ImGuiLayer 初始化/上屏需取 GLFW window 与尺寸）。
+    /// 常规业务方优先走 Window 引用，勿经此访问。
+    [[nodiscard]] static Window &GetWindowRef();
 
     /// 访问 Vulkan 全局上下文。
     static VulkanContext &GetVulkanContext();
@@ -145,6 +175,7 @@ public:
 private:
     friend class Renderer2D;
     friend class Renderer3D;
+    friend class ImGuiLayer;   ///< ImGuiLayer 需访问窗口与帧资源（内部组件，不设公共转发）
 
     /// 记录 2D 批量绘制产生的 draw call 与三角形数量（供 Renderer2D 调用）。
     void AddStats2D(uint32_t drawCalls, uint32_t triangles);
@@ -175,6 +206,17 @@ private:
 
     /// 窗口引用。
     Window &m_Window;
+
+    // -- ImGui 集成（归并后由 Renderer 持有并驱动）--
+
+    /// ImGui 运行时组件（Vulkan/GLFW backend + UI 上下文）。
+    std::unique_ptr<ImGuiLayer> m_ImGuiLayer;
+
+    /// 每帧 UI 提交回调（宿主注入：遍历各 Layer 的 OnImGuiRender）。
+    std::function<void()> m_FrameUI;
+
+    /// 本帧 FPS（宿主每帧注入，供 ImGui 统计面板显示）。
+    float m_FPS = 0.0f;
 
     /// 本帧渲染统计（每帧 BeginFrame 重置）。
     RendererStats m_Stats;

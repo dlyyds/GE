@@ -5,6 +5,7 @@
 #include "Render/TextureManager.h"
 #include "Render/MaterialManager.h"
 #include "Render/MeshManager.h"
+#include "Render/ImGui/ImGuiLayer.h"
 
 #include "Core/GEWindow.h"
 #include "Core/Log.h"
@@ -53,6 +54,11 @@ Renderer::Renderer(Window &window)
 
     // 6. 初始化 3D 网格渲染器
     m_3DRenderer = std::make_unique<Renderer3D>();
+
+    // 7. 初始化 ImGui（归并 Renderer）：底层 Vulkan / swapchain / AssetManager 均已就绪。
+    //    失败不阻断渲染（无 UI 的应用仍可运行）。
+    m_ImGuiLayer = std::make_unique<ImGuiLayer>(*this);
+    m_ImGuiLayer->OnAttach();
 }
 
 Renderer::~Renderer() {
@@ -60,6 +66,12 @@ Renderer::~Renderer() {
 
     // 1. 等待 GPU 完成所有未完成的工作
     WaitIdle();
+
+    // 1a. 先销毁 ImGui（其 DescriptorPool / backend 依赖 device，须先于 VulkanContext）
+    if (m_ImGuiLayer) {
+        m_ImGuiLayer->OnDetach(); // 关闭 ImGui Vulkan/GLFW backend 并销毁 context
+        m_ImGuiLayer.reset();
+    }
 
     // 2. 按构造逆序销毁
     m_3DRenderer.reset();
@@ -136,6 +148,21 @@ void Renderer::EndFrame() {
 
     GE_CORE_ASSERT(m_ActiveFrameCmd, "No active frame command buffer!");
 
+    // 0. ImGui 帧（归并后由 Renderer 驱动）：Begin → 各 Layer UI → 上屏。
+    //    必须在 swapchain image 仍为 ColorAttachmentOptimal 时绘制，
+    //    故置于 layout 转换到 Present 之前。
+    if (m_ImGuiLayer) {
+        GE_PROFILE_SCOPE("ImGuiRender");
+        ImGuiLayer::Begin();
+        // 各宿主 Layer 的 UI（含 DockSpace 宿主，须先建 DockSpace，故统计窗口在其后画）
+        if (m_FrameUI) {
+            m_FrameUI();
+        }
+        // Renderer 自带 UI（渲染统计面板）：在 DockSpace 建好后停靠并绘制
+        m_ImGuiLayer->OnImGuiRender();
+        m_ImGuiLayer->End();
+    }
+
     // 1. Transition to present layout
     {
         GE_PROFILE_SCOPE("TransitionToPresent");
@@ -167,6 +194,10 @@ bool Renderer::RecreateSwapchain(uint32_t width, uint32_t height) {
     WaitIdle();
     m_RenderContext->UpdateSwapchain(vk::Extent2D{width, height});
 
+    if (m_ImGuiLayer) {
+        m_ImGuiLayer->OnSwapchainRecreated();
+    }
+
     GE_CORE_INFO("Swapchain recreated: {}x{}", width, height);
     return true;
 }
@@ -177,6 +208,9 @@ void Renderer::SetPresentMode(vk::PresentModeKHR present_mode) {
     }
     WaitIdle();
     m_RenderContext->UpdateSwapchain(present_mode);
+    if (m_ImGuiLayer) {
+        m_ImGuiLayer->OnSwapchainRecreated();
+    }
     GE_CORE_INFO("Present mode changed");
 }
 
@@ -248,6 +282,22 @@ MeshManager &Renderer::GetMeshManager() {
 
 const RendererStats &Renderer::GetStats() {
     return Get().m_Stats;
+}
+
+void Renderer::SetFrameUI(std::function<void()> callback) {
+    m_FrameUI = std::move(callback);
+}
+
+void Renderer::SetFrameInfo(float fps) {
+    m_FPS = fps;
+}
+
+float Renderer::GetFPS() {
+    return Get().m_FPS;
+}
+
+Window &Renderer::GetWindowRef() {
+    return Get().m_Window;
 }
 
 void Renderer::AddStats2D(uint32_t drawCalls, uint32_t triangles) {

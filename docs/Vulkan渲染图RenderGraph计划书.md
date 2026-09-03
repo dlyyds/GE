@@ -1,9 +1,13 @@
 # Vulkan 渲染图（Render Graph）计划书
 
-> 状态：**方案设计（待评审）**
-> 目标：引入渲染图抽象 —— 各 Pass 只声明「读取哪些资源、写入哪些资源」，由渲染图自动推导依赖与执行顺序，并**自动插入全部内存屏障与图像布局转换**。
+> 状态：**阶段1 骨架已落地（S1）**，S2–S5 待做
+> 目标：引入渲染图抽象 —— 各 Pass 只声明「读取哪些资源、写入哪些资源」，由渲染图按声明序自动插入全部内存屏障与图像布局转换。
 > 前置：Vulkan 1.3（动态渲染 core，VulkanContext.cpp:159）、已有多通道框架（Renderer2D / Renderer3D / ImGuiLayer）
 > 关联：`RenderTarget.h`、`VulkanRenderingInfo.h`、`VulkanCommandBuffer.h`、`Filament渲染后端可行性计划书.md`
+>
+> 实现进展（相对早期设计稿的偏离已同步进正文）：
+> - **声明序即执行序**：依赖建图与拓扑排序已移除（原 §5.1/§5.2）。依赖边恒朝声明序前方延伸，Kahn+最小堆的拓扑输出恒等于声明序，故直接按声明序执行，pass 必须按依赖序声明（读某资源须声明在其写者之后），框架不重排、不做环检测。
+> - **布局记忆下沉 VulkanImage**：`ImageViewResource` 封装已移除（原 §4.6/§6A）。Vulkan 布局本质 per-image，跨帧布局记忆用 VulkanImage 上的单变量 `currentLayout`（帧首直接读、帧末覆盖，NSDMI 默认 `eUndefined`）。
 
 ---
 
@@ -28,9 +32,9 @@
 ### 2.1 目标
 
 1. **声明式 Pass**：`AddPass(...)` 里说清读谁、写谁、写完后谁的布局得变成什么，以及 render target 的 load/store/clear。
-2. **自动同步**：编译器从读写关系建依赖图，得到**稳定、可验证的执行顺序**，并为每条跨 Pass 的资源依赖自动插入屏障（图像布局转换 + 内存屏障 + 阶段/访问掩码）。
-3. **自动布局终点**：Pass 描述里给出**写后布局**（采样态 / 呈现态），编译器负责前置布局转换 + Pass 末尾的收尾转换，Pass 内部只写 `VulkanRenderingInfo` 里的目标布局，不写任何 `vkCmdPipelineBarrier`。
-4. **顺序只是建议，不是真理**：依赖图决定顺序的**下界**；仍允许 App 按自己的意图排布 Pass（如把透明 pass 放后、把 UI 放最后），图在此之上做校验与补全。
+2. **自动同步**：各 Pass 按声明序执行（声明序即执行序），Execute 为每条跨 Pass 的资源依赖自动插入屏障（图像布局转换 + 内存屏障 + 阶段/访问掩码）。
+3. **自动布局终点**：Pass 描述里给出**写后布局**（采样态 / 呈现态），Execute 负责前置布局转换 + Pass 末尾的收尾转换，Pass 内部只写 `VulkanRenderingInfo` 里的目标布局，不写任何 `vkCmdPipelineBarrier`。
+4. **顺序由声明决定，不是自动推导**：v1 图不重排 pass（早期「依赖图定顺序下界 + 自动拓扑」的设计已移除，见顶部实现进展）。Pass 必须按依赖序声明；读某资源须声明在其写者之后。这是 v1 取舍 —— 图负责在给定顺序下做对同步，不负责替你排顺序。
 
 ### 2.2 明确不做什么（划清边界，防蔓延）
 
@@ -38,7 +42,7 @@
 |---|---|
 | **不做资源生命周期 / 分配** | RenderTarget 与 Image 继续由各子系统（SceneViewport、EnvironmentMap、TextureManager）自己持有。图只引用、不拥有（`std::vector<ResourceHandle>` 语义） |
 | **不做跨帧复用分析** | 现有 `VulkanRenderFrame`（帧池、每帧重置描述符/缓冲）已管理帧间资源。图按帧重建，零持久状态 |
-| **不做持久 Pass / 跨帧复用 Pass** | 每帧构建是明确取舍：**正确性优先、开销可忽略**。200 个 Pass、300 条资源引用的构建 + 拓扑排序在微秒量级 |
+| **不做持久 Pass / 跨帧复用 Pass** | 每帧构建是明确取舍：**正确性优先、开销可忽略**。~10 pass 的收集 + 屏障生成在微秒量级 |
 | **不做自动并行 / 队列分派** | 引擎单 graphics 队列 + 单命令缓冲。图产出线性命令流即可。跨队列作为未来扩展记录（见 §9.2） |
 | **不强制计算队列 / 渲染图没理由只服务 raster** | **阶段1 仅 raster；阶段2 引入 compute pass 支持（dispatch + 图像存储 + 缓冲读写）**。核心任务本质不变：仍是资源的 R/W 声明 |
 | **不做多 pass 合帧** | 不隐藏 `beginRendering / endRendering`，一张「渲染图」里可以出现多次 beginRendering —— 一个 pass = 一次 dynamic rendering |
@@ -52,7 +56,7 @@
 - 它的核心收益在「**资源分配与别名**」（一个物理图像在帧内被多个虚拟纹理复用）。而本引擎的 RenderTarget **不是帧内虚拟的**：SceneViewport 的离屏目标是跨帧常驻对象。图内无资源分配可优化，持久化只剩纯开销。
 - 持久图必须处理 **图随内容变化**（分辨率、环境是否启用、材质 alphaMode 数量）时的重建与失效；每帧重建直接免疫。
 
-**代价是 CPU 时间**：每帧拓扑排序一次。对 ~200 个顶点、~300 条边的 DAG，DFS + 边松弛一次是微秒级。用 ImGui 场景（约 10 个 pass、几十条边）跑，此开销相比 command buffer 录制可忽略。
+**代价是 CPU 时间**：每帧收集 pass 访问 + 生成屏障。声明序执行后连依赖建图与拓扑排序都省了（v1 图是「声明序顺序执行 + 运行期屏障」的薄层），~10 pass 场景每帧构建开销相比 command buffer 录制可忽略。
 
 **中间路线（记录于未来扩展 §9.1）**：把「Pass 的**结构**」（哪个 pass 依赖哪张纹理、谁写入）与「Pass 的**参数**」（UBO 内容、网格列表、clear color）分开。参数是每帧的，结构是**按需重算**的（key 命中复用）。
 
@@ -81,18 +85,13 @@ struct RenderGraphResourceDesc {
 enum class ExternalResourceType { Image, Buffer };
 
 // ============================================================================
-// 外部资源的图像视图（交由图接管其布局流转）
+// 外部图像：布局跨帧记忆已下沉到 VulkanImage
 // ============================================================================
 
-/// 图像视图资源句柄。图对其成员做布局转换，并把最终布局写回 finalLayout
-/// （见 §4.6）—— 这实际就是那张图在运行期的持久布局状态机。
-/// 帧首布局来源：有跨帧记忆（finalLayoutValid）时用记忆，否则用 initialLayout 兜底。
-class ImageViewResource final {
-    VulkanImageView *view;
-    vk::ImageLayout  initialLayout;   ///< 无跨帧记忆时帧首兜底布局
-    vk::ImageLayout  finalLayout;     ///< 上一帧落点（跨帧记忆本体）
-    bool             finalLayoutValid;
-};
+// 【设计变更】早期设计稿的 ImageViewResource 封装已移除：Vulkan 布局本质是
+// per-image，跨帧布局记忆直接在 VulkanImage 上用单变量承载（见 §4.2）：
+//   VulkanImage::set_layout / get_layout，NSDMI 默认 eUndefined。
+// 外部资源在图中只登记为 VulkanImageView*（经 get_image() 读写其 image 的布局）。
 
 // ============================================================================
 // 附件 / 输入描述（声明式 Pass 的核心）
@@ -162,9 +161,9 @@ class RenderGraphBuilder {
 public:
     explicit RenderGraphBuilder(RenderGraph &graph);
 
-    /// 引用一个外部图像，注册其「帧首布局 → 图期望布局」与「写后布局」。
-    ImageViewResource &Import(const std::string &name, VulkanImageView *view,
-                              vk::ImageLayout initialLayout = vk::ImageLayout::eShaderReadOnlyOptimal);
+    /// 引用一个外部图像视图，注册其「帧首布局 → 图期望布局」与「写后布局」。
+    /// 布局跨帧记忆经 view->get_image() 读写在其 VulkanImage 上。
+    ResourceHandle Import(VulkanImageView *view, const std::string &name = {});
 
     /// 创建帧内虚拟资源（图内部管理生命周期，适合做中间缓冲）。
     /// v1 提供：临时图像（alias 等留待未来）。
@@ -185,7 +184,7 @@ public:
 
 ### 4.1 资源句柄与「虚拟 vs 外部」
 
-- `ResourceHandle` 是渲染图内部一张 **索引表** 的键。外部导入的每个 `ImageViewResource` 或 `VulkanImageView*` 占一行，虚拟资源占一行。图不拥有任何资源，只持有「引用 + 布局流转期望」。
+- `ResourceHandle` 是渲染图内部一张 **索引表** 的键。外部导入的每个 `VulkanImageView*` 占一行，虚拟资源占一行。图不拥有任何资源，只持有「引用 + 布局流转期望」。
 - **虚拟资源**：中间结果（不常驻）。v1 可用场景 = 一次完整 frame 链中的中间纹理（如后处理 ping-pong、SSAO buffer、光照分量的离屏缓冲）。
 - **外部资源**：Pass 里要读要写、但所有权在别处的图（SceneViewport 离屏目标、swapchain 图、IBL 采样贴图等）。**这是本引擎 v1 的主流**。
 
@@ -193,25 +192,28 @@ public:
 
 `vk::ImageLayout` 描述**单个**状态。但 swapchain 图每帧首尾布局固定（`Undefined / PresentSrc`），中途若是 `ColorAttachmentOptimal`，一次 pass 完后要回 `Present`。而普通离屏颜色图帧首可能正是 `ShaderReadOnlyOptimal`（上一帧末被 UI 采样过）。**图必须知道「外部图现在停在哪个布局」，才能安排本帧首尾转换。**
 
-实现方案（相对早期设计稿的 `ExternalImageState` 三态语义枚举，落地时简化为两段式）：
-- **跨帧记忆**：`ImageViewResource` 记录上一帧结束时 `finalLayout`（§4.6）。有记忆时本帧帧首直接用记忆，这正是「上一帧决定本帧起点」的载体，已覆盖大多数情况。
-- **无记忆兜底**：图像从未被图记录过（首帧 / 重建后）时，用调用方设置的 `initialLayout` 作为帧首布局。
+实现方案（相对早期设计稿的 `ExternalImageState` 三态枚举、`ImageViewResource` 两段式封装，落地时收敛为 VulkanImage 单变量）：
+- **跨帧记忆**：VulkanImage 持一个 `currentLayout`，帧末图把最终停靠布局写回（`set_layout`）；帧首直接读它作为起点。这正是「上一帧决定本帧起点」的载体，已覆盖大多数情况。
+- **无记忆起点**：`currentLayout` 的 NSDMI 默认值是 `eUndefined`。首帧 / swapchain 重建 / 从未进图时，直接以默认值为帧首起点 —— 对「新内容未定义、需丢弃型转换」的图像（swapchain 图）是正确的。
+- **非 Undefined 起点的图像**（已上传停在采样态、深度图等）：持有方须在创建后、进图前调 `set_layout(其真实布局)`，否则会被误判为 Undefined（丢弃内容）。S2 接线时对进图的采样纹理须设 SRV；swapchain 图默认即可。
 
-「内容可否丢弃」（对应早期设计的 `Undefined` 态）由调用方把 `initialLayout` 设成 `eUndefined` 表达，不再需要独立枚举。
+「内容可否丢弃」由图像初始 layout 是否为 `eUndefined` 表达，不再需要独立枚举。
 
 这样一个外部图**可以**先被 pass A 当采样读、再被 pass B 当颜色附件写、最后回采样态 —— 图自动补齐 A→B、B→末态的转换。
 
 ### 4.3 属性（usage）声明决定「谁先谁后」
 
-图把「读」与「写」分层：
+图把「读」与「写」分层，跨 pass 同步靠运行期的 `lastWriterPass` 单链（见 §5.4）推导：
 
-| 声明 | 编译阶段 | 效果 |
+| 声明 | 依赖（运行时推导） | 效果 |
 |---|---|---|
-| **只读**（`readImages` 里的图） | 依赖 `Produces(resource) → Requires(resource)` | 前驱写完后才开始 |
-| **写**（附件 / `writeImages`） | 依赖 `Write → Write` | 前驱整个 pass 结束后才开始（raster 顺序无关并发） |
-| **读写混合** | 图按保守合并 | v1 不做在 pass 内部的读写重叠分析（纹理自依赖等），先按最弱约束合 |
+| **只读**（`readImages` 里的图） | 读依赖上一个写它的 pass | 前驱写完后才开始（屏障 src = 该资源最近写者的输出） |
+| **写**（附件） | 写依赖上一个写它的 pass（写-写串行） | 前驱整个 pass 结束后才开始 |
+| **读写混合** | 同 pass 内访问按声明收集、句柄去重（先声明者为准） | v1 不在 pass 内部做读写重叠分析；渲染反馈循环（同 pass 既当附件又当采样）由调用方自担（§4.3 注） |
 
-**隐含假设（必须写进注释）**：同一张图在**同一 pass 里既当附件又当输入**属于未定义用法（动态渲染不支持读自己的附件；传统 renderpass 才支持 input attachment 回读）。
+**声明序约束（v1 关键规则）**：pass 必须按依赖序声明 —— 读某资源须声明在其写者之后。若把读者声明在写者之前，图不会自动重排，读者会读到「图像当前 layout 对应的旧内容」（无写者前置时直接以帧首 layout 为起点）。这是 v1 取舍：图负责在给定顺序下做对同步，不负责替你排顺序。
+
+**隐含假设（必须写进注释）**：同一张图在**同一 pass 里既当附件又当输入**属于未定义用法（动态渲染不支持读自己的附件；传统 renderpass 才支持 input attachment 回读）。v1 已不做编译期拦截（随 m_PassAccess 一起移除），依赖调用方自担。
 
 ### 4.4 屏障插入的粗粒度边界
 
@@ -233,77 +235,68 @@ Pass 描述中：颜色附件 + `storeOp == eStore` 时，可以给一个**写�
 
 图做同步时需要知道「外部图上一帧结束时停在哪」。若只让图持有其内部布局（以帧为单位），**图无法知道自己上一帧干了什么**（图对象可能每帧重建）。
 
-因此对齐阶段在把布局转完后，**把最终布局写回 `ImageViewResource::finalLayout`**。这样即便 `RenderGraph` 每帧新建，它引用的**同一批** `ImageViewResource` 实例跨帧记住了自己的布局。这是自研渲染图里最容易被低估的一环 —— 帧间布局必须由「外部资源状态机」承接，而不是图本身。
+因此 Execute 收尾把本帧每个外部资源的最终停靠布局，**写回其 VulkanImage 的 `currentLayout`**（`rec.external->get_image().set_layout(layout)`）。这样即便 `RenderGraph` 每帧新建，它引用的**同一批** `VulkanImage` 实例跨帧记住了自己的布局。这是自研渲染图里最容易被低估的一环 —— 帧间布局必须由「外部图像（VulkanImage）」承接，而不是图本身。WSI swapchain 图例外（`isFrameSwapchain`），其布局由 acquire 决定、不写回。
 
 ---
 
-## 5. 核心设计：编译器三阶段（依赖、顺序、屏障）
+## 5. 核心设计：声明序顺序执行 + 逐 pass 前置屏障
 
-帧首调用 `graph.Compile()`，内部跑一个简单但完整的编译器。
+> 早期设计稿的「编译器三阶段」（依赖图 §5.1 → 拓扑排序 §5.2 → 屏障 §5.4）在落地时简化为两步：**依赖建图与拓扑排序已移除**。原因：依赖边只朝声明序前方延伸（只找 curPass 之前的最近写者），故 Kahn+最小堆的拓扑输出恒等于声明序 `0..n-1`，拓扑排序对执行不产生任何重排。因此 v1 直接按声明序遍历 pass，运行期用 `lastWriterPass` 单链做跨 pass 同步（见 §5.2）。
+
+帧首调用 `graph.Compile()`(现为恒 true 的轻量校验)，`graph.Execute()` 按声明序逐 pass：收集本 pass 资源访问 → 生成前置屏障 → 打开动态渲染 → 调 execute 回调 → 收尾。
 
 ### 5.0 数据结构
 
 ```cpp
-struct GraphNode {
-    RenderPassDesc pass;             ///< 参数化数据（每帧）
-    // 拓扑运行期状态：
-    uint32_t order = 0;              ///< 输出执行序（拓扑排序结果）
+// RenderGraph 成员：
+std::vector<ResourceRecord> m_Resources;   ///< 资源表（句柄 = 下标 + 1）
+std::vector<RenderPassDesc> m_Passes;      ///< pass 节点（按声明序）
+
+// 资源表行：每行对应一个资源（外部或虚拟）。
+struct ResourceRecord {
+    std::string        name;               ///< 资源名（调试）
+    VulkanImageView   *external = nullptr; ///< 外部导入的图 view（经其 image 读写布局记忆）
+    RenderGraphResourceDesc virtualDesc;   ///< 虚拟资源描述（v1 不分配）
+    bool               isFrameSwapchain;   ///< 是否本帧 WSI 图
 };
-
-struct GraphEdge {
-    GraphNode *dst;                  ///< 指向读取方（写→读）或下一个写者
-    ResourceHandle resource;
-    // 同步信息由边附着：srcAccess/Stage、dstAccess/Stage、布局转换对
-};
 ```
 
-节点存 Pass 数据；边存**依赖资源 + 两端阶段/访问掩码 + 布局转换对**。运行期同步 = 逐资源状态机（`PerResourceState`）。
+pass 存于 `m_Passes`（按声明序 = 执行序）；跨 pass 同步不需要「边」，而是运行期逐资源的 `lastWriterPass` 单链（见 §5.2）。
 
-### 5.1 依赖图构建（第一个 Pass 解决「谁先谁后」）
+### 5.1 声明序即执行序（pass 的约束）
 
-为每个资源声明遍历所有引用它的节点，建立有向边：
+v1 图**不重排 pass**：`Execute` 从 0 到 n-1 按声明序遍历。因此：
 
-```
-对每个资源 R，取所有访问它的 pass 序列 P1, P2, ..., Pn（按声明序）：
-  Pi 读  → 它依赖：最后写 R 的 pass Pj（j < i）【读依赖写】
-  Pi 写  → 它依赖：最后写 R 的 pass Pj（j < i，j ≠ i）【写依赖写】
-         （若 Pi 写 R，Pi 本身是该资源「当前写者」的候选，供后续读依赖）
-同 pass 内读写同一 R：v1 按最弱约束，把 R 视为两段读写但同一 pass 自身先处理后写（raster 不适用）
-```
+1. pass 必须按依赖序声明 —— **读某资源须声明在其写者之后**；
+2. 读者声明在写者之前 = 读者以「帧首 layout / 无写者前置」为起点，读到旧内容（不报错，是合法语义「读外部已就绪内容」）；
+3. 不做环检测 —— 声明序天然无环，无依赖边可检；
+4. 无依赖的 pass 保持声明序串行执行，但彼此不插入屏障。
 
-依赖建立后，依赖图是 DAG（自环、异依赖等非法情况，编译时 `GE_CORE_ASSERT` 报错，提示开发者他们的声明自相矛盾）。
+### 5.2 逐资源最近写者（跨 pass 同步的载体）
 
-### 5.2 拓扑排序 + 执行序（第二个 Pass 解决「按什么顺序执行」）
+运行时维护 `lastWriterPass`（资源句柄 → 本帧最近写它的 pass 下标）。对每个 pass 的每个资源访问（附件=写、采样=读）：
 
-对 DAG 做 **Kahn 拓扑排序**（稳定版：`std::stable_sort` 同层节点按声明序）。同时维护一个 `nodeOrder[]`。对每条**真正跨越 pass 的边**计算需要等待的同步点（见 §5.4）。
+- **有前置写者**（`lastWriterPass` 命中）→ 在该 pass 前插一条屏障：src = 前置写者的写阶段/写访问，dst = 本次读/写阶段/访问。写-写也经此串行。
+- **无前置写者**（帧内首次访问）→ 需布局转换时插一条 srcStage=`eTopOfPipe` 的屏障（等待此前全部命令；对 Undefined 丢弃型起点安全）。
+- 布局转换合并进屏障；本 pass 若写该资源，推进 `lastWriterPass[h] = pi`。
 
-> **关键性质（为何 Kahn 而非 DFS）：**
-> 1. 它保证「写者永远在读者之前」；
-> 2. 多个**并列** pass（没有依赖关系）之间不插入同步，天然保留 ImGui 与 3D 并排的可能。
-> 3. 只要执行 callback 本身**遵守依赖**（不读未写、不破坏附件状态），同步正确性由编译器兜底，开发者唯一要保证的是 pass 内绘制命令与 `execute` 回调一致。
+### 5.3 Execute 逐 pass 流程
 
-### 5.3 执行序 → 命令录制（第三个 Pass 解决「实际命令长什么样」）
+**输入：`m_Passes`（声明序）+ 当前帧 `VulkanCommandBuffer`。**
 
-**输入：一个已拓扑排序、边带好同步信息的节点列表 + 当前帧 `VulkanCommandBuffer`。**
-
-对每个节点（按 order）：
+对每个 pass（按声明序下标 pi）：
 
 ```
-1. 隐式开始阶段：
-   - 若本节点带附件 → 生成动态渲染信息：
-       colorAttachment i 为资源 X：imageView = X.view；imageLayout = X 目标布局
-                                     loadOp/storeOp = 声明的 load/store；若 loadOp=clear 填 clearColor
-       depthAttachment 类似
-   - 计算节点需要执行的所有输入图像 → 显式调用 pre-pass 的过渡（见 §5.4）
-2. 调用 execute 回调：
-   以 VulkanRenderingInfo 填充的动态渲染（raster）或 dispatch（compute）开始
-   → 回调内录制本 pass 的命令（绘制 / 分发）
-3. 收尾：
-   - endRendering（raster）
-   - 把本 pass 每个输出资源最终布局记入其状态机，供后续 pass 或帧尾使用
+1. 收集本 pass 的资源访问（颜色附件 → 深度 → 采样，句柄去重，先声明者为准）
+2. 前置屏障：对每个访问生成 barrier（见 §5.2），合并为一次 pipelineBarrier2
+3. 录制本 pass：
+   - 生成动态渲染信息：colorAttachment 为资源 X → imageView = X.view；
+       imageLayout = X 目标布局；loadOp/storeOp = 声明；loadOp=clear 填 clearValue
+   - 调 execute 回调（图已打开动态渲染，回调内录制绘制命令）
+4. 收尾：endRendering；若本 pass 写某资源，记入 lastWriterPass
 ```
 
-**注意**：这里为了简洁把 pre-pass 布局转换的「显式子步骤」以伪代码平铺；真实实现里它们由 barrier 阶段合并到 §5.4 的汇总屏障中（它们本质是同一批命令）。
+**帧尾布局回写**：Execute 结束后，把每个外部资源（非 WSI 图）的最终停靠布局写回其 VulkanImage（`set_layout`），供下一帧作起点（§4.6）。
 
 **execute 回调上下文** —— pass 需要拿到：命令缓冲 + 一组绑定资源句柄映射（纹理 / 缓冲 / UBO 帧分配）。这些来自**帧池**（`VulkanRenderFrame`），与现有 Renderer2D/3D 的帧内分配一致：
 
@@ -315,35 +308,31 @@ struct PassExecuteContext {
 };
 ```
 
-### 5.4 自动屏障（第四个 Pass 解决「屏障在哪、掩码是什么」）
+### 5.4 自动屏障（解决「屏障在哪、掩码是什么」）
 
-对依赖边（含读依赖、写依赖）生成同步点。运行时按执行序扫描，对每个资源的跨 pass 访问序列维护状态：
+运行时按声明序扫描，对每个资源的跨 pass 访问序列维护同步源（即 §5.2 的 `lastWriterPass`，配合每资源帧内布局状态）：
 
 ```
-PerResourceState {
-    ResourceHandle  handle;
-    vk::ImageLayout currentLayout;          ///< 该资源当前的布局
-    GraphNode      *lastWriter  = nullptr;  ///< 本帧最后一次写它的 pass
-    vk::PipelineStageFlags lastWriteStage;  ///< 写它的 pass 所在管线阶段
-    vk::AccessFlags        lastWriteAccess; ///< 写它的访问
-    vk::ImageLayout        lastWriteLayout; ///< 写它后停在的布局
-};
+每资源运行期状态（Execute 内的局部映射）：
+    vk::ImageLayout currentLayout;          ///< 该资源当前的布局（随执行推进）
+    bool            layoutValid;
+    uint32_t        lastWriterPass;         ///< 本帧最后一次写它的 pass（跨 pass 屏障的源）
 ```
 
-每到一个读/写该资源的 pass，若其**前一动作**不是同 pass 自身，则在两 pass 边界插入屏障：
+屏障源侧掩码由 `FindUsageInPass(lastWriterPass, 资源)` 查最近写者的写用法推导。
 
-| 前一动作为「写」 | 需要 | 屏障属性来源 |
+| 前一动作 | 需要 | 屏障属性来源 |
 |---|---|---|
 | 读依赖（下个 pass 读） | `srcStage=写者输出阶段` `srcAccess=写访问` `dstStage=读者输入阶段` `dstAccess=读访问` | **属性由使用**（写者 = 附件写入 COLOR_ATTACHMENT_OUTPUT；读者 = 采样 FRAGMENT_SHADER_READ）|
 | 写依赖（下个 pass 写） | `srcStage=写者输出阶段` `srcAccess=写访问` `dstStage=写者输入阶段` `dstAccess=写访问` | 两者都来自 **该资源的写使用**（附件写入 → COLOR_ATTACHMENT_OUTPUT，_WRITE）|
 
 **布局转换合并进同一条屏障**：`oldLayout = 上一状态`，`newLayout = 下个 pass 对该资源的期望布局`。这正是把 §4.5 的 finalLayout 意图落到运行期。
 
-**为什么这是「自动」的**：开发者从不写 `vk::PipelineStageFlags` / `vk::AccessFlags` / 布局。只要给每个 **资源用法**（`ColorAttachment` / `DepthStencil` / `Input`/`ShaderRead` / `ShaderWrite`/`Transfer`）**一张内置的表**，把「用法 → 输出阶段、写访问；用法 → 输入阶段、读访问」写好，屏障掩码与布局就全由编译器生成。
+**为什么这是「自动」的**：开发者从不写 `vk::PipelineStageFlags` / `vk::AccessFlags` / 布局。只要给每个 **资源用法**（`ColorAttachment` / `DepthStencil` / `Input`/`ShaderRead` / `ShaderWrite`/`Transfer`）**一张内置的表**，把「用法 → 输出阶段、写访问；用法 → 输入阶段、读访问」写好，屏障掩码与布局就全由推导生成。
 
 **共享同一命令缓冲的保证**：因执行序内所有屏障命令都录在**同一条 command buffer** 上，无需处理跨 command buffer 的信号量/事件；需要的只是内存屏障本身的 stage/access/layout。
 
-**隐藏的下限**：如果开发者把一个资源**既当附件又当输入**，图不会正确（见 §4.3 注）。这由编译期的「同 pass 访问检查」用断言拦截。
+**隐藏的下限**：如果开发者把一个资源**既当附件又当输入**（同一 pass 内，渲染反馈循环），动态渲染不支持，v1 不再做编译期断言拦截（随依赖建图一起移除），依赖调用方遵守 §4.3 的声明序约束。
 
 ---
 
@@ -360,16 +349,16 @@ Pass "Scene2D"        （在视口颜色附件之上叠加世界精灵；loadOp 
 Pass "UIPass"         （把 3D+2D 合成结果当采样输入画到 swapchain；另有 UI 精灵直写 swapchain）
 ```
 
-对应现状：`SceneViewport.cpp` 创建离屏 RenderTarget（外部图），`SceneLayer.cpp` 里 2D/3D 先离屏、再喂给 ImGui 上屏。**图把它变成三个显式 Pass** —— 现状的「2D/3D/UI 谁先谁后的时序依赖」变成**数据结构上的边**。
+对应现状：`SceneViewport.cpp` 创建离屏 RenderTarget（外部图），`SceneLayer.cpp` 里 2D/3D 先离屏、再喂给 ImGui 上屏。**图把它变成三个显式 Pass** —— 现状的「2D/3D/UI 谁先谁后的时序依赖」变成**按声明序排列的 pass 序列**（图保证每 pass 前置屏障正确）。
 
 **迁移顺序（每一步都是「可运行 + 行为不变」的增量）**：
 
 | 步骤 | 内容 | 验收 |
 |---|---|---|
-| 1 | `RenderGraph` / `RenderGraphBuilder` 骨架 + `RenderPassDesc` + 编译三阶段（仅 raster） | 空图编译不崩 |
+| 1 | `RenderGraph` / `RenderGraphBuilder` 骨架 + `RenderPassDesc` + Execute（声明序逐 pass 屏障 + 动态渲染 + 空回调） | 空图编译执行不崩 |
 | 2 | 「离屏 3D + 2D → 视口」改为两张 pass 声明 | 编辑器视口画面与迁移前一致 |
 | 3 | swapchain 合成 pass：3D 结果当采样、UI 直写 | ImGui 覆盖在场景之上，顺序正确 |
-| 4 | 把 `Renderer.cpp` BeginFrame/EndFrame 的 swapchain 布局转换吸收进图的「首尾终点」 | 行为等价、屏障由编译器生成 |
+| 4 | 把 `Renderer.cpp` BeginFrame/EndFrame 的 swapchain 布局转换吸收进图的「首尾终点」 | 行为等价、屏障由推导生成 |
 
 每步对照现有场景：ImGui 场景（有离屏视口）与无编辑器纯渲染路径都要回归。
 
@@ -384,10 +373,10 @@ Pass "UIPass"         （把 3D+2D 合成结果当采样输入画到 swapchain�
 | 文件 | 内容 | 依赖 |
 |---|---|---|
 | `GE/include/GE/Render/RenderGraph/RenderGraphTypes.h` | 纯数据结构：`ResourceHandle`、`ResourceType`、`ResourceUsage`、`AttachmentDesc`、`ImageInputDesc`、`PassType`、`RenderGraphResourceDesc` | `Render/VulkanBase/VulkanCommon.h`（vk 类型） |
-| `GE/include/GE/Render/RenderGraph/ImageViewResource.h` | `ImageViewResource`（外部图像布局状态机：持有 view 指针 + `initialLayout` / `finalLayout`，跨帧记住布局） | `RenderTarget.h` / `VulkanImageView.h` |
 | `GE/include/GE/Render/RenderGraph/RenderPassDesc.h` | `RenderPassDesc`（一个 pass 的全部声明 + `execute` 回调）+ `PassExecuteContext` | `RenderGraphTypes.h`、`Render/VulkanBase/VulkanCommandBuffer.h` |
-| `GE/include/GE/Render/RenderGraph/RenderGraph.h` | `RenderGraph`（图本体：节点/边/资源表）+ `RenderGraphBuilder`（Import / AddPass / Build / Compile） | 以上四个头文件 |
-| `GE/src/Render/RenderGraph/RenderGraph.cpp` | 依赖分析、拓扑排序、屏障生成、命令录制、资源布局状态机 | — |
+| `GE/include/GE/Render/RenderGraph/RenderGraph.h` | `RenderGraph`（图本体：pass 序列 + 资源表）+ `RenderGraphBuilder`（Import / AddPass / Compile / Execute） | `RenderPassDesc.h`、`RenderGraphTypes.h`（`VulkanImageView` 仅前向声明） |
+| `GE/src/Render/RenderGraph/RenderGraph.cpp` | Execute：声明序逐 pass 收集访问 → 生成屏障 → 命令录制；帧首/帧尾布局经 VulkanImage 读写 | `VulkanImageView.h` |
+| 布局记忆（不单独成文件） | 跨帧布局下沉到 `VulkanImage` 的 `currentLayout`（`set_layout` / `get_layout`），不新增封装 | `VulkanImage.h` |
 | 对现有文件**零改动**（见 6A.4 说明） | — | — |
 
 > 位置遵循现状约定：头文件在 `GE/include/GE/Render/**`，实现同名映射到 `GE/src/Render/**`（对照 `Render/` 下已有 `RenderTarget.h / VulkanRenderingInfo.h` 的平铺风格）。阶段1 不新建子命名空间，类型一律 `GE::`，避免给渲染器加一层作用域噪音。
@@ -397,26 +386,26 @@ Pass "UIPass"         （把 3D+2D 合成结果当采样输入画到 swapchain�
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │ RenderGraph（每帧实例化，帧末析构；由 Renderer 拥有）                │
-│  · 成员：节点列表、资源表（每行持有 ImageViewResource 引用）、边      │
-│  · Build()   ：供 Scene/Viewport 追加 pass（Builder 是它的门面）    │
-│  · Compile() ：依赖建图 → 稳定拓扑排序 → 屏障与布局状态机            │
-│  · Execute() ：按 order 录制命令到本帧 command buffer               │
+│  · 成员：pass 序列（按声明序）、资源表（每行持 VulkanImageView*）    │
+│  · Compile() ：轻量校验（声明序即执行序，恒通过）                   │
+│  · Execute() ：按声明序逐 pass：前置屏障 → 动态渲染 → execute 回调   │
+│               帧末把布局写回各 VulkanImage（WSI 图除外）            │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 | 类 | 责任 | 不做什么 |
 |---|---|---|
-| `RenderGraphBuilder` | 导入外部图 / 创建虚拟资源 / 逐个 `AddPass` 填充声明 / `Build()` 收口 | 不持有任何 GPU 对象 |
-| `RenderGraph` | 编译期：依赖边、拓扑序、每资源布局状态机、屏障清单 | 不做资源分配 / 跨帧复用 / 别名 |
-| `ImageViewResource` | **跨帧**记录一张外部图像"停在哪个布局"，提供本帧 `initialLayout/finalLayout` | 不拥有 image / view |
+| `RenderGraphBuilder` | 导入外部图 view / 创建虚拟资源 / 逐个 `AddPass` 填充声明 | 不持有任何 GPU 对象 |
+| `RenderGraph` | 运行期：按声明序逐 pass 收集访问、生成前置屏障、驱动动态渲染与回调；帧首/帧末经 VulkanImage 读写跨帧布局 | 不做资源分配 / 跨帧复用 / 别名 / 依赖重排 |
+| `VulkanImage`（既有类，加两字段） | **跨帧**记住"停在哪个布局"（`currentLayout`），供图帧首作起点、帧末写回 | 不参与 pass 声明 |
 | `PassExecuteContext` | 透传本 pass 需要的：cmd、frame、绑定句柄表 | 不直接持渲染器引用 |
-| 屏障工具（`RenderGraphInternal` 或匿名命名空间函数） | 依据 §7 资源用法表生成同步2 掩码（`vk::ImageMemoryBarrier2`） | 不进公共 API |
+| 屏障工具（匿名命名空间函数） | 依据 §7 资源用法表生成同步2 掩码（`vk::ImageMemoryBarrier2`） | 不进公共 API |
 
-**关键**：图只认 `ImageViewResource`（外部）与虚拟资源句柄，**不识别也不持有 `RenderTarget`**。现在 2D/3D 绑定渲染目标用的是 `Renderer3D::SetRenderTarget(RenderTarget*)`（SceneLayer.cpp:196/197），迁移后由**调用方**把目标**拆成若干 ImageView 导入**并挂到 pass 附件声明 —— 谁要把场景画进某张图，谁负责 import 它。这样图对"渲染目标"无感知，天然同时支持 swapchain 目标与 SceneViewport 离屏目标。
+**关键**：图只认 `VulkanImageView*`（外部）与虚拟资源句柄，**不识别也不持有 `RenderTarget`**。现在 2D/3D 绑定渲染目标用的是 `Renderer3D::SetRenderTarget(RenderTarget*)`（SceneLayer.cpp:196/197），迁移后由**调用方**把目标**拆成若干 ImageView 导入**并挂到 pass 附件声明 —— 谁要把场景画进某张图，谁负责 import 它。这样图对"渲染目标"无感知，天然同时支持 swapchain 目标与 SceneViewport 离屏目标。
 
 ### 6A.3 RenderPassDesc.execute 的两层（承接 2D/3D 的接口）
 
-现有 2D/3D 录制不能整个塞进 execute 回调 —— 它们的 `DrawSprite`/`DrawMesh` 在**主线程逐实体遍历时**收集（Scene.cpp:843），帧内集中上报；而 execute 只在**执行序那一刻**调用一次。二者频次不同。**第一版以两种 execute 共存收尾**：
+现有 2D/3D 录制不能整个塞进 execute 回调 —— 它们的 `DrawSprite`/`DrawMesh` 在**主线程逐实体遍历时**收集（Scene.cpp:843），帧内集中上报；而 execute 只在**图执行那一刻**调用一次。二者频次不同。**第一版以两种 execute 共存收尾**：
 
 | 形式 | 适用 | 对应现状 |
 |---|---|---|
@@ -430,7 +419,7 @@ Pass "UIPass"         （把 3D+2D 合成结果当采样输入画到 swapchain�
 | 类 | 改动 | 理由 |
 |---|---|---|
 | `Renderer2D` / `Renderer3D` | 各加一组"录制落到指定 cmd"的重载；`EndScene` 内 `Renderer::GetFrameCmd()` 改为可注入 cmd（或新增 `EndScene(cmd)`） | 现状硬编码全局 cmd（Renderer2D.cpp / Renderer3D.cpp 均 `GetFrameCmd`）。图执行序要求"图说往哪录就往哪录" |
-| `RenderTarget` | **阶段1 不改**（`GetColorView()` 等已暴露 ImageView）；若要 pass 直接消费它，由 `RenderGraphBuilder` 用其 view 构造 `ImageViewResource` | 避免把图的资源表耦合进 RenderTarget |
+| `RenderTarget` | **阶段1 不改**（`GetColorView()` 等已暴露 ImageView）；若要 pass 直接消费它，由 `RenderGraphBuilder` 用其 view `Import` 进图 | 避免把图的资源表耦合进 RenderTarget |
 | `Renderer` | 持有 `RenderGraph m_Graph`（每帧 new + 帧末析构）或由 Application 建图传入；`BeginFrame` 后先 `graph.BeginFrame(swapchain图)` | swapchain 的布局转换从此入图（替代 Renderer.cpp:99/139 的手工两处） |
 | `Renderer::BeginFrame / EndFrame` | 屏障逻辑迁移至图，仅保留 acquire/submit/present | Renderer.cpp:99-107、139-147 两条手工转换删去 |
 | `VulkanCommandBuffer` | 提供 `Raw()` 访问裸 `vk::CommandBuffer`（已有 `GetHandle()`），不新加 API | 屏障生成与动态渲染已能经 handle 录制 |
@@ -440,13 +429,13 @@ Pass "UIPass"         （把 3D+2D 合成结果当采样输入画到 swapchain�
 
 | 步骤 | 代码动作 | 行为验收 |
 |---|---|---|
-| **S1** 骨架 | 建 `RenderGraphTypes / ImageViewResource / RenderPassDesc / RenderGraph(+Builder)`；编译器先实现建图 + 拓扑排序 + **空 execute** | 空图 `Compile`+`Execute` 不崩；断言的依赖/资源表空态正常 |
+| **S1** 骨架 | 建 `RenderGraphTypes / RenderPassDesc / RenderGraph(+Builder)`；Execute 实现声明序逐 pass：收集访问 → 前置屏障 → 动态渲染 → **空 execute 回调**；跨帧布局用 `VulkanImage::currentLayout` | 空图 `Compile`+`Execute` 不崩；无 RenderGraph 实例时零行为变化 |
 | **S2** 视口 pass 化 | `SceneLayer.cpp` 里"先 3D 后 2D 画进离屏目标"改为：add 两个 raster pass（颜色附件 = 视口离屏图的 view；Scene3D 带深度附件 + `eClear`；Scene2D 附件 `eLoad` 不写深度）。`Renderer3D::EndScene` 落进 pass cmd | **编辑器视口画面与 S1 前逐帧一致**（这是本方案最重要的验收红线） |
 | **S3** 视口 → 采样 | 新增"合成 pass"：把离屏颜色图（`ShaderReadOnlyOptimal`）当采样画到 swapchain，UI 精灵与视口图同 pass；ImGui 仍直写 swapchain | ImGui 面板能正确叠在场景上（含视口图），顺序无错乱 |
-| **S4** 吸收 swapchain | `Renderer::BeginFrame` 的 `Undefined→ColorAttachmentOptimal`、`EndFrame` 的 `ColorAttachmentOptimal→PresentSrc` 改由图首尾态承接（首 `initialLayout=eUndefined`、末 `finalLayout=ePresentSrcKHR`，见 §4.2） | 纯渲染与编辑器双路径都无回归；屏障数量不增 |
+| **S4** 吸收 swapchain | `Renderer::BeginFrame` 的 `Undefined→ColorAttachmentOptimal`、`EndFrame` 的 `ColorAttachmentOptimal→PresentSrc` 改由图首尾态承接（swapchain 图 `currentLayout` 默认 `eUndefined`，末帧帧尾写回 `ePresentSrcKHR`，见 §4.2/§4.6） | 纯渲染与编辑器双路径都无回归；屏障数量不增 |
 | **S5** 回归 | 对拍：编辑器 + 无编辑器两条路径，GPU 上 barrier 数 ≤ 迁移前 | 见 §6.4 断言，RenderDoc 目检 |
 
-**要点**：阶段1 不做 compute/transfer、不做虚拟资源实例、不做 ImGui pass 化。同步已提前到同步2（见 §7 附注）。执行时遇到问题先查 §6.4 断言，保证图结构可诊断。
+**要点**：阶段1 不做 compute/transfer、不做虚拟资源实例、不做 ImGui pass 化。同步已提前到同步2（见 §7 附注）。pass 必须按依赖序声明（§4.3）；执行遇问题先查 §6.4 断言。
 
 ### 6A.6 帧循环接线（现状 → 图版）
 
@@ -489,24 +478,25 @@ EndFrame()                                              // 仅 submit + present
 
 ### 6.3 swapchain 与外部资源的接入
 
-swapchain 图像：导入时 `initialLayout = eUndefined`（引擎现在 BeginFrame 用 `eUndefined → eColorAttachmentOptimal` 是**丢弃型转换**），frame 末图把 `ColorAttachmentOptimal / ShaderReadOnlyOptimal → PresentSrcKHR` 作为 **收尾转移**（由编译器安排，等价于现在 `Renderer.cpp:146` 的手工转换）。运行时 layout 由 ImageViewResource 状态机管理 —— 不再有「BeginFrame 手工转、EndFrame 手工转」这种全局命令位置依赖。
+swapchain 图像：`VulkanImage` 的 `currentLayout` 默认 `eUndefined`（引擎现在 BeginFrame 用 `eUndefined → eColorAttachmentOptimal` 是**丢弃型转换**），frame 末图把 `ColorAttachmentOptimal / ShaderReadOnlyOptimal → PresentSrcKHR` 作为 **收尾转移**（Execute 帧末写回 swapchain 图所在 VulkanImage 的 `currentLayout`，等价于现在 `Renderer.cpp:146` 的手工转换；但 WSI 图例外不写回，见 §4.6）。运行时 layout 由 VulkanImage 的 `currentLayout` 管理 —— 不再有「BeginFrame 手工转、EndFrame 手工转」这种全局命令位置依赖。
 
 ### 6.4 错误报告（这一节让自研渲染图值得）
 
-**断言是调试期回报最高的资产**。图引入至少三类：
+**断言是调试期回报最高的资产**。v1 保留的检查（随声明序执行简化的取舍）：
 
-1. **同 pass 内读写自依赖**：`resource 既被 Pass "X" 写，又被 Pass "X" 读 —— 请拆成两个 pass 或用独立缓冲`。
-2. **漏绑定附件**：color attachment 声明了，但 execute 回调没往该 view 写东西 → 编译期难查，运行时加一次校验：回调前后查询该图像 usage 状态（有 `vkCmdPipelineBarrier` 在回调里就告警）。
-3. **循环依赖**：拓扑排序检测到环，把环上 pass 名打出来（如 `A → B → C → A`）。
-4. **写后没定义终点**：资源被写、被读，但**从没**安排回 `finalLayout` → 图形帧末该布局永远停在这 → 下一次使用时错。
+1. **漏绑定附件**：color attachment 声明了，但 execute 回调没往该 view 写东西 → 编译期难查，运行时加一次校验：回调前后查询该图像 usage 状态（有 `vkCmdPipelineBarrier` 在回调里就告警）。
+2. **写后没定义终点**：资源被写、被读，但**从没**安排回目标布局 → 图形帧末该布局永远停在这 → 下一次使用时错。
 
-> 仅凭「自动屏障」不足以证明图值得引入；真正价值在**以上每一类错误能定位到具体 Pass + 具体资源**。RenderDoc 里每一帧只剩一个明确形状：pass 用同一条命令缓冲录制、屏障被编译器标好名字。
+> 已移除的早期断言（随依赖建图/拓扑排序删去）：
+> - **同 pass 内读写自依赖**（渲染反馈循环）拦截、**循环依赖**检测 —— 依赖边与 `m_PassAccess` 收集已删，v1 靠 §4.3 的声明序约束（读须声明在写者之后）由调用方自担。
+>
+> 仅凭「自动屏障」不足以证明图值得引入；真正价值在**错误能定位到具体 Pass + 具体资源**。RenderDoc 里每一帧只剩一个明确形状：pass 用同一条命令缓冲录制、屏障在 pass 边界只有一个汇总屏障。
 
 ---
 
 ## 7. 资源用法表（属性 → 阶段 / 访问 / 布局的最小真值表）
 
-编译器从资源用法推导掩码。映射表放在引擎一处（渲染图内部，单一来源），**替代**现在散落在各渲染器与 `image_layout_transition` 里的查表。
+Execute 从资源用法推导掩码。映射表放在引擎一处（渲染图内部，单一来源），**替代**现在散落在各渲染器与 `image_layout_transition` 里的查表。
 
 | 用法（Usage） | 输出阶段 | 写访问 | 输入阶段 | 读访问 | 布局 |
 |---|---|---|---|---|---|
@@ -527,10 +517,10 @@ swapchain 图像：导入时 `initialLayout = eUndefined`（引擎现在 BeginFr
 
 | 项 | 说明 |
 |---|---|
-| **CPU 构建** | 每帧 `Compile`：O(V+E) 的稳定拓扑排序 + 属性推导。~10 pass 级场景开销 < 10μs，相比录制命令缓冲的几十~上百 μs 可忽略 |
-| **命令缓冲额外命令** | 布局转换只在 **pass 边界** 需要；编译器把连续多个 pass 之间针对同一资源的同步合并成最少屏障。现状的手工屏障数**只会减少** |
+| **CPU 开销** | 无依赖建图 / 拓扑排序（已移除），每帧 Execute 仅为每个 pass 收集访问并生成屏障，~10 pass 级开销远 < 10μs，相比录制命令缓冲的几十~上百 μs 可忽略 |
+| **命令缓冲额外命令** | 布局转换只在 **pass 边界** 需要；同一资源跨 pass 的同步用运行期 `lastWriterPass` 合并成一次屏障。现状的手工屏障数**只会减少** |
 | **不增加 GPU 往返** | 全部同步在单 command buffer 内，无额外 submit / 等待 |
-| **可选项：同步2 合并** | S1 已用 `pipelineBarrier2`，stage/access 在结构体内、可精细合并。进一步减少屏障数（跨资源合并）留待后续 | 已落地，无额外成本 |
+| **同步2** | S1 已用 `pipelineBarrier2`，stage/access 在结构体内、可精细合并 | 已落地，无额外成本 |
 
 ---
 
@@ -540,9 +530,10 @@ swapchain 图像：导入时 `initialLayout = eUndefined`（引擎现在 BeginFr
 
 **步骤定义见 §6A.5（S1–S5），每个 S 步结束是可运行、行为与现状等价的增量。** 文件与类见 §6A.1–6A.4。
 
-- [x] S1：`RenderGraph` 数据结构（节点 / 边 / 资源表）+ `RenderPassDesc` / `AttachmentDesc` 声明；`RenderGraphBuilder`：Import / AddPass / Build / Compile；编译器先实现建图（§5.1）→ 稳定拓扑排序（§5.2）→ 屏障生成（§5.4）
-  - 已落地文件：`RenderGraphTypes.h` / `ImageViewResource.h` / `RenderPassDesc.h` / `RenderGraph.h` / `RenderGraph.cpp`（见 §6A.1）+ 根 `CMakeLists.txt` 登记源码目录
-  - 已实现：Import / CreateVirtualResource / AddPass / Compile（建边 + Kahn 稳定拓扑 + 环检测）/ Execute（逐 pass 前置屏障 + 布局状态机 + 动态渲染录制 + 帧尾布局回写）；空图可编译执行
+- [x] S1：`RenderGraph` 数据结构 + `RenderPassDesc` / `AttachmentDesc` 声明；`RenderGraphBuilder`：Import / AddPass / Compile / Execute
+  - 已落地文件：`RenderGraphTypes.h` / `RenderPassDesc.h` / `RenderGraph.h` / `RenderGraph.cpp`（见 §6A.1）+ 根 `CMakeLists.txt` 登记源码目录
+  - 已实现：Import / CreateVirtualResource / AddPass / Compile（轻量）/ Execute（声明序逐 pass 前置屏障 + 动态渲染录制 + 帧尾布局写回 VulkanImage）；空图可编译执行
+  - 设计简化（相对初稿）：依赖建图 + 拓扑排序已移除（声明序即执行序，§5 开头）；`ImageViewResource` 封装已移除、布局记忆下沉 VulkanImage 单变量（§4.2/§4.6）
   - 尚未接线：任意 Scene 渲染路径仍走原 Renderer2D/3D（S1 只交付骨架，零行为变化）
 - [ ] S2：迁移「离屏 3D + 2D → 视口展示」到 Scene3D / Scene2D 两 raster pass（§6A.5）；2D/3D 录制落到 pass cmd（§6A.4）
 - [ ] S3：合成 pass（视口图 → swapchain 采样），UI 精灵同 pass
@@ -553,7 +544,7 @@ swapchain 图像：导入时 `initialLayout = eUndefined`（引擎现在 BeginFr
 - 虚拟资源不产生屏障（无真实图，阶段2 支持）
 - 附件 `finalLayout`（写后转采样/呈现布局）尚未接线 —— 当前渲染一律停在写布局，S4 的收尾转换补上
 - `renderArea` 未指定时以 1x1 占位并告警 —— S2 由调用方填好
-- 屏障源阶段在首次访问（无前驱写者）时用 `eTopOfPipe` 保守等待此前全部命令 —— 首次丢弃型（Undefined 起点）正确，首次保留型（跨帧 Load）依赖调用方正确设置帧首布局
+- 屏障源阶段在首次访问（无前置写者）时用 `eTopOfPipe` 保守等待此前全部命令 —— 首次丢弃型（Undefined 起点）正确，首次保留型（跨帧 Load）依赖持有方把 VulkanImage 的 `currentLayout` 设成真实起点（见 §4.2）
 
 **验收**：
 - 编辑器视口（场景 3D + 世界精灵 + ImGui UI）渲染结果与**迁移前逐帧等价**

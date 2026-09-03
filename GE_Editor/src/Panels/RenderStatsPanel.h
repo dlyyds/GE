@@ -6,7 +6,8 @@ namespace GE {
 
 /// 渲染统计面板 —— 显示引擎每帧 draw call / 三角形 / FPS。
 ///
-/// 数据源为 Renderer 的帧统计（Renderer::GetStats）与帧率（Renderer::GetFPS）。
+/// draw call 数据源为 Renderer 帧统计（Renderer::GetStats）；
+/// FPS 为宿主运行时数据，直接读 Application::GetFPS()。
 /// 面板不拥有任何资源，仅做只读展示。
 class RenderStatsPanel {
 public:

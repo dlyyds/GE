@@ -4,6 +4,7 @@
 
 #include "RenderStatsPanel.h"
 
+#include "GE/Core/Application.h"
 #include "GE/Render/Renderer.h"
 
 #include "imgui.h"
@@ -17,7 +18,7 @@ void RenderStatsPanel::OnImGuiRender() {
     if (ImGui::Begin("渲染统计")) {
         const auto &stats = Renderer::GetStats();
 
-        ImGui::Text("帧率: %.1f FPS", Renderer::GetFPS());
+        ImGui::Text("帧率: %.1f FPS", Application::Get().GetFPS());
 
         ImGui::Separator();
         ImGui::Text("2D（精灵批处理）");

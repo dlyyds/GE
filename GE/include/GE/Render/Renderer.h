@@ -90,14 +90,6 @@ public:
      */
     void SetFrameUI(std::function<void()> callback);
 
-    /**
-     * @brief 注入每帧宿主帧信息（FPS 等，供 ImGui 统计面板显示）。
-     */
-    void SetFrameInfo(float fps);
-
-    /// 本帧 FPS（宿主经 SetFrameInfo 注入）。
-    [[nodiscard]] static float GetFPS();
-
     // ========================================================================
     // Swapchain 管理
     // ========================================================================
@@ -214,9 +206,6 @@ private:
 
     /// 每帧 UI 提交回调（宿主注入：遍历各 Layer 的 OnImGuiRender）。
     std::function<void()> m_FrameUI;
-
-    /// 本帧 FPS（宿主每帧注入，供 ImGui 统计面板显示）。
-    float m_FPS = 0.0f;
 
     /// 本帧渲染统计（每帧 BeginFrame 重置）。
     RendererStats m_Stats;

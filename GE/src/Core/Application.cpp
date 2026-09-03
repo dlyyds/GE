@@ -96,12 +96,8 @@ void Application::Run() {
                     layer->OnUpdate(timestep);
             }
 
-            // 3. ImGui 已归并 Renderer：帧率等宿主数据喂给 Renderer，
-            //    Renderer::EndFrame 内会驱动 ImGui Begin → 各层 UI → 上屏。
-
-            // 4. End frame — layout → Present + end cmd + submit + present
-            //    （ImGui 的 UI 提交回调在 EndFrame 内部被调用）
-            m_Renderer->SetFrameInfo(m_FPS);
+            // 3. End frame — layout → Present + end cmd + submit + present
+            //    （ImGui 已归并 Renderer：其 UI 提交回调在 EndFrame 内部被调用）
             m_Renderer->EndFrame();
         }
         m_Window->OnUpdate();

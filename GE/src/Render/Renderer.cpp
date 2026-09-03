@@ -286,14 +286,6 @@ void Renderer::SetFrameUI(std::function<void()> callback) {
     m_FrameUI = std::move(callback);
 }
 
-void Renderer::SetFrameInfo(float fps) {
-    m_FPS = fps;
-}
-
-float Renderer::GetFPS() {
-    return Get().m_FPS;
-}
-
 Window &Renderer::GetWindowRef() {
     return Get().m_Window;
 }

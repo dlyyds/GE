@@ -233,6 +233,7 @@ void RenderGraph::BuildDependencyEdges() {
                 GE_CORE_ERROR("pass [{}] 引用了无效资源句柄 {}", pass.name, h);
                 GE_CORE_ASSERT(false, "pass 引用了无效资源句柄");
             }
+            const std::string &resName = m_Resources[h - 1].name;
             // 同一 pass 内同一资源多次出现：并集语义 —— 任一出现写即记为写。
             auto &accesses = m_PassAccess[p];
             auto it = std::find_if(accesses.begin(), accesses.end(),
@@ -240,8 +241,17 @@ void RenderGraph::BuildDependencyEdges() {
             if (it == accesses.end()) {
                 accesses.emplace_back(h, Access{u, IsWriteUsage(u)});
             } else {
+                // 编译期拦截：同 pass 内资源既作写又作读（动态渲染不支持 feedback loop）。
+                // 新用法是写、且此前已记为读，或相反 —— 报错。
+                const bool nowWrite = IsWriteUsage(u);
+                const bool hadWrite = it->second.write;
+                if (nowWrite != hadWrite) {
+                    GE_CORE_ERROR("pass [{}] 将资源 [{}] 既作附件写又作输入读——动态渲染不支持渲染反馈循环，"
+                                  "请拆成两个 pass 或用独立缓冲", pass.name, resName);
+                    GE_CORE_ASSERT(false, "pass 内资源读写冲突");
+                }
                 it->second.usage = u;   // 保留最近一次用法（用于掩码推导）
-                it->second.write = it->second.write || IsWriteUsage(u);
+                it->second.write = it->second.write || nowWrite;
             }
             auto &r = use[h];
             r.byPass.emplace_back(p, u);

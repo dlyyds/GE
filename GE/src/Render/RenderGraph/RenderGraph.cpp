@@ -234,24 +234,17 @@ void RenderGraph::BuildDependencyEdges() {
                 GE_CORE_ASSERT(false, "pass 引用了无效资源句柄");
             }
             const std::string &resName = m_Resources[h - 1].name;
-            // 同一 pass 内同一资源多次出现：并集语义 —— 任一出现写即记为写。
+            // 同一 pass 内一张图至多出现一次。重复声明（含既作附件写又作采样读的
+            // 渲染反馈循环）动态渲染均不支持，编译期直接拦截。
             auto &accesses = m_PassAccess[p];
             auto it = std::find_if(accesses.begin(), accesses.end(),
                                    [&](const auto &a) { return a.first == h; });
-            if (it == accesses.end()) {
-                accesses.emplace_back(h, Access{u, IsWriteUsage(u)});
+            if (it != accesses.end()) {
+                GE_CORE_ERROR("pass [{}] 重复引用了资源 [{}]——同一 pass 内一张图只能出现一次，"
+                              "如需既作附件又作采样请拆成两个 pass 或用独立缓冲", pass.name, resName);
+                GE_CORE_ASSERT(false, "pass 内资源重复引用");
             } else {
-                // 编译期拦截：同 pass 内资源既作写又作读（动态渲染不支持 feedback loop）。
-                // 新用法是写、且此前已记为读，或相反 —— 报错。
-                const bool nowWrite = IsWriteUsage(u);
-                const bool hadWrite = it->second.write;
-                if (nowWrite != hadWrite) {
-                    GE_CORE_ERROR("pass [{}] 将资源 [{}] 既作附件写又作输入读——动态渲染不支持渲染反馈循环，"
-                                  "请拆成两个 pass 或用独立缓冲", pass.name, resName);
-                    GE_CORE_ASSERT(false, "pass 内资源读写冲突");
-                }
-                it->second.usage = u;   // 保留最近一次用法（用于掩码推导）
-                it->second.write = it->second.write || nowWrite;
+                accesses.emplace_back(h, Access{u, IsWriteUsage(u)});
             }
             auto &r = use[h];
             r.byPass.emplace_back(p, u);
@@ -427,14 +420,8 @@ void RenderGraph::Execute(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame) {
         // ---- 生成前置屏障 ----
         std::vector<vk::ImageMemoryBarrier2> barriers;
 
-        // 逐资源去重：同一 pass 内同一资源出现多次（如附件 + 输入），只生成一次。
-        std::vector<ResourceHandle> visited;
+        // 逐资源生成屏障。同一 pass 内一资源至多一条记录（BuildDependencyEdges 已拦截重复）。
         for (const auto &[h, acc] : m_PassAccess[pi]) {
-            if (std::find(visited.begin(), visited.end(), h) != visited.end()) {
-                continue;
-            }
-            visited.push_back(h);
-
             const ResourceRecord &rec = m_Resources[h - 1];
             // 虚拟资源 v1 无真实图，跳过（阶段2 支持）
             if (!rec.external || !rec.external->GetView()) {
@@ -443,7 +430,7 @@ void RenderGraph::Execute(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame) {
             VulkanImageView &view = *rec.external->GetView();
             PerResourceLayout &pl = layout[h];
 
-            // 目标布局：本 pass 是否写该资源（acc.write 为并集，任一用法是写即写）。
+            // 目标布局：本 pass 是否写该资源（记录里 write = 任一引用是写即写）。
             const bool passWrites = acc.write;
             const ResourceUsage passUsage = passWrites ? FindUsageInPass(pi, h) : acc.usage;
             vk::ImageLayout target;

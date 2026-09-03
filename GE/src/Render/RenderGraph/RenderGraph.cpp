@@ -2,7 +2,8 @@
  * @file RenderGraph.cpp
  * @brief 渲染图实现：依赖建图 → 稳定拓扑排序 → 逐 pass 前置屏障。
  *
- * 对应计划书 §5.1–§5.4。v1 采用经典 vk::ImageMemoryBarrier；同步2 化留待阶段2。
+ * 对应计划书 §5.1–§5.4。同步采用 vk::ImageMemoryBarrier2（pipelineBarrier2，
+ * 对齐全引擎 VulkanImage.cpp 的同步2 范式）。
  *
  * 屏障策略（阶段1）：Execute 按执行序逐 pass 推进，为每个 pass 的跨 pass 资源
  * 访问生成前置屏障。资源布局状态由帧首记忆/初始状态出发随执行序推进。
@@ -31,68 +32,68 @@ namespace GE {
 namespace {
 
 /// 「写」用法对应的写阶段（写入该资源的访问发生在哪条管线阶段）。
-vk::PipelineStageFlags WriteStage(ResourceUsage usage) {
+vk::PipelineStageFlags2 WriteStage(ResourceUsage usage) {
     switch (usage) {
     case ResourceUsage::ColorAttachment:
-        return vk::PipelineStageFlagBits::eColorAttachmentOutput;
+        return vk::PipelineStageFlagBits2::eColorAttachmentOutput;
     case ResourceUsage::DepthStencilAttachment:
-        return vk::PipelineStageFlagBits::eEarlyFragmentTests | vk::PipelineStageFlagBits::eLateFragmentTests;
+        return vk::PipelineStageFlagBits2::eEarlyFragmentTests | vk::PipelineStageFlagBits2::eLateFragmentTests;
     case ResourceUsage::ShaderWrite:
-        return vk::PipelineStageFlagBits::eComputeShader;
+        return vk::PipelineStageFlagBits2::eComputeShader;
     case ResourceUsage::TransferDst:
-        return vk::PipelineStageFlagBits::eTransfer;
+        return vk::PipelineStageFlagBits2::eTransfer;
     default:
         return {};  // 读用法无写阶段
     }
 }
 
 /// 「读」用法对应的读阶段（读取该资源的访问发生在哪条管线阶段）。
-vk::PipelineStageFlags ReadStage(ResourceUsage usage) {
+vk::PipelineStageFlags2 ReadStage(ResourceUsage usage) {
     switch (usage) {
     case ResourceUsage::ColorAttachment:
-        return vk::PipelineStageFlagBits::eColorAttachmentOutput;
+        return vk::PipelineStageFlagBits2::eColorAttachmentOutput;
     case ResourceUsage::DepthStencilAttachment:
-        return vk::PipelineStageFlagBits::eEarlyFragmentTests | vk::PipelineStageFlagBits::eLateFragmentTests;
+        return vk::PipelineStageFlagBits2::eEarlyFragmentTests | vk::PipelineStageFlagBits2::eLateFragmentTests;
     case ResourceUsage::ShaderRead:
         // v1 覆盖顶点/片元采样（计算留阶段2）
-        return vk::PipelineStageFlagBits::eVertexShader | vk::PipelineStageFlagBits::eFragmentShader;
+        return vk::PipelineStageFlagBits2::eVertexShader | vk::PipelineStageFlagBits2::eFragmentShader;
     case ResourceUsage::ShaderWrite:
-        return vk::PipelineStageFlagBits::eComputeShader;
+        return vk::PipelineStageFlagBits2::eComputeShader;
     case ResourceUsage::TransferDst:
-        return vk::PipelineStageFlagBits::eTransfer;
+        return vk::PipelineStageFlagBits2::eTransfer;
     }
     return {};
 }
 
 /// 用法对应的「写访问」位。
-vk::AccessFlags WriteAccess(ResourceUsage usage) {
+vk::AccessFlags2 WriteAccess(ResourceUsage usage) {
     switch (usage) {
     case ResourceUsage::ColorAttachment:
-        return vk::AccessFlagBits::eColorAttachmentWrite;
+        return vk::AccessFlagBits2::eColorAttachmentWrite;
     case ResourceUsage::DepthStencilAttachment:
-        return vk::AccessFlagBits::eDepthStencilAttachmentWrite;
+        return vk::AccessFlagBits2::eDepthStencilAttachmentWrite;
     case ResourceUsage::ShaderWrite:
-        return vk::AccessFlagBits::eShaderWrite;
+        return vk::AccessFlagBits2::eShaderWrite;
     case ResourceUsage::TransferDst:
-        return vk::AccessFlagBits::eTransferWrite;
+        return vk::AccessFlagBits2::eTransferWrite;
     default:
         return {};
     }
 }
 
 /// 用法对应的「读访问」位。
-vk::AccessFlags ReadAccess(ResourceUsage usage) {
+vk::AccessFlags2 ReadAccess(ResourceUsage usage) {
     switch (usage) {
     case ResourceUsage::ColorAttachment:
-        return vk::AccessFlagBits::eColorAttachmentRead;
+        return vk::AccessFlagBits2::eColorAttachmentRead;
     case ResourceUsage::DepthStencilAttachment:
-        return vk::AccessFlagBits::eDepthStencilAttachmentRead;
+        return vk::AccessFlagBits2::eDepthStencilAttachmentRead;
     case ResourceUsage::ShaderRead:
-        return vk::AccessFlagBits::eShaderRead;
+        return vk::AccessFlagBits2::eShaderRead;
     case ResourceUsage::ShaderWrite:
         return {};
     case ResourceUsage::TransferDst:
-        return vk::AccessFlagBits::eTransferRead;
+        return vk::AccessFlagBits2::eTransferRead;
     }
     return {};
 }
@@ -136,19 +137,21 @@ bool IsWriteUsage(ResourceUsage usage) {
     }
 }
 
-/// 构造一条经典图像内存屏障（阶段掩码不在此结构内，由 vkCmdPipelineBarrier 单独传入）。
-vk::ImageMemoryBarrier MakeBarrier(vk::AccessFlags srcAccess,
-                                   vk::AccessFlags dstAccess,
-                                   vk::ImageLayout oldLayout,
-                                   vk::ImageLayout newLayout,
-                                   const VulkanImageView &view) {
-    vk::ImageMemoryBarrier b;
+/// 构造一条同步2 图像内存屏障（stage/access 一并携带在结构体内）。
+vk::ImageMemoryBarrier2 MakeBarrier(vk::PipelineStageFlags2 srcStage,
+                                    vk::AccessFlags2 srcAccess,
+                                    vk::PipelineStageFlags2 dstStage,
+                                    vk::AccessFlags2 dstAccess,
+                                    vk::ImageLayout oldLayout,
+                                    vk::ImageLayout newLayout,
+                                    const VulkanImageView &view) {
+    vk::ImageMemoryBarrier2 b;
+    b.srcStageMask = srcStage;
     b.srcAccessMask = srcAccess;
+    b.dstStageMask = dstStage;
     b.dstAccessMask = dstAccess;
     b.oldLayout = oldLayout;
     b.newLayout = newLayout;
-    b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     b.image = view.get_image().GetHandle();
     // 复用 view 已推断的 aspect（VulkanImageView.cpp 按格式正确设置 color/depth/stencil）
     b.subresourceRange = vk::ImageSubresourceRange{
@@ -412,12 +415,7 @@ void RenderGraph::Execute(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame) {
         GE_CORE_ASSERT(pass.type == PassType::Raster, "渲染图 v1 仅支持 Raster pass");
 
         // ---- 生成前置屏障 ----
-        struct PendingBarrier {
-            vk::ImageMemoryBarrier barrier;
-            vk::PipelineStageFlags srcStage;
-            vk::PipelineStageFlags dstStage;
-        };
-        std::vector<PendingBarrier> pendings;
+        std::vector<vk::ImageMemoryBarrier2> barriers;
 
         // 逐资源去重：同一 pass 内同一资源出现多次（如附件 + 输入），只生成一次。
         std::vector<ResourceHandle> visited;
@@ -456,32 +454,27 @@ void RenderGraph::Execute(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame) {
                 const ResourceUsage writerUsage = FindUsageInPass(writerPi, h);
                 const bool needLayoutChange =
                     pl.valid && pl.layout != target && target != vk::ImageLayout::eUndefined;
-                PendingBarrier pb;
-                pb.srcStage = WriteStage(writerUsage);
-                pb.dstStage = passWrites ? WriteStage(passUsage) : ReadStage(acc.usage);
-                pb.barrier = MakeBarrier(WriteAccess(writerUsage),
-                                         passWrites ? WriteAccess(passUsage) : ReadAccess(acc.usage),
-                                         needLayoutChange ? pl.layout : target,
-                                         target, view);
-                // 若无需布局转换，oldLayout == newLayout == target，仅做内存排序
-                pendings.push_back(std::move(pb));
+                const vk::PipelineStageFlags2 srcStage = WriteStage(writerUsage);
+                const vk::PipelineStageFlags2 dstStage =
+                    passWrites ? WriteStage(passUsage) : ReadStage(acc.usage);
+                barriers.push_back(MakeBarrier(
+                    srcStage, WriteAccess(writerUsage),
+                    dstStage, passWrites ? WriteAccess(passUsage) : ReadAccess(acc.usage),
+                    needLayoutChange ? pl.layout : target,   // 无需转换时 old==new==target，仅内存排序
+                    target, view));
                 if (needLayoutChange) {
                     pl.layout = target;
                     pl.valid = true;
                 }
             } else if (pl.valid && pl.layout != target && target != vk::ImageLayout::eUndefined) {
                 // 本帧首次访问且需布局转换（无内存依赖）。
-                const vk::PipelineStageFlags dstStage =
+                // srcStage=eTopOfPipe 表示"等待此前全部命令完成"，对丢弃型（Undefined 起点）是安全选择。
+                const vk::PipelineStageFlags2 dstStage =
                     passWrites ? WriteStage(passUsage) : ReadStage(acc.usage);
-                PendingBarrier pb;
-                // 首次转换无依赖源：eTopOfPipe 表示"等待此前全部命令完成"，
-                // 对丢弃型（Undefined 起点）是标准安全选择。
-                pb.srcStage = vk::PipelineStageFlagBits::eTopOfPipe;
-                pb.dstStage = dstStage;
-                pb.barrier = MakeBarrier({},
-                                         passWrites ? WriteAccess(passUsage) : ReadAccess(acc.usage),
-                                         pl.layout, target, view);
-                pendings.push_back(std::move(pb));
+                barriers.push_back(MakeBarrier(
+                    vk::PipelineStageFlagBits2::eTopOfPipe, {},
+                    dstStage, passWrites ? WriteAccess(passUsage) : ReadAccess(acc.usage),
+                    pl.layout, target, view));
                 pl.layout = target;
                 pl.valid = true;
             } else if (!pl.valid && target != vk::ImageLayout::eUndefined) {
@@ -495,18 +488,13 @@ void RenderGraph::Execute(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame) {
             }
         }
 
-        // ---- 提交前置屏障（本 pass 全部合并为一条 pipelineBarrier） ----
-        if (!pendings.empty()) {
-            vk::PipelineStageFlags src = {};
-            vk::PipelineStageFlags dst = {};
-            std::vector<vk::ImageMemoryBarrier> barriers;
-            barriers.reserve(pendings.size());
-            for (const auto &pb : pendings) {
-                src |= pb.srcStage;
-                dst |= pb.dstStage;
-                barriers.push_back(pb.barrier);
-            }
-            cmd.GetHandle().pipelineBarrier(src, dst, {}, {}, {}, barriers);
+        // ---- 提交前置屏障（本 pass 全部合并为一次 pipelineBarrier2） ----
+        if (!barriers.empty()) {
+            vk::DependencyInfo depInfo{
+                .imageMemoryBarrierCount = static_cast<uint32_t>(barriers.size()),
+                .pImageMemoryBarriers   = barriers.data(),
+            };
+            cmd.GetHandle().pipelineBarrier2(depInfo);
         }
 
         // ---- 录制本 pass ----

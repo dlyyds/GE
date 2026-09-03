@@ -410,7 +410,7 @@ Pass "UIPass"         （把 3D+2D 合成结果当采样输入画到 swapchain�
 | `RenderGraph` | 编译期：依赖边、拓扑序、每资源布局状态机、屏障清单 | 不做资源分配 / 跨帧复用 / 别名 |
 | `ImageViewResource` | **跨帧**记录一张外部图像"停在哪个布局"，提供本帧 `initialLayout/finalLayout` | 不拥有 image / view |
 | `PassExecuteContext` | 透传本 pass 需要的：cmd、frame、绑定句柄表 | 不直接持渲染器引用 |
-| 屏障工具（`RenderGraphInternal` 或匿名命名空间函数） | 依据 §7 资源用法表生成 `vk::ImageMemoryBarrier` 掩码；必要时走同步2 | 不进公共 API |
+| 屏障工具（`RenderGraphInternal` 或匿名命名空间函数） | 依据 §7 资源用法表生成同步2 掩码（`vk::ImageMemoryBarrier2`） | 不进公共 API |
 
 **关键**：图只认 `ImageViewResource`（外部）与虚拟资源句柄，**不识别也不持有 `RenderTarget`**。现在 2D/3D 绑定渲染目标用的是 `Renderer3D::SetRenderTarget(RenderTarget*)`（SceneLayer.cpp:196/197），迁移后由**调用方**把目标**拆成若干 ImageView 导入**并挂到 pass 附件声明 —— 谁要把场景画进某张图，谁负责 import 它。这样图对"渲染目标"无感知，天然同时支持 swapchain 目标与 SceneViewport 离屏目标。
 
@@ -446,7 +446,7 @@ Pass "UIPass"         （把 3D+2D 合成结果当采样输入画到 swapchain�
 | **S4** 吸收 swapchain | `Renderer::BeginFrame` 的 `Undefined→ColorAttachmentOptimal`、`EndFrame` 的 `ColorAttachmentOptimal→PresentSrc` 改由图首尾态承接（首 `ExternalImageState::Undefined`、末 `finalLayout=ePresentSrcKHR`） | 纯渲染与编辑器双路径都无回归；屏障数量不增 |
 | **S5** 回归 | 对拍：编辑器 + 无编辑器两条路径，GPU 上 barrier 数 ≤ 迁移前 | 见 §6.4 断言，RenderDoc 目检 |
 
-**要点**：阶段1 不做 compute/transfer、不做虚拟资源实例、不做 ImGui pass 化、不做同步2。执行时遇到问题先查 §6.4 断言，保证图结构可诊断。
+**要点**：阶段1 不做 compute/transfer、不做虚拟资源实例、不做 ImGui pass 化。同步已提前到同步2（见 §7 附注）。执行时遇到问题先查 §6.4 断言，保证图结构可诊断。
 
 ### 6A.6 帧循环接线（现状 → 图版）
 
@@ -519,7 +519,7 @@ swapchain 图像：导入时 `initialLayout = eUndefined`（引擎现在 BeginFr
 
 颜色附件「读」阶段仅在写后采样才需要（如后处理读回）；基础绘制 pass 读的是深度附件（早期片元测试）与采样纹理 —— 上表已覆盖。
 
-> 同步2（VulkanImage.cpp 已在用 `FlagBits2`）可作为本方案的阶段2升级点：`VkPipelineBarrierInfo2` + `VkImageMemoryBarrier2` 将 stage/access 拆得更细且无需先推导再合并。v1 先用经典 `pipelineBarrier` 对齐现有 `image_layout_transition`；同步2 版本把「合并规则」替换即可，图接口不动。
+> 同步已统一到同步2（`VulkanImage.cpp` 的既有范式）：RenderGraph 用 `vk::ImageMemoryBarrier2` + `cmd.pipelineBarrier2`，stage/access 直接携带在结构体内，无需在命令提交处再推导合并（计划书初稿把同步2 列为阶段2 升级点，S1 落地时因引擎已全用同步2 而提前完成）。
 
 ---
 
@@ -530,7 +530,7 @@ swapchain 图像：导入时 `initialLayout = eUndefined`（引擎现在 BeginFr
 | **CPU 构建** | 每帧 `Compile`：O(V+E) 的稳定拓扑排序 + 属性推导。~10 pass 级场景开销 < 10μs，相比录制命令缓冲的几十~上百 μs 可忽略 |
 | **命令缓冲额外命令** | 布局转换只在 **pass 边界** 需要；编译器把连续多个 pass 之间针对同一资源的同步合并成最少屏障。现状的手工屏障数**只会减少** |
 | **不增加 GPU 往返** | 全部同步在单 command buffer 内，无额外 submit / 等待 |
-| **可选项：同步2 合并** | `pipelineBarrier2` 语义下 stage/access 天然可并 → 进一步减屏障数。v2 再考虑 |
+| **可选项：同步2 合并** | S1 已用 `pipelineBarrier2`，stage/access 在结构体内、可精细合并。进一步减少屏障数（跨资源合并）留待后续 | 已落地，无额外成本 |
 
 ---
 
@@ -574,5 +574,4 @@ swapchain 图像：导入时 `initialLayout = eUndefined`（引擎现在 BeginFr
 
 - **跨队列**：图目前只产出「同一条命令缓冲的线性命令流」。若将来出现 transfer / compute 专用队列，需把 barrier 升级为 `semaphore`（队列间）—— 接口层面变化，但 Pass 声明方式不变（读写关系不依赖队列）。
 - **帧内资源别名**：虚拟资源支持 alias（同帧两个虚拟纹理复用物理内存），是持久图时代的主要内存收益。v1 仅预留 `transient` 标志。
-- **同步2 化**：统一到 `pipelineBarrier2`，见 §7 附注。
 - **RenderPass / 传统 renderpass**：本项目已用动态渲染，不回流。

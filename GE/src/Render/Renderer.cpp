@@ -154,12 +154,10 @@ void Renderer::EndFrame() {
     if (m_ImGuiLayer) {
         GE_PROFILE_SCOPE("ImGuiRender");
         ImGuiLayer::Begin();
-        // 各宿主 Layer 的 UI（含 DockSpace 宿主，须先建 DockSpace，故统计窗口在其后画）
+        // 各宿主 Layer 的 UI（DockSpace 宿主须最先创建停靠区）
         if (m_FrameUI) {
             m_FrameUI();
         }
-        // Renderer 自带 UI（渲染统计面板）：在 DockSpace 建好后停靠并绘制
-        m_ImGuiLayer->OnImGuiRender();
         m_ImGuiLayer->End();
     }
 

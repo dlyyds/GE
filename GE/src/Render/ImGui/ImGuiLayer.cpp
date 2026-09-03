@@ -157,39 +157,6 @@ void ImGuiLayer::End() {
     render_info.End(vkCmd);
 }
 
-bool ImGuiLayer::WantCaptureImGuiInput() const {
-    const ImGuiIO &io = ImGui::GetIO();
-    return io.WantCaptureMouse || io.WantCaptureKeyboard;
-}
-
-void ImGuiLayer::OnImGuiRender() {
-    // ── 渲染统计面板 ──────────────────────────────────────────────────
-    // 停靠进主 DockSpace（根上下文取 "MainDockspace"，与 DockSpaceLayer 一致）
-    ImGui::SetNextWindowDockID(ImGui::GetID("MainDockspace"), ImGuiCond_FirstUseEver);
-    if (ImGui::Begin("渲染统计")) {
-        const auto &stats = Renderer::GetStats();
-
-        ImGui::Text("帧率: %.1f FPS", Renderer::GetFPS());
-
-        ImGui::Separator();
-        ImGui::Text("2D（精灵批处理）");
-        ImGui::BulletText("Draw Calls: %u", stats.drawCalls2D);
-        ImGui::BulletText("三角形: %u", stats.triangles2D);
-
-        ImGui::Separator();
-        ImGui::Text("3D（网格）");
-        ImGui::BulletText("Draw Calls: %u", stats.drawCalls3D);
-        ImGui::BulletText("排序批次: %u", stats.batches3D);
-        ImGui::BulletText("三角形: %u", stats.triangles3D);
-
-        ImGui::Separator();
-        ImGui::Text("总计");
-        ImGui::BulletText("Draw Calls: %u", stats.TotalDrawCalls());
-        ImGui::BulletText("三角形: %u", stats.TotalTriangles());
-    }
-    ImGui::End();
-}
-
 void ImGuiLayer::OnSwapchainRecreated() {
     // ImGui 的 Vulkan backend 会在下次 ImGui_ImplVulkan_RenderDrawData 时
     // 主动查询当前 swapchain image 的 framebuffer；重建后 image view 已换新，

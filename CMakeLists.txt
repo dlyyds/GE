@@ -248,9 +248,11 @@ set(Editor_SRC
         ${CMAKE_SOURCE_DIR}/GE_Editor/src/GizmoController.cpp
         ${CMAKE_SOURCE_DIR}/GE_Editor/src/ResourceLayer.cpp
         ${CMAKE_SOURCE_DIR}/GE_Editor/src/ASMGraphLayer.cpp
+        ${CMAKE_SOURCE_DIR}/GE_Editor/src/StatsLayer.cpp
         ${CMAKE_SOURCE_DIR}/GE_Editor/src/Panels/SceneHierarchyPanel.cpp
         ${CMAKE_SOURCE_DIR}/GE_Editor/src/Panels/ResourcePanel.cpp
         ${CMAKE_SOURCE_DIR}/GE_Editor/src/Panels/ASMGraphPanel.cpp
+        ${CMAKE_SOURCE_DIR}/GE_Editor/src/Panels/RenderStatsPanel.cpp
         ${CMAKE_SOURCE_DIR}/GE_Editor/src/NodeEditorUtils/drawing.cpp
         ${CMAKE_SOURCE_DIR}/GE_Editor/src/NodeEditorUtils/widgets.cpp
         ${CMAKE_SOURCE_DIR}/GE_Editor/src/NodeEditorUtils/builders.cpp

@@ -5,6 +5,7 @@
 #include "HierarchyLayer.h"
 #include "ResourceLayer.h"
 #include "DockSpaceLayer.h"
+#include "StatsLayer.h"
 #include "GizmoController.h"
 #include "ASMGraphLayer.h"
 
@@ -21,6 +22,7 @@ public:
         auto hierarchy_layer = std::make_shared<HierarchyLayer>(scene_ctx);
         auto resource_layer = std::make_shared<ResourceLayer>();
         auto asm_graph_layer = std::make_shared<ASMGraphLayer>(scene_ctx, hierarchy_layer.get());
+        auto stats_layer = std::make_shared<StatsLayer>();
 
         // auto sandbox_layer = std::make_shared<SandboxLayer>();
         // 让顶部「文件」菜单里的场景操作绑定到场景层
@@ -32,6 +34,7 @@ public:
         PushLayer(hierarchy_layer);
         PushLayer(resource_layer);
         PushLayer(asm_graph_layer);
+        PushLayer(stats_layer);
     }
 
     ~EditorApp() override = default;

@@ -1,18 +1,11 @@
 #pragma once
 
 #include "Core/Base.h"
-#include "Events/ApplicationEvent.h"
-#include "Events/KeyEvent.h"
-#include "Events/MouseEvent.h"
 
 namespace GE {
 
 class Renderer;
 class Window;
-class VulkanContext;
-class VulkanRenderContext;
-class VulkanImageView;
-class VulkanCommandBuffer;
 
 /**
  * @brief ImGui 运行时（Renderer 内部组件）。
@@ -21,7 +14,7 @@ class VulkanCommandBuffer;
  * - 生命周期由 Renderer 管理（构造尾部创建，WaitIdle 后销毁）
  * - Vulkan / swapchain / 窗口句柄来自 Renderer 持有的引用
  * - 帧调度由 Renderer::EndFrame 内部驱动（Begin → UI 回调 → End）
- * - 不再参与 LayerStack 的 OnUpdate/OnEvent 遍历；输入捕获以显式查询方式暴露
+ * - 仅承载 ImGui 生命周期与 backend，不携带具体业务 UI（面板归宿主 / 编辑器层）
  */
 class ImGuiLayer {
 public:
@@ -50,12 +43,6 @@ public:
 
     /// swapchain 重建（resize / present mode 变更）后刷新 backend 依赖的 image 信息。
     void OnSwapchainRecreated();
-
-    /// 是否希望拦截鼠标/键盘输入（ImGui 窗口悬停或文本输入）。
-    [[nodiscard]] bool WantCaptureImGuiInput() const;
-
-    /// 渲染本帧 ImGui UI（统计面板；Renderer 把宿主 Layer 的 UI 回调挂在帧驱动上）。
-    void OnImGuiRender();
 
 private:
     void SetDarkThemeColors();

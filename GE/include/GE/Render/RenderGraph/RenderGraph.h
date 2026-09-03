@@ -97,6 +97,14 @@ public:
     bool IsCompiled() const { return m_Compiled; }
     size_t GetPassCount() const { return m_Passes.size(); }
 
+    /// 依赖边：src pass 写 → dst pass 读/写同一资源（§5.1 产出，调试访问用）。
+    struct GraphEdge {
+        uint32_t srcPass = 0;        ///< 写者 pass（依赖源）
+        uint32_t dstPass = 0;        ///< 读者/下一写者 pass（依赖目标）
+        ResourceHandle resource = kInvalidResource;
+        ResourceUsage  usage = ResourceUsage::ShaderRead;  ///< dstPass 侧的使用
+    };
+
     /// 资源表行：每行对应一个资源（外部或虚拟）。
     struct ResourceRecord {
         std::string name;                                  ///< 资源名（调试）
@@ -108,6 +116,11 @@ public:
 
     /// 获取资源表（调试/访问）。
     const std::vector<ResourceRecord> &GetResources() const { return m_Resources; }
+
+    /// 获取依赖边（调试/访问）。
+    const std::vector<GraphEdge> &GetEdges() const { return m_Edges; }
+    /// 获取拓扑执行序（调试/访问）。
+    const std::vector<uint32_t> &GetExecutionOrder() const { return m_ExecutionOrder; }
 
     /// 按句柄查资源记录（越界/无效返回 nullptr）。
     ResourceRecord *FindResource(ResourceHandle handle);

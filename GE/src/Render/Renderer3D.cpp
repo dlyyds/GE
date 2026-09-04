@@ -922,6 +922,12 @@ void Renderer3D::DrawMeshInstances(VulkanCommandBuffer &cmd, VulkanRenderFrame &
         materialUBO.params.y = batch.material
                                    ? batch.material->GetFloat("specularStrength", 0.5f)
                                    : 0.5f;
+        // params.z = alphaCutoff（MASK 裁剪阈值）。Opaque/Blend 填 -1 关闭 discard
+        // （shader 侧以 params.z >= 0 判定是否启用裁剪）；Mask 填实际阈值。
+        materialUBO.params.z = (batch.material
+                                && batch.material->alphaMode == Material::AlphaMode::Mask)
+                                   ? batch.material->alphaCutoff
+                                   : -1.0f;
         materialUBO.params.w = batch.material
                                    ? batch.material->GetFloat("uvTiling", 1.0f)
                                    : 1.0f;
@@ -931,9 +937,14 @@ void Renderer3D::DrawMeshInstances(VulkanCommandBuffer &cmd, VulkanRenderFrame &
         materialUBO.pbr.y = batch.material
                                 ? batch.material->GetFloat("roughness", 0.5f)
                                 : 0.5f;
-        materialUBO.emissiveFactor = batch.material
-                                         ? glm::vec4(batch.material->GetEmissiveFactor(), 0.0f)
-                                         : glm::vec4(0.0f);
+        // emissiveFactor.rgb = 自发光颜色因子；.w = 材质基础 alpha（baseAlpha，
+        // glTF baseColorFactor[3] / OBJ dissolve 语义），shader 侧乘进最终 alpha。
+        glm::vec4 emissive(0.0f);
+        if (batch.material) {
+            emissive = glm::vec4(batch.material->GetEmissiveFactor(),
+                                 batch.material->GetFloat("baseAlpha", 1.0f));
+        }
+        materialUBO.emissiveFactor = emissive;
         BufferAllocation materialUboAlloc = frame.AllocateBuffer(
             vk::BufferUsageFlagBits::eUniformBuffer, sizeof(MaterialUBO));
         materialUboAlloc.update(materialUBO);

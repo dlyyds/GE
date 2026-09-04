@@ -352,6 +352,17 @@ static void AppendGLTFMaterial(const tinygltf::Model &m, int materialIdx,
     md.emissiveMap = resTex(mat.emissiveTexture.index);
     md.metallicRoughnessMap = resTex(pbr.metallicRoughnessTexture.index);
 
+    // ── 透明度语义（alphaMode / alphaCutoff / doubleSided / 基础 alpha）──
+    // glTF 规范：alphaMode ∈ {OPAQUE, MASK, BLEND}，默认 OPAQUE；
+    // baseColorFactor[3] 是材质级基础 alpha（默认 1），落到 dissolve
+    // （OBJ `d` / 不透明度同语义，ApplyMaterialData 据此生成颜色）。
+    md.alphaMode = (mat.alphaMode == "MASK") ? Material::AlphaMode::Mask
+                 : (mat.alphaMode == "BLEND") ? Material::AlphaMode::Blend
+                                              : Material::AlphaMode::Opaque;
+    md.alphaCutoff = static_cast<float>(mat.alphaCutoff);
+    md.doubleSided = mat.doubleSided;
+    md.dissolve = static_cast<float>(pbr.baseColorFactor[3]);
+
     out.push_back(std::move(md));
 }
 

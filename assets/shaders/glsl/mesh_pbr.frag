@@ -27,10 +27,12 @@ layout (set = 1, binding = 7) uniform sampler2D  samplerBrdfDFG;    // BRDF LUT�
 // 每材质 UB（按批次绑定）：
 //   params.x = shininess（Blinn-Phong 高光指数，PBR 下未用）
 //   params.y = specularStrength（Blinn-Phong 镜面强度，PBR 下未用）
+//   params.z = alphaCutoff（MASK 裁剪阈值；Opaque/Blend 传 -1 关闭 discard）
 //   params.w = uvTiling（纹理平铺 / UV 缩放密度，采样前乘 inUV）
 //   pbr.x = metallic（金属度，0=绝缘体 1=金属）
 //   pbr.y = roughness（粗糙度，0=镜面 1=漫）
 //   emissiveFactor.rgb = 自发光颜色因子（乘自发光贴图颜色）
+//   emissiveFactor.w = 材质基础 alpha（baseAlpha，glTF baseColorFactor[3] / OBJ dissolve）
 layout (set = 1, binding = 2, std140) uniform MaterialUBO
 {
     vec4 params;
@@ -170,7 +172,9 @@ void main()
 {
     // Albedo 贴图以 sRGB 格式加载，硬件采样时自动解码到线性空间，PBR 光照数学才成立。
     // 法线 / metallic / roughness 是数据而非颜色，仍用 Unorm 不做 gamma 解码。
-    vec3 albedo = texture(samplerColor, inUV * material.params.w, 0.0).rgb * inColor.rgb;
+    // 保留完整 texColor（含 a），供收尾算最终 alpha（纹理 alpha × tint alpha）。
+    vec4 texColor = texture(samplerColor, inUV * material.params.w, 0.0);
+    vec3 albedo = texColor.rgb * inColor.rgb;
 
     // —— 法线贴图：从切线空间采样并变换到世界空间 ——
     // 采样值 [0,1] 映射到 [-1,1]；用 TBN 矩阵变换。
@@ -237,5 +241,14 @@ void main()
     // swapchain 硬件编码回显示空间；若在此再手动 gamma 编码会与硬件叠加成
     // 双重编码，画面偏亮发白。
     result = acesToneMap(result);
-    outFragColor = vec4(result, 1.0);
+
+    // —— 透明度（alphaMode 语义，值经 Renderer3D 填于 material.params.z / .w）——
+    // 最终 alpha = 纹理 alpha × 材质基础 alpha（emissiveFactor.w，baseAlpha）× 实例 tint alpha
+    // （inColor.a，DrawMesh 的 color.a）。MASK 裁剪：params.z >= 0 表示启用裁剪
+    // （Opaque/Blend 传 -1），低于阈值 discard。混合在线性空间进行（ACES 只作用于
+    // RGB，alpha 不经过 tone map），结果输出后由 sRGB swapchain 硬件编码。
+    // 是否混合由管线混合状态决定，此处仅恒输出真 alpha。
+    float alpha = texColor.a * material.emissiveFactor.w * inColor.a;
+    if (material.params.z >= 0.0 && alpha < material.params.z) discard;
+    outFragColor = vec4(result, alpha);
 }

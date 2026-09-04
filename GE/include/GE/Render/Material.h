@@ -73,6 +73,22 @@ public:
         PBR,          ///< PBR 金属-粗糙度工作流（Cook-Torrance）
     };
 
+    /**
+     * @brief 透明模式（与 glTF alphaMode 对齐）。
+     *
+     * 半透明的判定与渲染路径都由此驱动：
+     * - Opaque：不透明（默认，忽略 alpha）。
+     * - Mask：alpha 测试，低于 alphaCutoff 的片元 discard；仍是不透明物体
+     *   （写深度、不混合、可被深度遮挡），用于树叶/铁丝网等裁剪。
+     * - Blend：真半透明，走透明 pass（深度不写、alpha 混合、从远到近）。
+     * 只有 Blend 才是「半透明」；Opaque 与 Mask 在延迟渲染中都写 G-Buffer。
+     */
+    enum class AlphaMode {
+        Opaque,   ///< 不透明（默认，忽略 alpha）
+        Mask,     ///< alpha 测试：低于 alphaCutoff 的片元 discard
+        Blend,    ///< alpha 混合：半透明，深度不写
+    };
+
     // ========================================================================
     // 构造 / 析构
     // ========================================================================
@@ -241,7 +257,12 @@ public:
     // 渲染状态（公开字段，直接修改）
     // ========================================================================
 
-    bool alphaTest   = false;   ///< Alpha 测试（discard 低于阈值的片元）
+    /// 透明模式（Opaque=不透明 / Mask=裁剪 / Blend=半透明混合，与 glTF alphaMode 对齐）。
+    AlphaMode alphaMode = AlphaMode::Opaque;
+
+    /// MASK 裁剪阈值（低于该 alpha 的片元 discard）；仅 alphaMode==Mask 时有效。
+    float     alphaCutoff = 0.5f;
+
     bool doubleSided = false;   ///< 双面渲染（禁用背面剔除）
 
     // ========================================================================

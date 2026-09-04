@@ -91,6 +91,16 @@ static void ApplyMaterialData(Material &mat, const MaterialData &md,
     // 自发光颜色因子：取 MTL 发光颜色（emissiveFactor，乘自发光贴图颜色）
     mat.SetEmissiveFactor(glm::vec3(md.emissive));
 
+    // ── 透明度语义透传（glTF alphaMode 对齐）──
+    // 半透明（Blend）材质除 alphaMode 外还需把基础 alpha（dissolve）作为因子：
+    //  1. 采样侧最终 alpha = 纹理 alpha × 材质基础 alpha（baseAlpha）× 实例 tint alpha
+    //     （baseAlpha 存浮点参数，Renderer3D 填 MaterialUBO.emissiveFactor.w 传给 shader）；
+    //  2. 编辑器里对纯色无贴图材质，此处已用 glm::vec4(baseColor, dissolve) 生成带 alpha 纯色图。
+    mat.alphaMode = md.alphaMode;
+    mat.alphaCutoff = md.alphaCutoff;
+    mat.doubleSided = md.doubleSided;
+    mat.SetFloat("baseAlpha", md.dissolve);
+
     // 漫反射贴图：有 map_Kd 则加载；否则用漫反射颜色的纯色纹理（非白色时）。
     // 颜色贴图以 sRGB 格式加载，硬件采样时自动解码到线性空间（与输出侧
     // sRGB swapchain 的硬件编码配对成标准线性管线）。法线/金属度/粗糙度是

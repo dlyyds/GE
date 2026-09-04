@@ -11,9 +11,11 @@ layout (set = 1, binding = 3) uniform sampler2D samplerEmissive; // 自发光贴
 // 每材质 UB（按批次绑定）：存放材质标量参数。
 //   params.x = shininess（高光指数，决定高光斑形态/大小）
 //   params.y = specularStrength（镜面强度，独立控制高光亮暗）
+//   params.z = alphaCutoff（MASK 裁剪阈值；Opaque/Blend 传 -1 关闭 discard）
 //   params.w = uvTiling（纹理平铺 / UV 缩放密度，采样前乘 inUV）
 //   pbr 为占位字段：必须与 C++ MaterialUBO 布局一致，Blinn-Phong 不使用
 //   emissiveFactor.rgb = 自发光颜色因子（乘自发光贴图颜色）
+//   emissiveFactor.w = 材质基础 alpha（baseAlpha，glTF baseColorFactor[3] / OBJ dissolve）
 layout (set = 1, binding = 2, std140) uniform MaterialUBO
 {
     vec4 params;
@@ -143,5 +145,12 @@ void main()
     vec3 emissive = texture(samplerEmissive, inUV * material.params.w, 0.0).rgb * material.emissiveFactor.rgb;
     result += emissive;
 
-    outFragColor = vec4(result, 1.0);
+    // —— 透明度（alphaMode 语义，值经 Renderer3D 填于 material.params.z / .w）——
+    // 最终 alpha = 纹理 alpha × 材质基础 alpha（emissiveFactor.w，baseAlpha）× 实例 tint alpha
+    // （inColor.a，DrawMesh 的 color.a）。MASK 裁剪：params.z >= 0 表示启用裁剪
+    // （Opaque/Blend 传 -1），低于阈值 discard。是否混合由管线混合状态决定，
+    // 此处仅恒输出真 alpha；Opaque 模式混合关、该值无副作用。
+    float alpha = texColor.a * material.emissiveFactor.w * inColor.a;
+    if (material.params.z >= 0.0 && alpha < material.params.z) discard;
+    outFragColor = vec4(result, alpha);
 }

@@ -385,11 +385,27 @@ void ResourcePanel::DrawMaterialSection() {
                     DrawPropertyLabel(desc ? desc->label : pname.c_str());
                 }
 
-                // 渲染状态（复选框位于左列）
+                // 渲染状态（透明模式 + 双面渲染）
+                // 透明模式对齐 glTF alphaMode：Opaque=不透明 / Mask=裁剪 / Blend=半透明
                 ImGui::TableNextRow();
                 ImGui::TableSetColumnIndex(0);
-                ImGui::Checkbox("##alpha", &mat->alphaTest);
-                DrawPropertyLabel("Alpha 测试");
+                {
+                    static const char *kAlphaModes[] = {"Opaque", "Mask", "Blend"};
+                    int am = static_cast<int>(mat->alphaMode);
+                    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+                    if (ImGui::Combo("##alphaMode", &am, kAlphaModes,
+                                     IM_ARRAYSIZE(kAlphaModes))) {
+                        mat->alphaMode = static_cast<Material::AlphaMode>(am);
+                    }
+                }
+                DrawPropertyLabel("Alpha Mode");
+                if (mat->alphaMode == Material::AlphaMode::Mask) {
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(0);
+                    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+                    ImGui::SliderFloat("##alphaCutoff", &mat->alphaCutoff, 0.0f, 1.0f);
+                    DrawPropertyLabel("Alpha Cutoff");
+                }
 
                 ImGui::TableNextRow();
                 ImGui::TableSetColumnIndex(0);

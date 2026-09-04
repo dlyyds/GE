@@ -166,6 +166,11 @@ bool ModelLoader::ParseOBJ(const std::string &filepath, MeshData &out) {
         md.emissive = {src.emission[0], src.emission[1], src.emission[2]};
         md.shininess = src.shininess > 0.0f ? src.shininess : 32.0f;
         md.dissolve = src.dissolve;
+        // MTL 无 alphaMode 概念：dissolve < 1 即半透明（Blend），否则不透明。
+        // （MASK 裁剪无 MTL 对应物，保持默认 Opaque。）
+        if (src.dissolve < 1.0f) {
+            md.alphaMode = Material::AlphaMode::Blend;
+        }
         md.metallic = src.metallic;
         md.roughness = src.roughness > 0.0f ? src.roughness : 0.5f;
         // 存在 PBR 扩展参数（非零标量或 MR 贴图）即视为 PBR 材质

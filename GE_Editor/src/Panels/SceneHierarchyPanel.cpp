@@ -1242,7 +1242,16 @@ static void DrawMaterialEditor(Material *material) {
     ImGui::Separator();
 
     // 渲染状态
-    ImGui::Checkbox("Alpha Test", &material->alphaTest);
+    // 透明模式（对齐 glTF alphaMode）：Opaque=不透明 / Mask=裁剪 / Blend=半透明
+    static const char *kAlphaModeNames[] = {"Opaque (不透明)", "Mask (裁剪)", "Blend (半透明)"};
+    int alphaMode = static_cast<int>(material->alphaMode);
+    if (ImGui::Combo("Alpha Mode (透明模式)", &alphaMode, kAlphaModeNames,
+                     IM_ARRAYSIZE(kAlphaModeNames))) {
+        material->alphaMode = static_cast<Material::AlphaMode>(alphaMode);
+    }
+    if (material->alphaMode == Material::AlphaMode::Mask) {
+        ImGui::SliderFloat("Alpha Cutoff (裁剪阈值)", &material->alphaCutoff, 0.0f, 1.0f);
+    }
     ImGui::Checkbox("Double Sided", &material->doubleSided);
 }
 

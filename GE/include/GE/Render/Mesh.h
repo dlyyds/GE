@@ -11,6 +11,7 @@
 
 #include "Render/VulkanBase/VulkanBuffer.h"
 #include "Render/VulkanBase/VulkanDevice.h"
+#include "Render/Material.h"
 
 #include <vulkan/vulkan.hpp>
 
@@ -26,8 +27,6 @@
 #include <glm/glm.hpp>
 
 namespace GE {
-
-class Material;
 
 /**
  * @brief 从 OBJ/MTL 捕获的材质数据（POD，与 tinyobjloader 解耦）。
@@ -53,6 +52,12 @@ struct MaterialData {
     std::string metallicMap;  ///< 金属度贴图（map_Pm，OBJ 独立灰度图，绝对路径）
     std::string roughnessMap; ///< 粗糙度贴图（map_Pr，OBJ 独立灰度图，绝对路径）
     std::string metallicRoughnessMap; ///< 金属-粗糙度合并贴图（glTF 惯例：B=金属度, G=粗糙度，绝对路径）
+
+    bool doubleSided = false; ///< 双面渲染（OBJ/MTL 或 glTF 材质标志，落 Material::doubleSided）
+
+    /// glTF alpha 语义（默认不透明）。OBJ 无 alphaMode 概念，仅 dissolve<1 可推断为 Blend。
+    Material::AlphaMode alphaMode = Material::AlphaMode::Opaque;
+    float alphaCutoff = 0.5f;  ///< MASK 裁剪阈值（glTF alphaCutoff，默认 0.5）
 };
 
 /**

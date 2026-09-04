@@ -229,7 +229,8 @@ void SceneLayer::OnUpdate(Timestep &ts) {
     // Scene 只做仿真 + 采集（3D/2D 批次经 EndScene 延迟快照，不录制命令）
     m_Context->Scene->OnUpdate3D(ts, view, projection, cameraPos, clearColor);
 
-    // ── 向本帧渲染图注册两 pass：Scene3D（清屏含深度）→ Scene2D（叠加世界/UI 精灵） ──
+    // ── 向本帧渲染图注册场景 pass：Scene3D → Scene2D，或延迟链
+    //    GBuffer → Lighting → Transparent → Scene2D ──
     // 图对象与 Builder 由 Renderer 托管（GetFrameGraphBuilder），每帧 BeginFrame
     // 末尾已 Reset；这里只 Import 视口颜色/深度并声明 pass 读写，命令录制与
     // Execute 统一在 Renderer::EndFrame（ImGui 上屏前）完成。故此处不复位
@@ -243,30 +244,115 @@ void SceneLayer::OnUpdate(Timestep &ts) {
     ResourceHandle hColor = b.Import(&viewportRT->GetColorView(), "ViewportColor");
     ResourceHandle hDepth = b.Import(&viewportRT->GetDepthView(), "ViewportDepth");
 
-    // Pass0 "Scene3D"：清屏 + 深度 eClear；颜色/深度 eStore（深度须保留给 Scene2D 读）
-    RenderPassDesc &scene3D = b.AddPass("Scene3D");
-    scene3D.renderArea = renderArea;
-    AttachmentDesc colorClear;
-    colorClear.resource = hColor;
-    colorClear.usage = ResourceUsage::ColorAttachment;
-    colorClear.loadOp = vk::AttachmentLoadOp::eClear;
-    colorClear.storeOp = vk::AttachmentStoreOp::eStore;
-    colorClear.clearValue.color = {clearColor.r, clearColor.g, clearColor.b, clearColor.a};
-    scene3D.colorAttachments.push_back(colorClear);
-    AttachmentDesc depthClear;
-    depthClear.resource = hDepth;
-    depthClear.usage = ResourceUsage::DepthStencilAttachment;
-    depthClear.loadOp = vk::AttachmentLoadOp::eClear;
-    depthClear.storeOp = vk::AttachmentStoreOp::eStore;
-    // 深度写后停靠深度布局；finalLayout 默认是颜色态，不显式写回会给深度图
-    // 追加一条非法的「深度 → Color」收尾转换（VUID-VkImageMemoryBarrier2-oldLayout-01208）。
-    depthClear.finalLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
-    scene3D.depthAttachment = depthClear;
-    scene3D.execute = [](PassExecuteContext &ctx) {
-        Renderer::Get3DRenderer().FlushScene(ctx);
-    };
+    if (Renderer::Get3DRenderer().IsDeferred()) {
+        // GBuffer 虚拟资源：由渲染图池本帧解析分配，屏障/布局/生命周期由图承接。
+        RenderGraphResourceDesc gdesc;
+        gdesc.extent = extent;
+        gdesc.samples = vk::SampleCountFlagBits::e1;
+        gdesc.format = vk::Format::eR8G8B8A8Unorm;
+        ResourceHandle hG0 = b.CreateVirtualResource(gdesc);
+        gdesc.format = vk::Format::eR16G16B16A16Sfloat;
+        ResourceHandle hG1 = b.CreateVirtualResource(gdesc);
+        ResourceHandle hG2 = b.CreateVirtualResource(gdesc);
+        ResourceHandle hG3 = b.CreateVirtualResource(gdesc);
 
-    // Pass1 "Scene2D"：叠加世界/UI 精灵。颜色 eLoad；深度 eLoad（读 Scene3D 深度做
+        // Pass0 "GBuffer"：MRT 四张 + 深度清屏，只录制不透明段（Opaque + Mask）。
+        RenderPassDesc &gbufferPass = b.AddPass("GBuffer");
+        gbufferPass.renderArea = renderArea;
+        AttachmentDesc g0Clear;
+        g0Clear.resource = hG0;
+        g0Clear.usage = ResourceUsage::ColorAttachment;
+        g0Clear.loadOp = vk::AttachmentLoadOp::eClear;
+        g0Clear.storeOp = vk::AttachmentStoreOp::eStore;
+        g0Clear.clearValue.color = {0.0f, 0.0f, 0.0f, 0.0f};
+        gbufferPass.colorAttachments.push_back(g0Clear);
+        for (ResourceHandle hG : {hG1, hG2, hG3}) {
+            AttachmentDesc gClear;
+            gClear.resource = hG;
+            gClear.usage = ResourceUsage::ColorAttachment;
+            gClear.loadOp = vk::AttachmentLoadOp::eClear;
+            gClear.storeOp = vk::AttachmentStoreOp::eStore;
+            gClear.clearValue.color = {0.0f, 0.0f, 0.0f, 0.0f};
+            gbufferPass.colorAttachments.push_back(gClear);
+        }
+        AttachmentDesc gbDepthClear;
+        gbDepthClear.resource = hDepth;
+        gbDepthClear.usage = ResourceUsage::DepthStencilAttachment;
+        gbDepthClear.loadOp = vk::AttachmentLoadOp::eClear;
+        gbDepthClear.storeOp = vk::AttachmentStoreOp::eStore;
+        gbDepthClear.finalLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
+        gbufferPass.depthAttachment = gbDepthClear;
+        gbufferPass.execute = [](PassExecuteContext &ctx) {
+            Renderer::Get3DRenderer().FlushGBuffer(ctx);
+        };
+
+        // Pass1 "Lighting"：读 G0~G3，写视口颜色 eClear；天空盒并入此 pass。
+        RenderPassDesc &lightingPass = b.AddPass("Lighting");
+        lightingPass.renderArea = renderArea;
+        lightingPass.readImages.push_back(
+            {hG0, ResourceUsage::ShaderRead, vk::ImageLayout::eShaderReadOnlyOptimal});
+        lightingPass.readImages.push_back(
+            {hG1, ResourceUsage::ShaderRead, vk::ImageLayout::eShaderReadOnlyOptimal});
+        lightingPass.readImages.push_back(
+            {hG2, ResourceUsage::ShaderRead, vk::ImageLayout::eShaderReadOnlyOptimal});
+        lightingPass.readImages.push_back(
+            {hG3, ResourceUsage::ShaderRead, vk::ImageLayout::eShaderReadOnlyOptimal});
+        AttachmentDesc lightingColorClear;
+        lightingColorClear.resource = hColor;
+        lightingColorClear.usage = ResourceUsage::ColorAttachment;
+        lightingColorClear.loadOp = vk::AttachmentLoadOp::eClear;
+        lightingColorClear.storeOp = vk::AttachmentStoreOp::eStore;
+        lightingColorClear.clearValue.color = {clearColor.r, clearColor.g, clearColor.b, clearColor.a};
+        lightingPass.colorAttachments.push_back(lightingColorClear);
+        lightingPass.execute = [](PassExecuteContext &ctx) {
+            Renderer::Get3DRenderer().FlushLighting(ctx);
+        };
+
+        // Pass2 "Transparent"：颜色/深度 eLoad，叠在前向透明混合管线上。
+        RenderPassDesc &transparentPass = b.AddPass("Transparent");
+        transparentPass.renderArea = renderArea;
+        AttachmentDesc transparentColorLoad;
+        transparentColorLoad.resource = hColor;
+        transparentColorLoad.usage = ResourceUsage::ColorAttachment;
+        transparentColorLoad.loadOp = vk::AttachmentLoadOp::eLoad;
+        transparentColorLoad.storeOp = vk::AttachmentStoreOp::eStore;
+        transparentPass.colorAttachments.push_back(transparentColorLoad);
+        AttachmentDesc transparentDepthLoad;
+        transparentDepthLoad.resource = hDepth;
+        transparentDepthLoad.usage = ResourceUsage::DepthStencilAttachment;
+        transparentDepthLoad.loadOp = vk::AttachmentLoadOp::eLoad;
+        transparentDepthLoad.storeOp = vk::AttachmentStoreOp::eStore;
+        transparentDepthLoad.finalLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
+        transparentPass.depthAttachment = transparentDepthLoad;
+        transparentPass.execute = [](PassExecuteContext &ctx) {
+            Renderer::Get3DRenderer().FlushTransparent(ctx);
+        };
+    } else {
+        // Pass0 "Scene3D"：清屏 + 深度 eClear；颜色/深度 eStore（深度须保留给 Scene2D 读）
+        RenderPassDesc &scene3D = b.AddPass("Scene3D");
+        scene3D.renderArea = renderArea;
+        AttachmentDesc colorClear;
+        colorClear.resource = hColor;
+        colorClear.usage = ResourceUsage::ColorAttachment;
+        colorClear.loadOp = vk::AttachmentLoadOp::eClear;
+        colorClear.storeOp = vk::AttachmentStoreOp::eStore;
+        colorClear.clearValue.color = {clearColor.r, clearColor.g, clearColor.b, clearColor.a};
+        scene3D.colorAttachments.push_back(colorClear);
+        AttachmentDesc depthClear;
+        depthClear.resource = hDepth;
+        depthClear.usage = ResourceUsage::DepthStencilAttachment;
+        depthClear.loadOp = vk::AttachmentLoadOp::eClear;
+        depthClear.storeOp = vk::AttachmentStoreOp::eStore;
+        // 深度写后停靠深度布局；finalLayout 默认是颜色态，不显式写回会给深度图
+        // 追加一条非法的「深度 → Color」收尾转换（VUID-VkImageMemoryBarrier2-oldLayout-01208）。
+        depthClear.finalLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
+        scene3D.depthAttachment = depthClear;
+        scene3D.execute = [](PassExecuteContext &ctx) {
+            Renderer::Get3DRenderer().FlushScene(ctx);
+        };
+    }
+
+    // Scene2D：叠加世界/UI 精灵。颜色 eLoad；深度 eLoad（读前序 3D pass 深度做
     // 遮挡），UI 批 depthTest 关不读写；颜色收尾转 ShaderReadOnlyOptimal 供 ImGui 采样。
     RenderPassDesc &scene2D = b.AddPass("Scene2D");
     scene2D.renderArea = renderArea;
@@ -502,6 +588,14 @@ void SceneLayer::OnImGuiRender() {
         ImGui::Checkbox("显示碰撞体", &m_ShowColliders);
         // 第一人称视点标记开关（叠加在视口上：EyeOffset 十字 + 到脚底虚线）
         ImGui::Checkbox("显示视点", &m_ShowFPSEyes);
+
+        // 延迟渲染开关：切换 SceneLayer 的 Scene3D 单 pass 与 GBuffer → Lighting
+        // → Transparent 三 pass 链，便于 RenderDoc / 视觉 A-B 对比。
+        ImGui::Separator();
+        bool deferred = Renderer::Get3DRenderer().IsDeferred();
+        if (ImGui::Checkbox("延迟渲染", &deferred)) {
+            Renderer::Get3DRenderer().SetDeferred(deferred);
+        }
 
         ImGui::TextDisabled("提示：先在左侧 Hierarchy/Properties 中调整实体，再保存/加载验证");
     }

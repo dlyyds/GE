@@ -118,6 +118,42 @@ Renderer3D::Renderer3D() {
         {m_VertShaderSkinned, m_FragShaderPBR_IBL});
     m_PipelineLayoutSkinnedPBR_IBL->SetDebugName("Mesh3D_PipelineLayout_Skinned_PBR_IBL");
 
+    // ── 延迟渲染：GBuffer 片元着色器 + 静态/蒙皮两份管线布局 ─────────
+    // GBuffer 只输出 G-Buffer 属性，光照后置到 Lighting pass。静态路径复用
+    // mesh.vert，蒙皮路径复用 mesh_skinned.vert，与现有批次路由保持一致。
+    m_FragShaderGBuffer = &cache.RequestShaderModule(
+        vk::ShaderStageFlagBits::eFragment,
+        ShaderSource(Renderer::GetAssetManager()
+            .ResolvePath(std::string(AssetPaths::Shaders) + "/mesh_gbuffer.frag.spv")
+            .string()),
+        "main", ShaderVariant{});
+
+    m_PipelineLayoutGBuffer = &cache.RequestPipelineLayout(
+        {m_VertShader, m_FragShaderGBuffer});
+    m_PipelineLayoutGBuffer->SetDebugName("Mesh3D_PipelineLayout_GBuffer");
+
+    m_PipelineLayoutSkinnedGBuffer = &cache.RequestPipelineLayout(
+        {m_VertShaderSkinned, m_FragShaderGBuffer});
+    m_PipelineLayoutSkinnedGBuffer->SetDebugName("Mesh3D_PipelineLayout_Skinned_GBuffer");
+
+    // ── 延迟渲染：Lighting 全屏三角形着色器 + 管线布局 ──────────────
+    m_LightingVert = &cache.RequestShaderModule(
+        vk::ShaderStageFlagBits::eVertex,
+        ShaderSource(Renderer::GetAssetManager()
+            .ResolvePath(std::string(AssetPaths::Shaders) + "/deferred_lighting.vert.spv")
+            .string()),
+        "main", ShaderVariant{});
+
+    m_LightingFrag = &cache.RequestShaderModule(
+        vk::ShaderStageFlagBits::eFragment,
+        ShaderSource(Renderer::GetAssetManager()
+            .ResolvePath(std::string(AssetPaths::Shaders) + "/deferred_lighting.frag.spv")
+            .string()),
+        "main", ShaderVariant{});
+
+    m_LightingLayout = &cache.RequestPipelineLayout({m_LightingVert, m_LightingFrag});
+    m_LightingLayout->SetDebugName("DeferredLighting_PipelineLayout");
+
     // ── 2b. 天空盒着色器 + 管线布局 ─────────────────────────────────
     //    等距柱状投影天空盒：全屏三角形 + 反投影重建视线 + 采样全景图。
     //    管线布局由着色器反射自动构建（set 0 binding 0 = SkyboxUBO，binding 1 = sampler2D）。
@@ -195,6 +231,18 @@ Renderer3D::Renderer3D() {
         GE_CORE_ERROR("Renderer3D: 创建默认金属-粗糙度纹理失败！");
     }
 
+    // ── 7. 加载默认 1x1 白立方体贴图（延迟 Lighting 天空盒不可用时的 fallback） ──
+    //    延迟 Lighting shader 把天空盒采样器声明为 samplerCube；环境图不在时不能
+    //    用普通 2D 白纹理填充，否则类型不匹配。这里加载一个极小的白 cubemap，
+    //    保证 shader 的 samplerCube 始终可绑定。
+    m_DefaultSkyboxTexture = Texture::LoadCubeMapFromFile(
+        device, cache,
+        Renderer::GetAssetManager().ResolvePath("environments/_default_cube/skybox.ktx2").string());
+    if (m_DefaultSkyboxTexture) {
+        m_DefaultSkyboxTexture->SetDebugName("DefaultSkyboxTexture");
+    } else {
+        GE_CORE_ERROR("Renderer3D: 加载默认天空盒纹理失败！");
+    }
     GE_CORE_INFO("Renderer3D initialized");
 }
 
@@ -268,6 +316,7 @@ Renderer3D::~Renderer3D() {
     m_DefaultNormalTexture.reset();
     m_DefaultEmissiveTexture.reset();
     m_DefaultMetallicRoughnessTexture.reset();
+    m_DefaultSkyboxTexture.reset();
 
     // 释放环境映射（IBL）资源（含天空盒纹理）
     m_EnvironmentMap.reset();
@@ -277,9 +326,15 @@ Renderer3D::~Renderer3D() {
     m_FragShader = nullptr;
     m_FragShaderPBR = nullptr;
     m_FragShaderPBR_IBL = nullptr;
+    m_FragShaderGBuffer = nullptr;
     m_PipelineLayout = nullptr;
     m_PipelineLayoutPBR = nullptr;
     m_PipelineLayoutPBR_IBL = nullptr;
+    m_PipelineLayoutGBuffer = nullptr;
+    m_PipelineLayoutSkinnedGBuffer = nullptr;
+    m_LightingVert = nullptr;
+    m_LightingFrag = nullptr;
+    m_LightingLayout = nullptr;
     m_SkyboxVert = nullptr;
     m_SkyboxFrag = nullptr;
     m_SkyboxLayout = nullptr;
@@ -490,6 +545,135 @@ void Renderer3D::FlushScene(PassExecuteContext &ctx) {
     m_Meshes.clear();
 }
 
+void Renderer3D::FlushGBuffer(PassExecuteContext &ctx) {
+    GE_PROFILE_SCOPE("Renderer3D::FlushGBuffer");
+
+    FlushRetiredEnvironments();
+
+    // GBuffer pass 需要完整 MRT 附件列表。上下文由 RenderGraph 填充，顺序与
+    // colorAttachments 一致，避免只透传首个颜色附件导致管线格式错误。
+    GE_CORE_ASSERT(ctx.colorAttachmentViews.size() >= 4,
+                   "GBuffer pass 必须声明 4 个颜色附件");
+
+    std::vector<vk::Format> colorFormats;
+    colorFormats.reserve(ctx.colorAttachmentViews.size());
+    for (const auto *view : ctx.colorAttachmentViews) {
+        colorFormats.push_back(view->get_format());
+    }
+
+    const vk::Format depthFormat = ctx.depthAttachmentView
+                                       ? ctx.depthAttachmentView->get_format()
+                                       : vk::Format::eUndefined;
+
+    SortMeshes();
+
+    m_CachedFrameUBO = UploadFrameUBO(*ctx.frame);
+
+    std::vector<InstanceData> instances;
+    std::vector<RenderBatch> batches;
+    CollectBatches(instances, batches);
+
+    const auto transparentIt = std::find_if(
+        batches.begin(), batches.end(), [](const RenderBatch &b) {
+            return b.material && b.material->alphaMode == Material::AlphaMode::Blend;
+        });
+    const size_t opaqueCount =
+        static_cast<size_t>(std::distance(batches.begin(), transparentIt));
+
+    m_CachedInstanceBuffer = UploadInstanceBuffer(*ctx.frame, instances);
+    m_CachedLightBuffer = UploadLightBuffer(*ctx.frame);
+
+    m_OpaqueBatches.assign(batches.begin(),
+                           batches.begin() + static_cast<ptrdiff_t>(opaqueCount));
+    m_TransparentBatches.assign(
+        batches.begin() + static_cast<ptrdiff_t>(opaqueCount), batches.end());
+    m_HasDeferredBatches = true;
+
+    ConfigureGBufferPipeline(*ctx.cmd, colorFormats, depthFormat, ctx.renderArea.extent);
+
+    // GBuffer 片元着色器不读点光源 SSBO，避免为 set0 binding1 生成无 layout 绑定。
+    BindSharedUniforms(*ctx.cmd, m_CachedFrameUBO, m_CachedLightBuffer,
+                       /*bindLights=*/false);
+    if (!m_OpaqueBatches.empty()) {
+        DrawMeshInstances(*ctx.cmd, *ctx.frame, m_OpaqueBatches,
+                          m_CachedInstanceBuffer, /*gbuffer=*/true);
+    }
+
+    RecordStats(batches);
+}
+
+void Renderer3D::FlushLighting(PassExecuteContext &ctx) {
+    GE_PROFILE_SCOPE("Renderer3D::FlushLighting");
+
+    GE_CORE_ASSERT(ctx.colorAttachmentView, "Lighting pass 必须声明颜色附件");
+
+    const vk::Format colorFormat = ctx.colorAttachmentView->get_format();
+    const BufferAllocation lightingUboAlloc = UploadLightingUBO(*ctx.frame);
+
+    ConfigureLightingPipeline(*ctx.cmd, colorFormat, ctx.renderArea.extent);
+
+    // 延迟光照 UBO + 点光源 SSBO + 天空盒采样入口。
+    auto &cmd = *ctx.cmd;
+    cmd.BindBuffer(lightingUboAlloc.get_buffer(), lightingUboAlloc.get_offset(),
+                   lightingUboAlloc.get_size(), 0, 0);
+    if (!m_CachedLightBuffer.empty()) {
+        cmd.BindBuffer(m_CachedLightBuffer.get_buffer(),
+                       m_CachedLightBuffer.get_offset(),
+                       m_CachedLightBuffer.get_size(), 0, 1);
+    }
+
+    const Texture *skyTex = (m_EnvironmentMap && m_EnvironmentMap->IsReady())
+                                ? &m_EnvironmentMap->GetSkybox()
+                                : ((m_DefaultSkyboxTexture && m_DefaultSkyboxTexture->IsReady())
+                                       ? m_DefaultSkyboxTexture.get()
+                                       : nullptr);
+    if (skyTex) {
+        cmd.BindImage(skyTex->GetImageView(), skyTex->GetSampler(), 0, 2);
+    }
+
+    // 绑定 G0~G3。采样器可复用默认白纹里的线性 2D 采样器，Vulkan 描述符中
+    // sampler 与 image view 解耦；这些资源没有额外携带 sampler。
+    if (m_DefaultWhiteTexture) {
+        const auto &gbufSampler = m_DefaultWhiteTexture->GetSampler();
+        const uint32_t gbufferBindingCount =
+            static_cast<uint32_t>(std::min<size_t>(ctx.readImageViews.size(), 4));
+        for (uint32_t i = 0; i < gbufferBindingCount; ++i) {
+            cmd.BindImage(*ctx.readImageViews[i], gbufSampler, 1, i);
+        }
+    }
+
+    cmd.Draw(3, 1, 0, 0);
+}
+
+void Renderer3D::FlushTransparent(PassExecuteContext &ctx) {
+    GE_PROFILE_SCOPE("Renderer3D::FlushTransparent");
+
+    // 透明段使用同一帧已经上传的 FrameUBO / LightSSBO / 实例 SSBO。
+    if (m_HasDeferredBatches) {
+        GE_CORE_ASSERT(ctx.colorAttachmentView, "Transparent pass 必须声明颜色附件");
+        const vk::Format colorFormat = ctx.colorAttachmentView->get_format();
+        const vk::Format depthFormat = ctx.depthAttachmentView
+                                           ? ctx.depthAttachmentView->get_format()
+                                           : vk::Format::eUndefined;
+
+        ConfigureMeshPipeline(*ctx.cmd, colorFormat, depthFormat,
+                              ctx.renderArea.extent, /*transparent=*/true);
+        BindSharedUniforms(*ctx.cmd, m_CachedFrameUBO, m_CachedLightBuffer,
+                           /*bindLights=*/true);
+        if (!m_TransparentBatches.empty()) {
+            DrawMeshInstances(*ctx.cmd, *ctx.frame, m_TransparentBatches,
+                              m_CachedInstanceBuffer, /*gbuffer=*/false);
+        }
+
+        m_OpaqueBatches.clear();
+        m_TransparentBatches.clear();
+        m_HasDeferredBatches = false;
+    }
+
+    // 所有延迟 pass 均已消费本帧网格，清空时机从 FlushScene 尾部移到这里。
+    m_Meshes.clear();
+}
+
 void Renderer3D::RecordScene(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame,
                              vk::Format colorFormat, vk::Format depthFormat,
                              vk::Extent2D extent) {
@@ -690,6 +874,35 @@ BufferAllocation Renderer3D::UploadLightBuffer(VulkanRenderFrame &frame) {
     return alloc;
 }
 
+BufferAllocation Renderer3D::UploadLightingUBO(VulkanRenderFrame &frame) {
+    // 延迟 Lighting UBO 复用前向光照字段，并额外携带反投影矩阵与背景色。
+    // flags.x 由 CPU 端根据「天空盒开关 + 环境图就绪」生成，shader 无天空时
+    // 直接输出 clearColor，与现前向路径的 DrawSkybox 门控一致。
+    LightingUBO ubo{};
+    ubo.invView = glm::inverse(glm::mat4(glm::mat3(m_View)));
+    ubo.invProj = glm::inverse(m_Projection);
+    ubo.clearColor = m_ClearColor;
+
+    const Texture *skyTex = (m_EnvironmentMap && m_EnvironmentMap->IsReady())
+                                ? &m_EnvironmentMap->GetSkybox()
+                                : ((m_DefaultSkyboxTexture && m_DefaultSkyboxTexture->IsReady())
+                                       ? m_DefaultSkyboxTexture.get()
+                                       : nullptr);
+    ubo.flags.x = (m_SkyboxEnabled && skyTex) ? 1.0f : 0.0f;
+
+    ubo.viewPos = glm::vec4(m_ViewPos, 0.0f);
+    ubo.dirLightDirection = glm::vec4(m_LightParams.dirLightDirection, 0.0f);
+    ubo.dirLightColor = m_LightParams.dirLightColor;
+    ubo.lightCount = glm::vec4(
+        static_cast<float>(m_LightParams.pointLights.size()), 0.0f, 0.0f, 0.0f);
+    ubo.ambient = m_LightParams.ambient;
+
+    BufferAllocation alloc = frame.AllocateBuffer(
+        vk::BufferUsageFlagBits::eUniformBuffer, sizeof(LightingUBO));
+    alloc.update(ubo);
+    return alloc;
+}
+
 void Renderer3D::DrawSkybox(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame,
                             vk::Format colorFormat, vk::Format depthFormat,
                             vk::Extent2D extent) {
@@ -867,28 +1080,133 @@ void Renderer3D::ConfigureMeshPipeline(VulkanCommandBuffer &cmd,
     cmd.SetScissor(0, {scissor});
 }
 
+void Renderer3D::ConfigureGBufferPipeline(VulkanCommandBuffer &cmd,
+                                          const std::vector<vk::Format> &colorFormats,
+                                          vk::Format depthFormat,
+                                          vk::Extent2D extent) {
+    // GBuffer 管线与普通网格管线共享布局/顶点输入规则，但动态渲染附件格式是
+    // MRT 四张图，且混合始终关闭。管线路由仍由 DrawMeshInstances 按蒙皮位切换
+    // 到 m_PipelineLayoutSkinnedGBuffer，这里只预置静态网格顶点输入。
+    cmd.BindPipelineLayout(*m_PipelineLayoutGBuffer);
+
+    auto &ps = cmd.GetPipelineState();
+    ps.setRenderingFormats(colorFormats, depthFormat);
+
+    std::vector<vk::PipelineColorBlendAttachmentState> blendStates;
+    blendStates.resize(colorFormats.size());
+    for (auto &blendState : blendStates) {
+        blendState.colorWriteMask = vk::ColorComponentFlagBits::eR
+                                    | vk::ColorComponentFlagBits::eG
+                                    | vk::ColorComponentFlagBits::eB
+                                    | vk::ColorComponentFlagBits::eA;
+    }
+    ps.setColorBlendAttachments(blendStates);
+
+    ps.setVertexInputFromShader(*m_VertShader, 0, vk::VertexInputRate::eVertex,
+                                static_cast<uint32_t>(sizeof(Vertex)));
+    ps.setInputAssembly(vk::PrimitiveTopology::eTriangleList)
+        .setCullMode(vk::CullModeFlagBits::eBack)
+        .setFrontFace(vk::FrontFace::eCounterClockwise)
+        .setDepthTestEnable(VK_TRUE)
+        .setDepthWriteEnable(VK_TRUE)
+        .setDepthCompareOp(vk::CompareOp::eLess);
+
+    ps.enableDynamicState(vk::DynamicState::eViewport)
+        .enableDynamicState(vk::DynamicState::eScissor)
+        .enableDynamicState(vk::DynamicState::eCullMode)
+        .enableDynamicState(vk::DynamicState::eFrontFace)
+        .enableDynamicState(vk::DynamicState::ePrimitiveTopology)
+        .enableDynamicState(vk::DynamicState::eDepthTestEnable)
+        .enableDynamicState(vk::DynamicState::eDepthWriteEnable)
+        .enableDynamicState(vk::DynamicState::eDepthCompareOp);
+
+    vk::Viewport vp;
+    vp.width = static_cast<float>(extent.width);
+    vp.height = static_cast<float>(extent.height);
+    vp.minDepth = 0.0f;
+    vp.maxDepth = 1.0f;
+    cmd.SetViewport(0, {vp});
+
+    vk::Rect2D scissor;
+    scissor.extent.width = extent.width;
+    scissor.extent.height = extent.height;
+    cmd.SetScissor(0, {scissor});
+}
+
+void Renderer3D::ConfigureLightingPipeline(VulkanCommandBuffer &cmd,
+                                           vk::Format colorFormat,
+                                           vk::Extent2D extent) {
+    // Lighting pass 不依赖顶点缓冲，也不需要深度附件：全屏三角形在天空分支
+    // 直接输出背景，在几何分支覆盖 RGB 与 alpha。
+    cmd.BindPipelineLayout(*m_LightingLayout);
+
+    auto &ps = cmd.GetPipelineState();
+    ps.setRenderingFormats({colorFormat});
+
+    vk::PipelineColorBlendAttachmentState blendState{};
+    blendState.colorWriteMask = vk::ColorComponentFlagBits::eR
+                                | vk::ColorComponentFlagBits::eG
+                                | vk::ColorComponentFlagBits::eB
+                                | vk::ColorComponentFlagBits::eA;
+    ps.setColorBlendAttachments({blendState});
+
+    ps.setVertexInputFromShader(*m_LightingVert);
+    ps.setInputAssembly(vk::PrimitiveTopology::eTriangleList)
+        .setCullMode(vk::CullModeFlagBits::eNone)
+        .setFrontFace(vk::FrontFace::eCounterClockwise)
+        .setDepthTestEnable(VK_FALSE)
+        .setDepthWriteEnable(VK_FALSE);
+
+    ps.enableDynamicState(vk::DynamicState::eViewport)
+        .enableDynamicState(vk::DynamicState::eScissor)
+        .enableDynamicState(vk::DynamicState::eCullMode)
+        .enableDynamicState(vk::DynamicState::eFrontFace)
+        .enableDynamicState(vk::DynamicState::ePrimitiveTopology)
+        .enableDynamicState(vk::DynamicState::eDepthTestEnable)
+        .enableDynamicState(vk::DynamicState::eDepthWriteEnable)
+        .enableDynamicState(vk::DynamicState::eDepthCompareOp);
+
+    vk::Viewport vp;
+    vp.width = static_cast<float>(extent.width);
+    vp.height = static_cast<float>(extent.height);
+    vp.minDepth = 0.0f;
+    vp.maxDepth = 1.0f;
+    cmd.SetViewport(0, {vp});
+
+    vk::Rect2D scissor;
+    scissor.extent.width = extent.width;
+    scissor.extent.height = extent.height;
+    cmd.SetScissor(0, {scissor});
+}
+
 void Renderer3D::BindSharedUniforms(VulkanCommandBuffer &cmd,
                                     const BufferAllocation &frameUbo,
-                                    const BufferAllocation &lightBuffer) {
+                                    const BufferAllocation &lightBuffer,
+                                    bool bindLights) {
     // ── 5. 绑定 Frame UBO（set 0, binding 0，所有网格共享） ───────────
     cmd.BindBuffer(frameUbo.get_buffer(), frameUbo.get_offset(),
                    frameUbo.get_size(), 0, 0);
 
-    // 绑定点光源 SSBO（set 0, binding 1）——所有网格共享
-    cmd.BindBuffer(lightBuffer.get_buffer(), lightBuffer.get_offset(),
-                   lightBuffer.get_size(), 0, 1);
+    // 绑定点光源 SSBO（set 0, binding 1）——所有网格共享。
+    // GBuffer 阶段片元着色器不读光源，绑定会触发 layout 不匹配告警，故可关闭。
+    if (bindLights) {
+        cmd.BindBuffer(lightBuffer.get_buffer(), lightBuffer.get_offset(),
+                       lightBuffer.get_size(), 0, 1);
+    }
 }
 
 void Renderer3D::DrawMeshInstances(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame,
                                    const std::vector<RenderBatch> &batches,
-                                   const BufferAllocation &instanceBuffer) {
+                                   const BufferAllocation &instanceBuffer,
+                                   bool gbuffer) {
     // ── 6. 逐批次 instanced 绘制 ─────────────────────────────────────
     vk::DeviceSize vertexOffset = 0;
 
     // IBL 是否启用（全局）：需要已加载环境图且三张图均已就绪且 IBL 开关打开，
     // 此时 PBR 批次走 IBL 变体管线并绑定三张 IBL 图；否则回退无 IBL 变体
     // （常量环境光）。异步加载中环境图未就绪则本帧不启用 IBL，就绪后自动切换。
-    const bool useIbl = (m_EnvironmentMap != nullptr) && m_EnvironmentMap->IsReady()
+    const bool useIbl = !gbuffer
+                        && (m_EnvironmentMap != nullptr) && m_EnvironmentMap->IsReady()
                         && m_IBLEnabled;
 
     // 当前绑定的管线 id（初始为 Blinn-Phong，已在上方绑定 *m_PipelineLayout）。
@@ -908,15 +1226,19 @@ void Renderer3D::DrawMeshInstances(VulkanCommandBuffer &cmd, VulkanRenderFrame &
         if (pipelineId != currentPipelineId) {
             VulkanPipelineLayout *targetLayout = m_PipelineLayout;
             if (skinned) {
-                targetLayout = pbr
-                                   ? (useIbl
-                                          ? m_PipelineLayoutSkinnedPBR_IBL
-                                          : m_PipelineLayoutSkinnedPBR)
-                                   : m_PipelineLayoutSkinned;
+                targetLayout = gbuffer
+                                   ? m_PipelineLayoutSkinnedGBuffer
+                                   : (pbr
+                                          ? (useIbl
+                                                 ? m_PipelineLayoutSkinnedPBR_IBL
+                                                 : m_PipelineLayoutSkinnedPBR)
+                                          : m_PipelineLayoutSkinned);
             } else {
-                targetLayout = pbr
-                                   ? (useIbl ? m_PipelineLayoutPBR_IBL : m_PipelineLayoutPBR)
-                                   : m_PipelineLayout;
+                targetLayout = gbuffer
+                                   ? m_PipelineLayoutGBuffer
+                                   : (pbr
+                                          ? (useIbl ? m_PipelineLayoutPBR_IBL : m_PipelineLayoutPBR)
+                                          : m_PipelineLayout);
             }
 
             auto &ps = cmd.GetPipelineState();
@@ -937,7 +1259,7 @@ void Renderer3D::DrawMeshInstances(VulkanCommandBuffer &cmd, VulkanRenderFrame &
             // 排序保证同管线批次连续，故只在首次切换时绑一次；非 IBL 布局
             // （含 Blinn）的 set 1 无这些 binding，不会读到。
             // 辐照度复用预滤波 cubemap（漫反射采样其最高 mip）。
-            if (pbr && useIbl) {
+            if (!gbuffer && pbr && useIbl) {
                 auto &ibl = *m_EnvironmentMap;
                 cmd.BindImage(ibl.GetPrefilter().GetImageView(),
                               ibl.GetPrefilter().GetSampler(), 1, 5); // 辐照度
@@ -990,7 +1312,7 @@ void Renderer3D::DrawMeshInstances(VulkanCommandBuffer &cmd, VulkanRenderFrame &
         // 绑定默认 (G=1, B=1) 纹理，回退到标量 metallic/roughness。
         // Blinn-Phong 批次不绑定（其 set 1 布局无 binding 4，绑了也会被过滤，
         // 这里显式判断更清晰，避免多余绑定）。PBR 蒙皮肤也一样要绑。
-        if (pbr) {
+        if (pbr || gbuffer) {
             Texture *mrTex = GetEffectiveMetallicRoughnessTexture(batch.material);
             if (mrTex) {
                 cmd.BindImage(mrTex->GetImageView(),
@@ -1026,6 +1348,12 @@ void Renderer3D::DrawMeshInstances(VulkanCommandBuffer &cmd, VulkanRenderFrame &
         materialUBO.pbr.y = batch.material
                                 ? batch.material->GetFloat("roughness", 0.5f)
                                 : 0.5f;
+        // pbr.z 作为着色模型标志：GBuffer 片元据此写 G0.a 的 PBR/Blinn 哨兵。
+        // 前向片元着色器不使用该字段，延迟 GBuffer 路径则是必需输入。
+        materialUBO.pbr.z = (batch.material
+                             && batch.material->GetType() == Material::Type::PBR)
+                                ? 1.0f
+                                : 0.0f;
         // emissiveFactor.rgb = 自发光颜色因子；.w = 材质基础 alpha（baseAlpha，
         // glTF baseColorFactor[3] / OBJ dissolve 语义），shader 侧乘进最终 alpha。
         glm::vec4 emissive(0.0f);

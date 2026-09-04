@@ -542,6 +542,7 @@ void RenderGraph::Execute(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame) {
         // 回调（3D/2D 录制）据此推导附件格式与有无深度，无需自行持有 RenderTarget。
         VulkanImageView *firstColorView = nullptr;
         VulkanImageView *firstDepthView = nullptr;
+        std::vector<VulkanImageView *> colorAttachmentViews;
 
         for (const auto &att : pass.colorAttachments) {
             const ResourceRecord &rec = m_Resources[att.resource - 1];
@@ -550,6 +551,7 @@ void RenderGraph::Execute(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame) {
                 continue;
             }
             VulkanImageView &view = rec.external ? *rec.external : *rec.pooledView;
+            colorAttachmentViews.push_back(&view);
             // 附件渲染布局：必须是写后布局（附件写入发生在 ColorAttachmentOptimal）。
             // 前置屏障已把资源转到该布局；att.finalLayout（写后想再转到的布局）
             // 由 S2 的收尾转换使用，S1 尚未接线，此处不使用。
@@ -575,6 +577,18 @@ void RenderGraph::Execute(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame) {
             }
         }
 
+        std::vector<VulkanImageView *> readImageViews;
+        for (const auto &img : pass.readImages) {
+            if (img.resource == kInvalidResource || img.resource > m_Resources.size()) {
+                continue;
+            }
+            const ResourceRecord &rec = m_Resources[img.resource - 1];
+            if (!rec.external && !rec.pooledView) {
+                continue;
+            }
+            readImageViews.push_back(rec.external ? rec.external : rec.pooledView);
+        }
+
         PassExecuteContext ctx;
         ctx.cmd = &cmd;
         ctx.frame = &frame;
@@ -582,6 +596,8 @@ void RenderGraph::Execute(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame) {
         ctx.renderingInfo = &rinfo;
         ctx.colorAttachmentView = firstColorView;
         ctx.depthAttachmentView = firstDepthView;
+        ctx.colorAttachmentViews = std::move(colorAttachmentViews);
+        ctx.readImageViews = std::move(readImageViews);
 
         rinfo.Begin(cmd.GetHandle());
         pass.execute(ctx);

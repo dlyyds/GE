@@ -297,6 +297,21 @@ public:
      */
     void FlushScene(PassExecuteContext &ctx);
 
+    /// 切换延迟渲染路径。
+    void SetDeferred(bool enabled) { m_Deferred = enabled; }
+
+    /// 当前是否走延迟渲染路径。
+    bool IsDeferred() const { return m_Deferred; }
+
+    /// 录制 GBuffer pass（MRT 输出 + 写入深度）。
+    void FlushGBuffer(PassExecuteContext &ctx);
+
+    /// 录制 Lighting pass（采样 GBuffer，输出最终颜色）。
+    void FlushLighting(PassExecuteContext &ctx);
+
+    /// 录制 Transparent pass（透明对象仍走前向 alpha 混合）。
+    void FlushTransparent(PassExecuteContext &ctx);
+
 private:
     // ========================================================================
     // UBO 结构体（std140 布局，16 字节对齐）
@@ -314,6 +329,21 @@ private:
         glm::vec4 iblParams;                  ///< x = 预滤波最大 mip 数（MAX_REFLECTION_LOD），yzw 预留
     };
     static_assert(sizeof(FrameUBO) % 16 == 0, "FrameUBO 必须 16 字节对齐");
+
+    /// 延迟渲染 Lighting UBO（std140 布局，set 0 binding 0）
+    /// 除前向共享光照字段外，额外携带反投影矩阵与背景色。
+    struct LightingUBO {
+        glm::mat4 invView;                            ///< 视图矩阵逆（天空盒方向用）
+        glm::mat4 invProj;                            ///< 投影矩阵逆（NDC -> 视空间）
+        glm::vec4 clearColor;                         ///< 天空盒未启用时的背景色
+        glm::vec4 flags;                              ///< x = skyboxEnabled
+        glm::vec4 viewPos;                            ///< 相机位置（xyz, w 未用）
+        glm::vec4 dirLightDirection;                  ///< 方向光方向（xyz, w 未用）
+        glm::vec4 dirLightColor;                      ///< 方向光颜色(rgb) + 强度(a)
+        glm::vec4 lightCount;                         ///< x = 点光源数量
+        glm::vec4 ambient;                            ///< 环境光颜色(rgb) + 强度(a)
+    };
+    static_assert(sizeof(LightingUBO) % 16 == 0, "LightingUBO 必须 16 字节对齐");
 
     /// per-instance 数据（阶段3，存入 SSBO，std430 布局）
     /// 必须与 GLSL InstanceData 块一致：mat4(64B) + vec4(16B) = 80B。
@@ -404,6 +434,9 @@ private:
     /// 分配并上传点光源 SSBO（无光源时分配 1 字节占位避免空缓冲）
     BufferAllocation UploadLightBuffer(VulkanRenderFrame &frame);
 
+    /// 分配并上传延迟 Lighting UBO（反投影矩阵 + 光照参数 + 背景色）
+    BufferAllocation UploadLightingUBO(VulkanRenderFrame &frame);
+
     /**
      * @brief 录制本帧网格批次的公共绘制段（排序 + 上传 + 绘制）。
      *
@@ -432,10 +465,22 @@ private:
                                vk::Extent2D extent,
                                bool transparent = false);
 
+    /// 配置 GBuffer MRT 管线状态（四个颜色附件 / 深度 / 视口剪刀）
+    void ConfigureGBufferPipeline(VulkanCommandBuffer &cmd,
+                                  const std::vector<vk::Format> &colorFormats,
+                                  vk::Format depthFormat,
+                                  vk::Extent2D extent);
+
+    /// 配置延迟 Lighting 管线状态（全屏三角形 / 单个颜色附件）
+    void ConfigureLightingPipeline(VulkanCommandBuffer &cmd,
+                                   vk::Format colorFormat,
+                                   vk::Extent2D extent);
+
     /// 绑定网格共享描述符（Frame UBO + 点光源 SSBO，set 0）
     void BindSharedUniforms(VulkanCommandBuffer &cmd,
                             const BufferAllocation &frameUbo,
-                            const BufferAllocation &lightBuffer);
+                            const BufferAllocation &lightBuffer,
+                            bool bindLights = true);
 
     /**
      * @brief 逐批次 instanced 绘制（含管线路由 / 动态剔除 / 纹理材质绑定 / 材质 UBO）。
@@ -446,7 +491,8 @@ private:
      */
     void DrawMeshInstances(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame,
                            const std::vector<RenderBatch> &batches,
-                           const BufferAllocation &instanceBuffer);
+                           const BufferAllocation &instanceBuffer,
+                           bool gbuffer = false);
 
     /// 统计 draw call 与三角形数量（draw call = 批次数量）
     void RecordStats(const std::vector<RenderBatch> &batches);
@@ -562,6 +608,20 @@ private:
     VulkanPipelineLayout *m_PipelineLayoutSkinnedPBR = nullptr;
     VulkanPipelineLayout *m_PipelineLayoutSkinnedPBR_IBL = nullptr;
 
+    /// GBuffer 片元着色器（mesh_gbuffer.frag，MRT 输出，由全局资源缓存管理，不拥有）
+    VulkanShaderModule   *m_FragShaderGBuffer = nullptr;
+
+    /// GBuffer 管线布局（mesh.vert/mesh_skinned.vert + mesh_gbuffer.frag，由全局资源缓存管理，不拥有）
+    VulkanPipelineLayout *m_PipelineLayoutGBuffer = nullptr;
+    VulkanPipelineLayout *m_PipelineLayoutSkinnedGBuffer = nullptr;
+
+    /// 延迟 Lighting 顶点/片元着色器（由全局资源缓存管理，不拥有）
+    VulkanShaderModule   *m_LightingVert = nullptr;
+    VulkanShaderModule   *m_LightingFrag = nullptr;
+
+    /// 延迟 Lighting 管线布局（由全局资源缓存管理，不拥有）
+    VulkanPipelineLayout *m_LightingLayout = nullptr;
+
     /// 天空盒顶点着色器（由全局资源缓存管理，不拥有）
     VulkanShaderModule   *m_SkyboxVert = nullptr;
 
@@ -600,6 +660,9 @@ private:
     /// 使 metallic/roughness 等于标量 pbr 系数原值）
     std::unique_ptr<Texture> m_DefaultMetallicRoughnessTexture;
 
+    /// 默认 1x1 白立方体贴图（延迟 Lighting 天空盒不可用时的 fallback）
+    std::unique_ptr<Texture> m_DefaultSkyboxTexture;
+
     /// 当前帧视图矩阵
     glm::mat4 m_View{1.0f};
 
@@ -624,6 +687,17 @@ private:
 
     /// 是否在 BeginScene / EndScene 之间
     bool m_InScene = false;
+
+    /// 是否走延迟渲染路径（默认关闭，保留前向路径；运行时可由 UI 切换）
+    bool m_Deferred = false;
+
+    /// 延迟三条 pass 之间缓存的本帧批次与 GPU 缓冲
+    std::vector<RenderBatch> m_OpaqueBatches;
+    std::vector<RenderBatch> m_TransparentBatches;
+    BufferAllocation m_CachedFrameUBO;
+    BufferAllocation m_CachedLightBuffer;
+    BufferAllocation m_CachedInstanceBuffer;
+    bool m_HasDeferredBatches = false;
 };
 
 } // namespace GE

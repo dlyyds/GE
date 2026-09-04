@@ -496,6 +496,13 @@ void VulkanCommandBuffer::FlushDescriptorState(vk::PipelineBindPoint pipeline_bi
         for (auto &binding_it : resource_set) {
             uint32_t binding_index = binding_it.first;
 
+            // 跳过当前 pipeline layout 不存在的 stale binding。多个 pass 共用
+            // 同一个 command buffer 时，上一组资源绑定可能带进不同描述符布局，
+            // 不清除就会在 VulkanDescriptorSet 校验阶段报 layout 不匹配。
+            if (!descriptor_set_layout.GetLayoutBinding(binding_index)) {
+                continue;
+            }
+
             for (auto &element_it : binding_it.second) {
                 uint32_t array_element = element_it.first;
                 auto const &resource_info = element_it.second;

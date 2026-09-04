@@ -83,8 +83,16 @@ struct PassExecuteContext {
     /// 获取，无需调用方再持有 RenderTarget。
     VulkanImageView *colorAttachmentView = nullptr;
 
+    /// 本 pass 动态渲染实际写入的全部颜色附件视图，顺序与 colorAttachments 一致。
+    /// MRT 录制路径（如 GBuffer pass）从这里取得全部附件格式。
+    std::vector<VulkanImageView *> colorAttachmentViews;
+
     /// 本 pass 动态渲染的深度附件视图（nullptr = 无深度附件）。
     VulkanImageView *depthAttachmentView = nullptr;
+
+    /// 本 pass 声明的只读图像视图，顺序与 readImages 一致。着色器录制路径
+    /// （如 Lighting pass）从这里绑定 G-Buffer 等采样输入。
+    std::vector<VulkanImageView *> readImageViews;
 };
 
 } // namespace GE

@@ -418,10 +418,7 @@ uint8_t Renderer3D::GetPipelineId(const Material *material) const {
 Renderer3D::SortKey Renderer3D::ComputeSortKey(const Material *material, const Mesh *mesh,
                                                uint32_t firstIndex, uint32_t indexCount,
                                                const glm::mat4 &transform, bool skinned) const {
-    // pipeline 位高2 = 蒙皮（值 2/3），低1 = 材质（0 Blinn / 1 PBR），
-    // 使蒙皮与静态批次分组隔离（管线不同不可合批）。
     SortKey key;
-    key.pipelineId = static_cast<uint8_t>(GetPipelineId(material) | (skinned ? kSkinPipelineBit : 0u));
 
     // 渲染段分区：Blend 走透明段（不透明先画，透明独立 back-to-front 排序）；
     // Opaque/Mask 均为不透明段。passId 作为排序最高语义分区，不透明深度方向不
@@ -429,11 +426,10 @@ Renderer3D::SortKey Renderer3D::ComputeSortKey(const Material *material, const M
     const bool transparent = (material && material->alphaMode == Material::AlphaMode::Blend);
     key.passId = static_cast<uint8_t>(transparent ? Pass::Transparent : Pass::Opaque);
 
-    // 混合键：Blend 材质置 1（启用 alpha 混合），否则 0。blendKey 参与排序但不
-    // 参与合批，作用是把「同 layout 的 Opaque 与 Mask」在分区内聚拢成一大段——
-    // 混合附件状态只在透明段的第一次 Draw 处切换一次，避免 Mask 与 Opaque 之间
-    // 抖动重建混合管线（混合状态进管线 hash 且非动态）。
-    key.blendKey = transparent ? 1u : 0u;
+    // pipeline 位在段内次高：段内同材质 layout 的批次（含蒙皮位 2/3）连续，
+    // 减少管线切换。pass 必须优先于 pipeline——否则蒙皮（pipe2/3）会排到静态
+    // 透明（pipe0/透明）之后，切分点之后整段被透明管线绘制（见 SortKey 注释）。
+    key.pipelineId = static_cast<uint8_t>(GetPipelineId(material) | (skinned ? kSkinPipelineBit : 0u));
 
     // 材质分组：用材质指针值（进程内唯一）作分组 id，使同材质实例连续，
     // 减少管线/纹理切换。材质完整决定渲染状态（纹理组合、着色器类型、混合等）。
@@ -557,10 +553,12 @@ void Renderer3D::RecordScene(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame,
 
 void Renderer3D::SortMeshes() {
     // ── 0. 按排序键排序（pass → 材质 → mesh → 深度方向）───────────────
-    //    SortKey 的 operator< 依次比较 pipeline → pass → blendKey → material →
-    //    mesh → submesh → depthBits，使不透明（Opaque/Mask）与透明（Blend）自动
-    //    分区，且各自段内同材质同 mesh 实例连续（便于 instancing 合批）、深度
-    //    方向正确（不透明近→远吃 early-z；透明远→近供 alpha 混合）。
+    //    SortKey 的 operator< 依次比较 pass → pipeline → material → mesh →
+    //    submesh → depthBits：pass 在最高位，使不透明（Opaque/Mask）与透明
+    //    （Blend）各成干净连续前缀（不透明先、透明后），RecordScene 才能用
+    //    首个 Blend 批次切分两段。段内按 pipeline/material/mesh 连续（便于
+    //    instancing 合批与减切换），深度方向正确（不透明近→远吃 early-z；
+    //    透明远→近供 alpha 混合）。
     std::sort(m_Meshes.begin(), m_Meshes.end(),
               [](const MeshInstance &a, const MeshInstance &b) {
                   return a.sortKey < b.sortKey;

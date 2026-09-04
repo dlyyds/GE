@@ -60,17 +60,19 @@ class Renderer3D {
 public:
     // ========================================================================
     // 排序键（阶段1：按材质排序；阶段3：加入 mesh 分组以便 instancing；
-    //          阶段4：加入 pass 分区与混合分组，打通透明渲染）
+    //          阶段4：加入 pass 分区，打通透明渲染）
     // ========================================================================
     //
     // 用 struct 而非位打包整数，彻底消除位预算限制：
-    //   pipeline → pass → 混合 → material → mesh → depth
-    // - pipeline 优先级最高：管线切换最贵（材质 PBR 位 + 蒙皮位）
-    // - pass：0=不透明（MASK/Opaque），1=透明（Blend）——不透明全部先画，
-    //   透明的 back-to-front 排序不干扰不透明的 early-z
-    // - blend：混合键进排序，使同管线（同材质同 layout）的 Opaque/Mask
-    //   连续 → 混合附件状态只在两段交界处切换一次（混合状态参与管线
-    //   hash，非动态；键相同的批次共享同一管线变体）
+    //   pass → pipeline → material → mesh → depth
+    // - pass：0=不透明（MASK/Opaque），1=透明（Blend）。必须作为最高优先语义
+    //   分区——不透明段先画（写深度、近→远吃 early-z），透明段后画（混合、
+    //   深度写关、远→近）。若把 pipeline 提到 pass 之前，带蒙皮位的高 id
+    //   （pipe2/3）会混进静态（pipe0）的透明段之后，切分点之后整段被透明
+    //   管线绘制 → 蒙皮不透明物体混合开、深度写关，永远盖在透明物上方
+    //   （透明材质 alpha≈1 = 全覆盖）。pass 在最高位保证两段都是干净连续前缀。
+    // - pipeline：管线切换最贵（材质 PBR 位 + 蒙皮位）。段内才按管线分组，
+    //   减少切换；Opaque/Mask 同为不透明段、天然共享同一混合附件状态。
     // - material：按材质分组 → 减少管线/纹理切换
     // - mesh：同材质内同 mesh 实例连续，便于 instancing 合批
     // - depth：不透明物体从前往后（early-z）；透明分区内 depthBits 取反，
@@ -86,11 +88,10 @@ public:
         Transparent = 1, ///< 透明段（Blend，深度不写、远→近）
     };
 
-    /// 排序键：按 pipeline → pass → blend → material → mesh → submesh → depth 顺序比较。
+    /// 排序键：按 pass → pipeline → material → mesh → submesh → depth 顺序比较。
     struct SortKey {
-        uint8_t  pipelineId = 0;  ///< 管线 id（材质 PBR 位 + 蒙皮位）
-        uint8_t  passId     = 0;  ///< 渲染段（0=不透明，1=透明；不透明全部先画）
-        uint8_t  blendKey   = 0;  ///< 混合分组（0=关，1=alpha 混合；同键共享同一管线变体）
+        uint8_t  passId     = 0;  ///< 渲染段（0=不透明，1=透明；最高优先，保证两段连续前缀）
+        uint8_t  pipelineId = 0;  ///< 管线 id（材质 PBR 位 + 蒙皮位；段内次高）
         uint64_t materialId = 0;  ///< 材质指针值（分组用）
         uint64_t meshId     = 0;  ///< mesh 指针值（分组用）
         uint64_t submeshId  = 0;  ///< 子网格范围（firstIndex<<32 | indexCount，分组用）
@@ -98,9 +99,8 @@ public:
 
         /// 按优先级从高到低比较，供 std::sort 使用。
         bool operator<(const SortKey &o) const {
-            if (pipelineId != o.pipelineId) return pipelineId < o.pipelineId;
             if (passId != o.passId) return passId < o.passId;
-            if (blendKey != o.blendKey) return blendKey < o.blendKey;
+            if (pipelineId != o.pipelineId) return pipelineId < o.pipelineId;
             if (materialId != o.materialId) return materialId < o.materialId;
             if (meshId != o.meshId) return meshId < o.meshId;
             if (submeshId != o.submeshId) return submeshId < o.submeshId;

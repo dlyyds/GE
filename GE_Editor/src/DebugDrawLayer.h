@@ -52,6 +52,9 @@ private:
     /// 是否叠加第一人称视点标记（依赖 FirstPersonCameraComponent 实体存在）
     bool m_ShowFPSEyes = true;
 
+    /// 是否叠加方向光调试图标（太阳盘 + 光线束，颜色取灯光色）
+    bool m_ShowDirLights = true;
+
     void DrawWorldBounds(const Camera &camera, const glm::vec2 &imagePos,
                          const glm::vec2 &viewportSize);
 
@@ -60,6 +63,9 @@ private:
 
     void DrawFirstPersonEyes(const Camera &camera, const glm::vec2 &imagePos,
                              const glm::vec2 &viewportSize);
+
+    void DrawDirectionalLights(const Camera &camera, const glm::vec2 &imagePos,
+                               const glm::vec2 &viewportSize);
 };
 
 } // namespace GE

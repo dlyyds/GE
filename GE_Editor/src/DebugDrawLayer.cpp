@@ -61,6 +61,7 @@ void DebugDrawLayer::OnImGuiRender() {
     ImGui::Checkbox("关节露点", &m_ShowJointDots);
     ImGui::Checkbox("显示碰撞体", &m_ShowColliders);
     ImGui::Checkbox("显示视点", &m_ShowFPSEyes);
+    ImGui::Checkbox("显示方向光", &m_ShowDirLights);
     ImGui::End();
 }
 
@@ -78,6 +79,9 @@ void DebugDrawLayer::RenderSceneOverlay(const Camera &camera, const glm::vec2 &i
     }
     if (m_ShowFPSEyes) {
         DrawFirstPersonEyes(camera, imagePos, viewportSize);
+    }
+    if (m_ShowDirLights) {
+        DrawDirectionalLights(camera, imagePos, viewportSize);
     }
 }
 
@@ -562,6 +566,132 @@ void DebugDrawLayer::DrawFirstPersonEyes(const Camera &camera, const glm::vec2 &
         constexpr float kHalf = 6.0f;
         dl->AddLine(ImVec2(sEye.x - kHalf, sEye.y), ImVec2(sEye.x + kHalf, sEye.y), eyeColor, 2.0f);
         dl->AddLine(ImVec2(sEye.x, sEye.y - kHalf), ImVec2(sEye.x, sEye.y + kHalf), eyeColor, 2.0f);
+    }
+}
+
+// ============================================================
+// 方向光调试图标叠加
+// ============================================================
+
+void DebugDrawLayer::DrawDirectionalLights(const Camera &camera, const glm::vec2 &imagePos,
+                                           const glm::vec2 &viewportSize) {
+    if (!m_Context->Scene) {
+        return;
+    }
+
+    // 还原 OpenGL 投影（与 DrawColliders 同款，保证线与画面/gizmo 对齐）
+    glm::mat4 projGL = camera.GetProj();
+    projGL[1][1] *= -1.0f;
+    const glm::mat4 viewProjGL = projGL * camera.GetView();
+
+    const glm::vec2 origin{imagePos.x, imagePos.y};
+    const glm::vec2 size{viewportSize.x, viewportSize.y};
+    ImDrawList *dl = ImGui::GetWindowDrawList();
+
+    // 线段 → 屏幕坐标：先裁剪到相机近平面再投影（与 DrawColliders 同款），
+    // 保证离锚点很远的射线即使一端在相机背面也能正确画出
+    const auto projectSegment = [&](const glm::vec3 &a, const glm::vec3 &b,
+                                    glm::vec2 &sa, glm::vec2 &sb) -> bool {
+        constexpr float kNearW = 1e-3f;
+        const glm::vec4 ca = viewProjGL * glm::vec4(a, 1.0f);
+        const glm::vec4 cb = viewProjGL * glm::vec4(b, 1.0f);
+        const bool aFront = ca.w > kNearW;
+        const bool bFront = cb.w > kNearW;
+        if (!aFront && !bFront) {
+            return false; // 整段在相机背面
+        }
+        glm::vec4 cA = ca, cB = cb;
+        if (aFront && !bFront) { // b 在背面：沿线段插值到近平面
+            const float t = (kNearW - cb.w) / (ca.w - cb.w);
+            cB = cb + (ca - cb) * t;
+            cB.w = kNearW;
+        } else if (!aFront && bFront) { // a 在背面：沿线段插值到近平面
+            const float t = (kNearW - ca.w) / (cb.w - ca.w);
+            cA = ca + (cb - ca) * t;
+            cA.w = kNearW;
+        }
+        const auto toPos = [&](const glm::vec4 &c) {
+            return glm::vec2(origin.x + (0.5f + c.x / c.w * 0.5f) * size.x,
+                             origin.y + (0.5f - c.y / c.w * 0.5f) * size.y);
+        };
+        sa = toPos(cA);
+        sb = toPos(cB);
+        return true;
+    };
+
+    // 画一条世界坐标线段：先画粗的深色底（压场景高亮），再叠灯光颜色，保证在亮/暗背景都可读
+    const auto drawWorldSegment = [&](const glm::vec3 &a, const glm::vec3 &b, ImU32 color) {
+        glm::vec2 sa, sb;
+        if (projectSegment(a, b, sa, sb)) {
+            dl->AddLine(ImVec2(sa.x, sa.y), ImVec2(sb.x, sb.y), IM_COL32(0, 0, 0, 160), 2.4f);
+            dl->AddLine(ImVec2(sa.x, sa.y), ImVec2(sb.x, sb.y), color, 1.2f);
+        }
+    };
+
+    constexpr float kPi = 3.14159265358979f;
+
+    const auto dirView = m_Context->Scene->Reg().view<
+        TransformComponent, DirectionalLightComponent>();
+    for (auto entity : dirView) {
+        const auto &tc = dirView.get<TransformComponent>(entity);
+        const auto &dlc = dirView.get<DirectionalLightComponent>(entity);
+
+        // 由世界矩阵的旋转部分推导光出射方向（与 Scene::CollectLightParams 一致）：
+        // 前向向量 -Z 旋转后为光线射出方向；缩放逐列归一化后再转四元数
+        const glm::mat3 rot3 = glm::mat3(tc.GetWorldMatrix());
+        const glm::mat3 normalizedRot(
+            glm::normalize(rot3[0]), glm::normalize(rot3[1]), glm::normalize(rot3[2]));
+        const glm::quat worldRot = glm::quat_cast(normalizedRot);
+        const glm::vec3 dir = glm::normalize(worldRot * glm::vec3(0.0f, 0.0f, -1.0f));
+
+        // 锚点 = 实体世界位置；颜色取 rgb（HDR 分量截到 [0,1] 供屏幕显示）
+        const glm::vec3 center = glm::vec3(tc.GetWorldMatrix()[3]);
+        const ImU32 lightColor = ImGui::ColorConvertFloat4ToU32(ImVec4(
+            std::min(dlc.Color.r, 1.0f), std::min(dlc.Color.g, 1.0f),
+            std::min(dlc.Color.b, 1.0f), 1.0f));
+
+        // 盘面正交基 u/v（法线沿光出射方向）：任选一个与 dir 不共线的参考轴叉积构造
+        const glm::vec3 ref = (std::fabs(dir.y) < 0.99f) ? glm::vec3(0.0f, 1.0f, 0.0f)
+                                                         : glm::vec3(1.0f, 0.0f, 0.0f);
+        const glm::vec3 u = glm::normalize(glm::cross(ref, dir));
+        const glm::vec3 v = glm::cross(dir, u);
+
+        constexpr float kDiscRadius = 0.5f; // 太阳盘半径
+        constexpr float kRayLength = 2.0f;  // 光线束长度
+        constexpr int kSegs = 24;           // 盘面圆环/辐条分段
+        constexpr int kRays = 8;            // 光线束数量
+
+        // 1) 太阳盘：外圈圆环 + 中心到外圈的辐条（盘面法线背向光照方向）
+        for (int i = 0; i < kSegs; ++i) {
+            const float a0 = (2.0f * kPi * i) / kSegs;
+            const float a1 = (2.0f * kPi * (i + 1)) / kSegs;
+            drawWorldSegment(
+                center + kDiscRadius * (std::cos(a0) * u + std::sin(a0) * v),
+                center + kDiscRadius * (std::cos(a1) * u + std::sin(a1) * v), lightColor);
+        }
+        for (int i = 0; i < kSegs; ++i) {
+            const float a = (2.0f * kPi * i) / kSegs;
+            drawWorldSegment(center,
+                             center + kDiscRadius * (std::cos(a) * u + std::sin(a) * v),
+                             lightColor);
+        }
+
+        // 2) 光线束：从盘面外缘沿光出射方向辐射出去，直观指示照射方向
+        for (int i = 0; i < kRays; ++i) {
+            const float a = (2.0f * kPi * i) / kRays;
+            const glm::vec3 start =
+                center + kDiscRadius * 0.7f * (std::cos(a) * u + std::sin(a) * v);
+            drawWorldSegment(start, start + dir * kRayLength, lightColor);
+        }
+
+        // 3) 盘心圆点：固定锚点位置，图标较小时也便于定位
+        {
+            glm::vec2 sc;
+            if (projectSegment(center, center, sc, sc)) {
+                dl->AddCircleFilled(ImVec2(sc.x, sc.y), 3.0f, lightColor);
+                dl->AddCircle(ImVec2(sc.x, sc.y), 3.0f, IM_COL32(0, 0, 0, 200));
+            }
+        }
     }
 }
 

@@ -87,6 +87,10 @@ public:
     /// 校验 pass 声明自洽。编译前读写声明必须已完成。可重复调用。
     bool Compile();
 
+    /// 清空本帧全部资源与 pass 声明，恢复到可重新构建的初始态。
+    /// 供宿主（Renderer）每帧复用同一图对象（每帧重建的替代，避免重复分配）。
+    void Reset();
+
     /// 按声明序把屏障与各 pass 的命令录制到 cmd（本帧已 Begin）。
     /// @param cmd   目标 command buffer（当前帧）
     /// @param frame 当前帧（帧池缓冲/描述符来源，透传给 execute 回调）

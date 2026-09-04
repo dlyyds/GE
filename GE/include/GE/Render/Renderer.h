@@ -5,6 +5,7 @@
 #include "Render/VulkanBase/VulkanRenderContext.h"
 #include "Render/VulkanBase/VulkanCommandBuffer.h"
 #include "Render/AsyncUploadManager.h"
+#include "Render/RenderGraph/RenderGraph.h"
 
 #include <functional>
 
@@ -89,6 +90,20 @@ public:
      * @param callback 每帧 UI 提交函数（通常在 ImGui::NewFrame 之后执行窗口绘制）
      */
     void SetFrameUI(std::function<void()> callback);
+
+    // ========================================================================
+    // 帧渲染图（RenderGraph）编排
+    // ========================================================================
+
+    /**
+     * @brief 获取本帧的渲染图构建器（宿主每帧在 OnUpdate 里向它注册 pass）。
+     *
+     * Renderer 持有帧图对象，每帧 BeginFrame 末尾 Reset；各 Layer 在 OnUpdate
+     * 中经此 builder Import 外部图像 / AddPass 声明读写，命令录制延后到
+     * Renderer::EndFrame 里统一 Execute（ImGui 上屏前）。编辑器的离屏视口
+     * Scene3D/Scene2D 两 pass 即由此注册；Sandbox 不注册则 EndFrame 空图跳过。
+     */
+    RenderGraphBuilder &GetFrameGraphBuilder() { return m_FrameBuilder; }
 
     // ========================================================================
     // Swapchain 管理
@@ -183,6 +198,11 @@ private:
 
     /// 当前帧的 command buffer（每帧由 BeginFrame 设置，EndFrame 后置空；由 RenderContext 所有）。
     VulkanCommandBuffer *m_ActiveFrameCmd = nullptr;
+
+    /// 帧渲染图对象 + 构建器（每帧 BeginFrame 末尾 Reset，EndFrame Execute）。
+    /// 宿主（各 Layer）在 OnUpdate 经 GetFrameGraphBuilder() 注册 pass。
+    RenderGraph m_FrameGraph{"FrameGraph"};
+    RenderGraphBuilder m_FrameBuilder{m_FrameGraph};
 
     /// 2D 精灵渲染器。
     std::unique_ptr<Renderer2D> m_2DRenderer;

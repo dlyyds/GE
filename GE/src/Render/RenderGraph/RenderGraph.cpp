@@ -218,6 +218,12 @@ bool RenderGraph::Compile() {
     return true;
 }
 
+void RenderGraph::Reset() {
+    m_Resources.clear();
+    m_Passes.clear();
+    m_Compiled = false;
+}
+
 // ---------------------------------------------------------------------------
 // Execute：逐 pass 前置屏障 + 命令录制
 // ---------------------------------------------------------------------------

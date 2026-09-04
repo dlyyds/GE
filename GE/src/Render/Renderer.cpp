@@ -140,6 +140,10 @@ VulkanCommandBuffer &Renderer::BeginFrame() {
         VulkanRenderingInfo::End(m_ActiveFrameCmd->GetHandle());
     }
 
+    // 清空本帧渲染图（供各 Layer 在 OnUpdate 里重新构建 Scene pass 声明）。
+    // Execute 统一延后到 EndFrame（ImGui 上屏前）。
+    m_FrameGraph.Reset();
+
     return *m_ActiveFrameCmd;
 }
 
@@ -148,7 +152,31 @@ void Renderer::EndFrame() {
 
     GE_CORE_ASSERT(m_ActiveFrameCmd, "No active frame command buffer!");
 
-    // 0. ImGui 帧（归并后由 Renderer 驱动）：Begin → 各 Layer UI → 上屏。
+    // 0. 统一执行本帧渲染图（各 Layer 已在 OnUpdate 里完成 pass 声明）。
+    //    必须位于 ImGui 上屏之前：编辑器离屏 Scene3D/Scene2D 在此录制，Scene2D
+    //    收尾把视口颜色图转到 ShaderReadOnlyOptimal，随后 ImGui 才采样该图。
+    //    空图（Sandbox 等未注册 pass）Execute 内部直接跳过，零开销。
+    {
+        GE_PROFILE_SCOPE("FrameGraphExecute");
+        if (m_FrameGraph.GetPassCount() > 0) {
+            m_FrameGraph.Compile();
+            m_FrameGraph.Execute(*m_ActiveFrameCmd,
+                                 m_RenderContext->GetActiveFrame());
+        }
+    }
+
+    // 0a. 复位渲染器目标与延迟录制标记：Execute 之后 2D/3D 的本帧采集已消费完，
+    //     离屏目标/批次归还默认态（非图路径下为幂等 no-op）。
+    if (m_2DRenderer) {
+        m_2DRenderer->SetRenderTarget(nullptr);
+        m_2DRenderer->SetDeferRecording(false);
+    }
+    if (m_3DRenderer) {
+        m_3DRenderer->SetRenderTarget(nullptr);
+        m_3DRenderer->SetDeferRecording(false);
+    }
+
+    // 1. ImGui 帧（归并后由 Renderer 驱动）：Begin → 各 Layer UI → 上屏。
     //    必须在 swapchain image 仍为 ColorAttachmentOptimal 时绘制，
     //    故置于 layout 转换到 Present 之前。
     if (m_ImGuiLayer) {

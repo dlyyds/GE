@@ -235,21 +235,22 @@ void SceneLayer::OnUpdate(Timestep &ts) {
     // Scene 只做仿真 + 采集（3D/2D 批次经 EndScene 延迟快照，不录制命令）
     m_Context->Scene->OnUpdate3D(ts, view, projection, cameraPos, clearColor);
 
-    // ── 两 pass 声明 + Execute：Scene3D（清屏含深度）→ Scene2D（叠加世界/UI 精灵） ──
-    RenderGraph graph("SceneGraph");
-    RenderGraphBuilder builder(graph);
+    // ── 向本帧渲染图注册两 pass：Scene3D（清屏含深度）→ Scene2D（叠加世界/UI 精灵） ──
+    // 图对象与 Builder 由 Renderer 托管（GetFrameGraphBuilder），每帧 BeginFrame
+    // 末尾已 Reset；这里只 Import 视口颜色/深度并声明 pass 读写，命令录制与
+    // Execute 统一在 Renderer::EndFrame（ImGui 上屏前）完成。故此处不复位
+    // defer / RenderTarget——复位也由 Renderer 在 Execute 后统一做。
+    auto &b = Renderer::Get().GetFrameGraphBuilder();
 
-    auto &cmd = Renderer::GetFrameCmd();
-    auto &frame = Renderer::GetRenderContext().GetActiveFrame();
     const auto extent = viewportRT->GetExtent();
     vk::Rect2D renderArea{{0, 0}, {extent.width, extent.height}};
 
     // 外部资源：离屏颜色 + 深度（RenderTarget 不拥有，图只编排同步）
-    ResourceHandle hColor = builder.Import(&viewportRT->GetColorView(), "ViewportColor");
-    ResourceHandle hDepth = builder.Import(&viewportRT->GetDepthView(), "ViewportDepth");
+    ResourceHandle hColor = b.Import(&viewportRT->GetColorView(), "ViewportColor");
+    ResourceHandle hDepth = b.Import(&viewportRT->GetDepthView(), "ViewportDepth");
 
     // Pass0 "Scene3D"：清屏 + 深度 eClear；颜色/深度 eStore（深度须保留给 Scene2D 读）
-    RenderPassDesc &scene3D = builder.AddPass("Scene3D");
+    RenderPassDesc &scene3D = b.AddPass("Scene3D");
     scene3D.renderArea = renderArea;
     AttachmentDesc colorClear;
     colorClear.resource = hColor;
@@ -270,7 +271,7 @@ void SceneLayer::OnUpdate(Timestep &ts) {
 
     // Pass1 "Scene2D"：叠加世界/UI 精灵。颜色 eLoad；深度 eLoad（读 Scene3D 深度做
     // 遮挡），UI 批 depthTest 关不读写；颜色收尾转 ShaderReadOnlyOptimal 供 ImGui 采样。
-    RenderPassDesc &scene2D = builder.AddPass("Scene2D");
+    RenderPassDesc &scene2D = b.AddPass("Scene2D");
     scene2D.renderArea = renderArea;
     AttachmentDesc colorLoad;
     colorLoad.resource = hColor;
@@ -288,15 +289,6 @@ void SceneLayer::OnUpdate(Timestep &ts) {
     scene2D.execute = [](PassExecuteContext &ctx) {
         Renderer::Get2DRenderer().FlushScene(*ctx.cmd, *ctx.frame);
     };
-
-    graph.Compile();
-    graph.Execute(cmd, frame);
-
-    // 复位为 swapchain 目标（默认）+ 退出延迟录制
-    r3d.SetDeferRecording(false);
-    r2d.SetDeferRecording(false);
-    r3d.SetRenderTarget(nullptr);
-    r2d.SetRenderTarget(nullptr);
 }
 
 void SceneLayer::OnEvent(Event &event) {

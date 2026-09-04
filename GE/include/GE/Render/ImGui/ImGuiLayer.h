@@ -6,6 +6,7 @@ namespace GE {
 
 class Renderer;
 class Window;
+class VulkanCommandBuffer;
 
 /**
  * @brief ImGui 运行时（Renderer 内部组件）。
@@ -38,8 +39,21 @@ public:
     /// 帧起始：推进 platform 与 renderer 的 new frame。Renderer::EndFrame 前调用。
     static void Begin();
 
-    /// 帧结束：Render + 绘制到当前 swapchain image。Renderer::EndFrame 内调用。
-    void End();
+    /**
+     * @brief 结束 UI 构建（纯 CPU）：设置 DisplaySize + ImGui::Render()。
+     *
+     * 真正的命令录制(RenderDrawData)延后到 RenderGraph 的 UIPass execute 回调里
+     * 由 DrawUI 完成；此方法只结束 CPU 侧帧数据生成，必须在 Execute 前调用。
+     */
+    void EndUI();
+
+    /**
+     * @brief 把已构建的 UI 命令裸录制到 cmd（RenderGraph UIPass execute 回调内调用）。
+     *
+     * 前提：区间已由图打开（颜色附件 = swapchain，loadOp/eStore 已声明），backend
+     * 只裸画(RenderDrawData)，不做任何布局转换/屏障/自开区间。
+     */
+    static void DrawUI(VulkanCommandBuffer &cmd);
 
     /// swapchain 重建（resize / present mode 变更）后刷新 backend 依赖的 image 信息。
     void OnSwapchainRecreated();

@@ -6,7 +6,7 @@
 
 #include "Render/Renderer.h"
 #include "Render/AssetManager.h"
-#include "Render/VulkanBase/VulkanRenderingInfo.h"
+#include "Render/VulkanBase/VulkanCommandBuffer.h"
 #include "Render/VulkanBase/VulkanContext.h"
 
 #include "GLFW/glfw3.h"
@@ -135,26 +135,21 @@ void ImGuiLayer::Begin() {
     ImGui::NewFrame();
 }
 
-void ImGuiLayer::End() {
+void ImGuiLayer::EndUI() {
     ImGuiIO &io = ImGui::GetIO();
     io.DisplaySize = ImVec2(static_cast<float>(m_Renderer.GetWindowRef().GetWidth()),
                             static_cast<float>(m_Renderer.GetWindowRef().GetHeight()));
 
+    // 结束 CPU 侧 UI 帧数据生成；命令录制(RenderDrawData)延后到渲染图 UIPass 的
+    // execute 回调里由 DrawUI 完成（那时动态渲染区间已由图打开）。
     ImGui::Render();
+}
 
-    auto &cmd = Renderer::GetFrameCmd();
+void ImGuiLayer::DrawUI(VulkanCommandBuffer &cmd) {
+    // 渲染图 UIPass execute 回调内调用：区间已由图打开（颜色附件 = swapchain，
+    // loadOp/store 已声明），这里只裸画。backend 不查布局、不发屏障、不自开区间。
     auto vkCmd = cmd.GetHandle();
-
-    // Render ImGui on top with loadOp = eLoad to preserve the scene.
-    VulkanRenderingInfo render_info;
-    render_info.SetRenderArea(0, 0, static_cast<uint32_t>(io.DisplaySize.x),
-                              static_cast<uint32_t>(io.DisplaySize.y));
-    render_info.AddColorAttachment(Renderer::GetFrameImageView().GetHandle(),
-                                   vk::AttachmentLoadOp::eLoad,
-                                   vk::AttachmentStoreOp::eStore);
-    render_info.Begin(vkCmd);
     ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), vkCmd);
-    render_info.End(vkCmd);
 }
 
 void ImGuiLayer::OnSwapchainRecreated() {

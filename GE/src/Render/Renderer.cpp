@@ -11,7 +11,6 @@
 #include "Core/Log.h"
 #include "Debug/Assert.h"
 #include "Render/VulkanBase/VulkanImage.h"
-#include "Render/VulkanBase/VulkanRenderingInfo.h"
 #include "Render/VulkanBase/VulkanRenderFrame.h"
 
 #include "Debug/Profiler.h"
@@ -108,39 +107,7 @@ VulkanCommandBuffer &Renderer::BeginFrame() {
     // 2. Begin command buffer
     m_ActiveFrameCmd->Begin(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
-    // 3. Transition to color attachment layout
-    {
-        GE_PROFILE_SCOPE("TransitionToColor");
-        auto &swapchain = m_RenderContext->GetSwapchain();
-        auto &img = swapchain.GetImages()[m_RenderContext->GetActiveFrameIndex()];
-        image_utils::TransitionLayout(m_ActiveFrameCmd->GetHandle(), img.GetHandle(),
-                                      vk::ImageLayout::eUndefined,
-                                      vk::ImageLayout::eColorAttachmentOptimal);
-    }
-
-    // 4. 清屏到暗色背景（动态渲染）。
-    //    场景现已离屏渲染（不再直接写 swapchain），这里为 ImGui 先清一个
-    //    干净底色，避免残留/未定义内容。其它仍直接渲染到 swapchain 的层会覆盖它。
-    {
-        auto &frame     = m_RenderContext->GetActiveFrame();
-        auto &swapchain = m_RenderContext->GetSwapchain();
-        auto extent     = swapchain.GetExtent();
-
-        vk::ClearValue clearValue;
-        clearValue.color = std::array<float, 4>{0.1f, 0.1f, 0.15f, 1.0f};
-
-        VulkanRenderingInfo renderInfo;
-        renderInfo.SetRenderArea(0, 0, extent.width, extent.height);
-        renderInfo.AddColorAttachment(
-            frame.GetRenderTarget().GetSwapchainView().GetHandle(),
-            vk::AttachmentLoadOp::eClear,
-            vk::AttachmentStoreOp::eStore,
-            clearValue);
-        renderInfo.Begin(m_ActiveFrameCmd->GetHandle());
-        VulkanRenderingInfo::End(m_ActiveFrameCmd->GetHandle());
-    }
-
-    // 清空本帧渲染图（供各 Layer 在 OnUpdate 里重新构建 Scene pass 声明）。
+    // 3. 清空本帧渲染图（供各 Layer 在 OnUpdate 里重新构建 Scene pass 声明）。
     // Execute 统一延后到 EndFrame（ImGui 上屏前）。
     m_FrameGraph.Reset();
 
@@ -152,51 +119,55 @@ void Renderer::EndFrame() {
 
     GE_CORE_ASSERT(m_ActiveFrameCmd, "No active frame command buffer!");
 
-    // 0. 统一执行本帧渲染图（各 Layer 已在 OnUpdate 里完成 pass 声明）。
-    //    必须位于 ImGui 上屏之前：编辑器离屏 Scene3D/Scene2D 在此录制，Scene2D
-    //    收尾把视口颜色图转到 ShaderReadOnlyOptimal，随后 ImGui 才采样该图。
-    //    空图（Sandbox 等未注册 pass）Execute 内部直接跳过，零开销。
-    {
-        GE_PROFILE_SCOPE("FrameGraphExecute");
-        if (m_FrameGraph.GetPassCount() > 0) {
-            m_FrameGraph.Compile();
-            m_FrameGraph.Execute(*m_ActiveFrameCmd,
-                                 m_RenderContext->GetActiveFrame());
-        }
-    }
+    auto &activeFrame = m_RenderContext->GetActiveFrame();
 
-    // 0a. 复位渲染器目标与延迟录制标记：Execute 之后 2D/3D 的本帧采集已消费完，
-    //     离屏目标/批次归还默认态（非图路径下为幂等 no-op）。
-    if (m_2DRenderer) {
-        m_2DRenderer->SetRenderTarget(nullptr);
-        m_2DRenderer->SetDeferRecording(false);
-    }
-    if (m_3DRenderer) {
-        m_3DRenderer->SetRenderTarget(nullptr);
-        m_3DRenderer->SetDeferRecording(false);
-    }
-
-    // 1. ImGui 帧（归并后由 Renderer 驱动）：Begin → 各 Layer UI → 上屏。
-    //    必须在 swapchain image 仍为 ColorAttachmentOptimal 时绘制，
-    //    故置于 layout 转换到 Present 之前。
+    // ── 恒为帧图路径：ImGui 作为帧图最后一张 UIPass ──────────────────
+    // 1. UI 内容构建（纯 CPU）：Begin → 各 Layer 提交 ImGui 命令(含视口图 Image)
+    //    → EndUI 结束 CPU 侧帧数据。命令录制延后到 UIPass execute 回调，
+    //    故必须在 Execute 之前完成本段。
     if (m_ImGuiLayer) {
-        GE_PROFILE_SCOPE("ImGuiRender");
+        GE_PROFILE_SCOPE("ImGuiBuild");
         ImGuiLayer::Begin();
-        // 各宿主 Layer 的 UI（DockSpace 宿主须最先创建停靠区）
         if (m_FrameUI) {
             m_FrameUI();
         }
-        m_ImGuiLayer->End();
+        m_ImGuiLayer->EndUI();
     }
 
-    // 1. Transition to present layout
-    {
-        GE_PROFILE_SCOPE("TransitionToPresent");
-        auto &swapchain = m_RenderContext->GetSwapchain();
-        auto &img = swapchain.GetImages()[m_RenderContext->GetActiveFrameIndex()];
-        image_utils::TransitionLayout(m_ActiveFrameCmd->GetHandle(), img.GetHandle(),
-                                      vk::ImageLayout::eColorAttachmentOptimal,
-                                      vk::ImageLayout::ePresentSrcKHR);
+    // 2. 注册 UIPass：颜色附件 = swapchain 当前帧 view（eClear 承接原 BeginFrame 手
+    //    工清屏职责，为 UI 画一个干净暗底），execute 内裸录 RenderDrawData，收尾
+    //    finalLayout 转 PresentSrc。无条件注册，保证帧图恒有内容。
+    auto &b = GetFrameGraphBuilder();
+    ResourceHandle hSwapchain = b.Import(&GetFrameImageView(), "SwapchainUI");
+    m_FrameGraph.SetFrameSwapchain(hSwapchain);
+    const auto extent = m_RenderContext->GetSwapchain().GetExtent();
+    RenderPassDesc &uiPass = b.AddPass("UIPass");
+    uiPass.renderArea = vk::Rect2D{{0, 0}, {extent.width, extent.height}};
+    AttachmentDesc color;
+    color.resource = hSwapchain;
+    color.usage = ResourceUsage::ColorAttachment;
+    color.loadOp = vk::AttachmentLoadOp::eClear;
+    color.storeOp = vk::AttachmentStoreOp::eStore;
+    color.clearValue.color = {0.1f, 0.1f, 0.15f, 1.0f};
+    color.finalLayout = vk::ImageLayout::ePresentSrcKHR;
+    uiPass.colorAttachments.push_back(color);
+    uiPass.execute = [](PassExecuteContext &ctx) {
+        ImGuiLayer::DrawUI(*ctx.cmd);
+    };
+
+    // 3. 统一 Execute：声明序即执行序（Scene3D → Scene2D → UIPass）。Scene2D 收尾
+    //    把离屏视口图转 ShaderReadOnly，UIPass 采样之并画 UI 到 swapchain，最后
+    //    由 UIPass finalLayout 收尾转 PresentSrc（不再有手工 →PresentSrc 段）。
+    GE_PROFILE_SCOPE("FrameGraphExecute");
+    m_FrameGraph.Compile();
+    m_FrameGraph.Execute(*m_ActiveFrameCmd, activeFrame);
+
+    // 复位渲染器渲染目标：Execute 中本帧采集已消费完，离屏目标归还默认态。
+    if (m_2DRenderer) {
+        m_2DRenderer->SetRenderTarget(nullptr);
+    }
+    if (m_3DRenderer) {
+        m_3DRenderer->SetRenderTarget(nullptr);
     }
 
     // 2. End command buffer

@@ -458,12 +458,23 @@ void RenderGraph::Execute(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame) {
                 if (pl.layout == finalLayout) {
                     return;  // 已停靠，无需转换
                 }
-                // 写者输出对后续读（采样）可见：源 = 附件写，目的 = 通用着色器读。
+                // 收尾 barrier：附件写完成后把资源转到声明布局并使其对后续使用可见。
+                // 目标布局决定目的阶段/访问：
+                //  - ShaderReadOnlyOptimal（写后供采样）→ 目的 = 着色器读；
+                //  - PresentSrcKHR（写后呈现，WSI 帧图）→ 目的 = 队列呈现（BottomOfPipe，
+                //    不设访问位），仅需在提交前完成所有附件写。
+                const vk::PipelineStageFlags2 dstStage =
+                    (finalLayout == vk::ImageLayout::ePresentSrcKHR)
+                        ? vk::PipelineStageFlagBits2::eBottomOfPipe
+                        : vk::PipelineStageFlagBits2::eVertexShader
+                              | vk::PipelineStageFlagBits2::eFragmentShader;
+                const vk::AccessFlags2 dstAccess =
+                    (finalLayout == vk::ImageLayout::ePresentSrcKHR)
+                        ? vk::AccessFlags2{}
+                        : vk::AccessFlagBits2::eShaderRead;
                 tailBarriers.push_back(MakeBarrier(
                     WriteStage(usage), WriteAccess(usage),
-                    vk::PipelineStageFlagBits2::eVertexShader
-                        | vk::PipelineStageFlagBits2::eFragmentShader,
-                    vk::AccessFlagBits2::eShaderRead,
+                    dstStage, dstAccess,
                     pl.layout, finalLayout, *rec.external));
                 pl.layout = finalLayout;
             };

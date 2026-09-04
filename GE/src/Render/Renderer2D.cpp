@@ -6,6 +6,7 @@
 #include "Render/Renderer2D.h"
 
 #include "Core/Log.h"
+#include "Debug/Assert.h"
 #include "Render/Renderer.h"
 #include "Render/AssetManager.h"
 #include "Render/TextureManager.h"
@@ -13,7 +14,6 @@
 #include "Render/VulkanBase/VulkanPipelineLayout.h"
 #include "Render/VulkanBase/VulkanRenderContext.h"
 #include "Render/VulkanBase/VulkanRenderFrame.h"
-#include "Render/VulkanBase/VulkanRenderingInfo.h"
 #include "Render/VulkanBase/VulkanResourceCache.h"
 #include "Render/VulkanBase/VulkanShaderModule.h"
 
@@ -37,15 +37,15 @@ Renderer2D::Renderer2D() {
     m_VertShader = &cache.RequestShaderModule(
         vk::ShaderStageFlagBits::eVertex,
         ShaderSource(Renderer::GetAssetManager()
-                         .ResolvePath(std::string(AssetPaths::Shaders) + "/sprite.vert.spv")
-                         .string()),
+            .ResolvePath(std::string(AssetPaths::Shaders) + "/sprite.vert.spv")
+            .string()),
         "main", ShaderVariant{});
 
     m_FragShader = &cache.RequestShaderModule(
         vk::ShaderStageFlagBits::eFragment,
         ShaderSource(Renderer::GetAssetManager()
-                         .ResolvePath(std::string(AssetPaths::Shaders) + "/sprite.frag.spv")
-                         .string()),
+            .ResolvePath(std::string(AssetPaths::Shaders) + "/sprite.frag.spv")
+            .string()),
         "main", ShaderVariant{});
 
     // ── 2. 请求 PipelineLayout ─────────────────────────────────────────
@@ -137,20 +137,11 @@ void Renderer2D::EndScene() {
         return;
     }
 
-    // 延迟录制模式（RenderGraph 编辑器路径）：把本批精灵快照进 session，
+    // 恒为"采集器"形态：把本批精灵快照进 session（相机状态 + 顶点快照），
     // 命令录制延后到本帧 Scene pass 的 execute 回调里调用 FlushScene 完成。
-    if (m_DeferRecording) {
-        m_Sessions.push_back(SpriteSession{
-            m_View, m_Projection, m_UseDepth,
-            std::move(m_Batches)});
-        return;
-    }
-
-    // 旧直录路径（Sandbox / 无渲染图）：排序 + 上传 + begin + 录制 + end。
-    auto &cmd = Renderer::GetFrameCmd();
-    auto &frame = Renderer::GetRenderContext().GetActiveFrame();
-    RecordSpriteSession(cmd, frame, m_View, m_Projection, m_UseDepth,
-                        m_Batches, /*manageRendering=*/true);
+    m_Sessions.push_back(SpriteSession{
+        m_View, m_Projection, m_UseDepth,
+        std::move(m_Batches)});
 }
 
 void Renderer2D::FlushScene(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame) {
@@ -164,8 +155,7 @@ void Renderer2D::FlushScene(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame) 
     }
     for (auto &session : m_Sessions) {
         RecordSpriteSession(cmd, frame, session.view, session.projection,
-                            session.useDepth, session.batches,
-                            /*manageRendering=*/false);
+                            session.useDepth, session.batches);
     }
     m_Sessions.clear();
 }
@@ -173,8 +163,7 @@ void Renderer2D::FlushScene(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame) 
 void Renderer2D::RecordSpriteSession(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame,
                                      const glm::mat4 &view, const glm::mat4 &projection,
                                      bool useDepth,
-                                     const std::unordered_map<Texture *, std::vector<SpriteVertex>> &batches,
-                                     bool manageRendering) {
+                                     const std::unordered_map<Texture *, std::vector<SpriteVertex> > &batches) {
     // ── 统计总顶点数 ──────────────────────────────────────────────────
     size_t totalVertices = 0;
     for (const auto &[tex, verts] : batches) {
@@ -184,11 +173,10 @@ void Renderer2D::RecordSpriteSession(VulkanCommandBuffer &cmd, VulkanRenderFrame
         return;
     }
 
-    auto vkCmd = cmd.GetHandle();
-
     // 有效渲染目标：优先使用外部指定的目标（离屏），否则使用当前帧的 swapchain 目标
-    auto &target = m_RenderTargetOverride ? *m_RenderTargetOverride
-                                          : frame.GetRenderTarget();
+    auto &target = m_RenderTargetOverride
+                       ? *m_RenderTargetOverride
+                       : frame.GetRenderTarget();
     auto extent = target.GetExtent();
 
     // ── 1. 从帧资源池分配顶点 buffer ──────────────────────────────────
@@ -233,44 +221,9 @@ void Renderer2D::RecordSpriteSession(VulkanCommandBuffer &cmd, VulkanRenderFrame
         vk::BufferUsageFlagBits::eUniformBuffer, sizeof(UniformBlock));
     uboAlloc.update(ubo);
 
-    // ── 4. 开始动态渲染 ───────────────────────────────────────────────
-    // manageRendering=true（旧直录路径）时自开动态渲染，loadOp 按 clearColor
-    // 决定（r<0 = eLoad 不清屏）；false（渲染图路径）时动态渲染已由图打开，
-    // 直接录制命令，不做清屏判断。
-    if (manageRendering) {
-        bool shouldClear = m_ClearColor.r >= 0.0f;
-        vk::ClearValue clearValue{};
-        clearValue.color = std::array<float, 4>{
-            m_ClearColor.r, m_ClearColor.g, m_ClearColor.b, m_ClearColor.a};
-
-        // 附件布局与图像实际布局一致：离屏颜色图固定 GENERAL，否则验证层报
-        // VUID-vkCmdBeginRendering-pRenderingInfo-09592。正常 swapchain 用默认。
-        vk::ImageLayout colorLayout = target.HasOffscreenColor()
-                                          ? vk::ImageLayout::eGeneral
-                                          : vk::ImageLayout::eColorAttachmentOptimal;
-
-        VulkanRenderingInfo renderInfo;
-        renderInfo.SetRenderArea(0, 0, extent.width, extent.height);
-        renderInfo.AddColorAttachment(target.GetColorView().GetHandle(),
-                                      shouldClear
-                                          ? vk::AttachmentLoadOp::eClear
-                                          : vk::AttachmentLoadOp::eLoad,
-                                      vk::AttachmentStoreOp::eStore,
-                                      clearValue,
-                                      colorLayout);
-
-        // 3D 模式下附加深度缓冲（load = 加载已有深度，保证 3D 场景里的遮挡正确）
-        if (useDepth && target.HasDepth()) {
-            vk::ClearDepthStencilValue clearDS{1.0f, 0};
-            renderInfo.SetDepthAttachment(
-                target.GetDepthView().GetHandle(),
-                vk::AttachmentLoadOp::eLoad,
-                vk::AttachmentStoreOp::eStore,
-                clearDS);
-        }
-
-        renderInfo.Begin(vkCmd);
-    }
+    // ── 4. 动态渲染 ───────────────────────────────────────────────────
+    //    区间已由图（UIPass/Scene2D pass）打开并转好布局，这里直接录命令，
+    //    不再自开 beginRendering、不做清屏判断与布局转换。
 
     // ── 5. 绑定 pipeline layout ───────────────────────────────────────
     cmd.BindPipelineLayout(*m_PipelineLayout);
@@ -294,12 +247,12 @@ void Renderer2D::RecordSpriteSession(VulkanCommandBuffer &cmd, VulkanRenderFrame
     blendState.alphaBlendOp = vk::BlendOp::eAdd;
 
     // 配置管线状态（链式 API）
-    // 深度格式：渲染图路径（manageRendering=false，动态渲染已由图打开，Scene2D
-    // pass 带深度附件）时恒填真实深度格式以匹配已开的动态渲染；否则（直录）仅
-    // useDepth 批声明深度。深度测试开关由 useDepth 决定，UI 批声明深度格式但不
+    // 深度格式：Scene2D pass 恒声明深度附件（动态渲染已由图打开），故只要有深度
+    // 目标即填真实深度格式匹配已开的动态渲染。深度测试开关由 useDepth 决定——
+    // 世界精灵批开启（读 Scene3D 深度做遮挡），UI 批关闭；UI 批声明深度格式但不
     // 开深度测试，属合法组合。
     vk::Format depthFmt = vk::Format::eUndefined;
-    if (target.HasDepth() && (useDepth || !manageRendering)) {
+    if (target.HasDepth()) {
         depthFmt = target.GetDepthFormat();
     }
 
@@ -365,11 +318,6 @@ void Renderer2D::RecordSpriteSession(VulkanCommandBuffer &cmd, VulkanRenderFrame
         triangles += batch.vertexCount / 3;
     }
     Renderer::Get().AddStats2D(static_cast<uint32_t>(batchInfos.size()), triangles);
-
-    // ── 9. 结束渲染 ───────────────────────────────────────────────────
-    if (manageRendering) {
-        VulkanRenderingInfo::End(vkCmd);
-    }
 }
 
 // ============================================================================

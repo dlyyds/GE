@@ -12,6 +12,7 @@
 #include <glm/gtc/matrix_inverse.hpp> // glm::inverse（矩阵求逆）
 
 #include "Core/Log.h"
+#include "Debug/Assert.h"
 #include "Render/Texture.h"
 #include "Render/Renderer.h"
 #include "Render/AssetManager.h"
@@ -20,7 +21,6 @@
 #include "Render/VulkanBase/VulkanPipelineLayout.h"
 #include "Render/VulkanBase/VulkanRenderContext.h"
 #include "Render/VulkanBase/VulkanRenderFrame.h"
-#include "Render/VulkanBase/VulkanRenderingInfo.h"
 #include "Render/VulkanBase/VulkanResourceCache.h"
 #include "Render/VulkanBase/VulkanShaderModule.h"
 
@@ -48,23 +48,23 @@ Renderer3D::Renderer3D() {
     m_VertShader = &cache.RequestShaderModule(
         vk::ShaderStageFlagBits::eVertex,
         ShaderSource(Renderer::GetAssetManager()
-                         .ResolvePath(std::string(AssetPaths::Shaders) + "/mesh.vert.spv")
-                         .string()),
+            .ResolvePath(std::string(AssetPaths::Shaders) + "/mesh.vert.spv")
+            .string()),
         "main", ShaderVariant{});
 
     m_FragShader = &cache.RequestShaderModule(
         vk::ShaderStageFlagBits::eFragment,
         ShaderSource(Renderer::GetAssetManager()
-                         .ResolvePath(std::string(AssetPaths::Shaders) + "/mesh.frag.spv")
-                         .string()),
+            .ResolvePath(std::string(AssetPaths::Shaders) + "/mesh.frag.spv")
+            .string()),
         "main", ShaderVariant{});
 
     // PBR 片元着色器（Cook-Torrance）。与 Blinn-Phong 并行，由材质类型路由。
     m_FragShaderPBR = &cache.RequestShaderModule(
         vk::ShaderStageFlagBits::eFragment,
         ShaderSource(Renderer::GetAssetManager()
-                         .ResolvePath(std::string(AssetPaths::Shaders) + "/mesh_pbr.frag.spv")
-                         .string()),
+            .ResolvePath(std::string(AssetPaths::Shaders) + "/mesh_pbr.frag.spv")
+            .string()),
         "main", ShaderVariant{});
 
     // ── 3. 请求 PipelineLayout（通过反射自动构建） ─────────────────────
@@ -86,8 +86,8 @@ Renderer3D::Renderer3D() {
     m_FragShaderPBR_IBL = &cache.RequestShaderModule(
         vk::ShaderStageFlagBits::eFragment,
         ShaderSource(Renderer::GetAssetManager()
-                         .ResolvePath(std::string(AssetPaths::Shaders) + "/mesh_pbr_ibl.frag.spv")
-                         .string()),
+            .ResolvePath(std::string(AssetPaths::Shaders) + "/mesh_pbr_ibl.frag.spv")
+            .string()),
         "main", ShaderVariant{});
 
     m_PipelineLayoutPBR_IBL = &cache.RequestPipelineLayout(
@@ -101,8 +101,8 @@ Renderer3D::Renderer3D() {
     m_VertShaderSkinned = &cache.RequestShaderModule(
         vk::ShaderStageFlagBits::eVertex,
         ShaderSource(Renderer::GetAssetManager()
-                         .ResolvePath(std::string(AssetPaths::Shaders) + "/mesh_skinned.vert.spv")
-                         .string()),
+            .ResolvePath(std::string(AssetPaths::Shaders) + "/mesh_skinned.vert.spv")
+            .string()),
         "main", ShaderVariant{});
 
     m_PipelineLayoutSkinned = &cache.RequestPipelineLayout(
@@ -123,15 +123,15 @@ Renderer3D::Renderer3D() {
     m_SkyboxVert = &cache.RequestShaderModule(
         vk::ShaderStageFlagBits::eVertex,
         ShaderSource(Renderer::GetAssetManager()
-                         .ResolvePath(std::string(AssetPaths::Shaders) + "/skybox.vert.spv")
-                         .string()),
+            .ResolvePath(std::string(AssetPaths::Shaders) + "/skybox.vert.spv")
+            .string()),
         "main", ShaderVariant{});
 
     m_SkyboxFrag = &cache.RequestShaderModule(
         vk::ShaderStageFlagBits::eFragment,
         ShaderSource(Renderer::GetAssetManager()
-                         .ResolvePath(std::string(AssetPaths::Shaders) + "/skybox.frag.spv")
-                         .string()),
+            .ResolvePath(std::string(AssetPaths::Shaders) + "/skybox.frag.spv")
+            .string()),
         "main", ShaderVariant{});
 
     m_SkyboxLayout = &cache.RequestPipelineLayout({m_SkyboxVert, m_SkyboxFrag});
@@ -212,8 +212,8 @@ void Renderer3D::SetEnvironment(const std::string &name) {
         return;
 
     auto &device = Renderer::GetVulkanContext().GetDevice();
-    auto &cache  = device.GetResourceCache();
-    auto &am     = Renderer::GetAssetManager();
+    auto &cache = device.GetResourceCache();
+    auto &am = Renderer::GetAssetManager();
     auto &upload = Renderer::GetAsyncUploadManager();
 
     // 按命名约定推导三张图路径（与 assets/environments/ 布局一致）
@@ -227,7 +227,7 @@ void Renderer3D::SetEnvironment(const std::string &name) {
         am.ResolvePath("environments/brdf_lut.png").string());
     if (!env) {
         GE_CORE_ERROR("Renderer3D: 环境异步加载提交失败: {0}", name);
-        m_EnvironmentName.clear();   // 允许下次重试
+        m_EnvironmentName.clear(); // 允许下次重试
         return;
     }
 
@@ -436,7 +436,7 @@ Renderer3D::SortKey Renderer3D::ComputeSortKey(const Material *material, const M
     // 子网格分组：同一 mesh 的不同子网格（索引范围）必须分开，否则同材质
     // 的同 mesh 子网格会被错误合批。打包 firstIndex 与 indexCount 为 64 位。
     key.submeshId = (static_cast<uint64_t>(firstIndex) << 32)
-                  | static_cast<uint64_t>(indexCount);
+                    | static_cast<uint64_t>(indexCount);
 
     // 深度：取模型变换的平移分量转换到 view 空间，取反得到正值（越大越远）。
     // 正浮点数的 IEEE 位模式随值单调递增，故可直接按位作为排序键，
@@ -453,17 +453,8 @@ void Renderer3D::EndScene() {
     GE_CORE_ASSERT(m_InScene, "EndScene called without BeginScene!");
     m_InScene = false;
 
-    // 延迟录制模式（RenderGraph 编辑器路径）：只结束采集，批次保留在 m_Meshes，
-    // 命令录制延后到本帧 Scene pass 的 execute 回调里调用 FlushScene 完成。
-    if (m_DeferRecording) {
-        return;
-    }
-
-    // 旧直录路径（Sandbox / 无渲染图）：排序 + 上传 + begin + 录制 + end。
-    auto &cmd = Renderer::GetFrameCmd();
-    auto &frame = Renderer::GetRenderContext().GetActiveFrame();
-    FlushRetiredEnvironments();
-    RecordScene(cmd, frame, /*manageRendering=*/true);
+    // 恒为"采集器"形态：只结束采集，批次保留在 m_Meshes。命令录制延后到本帧
+    // Scene3D pass 的 execute 回调里调用 FlushScene 完成（动态渲染已由图打开）。
 }
 
 void Renderer3D::FlushScene(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame) {
@@ -472,19 +463,21 @@ void Renderer3D::FlushScene(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame) 
     // RenderGraph execute 回调内调用：图已为该 pass 打开动态渲染、转好布局。
     // 这里只做排序/上传/绘制，不再 begin/end、不做任何布局转换。
     FlushRetiredEnvironments();
-    RecordScene(cmd, frame, /*manageRendering=*/false);
+    RecordScene(cmd, frame);
+
+    // 本帧批次已消费，清空防"一帧多次消费/下一帧重复绘制"（BeginScene 亦会清）。
+    m_Meshes.clear();
 }
 
-void Renderer3D::RecordScene(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame,
-                             bool manageRendering) {
+void Renderer3D::RecordScene(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame) {
     GE_PROFILE_SCOPE("Renderer3D::RecordScene");
 
-    // 销毁上一帧切换环境时退休的旧环境（安全点，见 FlushRetiredEnvironments）
     SortMeshes();
 
     // 有效渲染目标：优先外部离屏目标，否则当前帧 swapchain 目标（视口/格式/附件均取自该目标）
-    auto &renderTarget = m_RenderTargetOverride ? *m_RenderTargetOverride
-                                                : frame.GetRenderTarget();
+    auto &renderTarget = m_RenderTargetOverride
+                             ? *m_RenderTargetOverride
+                             : frame.GetRenderTarget();
 
     // ── 共享描述符数据上传：Frame UBO / per-instance SSBO / 点光源 SSBO ──
     BufferAllocation frameUboAlloc = UploadFrameUBO(frame);
@@ -496,13 +489,7 @@ void Renderer3D::RecordScene(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame,
 
     BufferAllocation lightBuffer = UploadLightBuffer(frame);
 
-    // ── 渲染：开始动态渲染 → 天空盒背景 → 网格批次（管线 + 描述符 + 绘制） ──
-    // manageRendering=true（旧直录路径）时自开动态渲染；false（渲染图路径）时
-    // 动态渲染已由图打开，直接录制命令。
-    if (manageRendering) {
-        BeginDynamicRendering(cmd, renderTarget);
-    }
-
+    // ── 绘制：天空盒背景 → 网格批次（管线 + 描述符 + 绘制）。动态渲染已由图打开 ──
     // 天空盒：由"有无天空盒"控制（仅开关开启时提交；纹理是否就绪由 DrawSkybox 内部再判定）
     if (m_SkyboxEnabled) {
         DrawSkybox(cmd, frame, renderTarget);
@@ -518,11 +505,6 @@ void Renderer3D::RecordScene(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame,
 
     // ── 统计 draw call 与三角形数量 ──
     RecordStats(batches);
-
-    // ── 7. 结束渲染 ───────────────────────────────────────────────────
-    if (manageRendering) {
-        VulkanRenderingInfo::End(cmd.GetHandle());
-    }
 }
 
 void Renderer3D::SortMeshes() {
@@ -565,7 +547,7 @@ BufferAllocation Renderer3D::UploadFrameUBO(VulkanRenderFrame &frame) {
 }
 
 void Renderer3D::CollectBatches(std::vector<InstanceData> &instances,
-                                 std::vector<RenderBatch> &batches) const {
+                                std::vector<RenderBatch> &batches) const {
     // ── 2. 阶段3：按 (mesh, material) 分组合批，构建 per-instance SSBO ──
     //    排序键已保证同材质同 mesh 的实例连续。单趟扫描把 (mesh, material)
     //    指针相等且连续的实例归为一个 RenderBatch，并把每个实例的 (model,
@@ -612,7 +594,7 @@ void Renderer3D::CollectBatches(std::vector<InstanceData> &instances,
 }
 
 BufferAllocation Renderer3D::UploadInstanceBuffer(VulkanRenderFrame &frame,
-                                                   const std::vector<InstanceData> &instances) {
+                                                  const std::vector<InstanceData> &instances) {
     // 分配全局实例 SSBO 并一次性上传（所有批次共享）。无网格时分配 1 字节占位
     // 避免空缓冲（批次为空则不会被绑定，shader 不受影响）。
     BufferAllocation alloc = frame.AllocateBuffer(
@@ -640,60 +622,8 @@ BufferAllocation Renderer3D::UploadLightBuffer(VulkanRenderFrame &frame) {
     return alloc;
 }
 
-void Renderer3D::BeginDynamicRendering(VulkanCommandBuffer &cmd, RenderTarget &renderTarget) {
-    const auto extent = renderTarget.GetExtent();
-    // ── 3. 开始动态渲染 ───────────────────────────────────────────────
-    //    使用 FromRenderTarget 自动构建颜色 + 深度附件
-    VulkanRenderingInfo renderInfo = VulkanRenderingInfo::FromRenderTarget(renderTarget);
-
-    // 根据 m_ClearColor 决定颜色附件的 loadOp
-    bool shouldClear = m_ClearColor.r >= 0.0f;
-    if (shouldClear) {
-        // 重新设置颜色附件的 clear 值和 loadOp
-        vk::ClearValue clearValue{};
-        clearValue.color = std::array<float, 4>{
-            m_ClearColor.r, m_ClearColor.g, m_ClearColor.b, m_ClearColor.a};
-
-        // 重置 renderInfo 并重新配置
-        renderInfo.Reset();
-        renderInfo.SetRenderArea(0, 0, extent.width, extent.height);
-
-        const auto &desc = renderTarget.GetDesc();
-        // 颜色附件：清除
-        vk::ImageView colorView = renderTarget.GetColorResolveView().GetHandle();
-        // 附件布局与图像实际布局一致：离屏颜色图固定 GENERAL，否则验证层报
-        // VUID-vkCmdBeginRendering-pRenderingInfo-09592。正常 swapchain 用默认。
-        renderInfo.AddColorAttachment(colorView,
-                                      vk::AttachmentLoadOp::eClear,
-                                      vk::AttachmentStoreOp::eStore,
-                                      clearValue,
-                                      renderTarget.HasOffscreenColor()
-                                          ? vk::ImageLayout::eGeneral
-                                          : vk::ImageLayout::eColorAttachmentOptimal);
-
-        // 深度附件（如果有）：清除
-        if (desc.enableDepth) {
-            vk::ClearDepthStencilValue clearDS{1.0f, 0};
-            if (desc.enableStencil) {
-                renderInfo.SetDepthStencilAttachment(
-                    renderTarget.GetDepthView().GetHandle(),
-                    desc.depthLoadOp, desc.depthStoreOp,
-                    desc.stencilLoadOp, desc.stencilStoreOp,
-                    clearDS);
-            } else {
-                renderInfo.SetDepthAttachment(
-                    renderTarget.GetDepthView().GetHandle(),
-                    desc.depthLoadOp, desc.depthStoreOp,
-                    clearDS);
-            }
-        }
-    }
-
-    renderInfo.Begin(cmd.GetHandle());
-}
-
 void Renderer3D::DrawSkybox(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame,
-                             RenderTarget &renderTarget) {
+                            RenderTarget &renderTarget) {
     const auto extent = renderTarget.GetExtent();
     // ====================================================================
     // 3b. 天空盒绘制（自包含块，先于网格，作为背景）
@@ -705,7 +635,8 @@ void Renderer3D::DrawSkybox(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame,
     //    两者互不干扰。
     // 天空盒纹理由环境图 EnvironmentMap 统一持有
     const Texture *skyTex = (m_EnvironmentMap && m_EnvironmentMap->IsReady())
-                                ? &m_EnvironmentMap->GetSkybox() : nullptr;
+                                ? &m_EnvironmentMap->GetSkybox()
+                                : nullptr;
 
     if (m_SkyboxEnabled && skyTex) {
         auto skyColorFmt = renderTarget.GetColorFormat();
@@ -758,14 +689,14 @@ void Renderer3D::DrawSkybox(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame,
 
         // 视口 + 剪刀（与网格一致，覆盖整个渲染目标）
         vk::Viewport skyVp;
-        skyVp.width  = static_cast<float>(extent.width);
+        skyVp.width = static_cast<float>(extent.width);
         skyVp.height = static_cast<float>(extent.height);
         skyVp.minDepth = 0.0f;
         skyVp.maxDepth = 1.0f;
         cmd.SetViewport(0, {skyVp});
 
         vk::Rect2D skyScissor;
-        skyScissor.extent.width  = extent.width;
+        skyScissor.extent.width = extent.width;
         skyScissor.extent.height = extent.height;
         cmd.SetScissor(0, {skyScissor});
 
@@ -869,8 +800,8 @@ void Renderer3D::BindSharedUniforms(VulkanCommandBuffer &cmd,
 }
 
 void Renderer3D::DrawMeshInstances(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame,
-                                    const std::vector<RenderBatch> &batches,
-                                    const BufferAllocation &instanceBuffer) {
+                                   const std::vector<RenderBatch> &batches,
+                                   const BufferAllocation &instanceBuffer) {
     // ── 6. 逐批次 instanced 绘制 ─────────────────────────────────────
     vk::DeviceSize vertexOffset = 0;
 
@@ -897,13 +828,14 @@ void Renderer3D::DrawMeshInstances(VulkanCommandBuffer &cmd, VulkanRenderFrame &
             VulkanPipelineLayout *targetLayout = m_PipelineLayout;
             if (skinned) {
                 targetLayout = pbr
-                    ? (useIbl ? m_PipelineLayoutSkinnedPBR_IBL
-                              : m_PipelineLayoutSkinnedPBR)
-                    : m_PipelineLayoutSkinned;
+                                   ? (useIbl
+                                          ? m_PipelineLayoutSkinnedPBR_IBL
+                                          : m_PipelineLayoutSkinnedPBR)
+                                   : m_PipelineLayoutSkinned;
             } else {
                 targetLayout = pbr
-                    ? (useIbl ? m_PipelineLayoutPBR_IBL : m_PipelineLayoutPBR)
-                    : m_PipelineLayout;
+                                   ? (useIbl ? m_PipelineLayoutPBR_IBL : m_PipelineLayoutPBR)
+                                   : m_PipelineLayout;
             }
 
             auto &ps = cmd.GetPipelineState();
@@ -931,7 +863,7 @@ void Renderer3D::DrawMeshInstances(VulkanCommandBuffer &cmd, VulkanRenderFrame &
                 cmd.BindImage(ibl.GetPrefilter().GetImageView(),
                               ibl.GetPrefilter().GetSampler(), 1, 6); // 预滤波
                 cmd.BindImage(ibl.GetBrdfLUT().GetImageView(),
-                              ibl.GetBrdfLUT().GetSampler(), 1, 7);   // BRDF LUT
+                              ibl.GetBrdfLUT().GetSampler(), 1, 7); // BRDF LUT
             }
         }
 
@@ -983,23 +915,23 @@ void Renderer3D::DrawMeshInstances(VulkanCommandBuffer &cmd, VulkanRenderFrame &
         //   emissiveFactor: 自发光颜色因子（乘自发光贴图颜色，两类型共用）
         MaterialUBO materialUBO{};
         materialUBO.params.x = batch.material
-            ? batch.material->GetFloat("shininess", 32.0f)
-            : 32.0f;
+                                   ? batch.material->GetFloat("shininess", 32.0f)
+                                   : 32.0f;
         materialUBO.params.y = batch.material
-            ? batch.material->GetFloat("specularStrength", 0.5f)
-            : 0.5f;
+                                   ? batch.material->GetFloat("specularStrength", 0.5f)
+                                   : 0.5f;
         materialUBO.params.w = batch.material
-            ? batch.material->GetFloat("uvTiling", 1.0f)
-            : 1.0f;
+                                   ? batch.material->GetFloat("uvTiling", 1.0f)
+                                   : 1.0f;
         materialUBO.pbr.x = batch.material
-            ? batch.material->GetFloat("metallic", 0.0f)
-            : 0.0f;
+                                ? batch.material->GetFloat("metallic", 0.0f)
+                                : 0.0f;
         materialUBO.pbr.y = batch.material
-            ? batch.material->GetFloat("roughness", 0.5f)
-            : 0.5f;
+                                ? batch.material->GetFloat("roughness", 0.5f)
+                                : 0.5f;
         materialUBO.emissiveFactor = batch.material
-            ? glm::vec4(batch.material->GetEmissiveFactor(), 0.0f)
-            : glm::vec4(0.0f);
+                                         ? glm::vec4(batch.material->GetEmissiveFactor(), 0.0f)
+                                         : glm::vec4(0.0f);
         BufferAllocation materialUboAlloc = frame.AllocateBuffer(
             vk::BufferUsageFlagBits::eUniformBuffer, sizeof(MaterialUBO));
         materialUboAlloc.update(materialUBO);

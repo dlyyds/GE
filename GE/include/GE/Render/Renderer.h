@@ -100,8 +100,8 @@ public:
      *
      * Renderer 持有帧图对象，每帧 BeginFrame 末尾 Reset；各 Layer 在 OnUpdate
      * 中经此 builder Import 外部图像 / AddPass 声明读写，命令录制延后到
-     * Renderer::EndFrame 里统一 Execute（ImGui 上屏前）。编辑器的离屏视口
-     * Scene3D/Scene2D 两 pass 即由此注册；Sandbox 不注册则 EndFrame 空图跳过。
+     * Renderer::EndFrame 里统一 Execute。编辑器的离屏视口 Scene3D/Scene2D 两
+     * pass 由此注册；EndFrame 恒追加 UIPass（写 swapchain），故帧图恒非空。
      */
     RenderGraphBuilder &GetFrameGraphBuilder() { return m_FrameBuilder; }
 

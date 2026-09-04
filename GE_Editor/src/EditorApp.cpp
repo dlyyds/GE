@@ -24,7 +24,6 @@ public:
         auto asm_graph_layer = std::make_shared<ASMGraphLayer>(scene_ctx, hierarchy_layer.get());
         auto stats_layer = std::make_shared<StatsLayer>();
 
-        // auto sandbox_layer = std::make_shared<SandboxLayer>();
         // 让顶部「文件」菜单里的场景操作绑定到场景层
         dock_space->SetSceneLayer(scene_layer.get());
         // 在场景视口上叠加 ImGuizmo 变换 gizmo（由 SceneLayer 在 Scene 窗口内回调）

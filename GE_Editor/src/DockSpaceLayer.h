@@ -33,7 +33,7 @@ public:
     void SetSceneLayer(SceneLayer *scene_layer) { m_SceneLayer = scene_layer; }
 
 private:
-    /// 场景层句柄（由 SandboxApp 在创建两层后绑定）
+    /// 场景层句柄（由 EditorApp 在创建场景层后绑定）
     SceneLayer *m_SceneLayer = nullptr;
 
     /// 是否需要在下一帧重新建立默认布局（首帧或用户点击"重置布局"后为 true）

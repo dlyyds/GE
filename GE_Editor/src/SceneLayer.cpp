@@ -196,17 +196,13 @@ void SceneLayer::OnUpdate(Timestep &ts) {
     // 同步场景视口尺寸
     m_Context->Scene->OnViewportResize(vpW, vpH);
 
-    // 渲染图路径（S2）：3D/2D 走延迟录制。目标是离屏视口，但录制动作延后到
-    // 下方两张 pass 的 execute 回调（RenderGraph 已打开动态渲染、转好布局）。
-    // Scene 的 RenderMeshes3D / RenderSprites2D 仍按现状调 BeginScene/Draw/EndScene，
-    // EndScene 在 defer 模式下只收尾采集（3D 批次留 m_Meshes、2D 快照进 m_Sessions）。
-    auto &r3d = Renderer::Get3DRenderer();
-    auto &r2d = Renderer::Get2DRenderer();
+    // 渲染图路径（S2）：3D/2D 恒为"采集器"（EndScene 只收尾采集：3D 批次留
+    // m_Meshes、2D 快照进 m_Sessions），录制延后到下方两张 pass 的 execute 回调
+    //（RenderGraph 已打开动态渲染、转好布局）。Scene 的 RenderMeshes3D /
+    // RenderSprites2D 仍按现状调 BeginScene/Draw/EndScene。
     RenderTarget *viewportRT = m_Viewport->GetRenderTarget();
-    r3d.SetRenderTarget(viewportRT);
-    r2d.SetRenderTarget(viewportRT);
-    r3d.SetDeferRecording(true);
-    r2d.SetDeferRecording(true);
+    Renderer::Get3DRenderer().SetRenderTarget(viewportRT);
+    Renderer::Get2DRenderer().SetRenderTarget(viewportRT);
 
     // 选取本帧视口相机与宽高比：
     //   Edit → 编辑器导航相机（EditorContext.EditorCamera，工具视角）；

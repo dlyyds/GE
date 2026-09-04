@@ -19,7 +19,6 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
 
 
 set(GE_NAME GE)
-set(Sandbox_NAME Sandbox)
 set(Editor_NAME GE_Editor)
 
 
@@ -219,23 +218,6 @@ else ()
 endif ()
 
 
-#Sandbox EXE（最小冒烟测试应用）
-# ==============================================
-
-set(Sandbox_SRC
-        ${CMAKE_SOURCE_DIR}/sandbox/SandboxApp.cpp
-)
-
-add_executable(${Sandbox_NAME} ${Sandbox_SRC})
-target_include_directories(${Sandbox_NAME} PRIVATE
-        ${CMAKE_SOURCE_DIR}/GE/include
-        ${CMAKE_SOURCE_DIR}/sandbox
-)
-
-
-target_link_libraries(${Sandbox_NAME} PRIVATE ${GE_NAME})
-
-
 #GE_Editor EXE（独立编辑器可执行）
 # ==============================================
 
@@ -281,5 +263,5 @@ target_include_directories(gemesh PRIVATE
 
 target_link_libraries(gemesh PRIVATE ${GE_NAME})
 
-#共享着色器（GLSL → SPIR-V），Sandbox 与 GE_Editor 均依赖
+#共享着色器（GLSL → SPIR-V），GE_Editor 依赖
 add_subdirectory(assets/shaders/glsl)

@@ -17,8 +17,7 @@ if(GLSLC)
 
     if(SPV_OUTPUTS)
         add_custom_target(ShaderCompile ALL DEPENDS ${SPV_OUTPUTS})
-        # Sandbox 与 GE_Editor 均依赖编译出的着色器
-        add_dependencies(${Sandbox_NAME} ShaderCompile)
+        # GE_Editor 依赖编译出的着色器
         add_dependencies(${Editor_NAME} ShaderCompile)
     endif()
 else()

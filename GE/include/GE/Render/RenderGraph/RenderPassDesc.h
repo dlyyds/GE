@@ -77,6 +77,14 @@ struct PassExecuteContext {
 
     /// 本 pass 的动态渲染信息（由图构建并已 Begin；完整定义在 VulkanRenderingInfo.h）。
     VulkanRenderingInfo *renderingInfo = nullptr;
+
+    /// 本 pass 动态渲染实际写入的首个颜色附件视图（RenderGraph 组装 rinfo 时
+    /// 使用的外部导入视图；nullptr = pass 无颜色附件）。格式经 view->get_format()
+    /// 获取，无需调用方再持有 RenderTarget。
+    VulkanImageView *colorAttachmentView = nullptr;
+
+    /// 本 pass 动态渲染的深度附件视图（nullptr = 无深度附件）。
+    VulkanImageView *depthAttachmentView = nullptr;
 };
 
 } // namespace GE

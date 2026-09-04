@@ -43,7 +43,7 @@ class VulkanPipelineLayout;
 class VulkanShaderModule;
 class VulkanCommandBuffer;
 class VulkanRenderFrame;
-class RenderTarget;
+struct PassExecuteContext;
 
 /**
  * @brief 3D 网格渲染器。
@@ -134,17 +134,6 @@ public:
 
     /// 设置光照参数。
     void SetLightParams(const LightParams &params) { m_LightParams = params; }
-
-    /**
-     * @brief 设置本次 EndScene 的渲染目标。
-     *
-     * 传 nullptr（默认）时渲染到当前帧的 swapchain 目标；传非空时渲染到
-     * 指定的离屏目标（如把 3D 场景渲染进 ImGui 视口窗口）。
-     * 每次 BeginScene 前设置，EndScene 后建议复位为 nullptr。
-     *
-     * @param target 渲染目标指针（不持有所有权），nullptr = 渲染到 swapchain
-     */
-    void SetRenderTarget(RenderTarget *target) { m_RenderTargetOverride = target; }
 
     // ========================================================================
     // 天空盒
@@ -284,11 +273,12 @@ public:
     /**
      * @brief 把本帧已采集的网格批次录制到指定 cmd（RenderGraph execute 回调内调用）。
      *
-     * 前提：① 已 SetRenderTarget(目标)；② EndScene 已收集批次；③ 图已为该 pass
-     * 打开动态渲染（本方法不再 begin/end，也不做任何布局转换）。内部完成排序、
-     * 退休环境销毁、帧池上传与全部绘制命令录制。
+     * 前提：① EndScene 已收集批次；② 图已为该 pass 打开动态渲染（本方法不再
+     * begin/end，也不做任何布局转换）。目标附件格式/深度/extent 均取自 execute
+     * 上下文 ctx（本 pass 已由 RenderGraph 打开的实际附件），不再依赖调用方预置
+     * 渲染目标。内部完成排序、退休环境销毁、帧池上传与全部绘制命令录制。
      */
-    void FlushScene(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame);
+    void FlushScene(PassExecuteContext &ctx);
 
 private:
     // ========================================================================
@@ -401,16 +391,22 @@ private:
      * @brief 录制本帧网格批次的公共绘制段（排序 + 上传 + 绘制）。
      *
      * FlushScene（渲染图 execute 回调）调用；动态渲染已由图打开，本方法不再
-     * begin/end、不做布局转换。
+     * begin/end、不做布局转换。附件格式/深度/extent 取自 execute 上下文，
+     * 本方法不再依赖渲染目标 override。
      */
-    void RecordScene(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame);
+    void RecordScene(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame,
+                     vk::Format colorFormat, vk::Format depthFormat,
+                     vk::Extent2D extent);
 
     /// 绘制天空盒（全屏三角形背景，关闭深度测试/写入，先于网格）
     void DrawSkybox(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame,
-                    RenderTarget &renderTarget);
+                    vk::Format colorFormat, vk::Format depthFormat,
+                    vk::Extent2D extent);
 
     /// 配置网格管线状态（附件格式 / 混合 / 顶点输入 / 光栅化 / 动态状态 / 视口剪刀）
-    void ConfigureMeshPipeline(VulkanCommandBuffer &cmd, RenderTarget &renderTarget);
+    void ConfigureMeshPipeline(VulkanCommandBuffer &cmd,
+                               vk::Format colorFormat, vk::Format depthFormat,
+                               vk::Extent2D extent);
 
     /// 绑定网格共享描述符（Frame UBO + 点光源 SSBO，set 0）
     void BindSharedUniforms(VulkanCommandBuffer &cmd,
@@ -585,9 +581,6 @@ private:
 
     /// 清屏颜色（r < 0 表示不清屏）
     glm::vec4 m_ClearColor{-1.0f};
-
-    /// 渲染目标覆盖（nullptr 时渲染到 swapchain）。由 SetRenderTarget 设置。
-    RenderTarget *m_RenderTargetOverride = nullptr;
 
     /// 光照参数
     LightParams m_LightParams{};

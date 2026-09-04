@@ -8,6 +8,7 @@
 #include "Core/Log.h"
 #include "Debug/Assert.h"
 #include "Render/Renderer.h"
+#include "Render/RenderGraph/RenderPassDesc.h"
 #include "Render/AssetManager.h"
 #include "Render/TextureManager.h"
 #include "Render/VulkanBase/VulkanCommandBuffer.h"
@@ -144,23 +145,34 @@ void Renderer2D::EndScene() {
         std::move(m_Batches)});
 }
 
-void Renderer2D::FlushScene(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame) {
+void Renderer2D::FlushScene(PassExecuteContext &ctx) {
     GE_PROFILE_SCOPE("Renderer2D::FlushScene");
 
     // RenderGraph execute 回调内调用：图已为该 pass 打开动态渲染、转好布局。
     // 按序重放本帧快照的全部精灵 session（世界批 + UI 批），不再 begin/end、
-    // 不做任何布局转换。
+    // 不做任何布局转换。附件格式/深度/extent 取自 ctx（本 pass 已由 RenderGraph
+    // 打开的实际附件），RenderTarget override 已移除。
     if (m_Sessions.empty()) {
         return;
     }
+
+    GE_CORE_ASSERT(ctx.colorAttachmentView, "Scene2D pass 必须声明颜色附件");
+    const vk::Format colorFormat = ctx.colorAttachmentView->get_format();
+    const vk::Format depthFormat = ctx.depthAttachmentView
+                                       ? ctx.depthAttachmentView->get_format()
+                                       : vk::Format::eUndefined;
+
     for (auto &session : m_Sessions) {
-        RecordSpriteSession(cmd, frame, session.view, session.projection,
+        RecordSpriteSession(*ctx.cmd, *ctx.frame, colorFormat, depthFormat,
+                            ctx.renderArea.extent, session.view, session.projection,
                             session.useDepth, session.batches);
     }
     m_Sessions.clear();
 }
 
 void Renderer2D::RecordSpriteSession(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame,
+                                     vk::Format colorFormat, vk::Format depthFormat,
+                                     vk::Extent2D extent,
                                      const glm::mat4 &view, const glm::mat4 &projection,
                                      bool useDepth,
                                      const std::unordered_map<Texture *, std::vector<SpriteVertex> > &batches) {
@@ -172,12 +184,6 @@ void Renderer2D::RecordSpriteSession(VulkanCommandBuffer &cmd, VulkanRenderFrame
     if (totalVertices == 0) {
         return;
     }
-
-    // 有效渲染目标：优先使用外部指定的目标（离屏），否则使用当前帧的 swapchain 目标
-    auto &target = m_RenderTargetOverride
-                       ? *m_RenderTargetOverride
-                       : frame.GetRenderTarget();
-    auto extent = target.GetExtent();
 
     // ── 1. 从帧资源池分配顶点 buffer ──────────────────────────────────
     BufferAllocation vertexAlloc = frame.AllocateBuffer(
@@ -229,7 +235,7 @@ void Renderer2D::RecordSpriteSession(VulkanCommandBuffer &cmd, VulkanRenderFrame
     cmd.BindPipelineLayout(*m_PipelineLayout);
 
     auto &ps = cmd.GetPipelineState();
-    auto colorFmt = target.GetColorFormat();
+    auto colorFmt = colorFormat;
 
     // 混合附件：启用 alpha 混合（预乘 alpha 模式）
     // 着色器输出已预乘 alpha（rgb *= alpha），所以源因子用 eOne
@@ -250,11 +256,8 @@ void Renderer2D::RecordSpriteSession(VulkanCommandBuffer &cmd, VulkanRenderFrame
     // 深度格式：Scene2D pass 恒声明深度附件（动态渲染已由图打开），故只要有深度
     // 目标即填真实深度格式匹配已开的动态渲染。深度测试开关由 useDepth 决定——
     // 世界精灵批开启（读 Scene3D 深度做遮挡），UI 批关闭；UI 批声明深度格式但不
-    // 开深度测试，属合法组合。
-    vk::Format depthFmt = vk::Format::eUndefined;
-    if (target.HasDepth()) {
-        depthFmt = target.GetDepthFormat();
-    }
+    // 开深度测试，属合法组合。depthFormat 参数 eUndefined 表示无深度附件。
+    vk::Format depthFmt = depthFormat;
 
     ps.setRenderingFormats({colorFmt}, depthFmt)
         .setInputAssembly(vk::PrimitiveTopology::eTriangleList)

@@ -15,6 +15,7 @@
 #include "Debug/Assert.h"
 #include "Render/Texture.h"
 #include "Render/Renderer.h"
+#include "Render/RenderGraph/RenderPassDesc.h"
 #include "Render/AssetManager.h"
 #include "Render/TextureManager.h"
 #include "Render/VulkanBase/VulkanCommandBuffer.h"
@@ -457,27 +458,33 @@ void Renderer3D::EndScene() {
     // Scene3D pass 的 execute 回调里调用 FlushScene 完成（动态渲染已由图打开）。
 }
 
-void Renderer3D::FlushScene(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame) {
+void Renderer3D::FlushScene(PassExecuteContext &ctx) {
     GE_PROFILE_SCOPE("Renderer3D::FlushScene");
 
     // RenderGraph execute 回调内调用：图已为该 pass 打开动态渲染、转好布局。
-    // 这里只做排序/上传/绘制，不再 begin/end、不做任何布局转换。
+    // 这里只做排序/上传/绘制，不再 begin/end、不做任何布局转换。渲染目标相关
+    // 的附件格式/深度/extent 全部取自 ctx（本 pass 已由 RenderGraph 打开的实际
+    // 附件），RenderTarget override 已移除，改由调用方 execute 回调传入。
     FlushRetiredEnvironments();
-    RecordScene(cmd, frame);
+
+    // 附件格式与尺寸：由 execute 上下文直接给出。无颜色附件的 pass 不会走到 3D。
+    GE_CORE_ASSERT(ctx.colorAttachmentView, "Scene3D pass 必须声明颜色附件");
+    const vk::Format colorFormat = ctx.colorAttachmentView->get_format();
+    const vk::Format depthFormat = ctx.depthAttachmentView
+                                       ? ctx.depthAttachmentView->get_format()
+                                       : vk::Format::eUndefined;
+    RecordScene(*ctx.cmd, *ctx.frame, colorFormat, depthFormat, ctx.renderArea.extent);
 
     // 本帧批次已消费，清空防"一帧多次消费/下一帧重复绘制"（BeginScene 亦会清）。
     m_Meshes.clear();
 }
 
-void Renderer3D::RecordScene(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame) {
+void Renderer3D::RecordScene(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame,
+                             vk::Format colorFormat, vk::Format depthFormat,
+                             vk::Extent2D extent) {
     GE_PROFILE_SCOPE("Renderer3D::RecordScene");
 
     SortMeshes();
-
-    // 有效渲染目标：优先外部离屏目标，否则当前帧 swapchain 目标（视口/格式/附件均取自该目标）
-    auto &renderTarget = m_RenderTargetOverride
-                             ? *m_RenderTargetOverride
-                             : frame.GetRenderTarget();
 
     // ── 共享描述符数据上传：Frame UBO / per-instance SSBO / 点光源 SSBO ──
     BufferAllocation frameUboAlloc = UploadFrameUBO(frame);
@@ -492,10 +499,10 @@ void Renderer3D::RecordScene(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame)
     // ── 绘制：天空盒背景 → 网格批次（管线 + 描述符 + 绘制）。动态渲染已由图打开 ──
     // 天空盒：由"有无天空盒"控制（仅开关开启时提交；纹理是否就绪由 DrawSkybox 内部再判定）
     if (m_SkyboxEnabled) {
-        DrawSkybox(cmd, frame, renderTarget);
+        DrawSkybox(cmd, frame, colorFormat, depthFormat, extent);
     }
 
-    ConfigureMeshPipeline(cmd, renderTarget);
+    ConfigureMeshPipeline(cmd, colorFormat, depthFormat, extent);
     BindSharedUniforms(cmd, frameUboAlloc, lightBuffer);
 
     // 网格：由"有无批次"控制（无网格时整个实例循环无事可做）
@@ -623,8 +630,8 @@ BufferAllocation Renderer3D::UploadLightBuffer(VulkanRenderFrame &frame) {
 }
 
 void Renderer3D::DrawSkybox(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame,
-                            RenderTarget &renderTarget) {
-    const auto extent = renderTarget.GetExtent();
+                            vk::Format colorFormat, vk::Format depthFormat,
+                            vk::Extent2D extent) {
     // ====================================================================
     // 3b. 天空盒绘制（自包含块，先于网格，作为背景）
     // ====================================================================
@@ -639,11 +646,8 @@ void Renderer3D::DrawSkybox(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame,
                                 : nullptr;
 
     if (m_SkyboxEnabled && skyTex) {
-        auto skyColorFmt = renderTarget.GetColorFormat();
-        vk::Format skyDepthFmt = vk::Format::eUndefined;
-        if (renderTarget.HasDepth()) {
-            skyDepthFmt = renderTarget.GetDepthFormat();
-        }
+        auto skyColorFmt = colorFormat;
+        vk::Format skyDepthFmt = depthFormat;
 
         // 分配天空盒 UBO：仅旋转的视图矩阵逆 + 投影矩阵逆
         //   mat3(m_View) 去掉平移，使天空盒不受相机位置影响（始终"无限远"）
@@ -709,8 +713,9 @@ void Renderer3D::DrawSkybox(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame,
     }
 }
 
-void Renderer3D::ConfigureMeshPipeline(VulkanCommandBuffer &cmd, RenderTarget &renderTarget) {
-    const auto extent = renderTarget.GetExtent();
+void Renderer3D::ConfigureMeshPipeline(VulkanCommandBuffer &cmd,
+                                       vk::Format colorFormat, vk::Format depthFormat,
+                                       vk::Extent2D extent) {
     // ====================================================================
     // 4. 配置管线状态
     // ====================================================================
@@ -729,13 +734,10 @@ void Renderer3D::ConfigureMeshPipeline(VulkanCommandBuffer &cmd, RenderTarget &r
     cmd.BindPipelineLayout(*m_PipelineLayout);
 
     auto &ps = cmd.GetPipelineState();
-    auto colorFmt = renderTarget.GetColorFormat();
+    auto colorFmt = colorFormat;
 
     // —— 4a. 附件格式 ——
-    vk::Format depthFmt = vk::Format::eUndefined;
-    if (renderTarget.HasDepth()) {
-        depthFmt = renderTarget.GetDepthFormat();
-    }
+    vk::Format depthFmt = depthFormat;
     ps.setRenderingFormats({colorFmt}, depthFmt);
 
     // —— 4b. 颜色混合（3D 不透明物体：无 alpha 混合，全通道写入）——

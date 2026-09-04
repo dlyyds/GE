@@ -15,7 +15,7 @@ class VulkanPipelineLayout;
 class VulkanShaderModule;
 class VulkanCommandBuffer;
 class VulkanRenderFrame;
-class RenderTarget;
+struct PassExecuteContext;
 
 /**
  * @file Renderer2D.h
@@ -121,21 +121,11 @@ public:
     /**
      * @brief 把本帧已快照的全部精灵 session 录制到指定 cmd（RenderGraph execute 回调内调用）。
      *
-     * 前提：① 已 SetRenderTarget(目标)；② EndScene 已快照；③ 图已为该 pass 打开
-     * 动态渲染（本方法不再 begin/end，也不做任何布局转换）。
+     * 前提：① EndScene 已快照；② 图已为该 pass 打开动态渲染（本方法不再 begin/end，
+     * 也不做任何布局转换）。目标附件格式/深度/extent 取自 execute 上下文 ctx
+     * （本 pass 已由 RenderGraph 打开的实际附件），不再依赖调用方预置渲染目标。
      */
-    void FlushScene(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame);
-
-    /**
-     * @brief 设置本次 EndScene 的渲染目标。
-     *
-     * 传 nullptr（默认）时渲染到当前帧的 swapchain 目标；传非空时渲染到
-     * 指定的离屏目标（如与 3D 一起渲染进 ImGui 视口窗口）。
-     * 每次 BeginScene 前设置，EndScene 后建议复位为 nullptr。
-     *
-     * @param target 渲染目标指针（不持有所有权），nullptr = 渲染到 swapchain
-     */
-    void SetRenderTarget(RenderTarget *target) { m_RenderTargetOverride = target; }
+    void FlushScene(PassExecuteContext &ctx);
 
 private:
     /// 单个精灵的 4 个顶点
@@ -163,7 +153,10 @@ private:
 
     /// 录制单个精灵 session（顶点上传 + 状态绑定 + 逐纹理绘制）
     /// 动态渲染已由图打开，本方法不 begin/end、不做布局转换。
+    /// 附件格式/深度/extent 取自 execute 上下文（FlushScene 解包后传入）。
     void RecordSpriteSession(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame,
+                             vk::Format colorFormat, vk::Format depthFormat,
+                             vk::Extent2D extent,
                              const glm::mat4 &view, const glm::mat4 &projection,
                              bool useDepth,
                              const std::unordered_map<Texture *, std::vector<SpriteVertex>> &batches);
@@ -213,9 +206,6 @@ private:
         std::unordered_map<Texture *, std::vector<SpriteVertex>> batches;
     };
     std::vector<SpriteSession> m_Sessions;
-
-    /// 渲染目标覆盖（nullptr 时渲染到当前帧 swapchain 目标）。由 SetRenderTarget 设置。
-    RenderTarget *m_RenderTargetOverride = nullptr;
 };
 
 } // namespace GE

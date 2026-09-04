@@ -201,8 +201,6 @@ void SceneLayer::OnUpdate(Timestep &ts) {
     //（RenderGraph 已打开动态渲染、转好布局）。Scene 的 RenderMeshes3D /
     // RenderSprites2D 仍按现状调 BeginScene/Draw/EndScene。
     RenderTarget *viewportRT = m_Viewport->GetRenderTarget();
-    Renderer::Get3DRenderer().SetRenderTarget(viewportRT);
-    Renderer::Get2DRenderer().SetRenderTarget(viewportRT);
 
     // 选取本帧视口相机与宽高比：
     //   Edit → 编辑器导航相机（EditorContext.EditorCamera，工具视角）；
@@ -262,7 +260,7 @@ void SceneLayer::OnUpdate(Timestep &ts) {
     depthClear.storeOp = vk::AttachmentStoreOp::eStore;
     scene3D.depthAttachment = depthClear;
     scene3D.execute = [](PassExecuteContext &ctx) {
-        Renderer::Get3DRenderer().FlushScene(*ctx.cmd, *ctx.frame);
+        Renderer::Get3DRenderer().FlushScene(ctx);
     };
 
     // Pass1 "Scene2D"：叠加世界/UI 精灵。颜色 eLoad；深度 eLoad（读 Scene3D 深度做
@@ -283,7 +281,7 @@ void SceneLayer::OnUpdate(Timestep &ts) {
     depthLoad.storeOp = vk::AttachmentStoreOp::eStore;
     scene2D.depthAttachment = depthLoad;
     scene2D.execute = [](PassExecuteContext &ctx) {
-        Renderer::Get2DRenderer().FlushScene(*ctx.cmd, *ctx.frame);
+        Renderer::Get2DRenderer().FlushScene(ctx);
     };
 }
 

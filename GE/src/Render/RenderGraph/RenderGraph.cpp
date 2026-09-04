@@ -397,6 +397,11 @@ void RenderGraph::Execute(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame) {
         rinfo.SetRenderArea(renderArea);
         rinfo.SetLayerCount(1);
 
+        // 记录本 pass 实际写入的首个颜色/深度附件视图，随 ctx 透传给 execute 回调。
+        // 回调（3D/2D 录制）据此推导附件格式与有无深度，无需自行持有 RenderTarget。
+        VulkanImageView *firstColorView = nullptr;
+        VulkanImageView *firstDepthView = nullptr;
+
         for (const auto &att : pass.colorAttachments) {
             const ResourceRecord &rec = m_Resources[att.resource - 1];
             if (!rec.external) {
@@ -411,6 +416,9 @@ void RenderGraph::Execute(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame) {
             cv.color = att.clearValue.color;
             rinfo.AddColorAttachment(rec.external->GetHandle(),
                                      att.loadOp, att.storeOp, cv, renderLayout);
+            if (!firstColorView) {
+                firstColorView = rec.external;
+            }
         }
         if (pass.depthAttachment.has_value()) {
             const auto &datt = *pass.depthAttachment;
@@ -420,6 +428,7 @@ void RenderGraph::Execute(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame) {
                 const vk::ImageLayout renderLayout = LayoutForWrite(ResourceUsage::DepthStencilAttachment);
                 rinfo.SetDepthAttachment(rec.external->GetHandle(),
                                          datt.loadOp, datt.storeOp, clearDS, renderLayout);
+                firstDepthView = rec.external;
             }
         }
 
@@ -428,6 +437,8 @@ void RenderGraph::Execute(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame) {
         ctx.frame = &frame;
         ctx.renderArea = renderArea;
         ctx.renderingInfo = &rinfo;
+        ctx.colorAttachmentView = firstColorView;
+        ctx.depthAttachmentView = firstDepthView;
 
         rinfo.Begin(cmd.GetHandle());
         pass.execute(ctx);

@@ -162,14 +162,6 @@ void Renderer::EndFrame() {
     m_FrameGraph.Compile();
     m_FrameGraph.Execute(*m_ActiveFrameCmd, activeFrame);
 
-    // 复位渲染器渲染目标：Execute 中本帧采集已消费完，离屏目标归还默认态。
-    if (m_2DRenderer) {
-        m_2DRenderer->SetRenderTarget(nullptr);
-    }
-    if (m_3DRenderer) {
-        m_3DRenderer->SetRenderTarget(nullptr);
-    }
-
     // 2. End command buffer
     m_ActiveFrameCmd->End();
 

@@ -676,12 +676,13 @@ void DebugDrawLayer::DrawDirectionalLights(const Camera &camera, const glm::vec2
                              lightColor);
         }
 
-        // 2) 光线束：从盘面外缘沿光出射方向辐射出去，直观指示照射方向
+        // 2) 光线束：从盘面外缘逆着光出射方向辐射出去（即指向光源方向，
+        //    与着色器 dirLightDirection 同向），直观指示光线照射来源
         for (int i = 0; i < kRays; ++i) {
             const float a = (2.0f * kPi * i) / kRays;
             const glm::vec3 start =
                 center + kDiscRadius * 0.7f * (std::cos(a) * u + std::sin(a) * v);
-            drawWorldSegment(start, start + dir * kRayLength, lightColor);
+            drawWorldSegment(start, start - dir * kRayLength, lightColor);
         }
 
         // 3) 盘心圆点：固定锚点位置，图标较小时也便于定位

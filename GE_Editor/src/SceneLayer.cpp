@@ -258,6 +258,9 @@ void SceneLayer::OnUpdate(Timestep &ts) {
     depthClear.usage = ResourceUsage::DepthStencilAttachment;
     depthClear.loadOp = vk::AttachmentLoadOp::eClear;
     depthClear.storeOp = vk::AttachmentStoreOp::eStore;
+    // 深度写后停靠深度布局；finalLayout 默认是颜色态，不显式写回会给深度图
+    // 追加一条非法的「深度 → Color」收尾转换（VUID-VkImageMemoryBarrier2-oldLayout-01208）。
+    depthClear.finalLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
     scene3D.depthAttachment = depthClear;
     scene3D.execute = [](PassExecuteContext &ctx) {
         Renderer::Get3DRenderer().FlushScene(ctx);
@@ -279,6 +282,9 @@ void SceneLayer::OnUpdate(Timestep &ts) {
     depthLoad.usage = ResourceUsage::DepthStencilAttachment;
     depthLoad.loadOp = vk::AttachmentLoadOp::eLoad;
     depthLoad.storeOp = vk::AttachmentStoreOp::eStore;
+    // 深度附件保持深度布局，同 Scene3D 的 finalLayout（深度写后停靠布局），
+    // 避免收尾段给深度图追加非法的 Color 布局转换。
+    depthLoad.finalLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
     scene2D.depthAttachment = depthLoad;
     scene2D.execute = [](PassExecuteContext &ctx) {
         Renderer::Get2DRenderer().FlushScene(ctx);

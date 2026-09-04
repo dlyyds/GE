@@ -423,6 +423,18 @@ Renderer3D::SortKey Renderer3D::ComputeSortKey(const Material *material, const M
     SortKey key;
     key.pipelineId = static_cast<uint8_t>(GetPipelineId(material) | (skinned ? kSkinPipelineBit : 0u));
 
+    // 渲染段分区：Blend 走透明段（不透明先画，透明独立 back-to-front 排序）；
+    // Opaque/Mask 均为不透明段。passId 作为排序最高语义分区，不透明深度方向不
+    // 受透明干扰。
+    const bool transparent = (material && material->alphaMode == Material::AlphaMode::Blend);
+    key.passId = static_cast<uint8_t>(transparent ? Pass::Transparent : Pass::Opaque);
+
+    // 混合键：Blend 材质置 1（启用 alpha 混合），否则 0。blendKey 参与排序但不
+    // 参与合批，作用是把「同 layout 的 Opaque 与 Mask」在分区内聚拢成一大段——
+    // 混合附件状态只在透明段的第一次 Draw 处切换一次，避免 Mask 与 Opaque 之间
+    // 抖动重建混合管线（混合状态进管线 hash 且非动态）。
+    key.blendKey = transparent ? 1u : 0u;
+
     // 材质分组：用材质指针值（进程内唯一）作分组 id，使同材质实例连续，
     // 减少管线/纹理切换。材质完整决定渲染状态（纹理组合、着色器类型、混合等）。
     // nullptr 材质统一视为 0，使其彼此相邻。
@@ -443,7 +455,10 @@ Renderer3D::SortKey Renderer3D::ComputeSortKey(const Material *material, const M
     // 正浮点数的 IEEE 位模式随值单调递增，故可直接按位作为排序键，
     // 升序排列即实现不透明物体从前往后（early-z 优化）。
     glm::vec4 viewPos = m_View * transform[3];
-    key.depthBits = std::bit_cast<uint32_t>(-viewPos.z);
+    uint32_t dist = std::bit_cast<uint32_t>(-viewPos.z);
+    // 透明分区 depthBits 按位取反：位模式单调性反向，分区内升序即从远到近
+    // （alpha 混合正确序），与不透明段的近→远方向解耦。
+    key.depthBits = transparent ? ~dist : dist;
 
     return key;
 }
@@ -492,6 +507,19 @@ void Renderer3D::RecordScene(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame,
     std::vector<InstanceData> instances;
     std::vector<RenderBatch> batches;
     CollectBatches(instances, batches);
+
+    // 按 pass 切分批次为「不透明前缀 + 透明后缀」：CollectBatches 沿排序后的
+    // m_Meshes 顺序生成批次（不透明 run 先、Blend 逐实例后），批次序与实例序
+    // 一致 → 首个 Blend 批次之前的全部批次即不透明段。注意必须以批次自身判定
+    // 而非实例下标：不透明合批会让实例数 ≠ 批次数，无法用实例下标等价切分。
+    // 空场景 / 全不透明时切分点在 end，透明段自然为空。
+    const auto transparentIt = std::find_if(
+        batches.begin(), batches.end(), [](const RenderBatch &b) {
+            return b.material && b.material->alphaMode == Material::AlphaMode::Blend;
+        });
+    const size_t opaqueCount =
+        static_cast<size_t>(std::distance(batches.begin(), transparentIt));
+
     BufferAllocation instanceBuffer = UploadInstanceBuffer(frame, instances);
 
     BufferAllocation lightBuffer = UploadLightBuffer(frame);
@@ -502,12 +530,25 @@ void Renderer3D::RecordScene(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame,
         DrawSkybox(cmd, frame, colorFormat, depthFormat, extent);
     }
 
-    ConfigureMeshPipeline(cmd, colorFormat, depthFormat, extent);
+    // ── 段 1：不透明 pass（Opaque + Mask）──────────────────────────────
+    // 混合关 + 深度写开（= 现状），近→远排序吃 early-z。存在不透明批次才录制。
+    ConfigureMeshPipeline(cmd, colorFormat, depthFormat, extent, /*transparent=*/false);
     BindSharedUniforms(cmd, frameUboAlloc, lightBuffer);
+    if (opaqueCount > 0) {
+        const std::vector<RenderBatch> opaqueBatches(
+            batches.begin(), batches.begin() + static_cast<ptrdiff_t>(opaqueCount));
+        DrawMeshInstances(cmd, frame, opaqueBatches, instanceBuffer);
+    }
 
-    // 网格：由"有无批次"控制（无网格时整个实例循环无事可做）
-    if (!batches.empty()) {
-        DrawMeshInstances(cmd, frame, batches, instanceBuffer);
+    // ── 段 2：透明 pass（Blend）────────────────────────────────────────
+    // alpha 混合（SRC_ALPHA / ONE_MINUS_SRC_ALPHA）+ 深度写关（保留深度测试），
+    // 远→近排序。ConfigureMeshPipeline(transparent=true) 只改混合附件与深度写
+    // （两者均非动态）→ 首次 Draw 即触发透明管线变体，同 layout 由资源缓存去重。
+    if (opaqueCount < batches.size()) {
+        ConfigureMeshPipeline(cmd, colorFormat, depthFormat, extent, /*transparent=*/true);
+        const std::vector<RenderBatch> transparentBatches(
+            batches.begin() + static_cast<ptrdiff_t>(opaqueCount), batches.end());
+        DrawMeshInstances(cmd, frame, transparentBatches, instanceBuffer);
     }
 
     // ── 统计 draw call 与三角形数量 ──
@@ -515,9 +556,11 @@ void Renderer3D::RecordScene(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame,
 }
 
 void Renderer3D::SortMeshes() {
-    // ── 0. 按排序键排序（材质 → mesh → 深度） ─────────────────────────
-    //    使同材质同 mesh 的实例连续排列，既减少管线/纹理切换，又便于
-    //    instancing 合批；深度从前往后，利用 early-z 减少过绘制。
+    // ── 0. 按排序键排序（pass → 材质 → mesh → 深度方向）───────────────
+    //    SortKey 的 operator< 依次比较 pipeline → pass → blendKey → material →
+    //    mesh → submesh → depthBits，使不透明（Opaque/Mask）与透明（Blend）自动
+    //    分区，且各自段内同材质同 mesh 实例连续（便于 instancing 合批）、深度
+    //    方向正确（不透明近→远吃 early-z；透明远→近供 alpha 混合）。
     std::sort(m_Meshes.begin(), m_Meshes.end(),
               [](const MeshInstance &a, const MeshInstance &b) {
                   return a.sortKey < b.sortKey;
@@ -575,6 +618,8 @@ void Renderer3D::CollectBatches(std::vector<InstanceData> &instances,
 
         // 找同 (mesh, 子网格, material, skin) 的连续区间。
         // skin 也参与分桶：不同皮肤不可合批（关节矩阵不同），且蒙皮/静态亦分离。
+        // 注：batchKey（混合附件状态）在 ComputeSortKey 中排序聚拢、保证 Opaque/Mask
+        // 混合状态只切换一次，但**不参与合批**（见下 transparent 分支）。
         size_t runStart = i;
         while (i < m_Meshes.size()
                && m_Meshes[i].material == mat
@@ -583,6 +628,24 @@ void Renderer3D::CollectBatches(std::vector<InstanceData> &instances,
                && m_Meshes[i].indexCount == indexCount
                && m_Meshes[i].skinKey == skinKey) {
             ++i;
+        }
+
+        // 透明（Blend）实例不合并相邻同键实例，一律逐实例成批（instanceCount=1）。
+        // 原因：同一 instanced 批次内部实例深度排序被"压扁"成批次位置；当同材质
+        // 同 mesh 的远、近透明实例间穿插别的透明物体时，正确顺序需跨 mesh 交错
+        // 插值，instancing 做不到。不透明实例（可合批、吃 early-z）保持原合并逻辑。
+        if (mat && mat->alphaMode == Material::AlphaMode::Blend) {
+            uint32_t firstInstance = static_cast<uint32_t>(instances.size());
+            for (size_t k = runStart; k < i; ++k) {
+                const auto &inst = m_Meshes[k];
+                instances.push_back(InstanceData{inst.transform, inst.color});
+                // 每个透明实例各自一批：RunEnd 紧邻 RunStart，instanceCount=1。
+                batches.push_back(RenderBatch{
+                    inst.mesh, inst.firstIndex, inst.indexCount, inst.material,
+                    firstInstance, 1, inst.skinKey});
+                ++firstInstance;
+            }
+            continue;
         }
 
         // 收集本批次实例的 per-instance 数据（model + color）
@@ -715,7 +778,8 @@ void Renderer3D::DrawSkybox(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame,
 
 void Renderer3D::ConfigureMeshPipeline(VulkanCommandBuffer &cmd,
                                        vk::Format colorFormat, vk::Format depthFormat,
-                                       vk::Extent2D extent) {
+                                       vk::Extent2D extent,
+                                       bool transparent) {
     // ====================================================================
     // 4. 配置管线状态
     // ====================================================================
@@ -729,6 +793,11 @@ void Renderer3D::ConfigureMeshPipeline(VulkanCommandBuffer &cmd,
     // 注意：某些状态（如 cullMode、depthTestEnable）既参与管线创建（当未设为
     //       动态时），也作为动态状态的当前值。这里在 enableDynamicState 之后
     //       仍保留 set* 调用，是为了设置动态状态的"初始值"。
+    //
+    // transparent=true（透明段）：颜色混合启用（SRC_ALPHA / ONE_MINUS_SRC_ALPHA）
+    // 且深度写关（保留深度测试，透明片元正确被不透明深缓冲遮挡）。两者都不是
+    // 动态状态 → 混合/深度写参与管线 hash，首次 Draw 触发新的透明管线变体，
+    // 同 layout 由资源缓存去重；Opaque/Mask 与 Blend 由此分流到不同管线。
     // ====================================================================
 
     cmd.BindPipelineLayout(*m_PipelineLayout);
@@ -740,12 +809,21 @@ void Renderer3D::ConfigureMeshPipeline(VulkanCommandBuffer &cmd,
     vk::Format depthFmt = depthFormat;
     ps.setRenderingFormats({colorFmt}, depthFmt);
 
-    // —— 4b. 颜色混合（3D 不透明物体：无 alpha 混合，全通道写入）——
+    // —— 4b. 颜色混合 ——
     vk::PipelineColorBlendAttachmentState blendState{};
     blendState.colorWriteMask = vk::ColorComponentFlagBits::eR
                                 | vk::ColorComponentFlagBits::eG
                                 | vk::ColorComponentFlagBits::eB
                                 | vk::ColorComponentFlagBits::eA;
+    if (transparent) {
+        // 透明段：straight alpha 混合。srcAlpha=1（premultiplied 直通）让最终
+        // 输出 alpha 就是片段 alpha 本身，back-to-front 排序下混合正确。
+        blendState.blendEnable = VK_TRUE;
+        blendState.srcColorBlendFactor = vk::BlendFactor::eSrcAlpha;
+        blendState.dstColorBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha;
+        blendState.srcAlphaBlendFactor = vk::BlendFactor::eOne;
+        blendState.dstAlphaBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha;
+    }
     ps.setColorBlendAttachments({blendState});
 
     // —— 4c. 顶点输入（从顶点着色器反射自动生成）——
@@ -758,11 +836,13 @@ void Renderer3D::ConfigureMeshPipeline(VulkanCommandBuffer &cmd,
                                 static_cast<uint32_t>(sizeof(Vertex)));
 
     // —— 4d. 光栅化 + 深度/模板（默认值，同时作为动态状态初始值）——
+    // 剔除 cullMode 是动态状态（值不参与 hash），段内实际值由 DrawMeshInstances
+    // 按批次材质的 doubleSided 设置，这里仅设默认 eBack 作为兜底。
     ps.setInputAssembly(vk::PrimitiveTopology::eTriangleList)
         .setCullMode(vk::CullModeFlagBits::eBack)
         .setFrontFace(vk::FrontFace::eCounterClockwise)
         .setDepthTestEnable(VK_TRUE)
-        .setDepthWriteEnable(VK_TRUE)
+        .setDepthWriteEnable(transparent ? VK_FALSE : VK_TRUE)
         .setDepthCompareOp(vk::CompareOp::eLess);
 
     // —— 4e. 启用动态状态（这些状态运行时可通过 vkCmdSet* 改变）——
@@ -816,6 +896,7 @@ void Renderer3D::DrawMeshInstances(VulkanCommandBuffer &cmd, VulkanRenderFrame &
     // 当前绑定的管线 id（初始为 Blinn-Phong，已在上方绑定 *m_PipelineLayout）。
     // 排序键已按 pipelineId 分组，故同类型批次连续，切换频率最低。
     uint8_t currentPipelineId = 0;
+
     for (const auto &batch : batches) {
         // —— 管线路由：pipelineId 由「材质(PBR 位) + 是否蒙皮(蒙皮位)」决定。
         //    batch.skinKey 非 null ⇒ 蒙皮实例，走 mesh_skinned 管线并含蒙皮位。
@@ -868,6 +949,16 @@ void Renderer3D::DrawMeshInstances(VulkanCommandBuffer &cmd, VulkanRenderFrame &
                               ibl.GetBrdfLUT().GetSampler(), 1, 7); // BRDF LUT
             }
         }
+
+        // —— 动态剔除（doubleSided 接线）——
+        // cullMode 是动态状态（值不参与管线 hash）：同 layout 的双面 / 单面批次
+        // 只改动态值即可，无需新建管线变体。doubleSided 材质关背面剔除（内外都
+        // 渲染），否则保持默认背面剔除。Draw 前 Flush 会把本值刷入 cmd buffer，
+        // 逐批次无条件写入（值即使不变也只是重复一次 vkCmdSet，成本可忽略）。
+        const bool doubleSided = (batch.material && batch.material->doubleSided);
+        cmd.GetPipelineState().setCullMode(
+            doubleSided ? vk::CullModeFlags(vk::CullModeFlagBits::eNone)
+                        : vk::CullModeFlags(vk::CullModeFlagBits::eBack));
 
         // 绑定纹理（set 1, binding 0 = Albedo，binding 1 = Normal）
         // 从 material 对应槽位取纹理，无材质或无纹理时使用默认纹理 fallback
@@ -987,7 +1078,10 @@ void Renderer3D::DrawMeshInstances(VulkanCommandBuffer &cmd, VulkanRenderFrame &
 }
 
 void Renderer3D::RecordStats(const std::vector<RenderBatch> &batches) {
-    // ── 6b. 统计 draw call 与三角形数量（draw call = 批次数量） ───────
+    // ── 6b. 统计 draw call 与三角形数量 ───────────────────────────────
+    // draw call = 不透明批次数 + 透明批次数 = batches 总量（RecordScene 把两段
+    // 合起来统计，半透明逐实例成批已计入）。三角形按实例累计：m_Meshes 线性
+    // 包含全部实例，两段不重复计数。
     uint32_t triangles = 0;
     for (const auto &instance : m_Meshes) {
         triangles += instance.indexCount / 3;

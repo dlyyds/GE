@@ -59,31 +59,48 @@ struct PassExecuteContext;
 class Renderer3D {
 public:
     // ========================================================================
-    // 排序键（阶段1：按材质排序；阶段3：加入 mesh 分组以便 instancing）
+    // 排序键（阶段1：按材质排序；阶段3：加入 mesh 分组以便 instancing；
+    //          阶段4：加入 pass 分区与混合分组，打通透明渲染）
     // ========================================================================
     //
     // 用 struct 而非位打包整数，彻底消除位预算限制：
-    //   pipeline → material → mesh → depth
-    // - pipeline 优先级最高：管线切换最贵（当前仅一套恒 0，阶段4 引入
-    //   多管线后填入真实 id）
+    //   pipeline → pass → 混合 → material → mesh → depth
+    // - pipeline 优先级最高：管线切换最贵（材质 PBR 位 + 蒙皮位）
+    // - pass：0=不透明（MASK/Opaque），1=透明（Blend）——不透明全部先画，
+    //   透明的 back-to-front 排序不干扰不透明的 early-z
+    // - blend：混合键进排序，使同管线（同材质同 layout）的 Opaque/Mask
+    //   连续 → 混合附件状态只在两段交界处切换一次（混合状态参与管线
+    //   hash，非动态；键相同的批次共享同一管线变体）
     // - material：按材质分组 → 减少管线/纹理切换
     // - mesh：同材质内同 mesh 实例连续，便于 instancing 合批
-    // - depth：不透明物体从前往后（early-z 优化）
+    // - depth：不透明物体从前往后（early-z）；透明分区内 depthBits 取反，
+    //   升序即从远到近（alpha 混合正确序）
     //
     // material/mesh 用完整指针值（进程内唯一），无需折叠、无碰撞；
     // 合批分组仍以指针相等判断。
 
-    /// 排序键：按 pipeline → material → mesh → submesh → depth 顺序比较。
+    /// 渲染段（不透明 / 透明）。作为排序最高语义分区：透明段从不透明段
+    /// 独立排序绘制，其深度方向也与不透明相反。
+    enum class Pass : uint8_t {
+        Opaque = 0,   ///< 不透明段（Opaque + Mask，深度写、近→远 early-z）
+        Transparent = 1, ///< 透明段（Blend，深度不写、远→近）
+    };
+
+    /// 排序键：按 pipeline → pass → blend → material → mesh → submesh → depth 顺序比较。
     struct SortKey {
-        uint8_t  pipelineId = 0;  ///< 管线 id（阶段4 引入多管线后使用）
+        uint8_t  pipelineId = 0;  ///< 管线 id（材质 PBR 位 + 蒙皮位）
+        uint8_t  passId     = 0;  ///< 渲染段（0=不透明，1=透明；不透明全部先画）
+        uint8_t  blendKey   = 0;  ///< 混合分组（0=关，1=alpha 混合；同键共享同一管线变体）
         uint64_t materialId = 0;  ///< 材质指针值（分组用）
         uint64_t meshId     = 0;  ///< mesh 指针值（分组用）
         uint64_t submeshId  = 0;  ///< 子网格范围（firstIndex<<32 | indexCount，分组用）
-        uint32_t depthBits  = 0;  ///< view 空间深度（正浮点 IEEE 位模式）
+        uint32_t depthBits  = 0;  ///< view 空间深度（不透明正序位模式；透明按位取反后仍升序排列 = 远→近）
 
         /// 按优先级从高到低比较，供 std::sort 使用。
         bool operator<(const SortKey &o) const {
             if (pipelineId != o.pipelineId) return pipelineId < o.pipelineId;
+            if (passId != o.passId) return passId < o.passId;
+            if (blendKey != o.blendKey) return blendKey < o.blendKey;
             if (materialId != o.materialId) return materialId < o.materialId;
             if (meshId != o.meshId) return meshId < o.meshId;
             if (submeshId != o.submeshId) return submeshId < o.submeshId;
@@ -403,17 +420,30 @@ private:
                     vk::Format colorFormat, vk::Format depthFormat,
                     vk::Extent2D extent);
 
-    /// 配置网格管线状态（附件格式 / 混合 / 顶点输入 / 光栅化 / 动态状态 / 视口剪刀）
+    /**
+     * @brief 配置网格管线状态（附件格式 / 顶点输入 / 光栅化 / 动态状态 / 视口剪刀）。
+     *
+     * @param transparent 是否为透明（alpha 混合）管线：
+     *                    true  → 启用混合（SRC_ALPHA / ONE_MINUS_SRC_ALPHA）且深度写关
+     *                    false → 不透明（= 现状：混合关 + 深度写开）
+     */
     void ConfigureMeshPipeline(VulkanCommandBuffer &cmd,
                                vk::Format colorFormat, vk::Format depthFormat,
-                               vk::Extent2D extent);
+                               vk::Extent2D extent,
+                               bool transparent = false);
 
     /// 绑定网格共享描述符（Frame UBO + 点光源 SSBO，set 0）
     void BindSharedUniforms(VulkanCommandBuffer &cmd,
                             const BufferAllocation &frameUbo,
                             const BufferAllocation &lightBuffer);
 
-    /// 逐批次 instanced 绘制（含管线路由 / 纹理材质绑定 / 材质 UBO）
+    /**
+     * @brief 逐批次 instanced 绘制（含管线路由 / 动态剔除 / 纹理材质绑定 / 材质 UBO）。
+     *
+     * @param batches 按 pass 已分割的一段批次（不透明段或透明段）。混合附件与深度
+     *                写状态由调用方经 ConfigureMeshPipeline(transparent) 预置，这里
+     *                只负责按批次切换管线/剔除/绑定并绘制。
+     */
     void DrawMeshInstances(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame,
                            const std::vector<RenderBatch> &batches,
                            const BufferAllocation &instanceBuffer);

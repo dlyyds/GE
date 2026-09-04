@@ -40,8 +40,8 @@ Renderer::Renderer(Window &window)
     m_RenderContext->Prepare(1, true);
 
     // 4. 初始化统一资源管理器（在渲染器之前，渲染器可能依赖它）
-    auto &device    = m_VulkanContext->GetDevice();
-    auto &resCache  = device.GetResourceCache();
+    auto &device = m_VulkanContext->GetDevice();
+    auto &resCache = device.GetResourceCache();
 
     // 4a. 创建异步上传管理器（后台线程解码 + GPU 上传，主线程每帧 Poll 回收）
     m_AsyncUpload = std::make_unique<AsyncUploadManager>(device);
@@ -92,9 +92,6 @@ void Renderer::WaitIdle() {
 
 VulkanCommandBuffer &Renderer::BeginFrame() {
     GE_PROFILE_SCOPE("Renderer::BeginFrame");
-
-    // 0. 重置每帧渲染统计
-    m_Stats = {};
 
     // 0a. 回收已完成的后台上传（fence 置位的槽位），使后台解码/上传完成的资源本帧可见
     if (m_AsyncUpload) {
@@ -154,7 +151,7 @@ void Renderer::EndFrame() {
     uiPass.execute = [](PassExecuteContext &ctx) {
         ImGuiLayer::DrawUI(*ctx.cmd);
     };
-
+    m_Stats = {};
     // 3. 统一 Execute：声明序即执行序（Scene3D → Scene2D → UIPass）。Scene2D 收尾
     //    把离屏视口图转 ShaderReadOnly，UIPass 采样之并画 UI 到 swapchain，最后
     //    由 UIPass finalLayout 收尾转 PresentSrc（不再有手工 →PresentSrc 段）。

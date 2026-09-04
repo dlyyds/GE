@@ -43,7 +43,12 @@ Renderer::Renderer(Window &window)
     auto &device = m_VulkanContext->GetDevice();
     auto &resCache = device.GetResourceCache();
 
-    // 4a. 创建异步上传管理器（后台线程解码 + GPU 上传，主线程每帧 Poll 回收）
+    // 4a. 渲染图虚拟资源池注入分配入口与帧在途数（GBuffer 等瞬态资源走池分配）。
+    m_FrameGraph.SetDevice(&device);
+    m_FrameGraph.SetFramesInFlight(
+        static_cast<uint32_t>(m_RenderContext->GetRenderFrames().size()));
+
+    // 4b. 创建异步上传管理器（后台线程解码 + GPU 上传，主线程每帧 Poll 回收）
     m_AsyncUpload = std::make_unique<AsyncUploadManager>(device);
 
     m_AssetManager = std::make_unique<AssetManager>(device, resCache, *m_AsyncUpload);
@@ -78,6 +83,7 @@ Renderer::~Renderer() {
     m_AssetManager.reset();
     m_AsyncUpload.reset(); // 持有 device 引用，须在 VulkanContext 之前销毁
     m_ActiveFrameCmd = nullptr; // 仅为观察指针，实际由 RenderContext 所有
+    m_FrameGraph.Shutdown();    // 释放虚拟资源池（VMA 图像，须先于 VulkanContext/device 销毁）
     m_RenderContext.reset();
     m_VulkanContext.reset();
 

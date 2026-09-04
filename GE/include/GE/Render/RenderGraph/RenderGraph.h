@@ -37,6 +37,8 @@ namespace GE {
 class VulkanCommandBuffer;
 class VulkanImageView;
 class VulkanRenderFrame;
+class VulkanDevice;
+class VulkanImage;
 
 // ============================================================================
 // RenderGraph — 图本体
@@ -50,7 +52,7 @@ class RenderGraph {
 public:
     /// @param name 图名（调试/日志）
     explicit RenderGraph(std::string name);
-    ~RenderGraph() = default;
+    ~RenderGraph();  // 定义于 cpp：虚拟资源池含 VulkanImage/View 不完整类型
 
     RenderGraph(const RenderGraph &) = delete;
     RenderGraph &operator=(const RenderGraph &) = delete;
@@ -97,6 +99,19 @@ public:
     void Execute(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame);
 
     // ========================================================================
+    // 虚拟资源池（阶段2 基建；见《渲染图虚拟资源池计划书》）
+    // ========================================================================
+
+    /// 注入池分配所需 device（Renderer 构造时调用；首次 Execute 前必须已设）。
+    void SetDevice(VulkanDevice *device);
+
+    /// 设置帧在途数（= swapchain 图像数），用于虚拟资源 LRU 淘汰的安全销毁判定。
+    void SetFramesInFlight(uint32_t framesInFlight);
+
+    /// 释放全部虚拟资源池条目（Renderer 析构体里、device 销毁前显式调用）。
+    void Shutdown();
+
+    // ========================================================================
     // 只读访问（调试 / 日志 / 断言）
     // ========================================================================
 
@@ -109,6 +124,7 @@ public:
         std::string name;                                  ///< 资源名（调试）
         ResourceType type = ResourceType::Image;           ///< v1 恒 Image
         VulkanImageView *external = nullptr;               ///< 外部导入的图 view（经其 image 读写布局记忆）
+        VulkanImageView *pooledView = nullptr;             ///< 虚拟资源本帧解析出的池视图（external 路径为 null）
         RenderGraphResourceDesc virtualDesc{};             ///< 虚拟资源描述（v1 不分配）
         bool isFrameSwapchain = false;                     ///< 是否本帧 WSI 图
     };
@@ -127,12 +143,38 @@ private:
     /// 找不到时返回 ColorAttachment（理论上每个被依赖的资源都来自某写者，不会缺失）。
     ResourceUsage FindUsageInPass(uint32_t passIndex, ResourceHandle handle) const;
 
+    /// 帧内虚拟资源池条目（跨 Reset 存活；LRU 上限淘汰，见计划书 §3）。
+    /// 须先于 AcquirePoolEntry 声明：成员函数签名引用嵌套类型需先声明。
+    struct PooledImage {
+        RenderGraphResourceDesc desc;                ///< 匹配键：format/extent/samples
+        vk::ImageUsageFlags      usage = {};         ///< 匹配键：pass 声明推导的用法（防跨帧漂移）
+        std::unique_ptr<VulkanImage>     image;      ///< VMA RAII 图像（含跨帧 layout）
+        std::unique_ptr<VulkanImageView> view;       ///< 供 MRT / 采样的视图
+        bool busy = false;                           ///< 本帧已被某句柄占用
+        uint32_t lastUsedFrameIndex = 0;             ///< LRU 淘汰（当前帧号 - lastUsed > framesInFlight 才可销毁）
+    };
+
+    /// 解析本帧全部虚拟资源：推导 usage、从池分配/复用视图。Execute 开头调用。
+    void ResolveVirtualResources();
+
+    /// 从池取一个匹配 (desc, usage) 的空闲条目（无则新建）。返回条目指针。
+    PooledImage *AcquirePoolEntry(const RenderGraphResourceDesc &desc, vk::ImageUsageFlags usage);
+
+    /// LRU 上限淘汰：超限时淘汰最久未用且无在途引用（可安全销毁）的空闲条目。
+    void EvictPoolEntries();
+
     // --- 成员 ---
     std::string m_Name;
     bool m_Compiled = false;
 
     std::vector<ResourceRecord> m_Resources;   ///< 资源表（句柄 = 下标 + 1）
     std::vector<RenderPassDesc> m_Passes;      ///< 节点（按声明序）
+
+    VulkanDevice *m_Device = nullptr;          ///< 池分配入口（SetDevice 注入，首次 Execute 前必须已设）
+    uint32_t m_FramesInFlight = 1;             ///< 帧在途数（LRU 淘汰安全阈值，默认单帧保守）
+    uint32_t m_FrameIndex = 0;                 ///< 单调帧计数（Execute 递增，作 LRU 时间戳）
+
+    std::vector<PooledImage> m_VirtualPool;          ///< 虚拟资源池（跨 Reset 存活）
 };
 
 // ============================================================================

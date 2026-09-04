@@ -791,11 +791,12 @@ BufferAllocation Renderer3D::UploadFrameUBO(VulkanRenderFrame &frame) {
 
     frameUBO.ambient = m_LightParams.ambient;
 
-    // IBL 参数：x = 预滤波图最高 mip 索引（MAX_REFLECTION_LOD，= levelCount-1）。
-    // 无 IBL 时填 0，着色器 HAS_IBL 变体不采样该值（走常量环境光分支）。
+    // IBL 参数：x = 预滤波图最高 mip 索引（MAX_REFLECTION_LOD，= levelCount-1），
+    // y = IBL 环境光强度（整体缩放 IBL 贡献）。无 IBL 时填 0，着色器 HAS_IBL
+    // 变体不采样该值（走常量环境光分支）。
     frameUBO.iblParams = glm::vec4(
         m_EnvironmentMap ? static_cast<float>(m_EnvironmentMap->GetPrefilterLevels() - 1) : 0.0f,
-        0.0f, 0.0f, 0.0f);
+        m_IBLIntensity, 0.0f, 0.0f);
 
     BufferAllocation frameUboAlloc = frame.AllocateBuffer(
         vk::BufferUsageFlagBits::eUniformBuffer, sizeof(FrameUBO));
@@ -925,7 +926,7 @@ BufferAllocation Renderer3D::UploadLightingUBO(VulkanRenderFrame &frame) {
     ubo.iblParams = glm::vec4(
         m_EnvironmentMap ? static_cast<float>(m_EnvironmentMap->GetPrefilterLevels() - 1)
                          : 0.0f,
-        0.0f, 0.0f, 0.0f);
+        m_IBLIntensity, 0.0f, 0.0f);
 
     ubo.viewPos = glm::vec4(m_ViewPos, 0.0f);
     ubo.dirLightDirection = glm::vec4(m_LightParams.dirLightDirection, 0.0f);

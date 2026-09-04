@@ -457,6 +457,7 @@ struct EnvironmentComponent {
     bool Enabled = true; ///< 环境总开关（关则天空盒 + IBL 一并关闭）
     bool SkyboxEnabled = true; ///< 天空盒背景开关
     bool IBLEnabled = true; ///< IBL 环境光开关
+    float IBLIntensity = 1.0f; ///< IBL 环境光强度（整体缩放 diffuse + specular 贡献）
 
     EnvironmentComponent() = default;
 

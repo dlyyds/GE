@@ -1576,6 +1576,8 @@ void SceneHierarchyPanel::DrawEnvironmentComponent(EnvironmentComponent &compone
     ImGui::Checkbox("Skybox", &component.SkyboxEnabled);
     // IBL 环境光开关
     ImGui::Checkbox("IBL", &component.IBLEnabled);
+    // IBL 环境光强度（整体缩放 diffuse + specular 的 IBL 贡献）
+    ImGui::SliderFloat("IBL Intensity", &component.IBLIntensity, 0.0f, 4.0f, "%.2f");
     ImGui::TextDisabled("环境（天空盒 + IBL）来自 environments/<Name>/，不依赖 Transform");
 }
 

@@ -833,6 +833,7 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
             envNode["Enabled"] = ec.Enabled;
             envNode["SkyboxEnabled"] = ec.SkyboxEnabled;
             envNode["IBLEnabled"] = ec.IBLEnabled;
+            envNode["IBLIntensity"] = ec.IBLIntensity;
         }
 
         // ---- RigidBodyComponent ----
@@ -1383,6 +1384,7 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
             ec.Enabled = envNode["Enabled"] ? envNode["Enabled"].as<bool>(true) : true;
             ec.SkyboxEnabled = envNode["SkyboxEnabled"] ? envNode["SkyboxEnabled"].as<bool>(true) : true;
             ec.IBLEnabled = envNode["IBLEnabled"] ? envNode["IBLEnabled"].as<bool>(true) : true;
+            ec.IBLIntensity = envNode["IBLIntensity"] ? envNode["IBLIntensity"].as<float>(1.0f) : 1.0f;
         }
 
         // ---- RigidBodyComponent ----

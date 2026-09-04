@@ -753,6 +753,7 @@ void Scene::UpdateEnvironment() {
             r3d.SetEnvironment(ec.Name);
             r3d.SetSkyboxEnabled(ec.SkyboxEnabled);
             r3d.SetIBLEnabled(ec.IBLEnabled);
+            r3d.SetIBLIntensity(ec.IBLIntensity);
         } else {
             // 环境总开关关闭：天空盒 + IBL 一并关闭
             r3d.SetSkyboxEnabled(false);

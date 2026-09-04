@@ -187,6 +187,12 @@ public:
     /// IBL 光照是否启用。
     bool IsIBLEnabled() const { return m_IBLEnabled; }
 
+    /// 设置 IBL 环境光强度（整体缩放 diffuse + specular 的 IBL 贡献，1.0 = 原样）。
+    void SetIBLIntensity(float intensity) { m_IBLIntensity = intensity; }
+
+    /// 当前 IBL 环境光强度。
+    float GetIBLIntensity() const { return m_IBLIntensity; }
+
     /**
      * @brief 按环境名设置环境（天空盒 + IBL 三张图）。
      *
@@ -646,6 +652,9 @@ private:
 
     /// IBL 光照开关（与 m_EnvironmentMap 非空共同决定是否走 IBL 变体）
     bool m_IBLEnabled = false;
+
+    /// IBL 环境光强度（缩放 IBL 贡献，经 iblParams.y 传给着色器）
+    float m_IBLIntensity = 1.0f;
 
     /// 默认 1x1 白色纹理（无纹理时的 fallback，由全局 TextureManager 持有，不拥有）
     Texture *m_DefaultWhiteTexture = nullptr;

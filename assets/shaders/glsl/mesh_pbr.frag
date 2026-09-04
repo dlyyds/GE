@@ -56,7 +56,8 @@ layout (set = 0, binding = 0, std140) uniform FrameUBO
 // 环境光
     vec4 ambient;
 
-// IBL 参数（仅 PBR-IBL 变体 HAS_IBL 使用）：x = 预滤波最大 mip 数（MAX_REFLECTION_LOD）
+// IBL 参数（仅 PBR-IBL 变体 HAS_IBL 使用）：x = 预滤波最大 mip 数（MAX_REFLECTION_LOD），
+    // y = IBL 环境光强度（整体缩放 diffuse + specular 贡献）
     vec4 iblParams;
 } frame;
 
@@ -218,7 +219,8 @@ void main()
     vec2 brdf = texture(samplerBrdfDFG, vec2(NoV, roughness)).rg;
     vec3 specular = prefiltered * (F * brdf.r + brdf.g);
 
-    vec3 result = diffuse + specular;
+    // iblParams.y = IBL 环境光强度（整体缩放 diffuse + specular 贡献）
+    vec3 result = (diffuse + specular) * frame.iblParams.y;
 #else
     vec3 ambientColor = frame.ambient.rgb * frame.ambient.w;
     vec3 result = ambientColor * albedo;

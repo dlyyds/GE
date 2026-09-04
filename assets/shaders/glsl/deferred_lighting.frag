@@ -15,7 +15,7 @@ layout (set = 0, binding = 0, std140) uniform LightingUBO
     vec4 dirLightColor;
     vec4 lightCount;
     vec4 ambient;
-    vec4 iblParams;    // x = 预滤波最大 mip 数（MAX_REFLECTION_LOD），yzw 预留
+    vec4 iblParams;    // x = 预滤波最大 mip 数（MAX_REFLECTION_LOD），y = IBL 强度，zw 预留
 } lighting;
 
 struct PointLight
@@ -159,7 +159,8 @@ vec3 calcAmbientPBR(vec3 N, vec3 V, vec3 albedo, float metallic, float roughness
         vec2 brdf = texture(samplerBrdfDFG, vec2(NoV, roughness)).rg;
         vec3 specular = prefiltered * (F * brdf.r + brdf.g);
 
-        return diffuse + specular;
+        // iblParams.y = IBL 环境光强度（整体缩放 diffuse + specular 贡献）
+        return (diffuse + specular) * lighting.iblParams.y;
     }
 
     vec3 ambientColor = lighting.ambient.rgb * lighting.ambient.w;

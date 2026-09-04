@@ -223,6 +223,7 @@ endif ()
 
 set(Editor_SRC
         ${CMAKE_SOURCE_DIR}/GE_Editor/src/EditorApp.cpp
+        ${CMAKE_SOURCE_DIR}/GE_Editor/src/DebugDrawLayer.cpp
         ${CMAKE_SOURCE_DIR}/GE_Editor/src/SceneLayer.cpp
         ${CMAKE_SOURCE_DIR}/GE_Editor/src/SceneViewport.cpp
         ${CMAKE_SOURCE_DIR}/GE_Editor/src/DockSpaceLayer.cpp

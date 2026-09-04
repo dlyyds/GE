@@ -57,6 +57,7 @@ static void BuildDefaultLayout(ImGuiID dockspace_id, const ImVec2 &size) {
     ImGui::DockBuilderDockWindow("Properties", dock_left_bottom);
     ImGui::DockBuilderDockWindow("Scene", dock_main);
     ImGui::DockBuilderDockWindow("SceneLayer", dock_bottom);
+    ImGui::DockBuilderDockWindow("Scene Debug", dock_bottom);
     ImGui::DockBuilderDockWindow("Resource", dock_right);
     ImGui::DockBuilderDockWindow("渲染统计", dock_right);
     ImGui::DockBuilderDockWindow("动画状态机图", dock_right);

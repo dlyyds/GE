@@ -15,6 +15,8 @@
 namespace GE {
 
 class GizmoController; // 前向声明，避免在头文件引入实现
+class RenderTarget;    // 仅用于离屏渲染私有方法签名
+class DebugDrawLayer;  // 调试线框叠加层：Scene 视口内回调其 RenderSceneOverlay
 
 /// 场景层 —— 只负责场景渲染（离屏视口 + 相机）与 文件操作（保存/加载/新建）。
 ///
@@ -57,6 +59,9 @@ public:
     /// 绑定 gizmo 控制器（在 Scene 视口内渲染变换 gizmo）
     void SetGizmoController(std::unique_ptr<GizmoController> gizmo);
 
+    /// 绑定调试线框叠加层（用于包围盒/碰撞体/第一人称视点标记）
+    void SetDebugDrawLayer(DebugDrawLayer *debugDrawLayer);
+
 private:
     std::shared_ptr<EditorContext> m_Context;  ///< 共享场景上下文
 
@@ -81,26 +86,21 @@ private:
     /// 用于把「拖出视口后松开」的释放事件仍回传相机，避免相机按键状态卡住。
     uint32_t m_ViewportCapturedButtons = 0;
 
-    /// 在 Scene 视口内叠加绘制网格世界包围盒线框（调试剔除/蒙皮用）。
-    /// 与 GizmoController 同一套 OpenGL 投影 + 屏幕映射，保证线与画面/gizmo 对齐。
-    void DrawWorldBounds(const glm::vec2 &imagePos);
-
-    /// 在 Scene 视口内叠加绘制物理碰撞体线框（盒子 12 棱 + 球体正交圆环）。
-    /// 变换语义与 PhysicsWorld::BuildShapeForEntity 一致：局部 TRS，
-    /// 半尺寸/半径乘比例烘焙进形状，Offset 不乘比例。
-    void DrawColliders(const glm::vec2 &imagePos);
-
-    /// 视口是否叠加包围盒线框（静态盒白灰、蒙皮绑定盒红）
-    bool m_ShowBounds = true;
-
-    /// 包围盒上的关节露点红绿点是否显示（依赖 m_ShowBounds 开启）
-    bool m_ShowJointDots = true;
-
-    /// 视口是否叠加物理碰撞体线框（青绿色：盒子/球体）
-    bool m_ShowColliders = false;
+    /// 调试线框叠加层（由 EditorApp 创建并 PushLayer，SceneLayer 只持有指针）
+    DebugDrawLayer *m_DebugDrawLayer = nullptr;
 
     /// 从文件加载场景（会重建场景并重新绑定相机）
     bool LoadSceneFromFile(std::string_view filepath);
+
+    /// 确保离屏渲染视口在本帧可用，并返回视口像素尺寸。
+    /// 首帧无尺寸、创建/重建失败时返回 false。
+    bool EnsureViewport(Timestep &ts, uint32_t &vpWidth, uint32_t &vpHeight);
+
+    /// 选择本帧离屏渲染相机并同步宽高比（非固定纵横比的玩法相机）。
+    Camera &GetRenderingViewCamera(float aspect);
+
+    /// 向当前帧 RenderGraph 注册场景 3D/2D pass（前向/延迟渲染共用入口）。
+    void RecordScenePasses(RenderTarget &viewportRT, const glm::vec4 &clearColor);
 
     /// 从代码程序化构建默认场景（编译期开关 GE_EDITOR_BUILD_SCENE_FROM_CODE 控制）
     void BuildDefaultSceneFromCode();
@@ -112,14 +112,6 @@ private:
 
     /// 当前是否已锁定鼠标（防重复 glfwSetInputMode）
     bool m_MouseCaptured = false;
-
-    /// 在 Scene 视口内叠加绘制第一人称视点标记（十字 + 到脚底的虚线）。
-    /// 视点世界坐标 = 角色脚底 + EyeOffset（与 UpdateFirstPersonCamera 一致），
-    /// 用于摆放时直观确认视点高度/过肩偏移。
-    void DrawFirstPersonEyes(const glm::vec2 &imagePos);
-
-    /// 是否叠加第一人称视点标记（依赖 FirstPersonCameraComponent 实体存在）
-    bool m_ShowFPSEyes = true;
 };
 
 } // namespace GE

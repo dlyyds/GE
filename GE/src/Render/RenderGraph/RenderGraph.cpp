@@ -426,6 +426,56 @@ void RenderGraph::Execute(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame) {
         rinfo.Begin(cmd.GetHandle());
         pass.execute(ctx);
         VulkanRenderingInfo::End(cmd.GetHandle());
+
+        // ---- 收尾：写后布局转换（AttachmentDesc.finalLayout，S1 预留、S2 接线） ----
+        // 附件在动态渲染内停在 LayoutForWrite(usage)（颜色/深度附件态）；若调用方
+        // 声明了不同的 finalLayout（如 Scene2D 写后转 ShaderReadOnlyOptimal 供后续
+        // 采样），在此追加一条收尾 barrier 并把布局状态推进到 finalLayout，供下一
+        // pass 前置屏障与帧末写回使用。finalLayout == eUndefined 或 == 当前停靠布局
+        // （默认停在附件态）时不产生转换。
+        {
+            std::vector<vk::ImageMemoryBarrier2> tailBarriers;
+            const auto collectTail = [&](ResourceHandle h, ResourceUsage usage,
+                                         vk::ImageLayout finalLayout) {
+                if (h == kInvalidResource || h > m_Resources.size()) {
+                    return;
+                }
+                const ResourceRecord &rec = m_Resources[h - 1];
+                if (!rec.external || finalLayout == vk::ImageLayout::eUndefined) {
+                    return;
+                }
+                auto it = layout.find(h);
+                if (it == layout.end() || !it->second.valid) {
+                    return;
+                }
+                PerResourceLayout &pl = it->second;
+                if (pl.layout == finalLayout) {
+                    return;  // 已停靠，无需转换
+                }
+                // 写者输出对后续读（采样）可见：源 = 附件写，目的 = 通用着色器读。
+                tailBarriers.push_back(MakeBarrier(
+                    WriteStage(usage), WriteAccess(usage),
+                    vk::PipelineStageFlagBits2::eVertexShader
+                        | vk::PipelineStageFlagBits2::eFragmentShader,
+                    vk::AccessFlagBits2::eShaderRead,
+                    pl.layout, finalLayout, *rec.external));
+                pl.layout = finalLayout;
+            };
+            for (const auto &att : pass.colorAttachments) {
+                collectTail(att.resource, att.usage, att.finalLayout);
+            }
+            if (pass.depthAttachment.has_value()) {
+                const auto &datt = *pass.depthAttachment;
+                collectTail(datt.resource, datt.usage, datt.finalLayout);
+            }
+            if (!tailBarriers.empty()) {
+                vk::DependencyInfo depInfo{
+                    .imageMemoryBarrierCount = static_cast<uint32_t>(tailBarriers.size()),
+                    .pImageMemoryBarriers   = tailBarriers.data(),
+                };
+                cmd.GetHandle().pipelineBarrier2(depInfo);
+            }
+        }
     }
 
     // ---- 收尾：外部资源最终布局写回（WSI 图除外） ----

@@ -285,6 +285,25 @@ public:
      */
     void EndScene();
 
+    /**
+     * @brief 设置延迟录制模式。
+     *
+     * true（编辑器视口渲染图路径）时，EndScene 只结束采集（批次保留在
+     * m_Meshes），不录制任何命令；命令录制延后到 RenderGraph 该 pass 的
+     * execute 回调里调用 FlushScene 完成（动态渲染已由图打开）。false（默认，
+     * Sandbox / 直写 swapchain 路径）时 EndScene 保持原有行为直接录制。
+     */
+    void SetDeferRecording(bool defer) { m_DeferRecording = defer; }
+
+    /**
+     * @brief 把本帧已采集的网格批次录制到指定 cmd（RenderGraph execute 回调内调用）。
+     *
+     * 前提：① 已 SetRenderTarget(目标)；② EndScene 已收集批次（defer 模式）；
+     * ③ 图已为该 pass 打开动态渲染（本方法不再 begin/end，也不做任何布局转换）。
+     * 内部完成排序、退休环境销毁、帧池上传与全部绘制命令录制。
+     */
+    void FlushScene(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame);
+
 private:
     // ========================================================================
     // UBO 结构体（std140 布局，16 字节对齐）
@@ -394,6 +413,16 @@ private:
 
     /// 构建颜色 + 深度附件（按 m_ClearColor 决定 loadOp）并开始动态渲染
     void BeginDynamicRendering(VulkanCommandBuffer &cmd, RenderTarget &renderTarget);
+
+    /**
+     * @brief 录制本帧网格批次的公共绘制段（排序 + 上传 + 绘制）。
+     *
+     * EndScene（直录）与 FlushScene（渲染图 execute 回调）共用，避免两份录制逻辑。
+     * @param manageRendering true=自己 begin/end 动态渲染（直录路径）；
+     *                        false=动态渲染已由图打开，只录命令（渲染图路径）。
+     */
+    void RecordScene(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame,
+                     bool manageRendering);
 
     /// 绘制天空盒（全屏三角形背景，关闭深度测试/写入，先于网格）
     void DrawSkybox(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame,
@@ -578,6 +607,9 @@ private:
 
     /// 渲染目标覆盖（nullptr 时渲染到 swapchain）。由 SetRenderTarget 设置。
     RenderTarget *m_RenderTargetOverride = nullptr;
+
+    /// 延迟录制模式（RenderGraph 编辑器路径置 true，EndScene 只采集不录制）
+    bool m_DeferRecording = false;
 
     /// 光照参数
     LightParams m_LightParams{};

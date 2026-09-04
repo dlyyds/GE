@@ -137,18 +137,54 @@ void Renderer2D::EndScene() {
         return;
     }
 
+    // 延迟录制模式（RenderGraph 编辑器路径）：把本批精灵快照进 session，
+    // 命令录制延后到本帧 Scene pass 的 execute 回调里调用 FlushScene 完成。
+    if (m_DeferRecording) {
+        m_Sessions.push_back(SpriteSession{
+            m_View, m_Projection, m_UseDepth,
+            std::move(m_Batches)});
+        return;
+    }
+
+    // 旧直录路径（Sandbox / 无渲染图）：排序 + 上传 + begin + 录制 + end。
+    auto &cmd = Renderer::GetFrameCmd();
+    auto &frame = Renderer::GetRenderContext().GetActiveFrame();
+    RecordSpriteSession(cmd, frame, m_View, m_Projection, m_UseDepth,
+                        m_Batches, /*manageRendering=*/true);
+}
+
+void Renderer2D::FlushScene(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame) {
+    GE_PROFILE_SCOPE("Renderer2D::FlushScene");
+
+    // RenderGraph execute 回调内调用：图已为该 pass 打开动态渲染、转好布局。
+    // 按序重放本帧快照的全部精灵 session（世界批 + UI 批），不再 begin/end、
+    // 不做任何布局转换。
+    if (m_Sessions.empty()) {
+        return;
+    }
+    for (auto &session : m_Sessions) {
+        RecordSpriteSession(cmd, frame, session.view, session.projection,
+                            session.useDepth, session.batches,
+                            /*manageRendering=*/false);
+    }
+    m_Sessions.clear();
+}
+
+void Renderer2D::RecordSpriteSession(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame,
+                                     const glm::mat4 &view, const glm::mat4 &projection,
+                                     bool useDepth,
+                                     const std::unordered_map<Texture *, std::vector<SpriteVertex>> &batches,
+                                     bool manageRendering) {
     // ── 统计总顶点数 ──────────────────────────────────────────────────
     size_t totalVertices = 0;
-    for (const auto &[tex, verts] : m_Batches) {
+    for (const auto &[tex, verts] : batches) {
         totalVertices += verts.size();
     }
     if (totalVertices == 0) {
         return;
     }
 
-    auto &cmd = Renderer::GetFrameCmd();
     auto vkCmd = cmd.GetHandle();
-    auto &frame = Renderer::GetRenderContext().GetActiveFrame();
 
     // 有效渲染目标：优先使用外部指定的目标（离屏），否则使用当前帧的 swapchain 目标
     auto &target = m_RenderTargetOverride ? *m_RenderTargetOverride
@@ -168,13 +204,13 @@ void Renderer2D::EndScene() {
         uint32_t vertexCount;
     };
     std::vector<BatchInfo> batchInfos;
-    batchInfos.reserve(m_Batches.size());
+    batchInfos.reserve(batches.size());
 
     std::vector<SpriteVertex> allVertices;
     allVertices.reserve(totalVertices);
     uint32_t vertexOffset = 0;
 
-    for (auto &[tex, verts] : m_Batches) {
+    for (const auto &[tex, verts] : batches) {
         if (verts.empty())
             continue;
 
@@ -189,8 +225,8 @@ void Renderer2D::EndScene() {
     // ── 3. 分配 UBO（UniformBlock） ───────────────────────────────────
     // 模型变换已在 CPU 端烘焙到顶点位置，UBO 只存 view + projection + color
     UniformBlock ubo{};
-    ubo.view = m_View;
-    ubo.projection = m_Projection;
+    ubo.view = view;
+    ubo.projection = projection;
     ubo.color = glm::vec4(1.0f);
 
     BufferAllocation uboAlloc = frame.AllocateBuffer(
@@ -198,39 +234,43 @@ void Renderer2D::EndScene() {
     uboAlloc.update(ubo);
 
     // ── 4. 开始动态渲染 ───────────────────────────────────────────────
-    // 根据 m_ClearColor 决定是否清屏：r < 0 表示不清屏（eLoad），否则清屏（eClear）
-    bool shouldClear = m_ClearColor.r >= 0.0f;
-    vk::ClearValue clearValue{};
-    clearValue.color = std::array<float, 4>{
-        m_ClearColor.r, m_ClearColor.g, m_ClearColor.b, m_ClearColor.a};
+    // manageRendering=true（旧直录路径）时自开动态渲染，loadOp 按 clearColor
+    // 决定（r<0 = eLoad 不清屏）；false（渲染图路径）时动态渲染已由图打开，
+    // 直接录制命令，不做清屏判断。
+    if (manageRendering) {
+        bool shouldClear = m_ClearColor.r >= 0.0f;
+        vk::ClearValue clearValue{};
+        clearValue.color = std::array<float, 4>{
+            m_ClearColor.r, m_ClearColor.g, m_ClearColor.b, m_ClearColor.a};
 
-    // 附件布局与图像实际布局一致：离屏颜色图固定 GENERAL，否则验证层报
-    // VUID-vkCmdBeginRendering-pRenderingInfo-09592。正常 swapchain 用默认。
-    vk::ImageLayout colorLayout = target.HasOffscreenColor()
-                                      ? vk::ImageLayout::eGeneral
-                                      : vk::ImageLayout::eColorAttachmentOptimal;
+        // 附件布局与图像实际布局一致：离屏颜色图固定 GENERAL，否则验证层报
+        // VUID-vkCmdBeginRendering-pRenderingInfo-09592。正常 swapchain 用默认。
+        vk::ImageLayout colorLayout = target.HasOffscreenColor()
+                                          ? vk::ImageLayout::eGeneral
+                                          : vk::ImageLayout::eColorAttachmentOptimal;
 
-    VulkanRenderingInfo renderInfo;
-    renderInfo.SetRenderArea(0, 0, extent.width, extent.height);
-    renderInfo.AddColorAttachment(target.GetColorView().GetHandle(),
-                                  shouldClear
-                                      ? vk::AttachmentLoadOp::eClear
-                                      : vk::AttachmentLoadOp::eLoad,
-                                  vk::AttachmentStoreOp::eStore,
-                                  clearValue,
-                                  colorLayout);
+        VulkanRenderingInfo renderInfo;
+        renderInfo.SetRenderArea(0, 0, extent.width, extent.height);
+        renderInfo.AddColorAttachment(target.GetColorView().GetHandle(),
+                                      shouldClear
+                                          ? vk::AttachmentLoadOp::eClear
+                                          : vk::AttachmentLoadOp::eLoad,
+                                      vk::AttachmentStoreOp::eStore,
+                                      clearValue,
+                                      colorLayout);
 
-    // 3D 模式下附加深度缓冲（load = 加载已有深度，保证 3D 场景里的遮挡正确）
-    if (m_UseDepth && target.HasDepth()) {
-        vk::ClearDepthStencilValue clearDS{1.0f, 0};
-        renderInfo.SetDepthAttachment(
-            target.GetDepthView().GetHandle(),
-            vk::AttachmentLoadOp::eLoad,
-            vk::AttachmentStoreOp::eStore,
-            clearDS);
+        // 3D 模式下附加深度缓冲（load = 加载已有深度，保证 3D 场景里的遮挡正确）
+        if (useDepth && target.HasDepth()) {
+            vk::ClearDepthStencilValue clearDS{1.0f, 0};
+            renderInfo.SetDepthAttachment(
+                target.GetDepthView().GetHandle(),
+                vk::AttachmentLoadOp::eLoad,
+                vk::AttachmentStoreOp::eStore,
+                clearDS);
+        }
+
+        renderInfo.Begin(vkCmd);
     }
-
-    renderInfo.Begin(vkCmd);
 
     // ── 5. 绑定 pipeline layout ───────────────────────────────────────
     cmd.BindPipelineLayout(*m_PipelineLayout);
@@ -254,8 +294,12 @@ void Renderer2D::EndScene() {
     blendState.alphaBlendOp = vk::BlendOp::eAdd;
 
     // 配置管线状态（链式 API）
+    // 深度格式：渲染图路径（manageRendering=false，动态渲染已由图打开，Scene2D
+    // pass 带深度附件）时恒填真实深度格式以匹配已开的动态渲染；否则（直录）仅
+    // useDepth 批声明深度。深度测试开关由 useDepth 决定，UI 批声明深度格式但不
+    // 开深度测试，属合法组合。
     vk::Format depthFmt = vk::Format::eUndefined;
-    if (m_UseDepth && target.HasDepth()) {
+    if (target.HasDepth() && (useDepth || !manageRendering)) {
         depthFmt = target.GetDepthFormat();
     }
 
@@ -264,8 +308,8 @@ void Renderer2D::EndScene() {
         .setColorBlendAttachments({blendState})
         .setCullMode(vk::CullModeFlagBits::eNone)
         .setFrontFace(vk::FrontFace::eCounterClockwise)
-        .setDepthTestEnable(m_UseDepth ? VK_TRUE : VK_FALSE)
-        .setDepthWriteEnable(m_UseDepth ? VK_TRUE : VK_FALSE)
+        .setDepthTestEnable(useDepth ? VK_TRUE : VK_FALSE)
+        .setDepthWriteEnable(useDepth ? VK_TRUE : VK_FALSE)
         .enableDynamicState(vk::DynamicState::eCullMode)
         .enableDynamicState(vk::DynamicState::eFrontFace)
         .enableDynamicState(vk::DynamicState::ePrimitiveTopology);
@@ -323,7 +367,9 @@ void Renderer2D::EndScene() {
     Renderer::Get().AddStats2D(static_cast<uint32_t>(batchInfos.size()), triangles);
 
     // ── 9. 结束渲染 ───────────────────────────────────────────────────
-    VulkanRenderingInfo::End(vkCmd);
+    if (manageRendering) {
+        VulkanRenderingInfo::End(vkCmd);
+    }
 }
 
 // ============================================================================

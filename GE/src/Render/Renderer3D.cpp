@@ -453,16 +453,34 @@ void Renderer3D::EndScene() {
     GE_CORE_ASSERT(m_InScene, "EndScene called without BeginScene!");
     m_InScene = false;
 
-    // 销毁上一帧切换环境时退休的旧环境（安全点，见 FlushRetiredEnvironments）
-    FlushRetiredEnvironments();
+    // 延迟录制模式（RenderGraph 编辑器路径）：只结束采集，批次保留在 m_Meshes，
+    // 命令录制延后到本帧 Scene pass 的 execute 回调里调用 FlushScene 完成。
+    if (m_DeferRecording) {
+        return;
+    }
 
-    // 使同材质同 mesh 的实例连续排列（管线/纹理切换最少 + instancing 合批），
-    // 深度从前往后，利用 early-z 减少过绘制。
-    SortMeshes();
-
+    // 旧直录路径（Sandbox / 无渲染图）：排序 + 上传 + begin + 录制 + end。
     auto &cmd = Renderer::GetFrameCmd();
-    auto vkCmd = cmd.GetHandle();
     auto &frame = Renderer::GetRenderContext().GetActiveFrame();
+    FlushRetiredEnvironments();
+    RecordScene(cmd, frame, /*manageRendering=*/true);
+}
+
+void Renderer3D::FlushScene(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame) {
+    GE_PROFILE_SCOPE("Renderer3D::FlushScene");
+
+    // RenderGraph execute 回调内调用：图已为该 pass 打开动态渲染、转好布局。
+    // 这里只做排序/上传/绘制，不再 begin/end、不做任何布局转换。
+    FlushRetiredEnvironments();
+    RecordScene(cmd, frame, /*manageRendering=*/false);
+}
+
+void Renderer3D::RecordScene(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame,
+                             bool manageRendering) {
+    GE_PROFILE_SCOPE("Renderer3D::RecordScene");
+
+    // 销毁上一帧切换环境时退休的旧环境（安全点，见 FlushRetiredEnvironments）
+    SortMeshes();
 
     // 有效渲染目标：优先外部离屏目标，否则当前帧 swapchain 目标（视口/格式/附件均取自该目标）
     auto &renderTarget = m_RenderTargetOverride ? *m_RenderTargetOverride
@@ -479,7 +497,11 @@ void Renderer3D::EndScene() {
     BufferAllocation lightBuffer = UploadLightBuffer(frame);
 
     // ── 渲染：开始动态渲染 → 天空盒背景 → 网格批次（管线 + 描述符 + 绘制） ──
-    BeginDynamicRendering(cmd, renderTarget);
+    // manageRendering=true（旧直录路径）时自开动态渲染；false（渲染图路径）时
+    // 动态渲染已由图打开，直接录制命令。
+    if (manageRendering) {
+        BeginDynamicRendering(cmd, renderTarget);
+    }
 
     // 天空盒：由"有无天空盒"控制（仅开关开启时提交；纹理是否就绪由 DrawSkybox 内部再判定）
     if (m_SkyboxEnabled) {
@@ -498,7 +520,9 @@ void Renderer3D::EndScene() {
     RecordStats(batches);
 
     // ── 7. 结束渲染 ───────────────────────────────────────────────────
-    VulkanRenderingInfo::End(vkCmd);
+    if (manageRendering) {
+        VulkanRenderingInfo::End(cmd.GetHandle());
+    }
 }
 
 void Renderer3D::SortMeshes() {

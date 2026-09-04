@@ -13,6 +13,8 @@ namespace GE {
 
 class VulkanPipelineLayout;
 class VulkanShaderModule;
+class VulkanCommandBuffer;
+class VulkanRenderFrame;
 class RenderTarget;
 
 /**
@@ -114,8 +116,29 @@ public:
      * 2. 写入所有精灵顶点
      * 3. 绑定 pipeline + 顶点 buffer
      * 4. 按纹理分组，每组一个 draw call
+     *
+     * 延迟录制模式（m_DeferRecording）下不直接提交，而是把本批精灵的
+     * 采集状态快照进 m_Sessions，等待渲染图 execute 回调调用 FlushScene。
      */
     void EndScene();
+
+    /**
+     * @brief 设置延迟录制模式。
+     *
+     * true（编辑器视口渲染图路径）时 EndScene 只把本批精灵快照进 session，
+     * 不录制命令；false（默认，Sandbox / 直写 swapchain 路径）时保持原行为
+     * 直接录制。同帧多次 BeginScene/EndScene（世界精灵 + UI 精灵）各自快照
+     * 一个 session，FlushScene 按序重放。
+     */
+    void SetDeferRecording(bool defer) { m_DeferRecording = defer; }
+
+    /**
+     * @brief 把本帧已快照的全部精灵 session 录制到指定 cmd（RenderGraph execute 回调内调用）。
+     *
+     * 前提：① 已 SetRenderTarget(目标)；② EndScene 已快照（defer 模式）；
+     * ③ 图已为该 pass 打开动态渲染（本方法不再 begin/end，也不做任何布局转换）。
+     */
+    void FlushScene(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame);
 
     /**
      * @brief 设置本次 EndScene 的渲染目标。
@@ -152,6 +175,15 @@ private:
     /// 创建 2D 渲染管线状态（在 EndScene 首次调用或状态变化时配置）
     void SetupPipelineState();
 
+    /// 录制单个精灵 session（顶点上传 + 状态绑定 + 逐纹理绘制）
+    /// @param manageRendering true=自己 begin/end 动态渲染（直录路径）；
+    ///                        false=动态渲染已由图打开，只录命令（渲染图路径）
+    void RecordSpriteSession(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame,
+                             const glm::mat4 &view, const glm::mat4 &projection,
+                             bool useDepth,
+                             const std::unordered_map<Texture *, std::vector<SpriteVertex>> &batches,
+                             bool manageRendering);
+
     // ========================================================================
     // 成员
     // ========================================================================
@@ -185,6 +217,19 @@ private:
 
     /// 是否在 BeginScene / EndScene 之间
     bool m_InScene = false;
+
+    /// 延迟录制模式（RenderGraph 编辑器路径置 true，EndScene 快照不录制）
+    bool m_DeferRecording = false;
+
+    /// 本帧已快照的精灵 session（延迟录制：世界/UI 各一批，FlushScene 按序重放）。
+    /// 每条保留该批的相机状态与批次顶点快照，因 BeginScene 会清空 m_Batches。
+    struct SpriteSession {
+        glm::mat4 view{1.0f};
+        glm::mat4 projection{1.0f};
+        bool      useDepth = false;
+        std::unordered_map<Texture *, std::vector<SpriteVertex>> batches;
+    };
+    std::vector<SpriteSession> m_Sessions;
 
     /// 渲染目标覆盖（nullptr 时渲染到 swapchain）。由 SetRenderTarget 设置。
     RenderTarget *m_RenderTargetOverride = nullptr;

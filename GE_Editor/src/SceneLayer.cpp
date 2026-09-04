@@ -9,9 +9,13 @@
 #include "GE/Events/KeyEvent.h"
 #include "GE/Events/MouseEvent.h"
 #include "GE/Render/Renderer.h"
+#include "GE/Render/Renderer2D.h"
+#include "GE/Render/Renderer3D.h"
 #include "GE/Render/AssetManager.h"
 #include "GE/Render/MeshManager.h"
 #include "GE/Render/Mesh.h"
+#include "GE/Render/RenderGraph/RenderGraph.h"
+#include "GE/Render/RenderTarget.h"
 #include "GE/Scene/Components.h"
 #include "GE/Scene/Entity.h"
 #include "GE/Scene/SceneSerializer.h"
@@ -192,9 +196,17 @@ void SceneLayer::OnUpdate(Timestep &ts) {
     // 同步场景视口尺寸
     m_Context->Scene->OnViewportResize(vpW, vpH);
 
-    // 把本帧 3D 场景（网格 + 精灵）渲染进离屏视口目标
-    Renderer::Get3DRenderer().SetRenderTarget(m_Viewport->GetRenderTarget());
-    Renderer::Get2DRenderer().SetRenderTarget(m_Viewport->GetRenderTarget());
+    // 渲染图路径（S2）：3D/2D 走延迟录制。目标是离屏视口，但录制动作延后到
+    // 下方两张 pass 的 execute 回调（RenderGraph 已打开动态渲染、转好布局）。
+    // Scene 的 RenderMeshes3D / RenderSprites2D 仍按现状调 BeginScene/Draw/EndScene，
+    // EndScene 在 defer 模式下只收尾采集（3D 批次留 m_Meshes、2D 快照进 m_Sessions）。
+    auto &r3d = Renderer::Get3DRenderer();
+    auto &r2d = Renderer::Get2DRenderer();
+    RenderTarget *viewportRT = m_Viewport->GetRenderTarget();
+    r3d.SetRenderTarget(viewportRT);
+    r2d.SetRenderTarget(viewportRT);
+    r3d.SetDeferRecording(true);
+    r2d.SetDeferRecording(true);
 
     // 选取本帧视口相机与宽高比：
     //   Edit → 编辑器导航相机（EditorContext.EditorCamera，工具视角）；
@@ -220,11 +232,71 @@ void SceneLayer::OnUpdate(Timestep &ts) {
     glm::vec3 cameraPos = activeCam->GetPosition();
     glm::vec4 clearColor{0.1f, 0.1f, 0.15f, 1.0f};
 
+    // Scene 只做仿真 + 采集（3D/2D 批次经 EndScene 延迟快照，不录制命令）
     m_Context->Scene->OnUpdate3D(ts, view, projection, cameraPos, clearColor);
 
-    // 复位为 swapchain 目标（默认）
-    Renderer::Get3DRenderer().SetRenderTarget(nullptr);
-    Renderer::Get2DRenderer().SetRenderTarget(nullptr);
+    // ── 两 pass 声明 + Execute：Scene3D（清屏含深度）→ Scene2D（叠加世界/UI 精灵） ──
+    RenderGraph graph("SceneGraph");
+    RenderGraphBuilder builder(graph);
+
+    auto &cmd = Renderer::GetFrameCmd();
+    auto &frame = Renderer::GetRenderContext().GetActiveFrame();
+    const auto extent = viewportRT->GetExtent();
+    vk::Rect2D renderArea{{0, 0}, {extent.width, extent.height}};
+
+    // 外部资源：离屏颜色 + 深度（RenderTarget 不拥有，图只编排同步）
+    ResourceHandle hColor = builder.Import(&viewportRT->GetColorView(), "ViewportColor");
+    ResourceHandle hDepth = builder.Import(&viewportRT->GetDepthView(), "ViewportDepth");
+
+    // Pass0 "Scene3D"：清屏 + 深度 eClear；颜色/深度 eStore（深度须保留给 Scene2D 读）
+    RenderPassDesc &scene3D = builder.AddPass("Scene3D");
+    scene3D.renderArea = renderArea;
+    AttachmentDesc colorClear;
+    colorClear.resource = hColor;
+    colorClear.usage = ResourceUsage::ColorAttachment;
+    colorClear.loadOp = vk::AttachmentLoadOp::eClear;
+    colorClear.storeOp = vk::AttachmentStoreOp::eStore;
+    colorClear.clearValue.color = {clearColor.r, clearColor.g, clearColor.b, clearColor.a};
+    scene3D.colorAttachments.push_back(colorClear);
+    AttachmentDesc depthClear;
+    depthClear.resource = hDepth;
+    depthClear.usage = ResourceUsage::DepthStencilAttachment;
+    depthClear.loadOp = vk::AttachmentLoadOp::eClear;
+    depthClear.storeOp = vk::AttachmentStoreOp::eStore;
+    scene3D.depthAttachment = depthClear;
+    scene3D.execute = [](PassExecuteContext &ctx) {
+        Renderer::Get3DRenderer().FlushScene(*ctx.cmd, *ctx.frame);
+    };
+
+    // Pass1 "Scene2D"：叠加世界/UI 精灵。颜色 eLoad；深度 eLoad（读 Scene3D 深度做
+    // 遮挡），UI 批 depthTest 关不读写；颜色收尾转 ShaderReadOnlyOptimal 供 ImGui 采样。
+    RenderPassDesc &scene2D = builder.AddPass("Scene2D");
+    scene2D.renderArea = renderArea;
+    AttachmentDesc colorLoad;
+    colorLoad.resource = hColor;
+    colorLoad.usage = ResourceUsage::ColorAttachment;
+    colorLoad.loadOp = vk::AttachmentLoadOp::eLoad;
+    colorLoad.storeOp = vk::AttachmentStoreOp::eStore;
+    colorLoad.finalLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+    scene2D.colorAttachments.push_back(colorLoad);
+    AttachmentDesc depthLoad;
+    depthLoad.resource = hDepth;
+    depthLoad.usage = ResourceUsage::DepthStencilAttachment;
+    depthLoad.loadOp = vk::AttachmentLoadOp::eLoad;
+    depthLoad.storeOp = vk::AttachmentStoreOp::eStore;
+    scene2D.depthAttachment = depthLoad;
+    scene2D.execute = [](PassExecuteContext &ctx) {
+        Renderer::Get2DRenderer().FlushScene(*ctx.cmd, *ctx.frame);
+    };
+
+    graph.Compile();
+    graph.Execute(cmd, frame);
+
+    // 复位为 swapchain 目标（默认）+ 退出延迟录制
+    r3d.SetDeferRecording(false);
+    r2d.SetDeferRecording(false);
+    r3d.SetRenderTarget(nullptr);
+    r2d.SetRenderTarget(nullptr);
 }
 
 void SceneLayer::OnEvent(Event &event) {

@@ -37,12 +37,14 @@ void SceneViewport::Create(VulkanDevice &device, uint32_t width, uint32_t height
     // 采样器（线性过滤，供 ImGui 采样颜色图）
     m_Sampler = std::make_unique<VulkanSampler>(device);
 
-    // 注册为 ImGui 图片。布局 GENERAL 与 RenderTarget 离屏颜色图布局一致，
-    // 渲染时当颜色附件、显示时被采样，无需布局切换。
+    // 注册为 ImGui 图片。布局与离屏颜色图 RenderGraph 收尾停靠布局一致：
+    // S2 起离屏颜色图由图编排——渲染时当颜色附件（ColorAttachmentOptimal），
+    // Scene2D 收尾转 ShaderReadOnlyOptimal 供本 ImGui 采样，跨帧记忆经
+    // VulkanImage::currentLayout 承载（不再是旧的固定 GENERAL 语义）。
     m_DescriptorSet = ImGui_ImplVulkan_AddTexture(
         m_Sampler->GetHandle(),
         m_Target->GetColorView().GetHandle(),
-        VK_IMAGE_LAYOUT_GENERAL);
+        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 }
 
 void SceneViewport::Destroy() {

@@ -642,6 +642,32 @@ void Renderer3D::FlushLighting(PassExecuteContext &ctx) {
         }
     }
 
+    // IBL 三件套（set 1, binding 4/5/6）：辐照度与预滤波共绑预滤波 cubemap，
+    // BRDF LUT 是 2D。就绪且开关打开时绑真实环境图；否则绑回退纹理保证描述符
+    // 完整（shader 侧 flags.y=0 走常量环境光，不采样这三张）。
+    const bool iblReady = (m_EnvironmentMap != nullptr) && m_EnvironmentMap->IsReady()
+                          && m_IBLEnabled;
+    if (iblReady) {
+        auto &ibl = *m_EnvironmentMap;
+        cmd.BindImage(ibl.GetPrefilter().GetImageView(),
+                      ibl.GetPrefilter().GetSampler(), 1, 4); // 辐照度（最高 mip）
+        cmd.BindImage(ibl.GetPrefilter().GetImageView(),
+                      ibl.GetPrefilter().GetSampler(), 1, 5); // 预滤波（按粗糙度取 mip）
+        cmd.BindImage(ibl.GetBrdfLUT().GetImageView(),
+                      ibl.GetBrdfLUT().GetSampler(), 1, 6);   // BRDF LUT
+    } else {
+        if (m_DefaultSkyboxTexture && m_DefaultSkyboxTexture->IsReady()) {
+            cmd.BindImage(m_DefaultSkyboxTexture->GetImageView(),
+                          m_DefaultSkyboxTexture->GetSampler(), 1, 4);
+            cmd.BindImage(m_DefaultSkyboxTexture->GetImageView(),
+                          m_DefaultSkyboxTexture->GetSampler(), 1, 5);
+        }
+        if (m_DefaultWhiteTexture) {
+            cmd.BindImage(m_DefaultWhiteTexture->GetImageView(),
+                          m_DefaultWhiteTexture->GetSampler(), 1, 6);
+        }
+    }
+
     cmd.Draw(3, 1, 0, 0);
 }
 
@@ -889,6 +915,17 @@ BufferAllocation Renderer3D::UploadLightingUBO(VulkanRenderFrame &frame) {
                                        ? m_DefaultSkyboxTexture.get()
                                        : nullptr);
     ubo.flags.x = (m_SkyboxEnabled && skyTex) ? 1.0f : 0.0f;
+
+    // IBL 是否可用：环境图三张就绪且 IBL 开关打开。就绪时 flags.y 置位，
+    // shader 走 split-sum IBL；否则回退常量环境光（与 DrawMeshInstances 的
+    // useIbl 判定一致）。iblParams.x 携带预滤波最大 mip 数（MAX_REFLECTION_LOD）。
+    const bool iblReady = (m_EnvironmentMap != nullptr) && m_EnvironmentMap->IsReady()
+                          && m_IBLEnabled;
+    ubo.flags.y = iblReady ? 1.0f : 0.0f;
+    ubo.iblParams = glm::vec4(
+        m_EnvironmentMap ? static_cast<float>(m_EnvironmentMap->GetPrefilterLevels() - 1)
+                         : 0.0f,
+        0.0f, 0.0f, 0.0f);
 
     ubo.viewPos = glm::vec4(m_ViewPos, 0.0f);
     ubo.dirLightDirection = glm::vec4(m_LightParams.dirLightDirection, 0.0f);

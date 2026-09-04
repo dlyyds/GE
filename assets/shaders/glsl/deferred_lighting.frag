@@ -2,18 +2,20 @@
 
 // 延迟 Lighting 片元着色器：逐像素读 GBuffer 做 PBR / Blinn-Phong 光照，
 // 并把天空盒背景并入此 pass。G0.a 为着色模型哨兵，0 表示天空像素。
+// PBR 环境光支持 split-sum IBL（flags.y 门控），未就绪时回退常量环境光。
 
 layout (set = 0, binding = 0, std140) uniform LightingUBO
 {
     mat4 invView;
     mat4 invProj;
     vec4 clearColor;
-    vec4 flags;
+    vec4 flags;        // x = 天空盒开关，y = IBL 开关，zw 预留
     vec4 viewPos;
     vec4 dirLightDirection;
     vec4 dirLightColor;
     vec4 lightCount;
     vec4 ambient;
+    vec4 iblParams;    // x = 预滤波最大 mip 数（MAX_REFLECTION_LOD），yzw 预留
 } lighting;
 
 struct PointLight
@@ -32,6 +34,14 @@ layout (set = 1, binding = 0) uniform sampler2D samplerG0;
 layout (set = 1, binding = 1) uniform sampler2D samplerG1;
 layout (set = 1, binding = 2) uniform sampler2D samplerG2;
 layout (set = 1, binding = 3) uniform sampler2D samplerG3;
+
+// —— IBL 环境光三件套（绑定布局与 mesh_pbr_ibl.frag 对齐，追加在 G0~G3 之后）——
+// 辐照度采样器复用预滤波 cubemap：漫反射取最高 mip（近似余弦卷积），
+// 镜面按粗糙度取 mip。BRDF LUT 是 2D split-sum 表，轴 (NoV, roughness)。
+// flags.y = 0 时走常量环境光回退，本分支不采样这三张。
+layout (set = 1, binding = 4) uniform samplerCube samplerIrradiance;// 漫反射辐照度（= 预滤波图最高 mip）
+layout (set = 1, binding = 5) uniform samplerCube samplerPrefilter; // 镜面预滤波 mip 链 cubemap
+layout (set = 1, binding = 6) uniform sampler2D  samplerBrdfDFG;    // BRDF LUT（2D，(NoV, roughness)）
 
 layout (location = 0) in vec2 inUV;
 layout (location = 0) out vec4 outColor;
@@ -127,6 +137,35 @@ vec3 calcPointLightBlinn(PointLight light, vec3 N, vec3 V, vec3 worldPos, vec3 a
     return (diff * lightColor * albedo + spec * lightColor * specularStrength) * attenuation;
 }
 
+// PBR 环境光：flags.y 开启时走 split-sum IBL（与 mesh_pbr_ibl.frag 同公式：
+// 粗糙度感知菲涅尔 + 辐照度漫反射 + 预滤波镜面 + BRDF LUT），
+// 否则回退常量环境光。Blinn-Phong 不参与 IBL，始终用常量环境光。
+vec3 calcAmbientPBR(vec3 N, vec3 V, vec3 albedo, float metallic, float roughness) {
+    if (lighting.flags.y > 0.5) {
+        vec3 F0 = mix(vec3(0.04), albedo, metallic);
+        float NoV = max(dot(N, V), 0.0);
+
+        vec3 F = F0 + (max(vec3(1.0 - roughness), F0) - F0)
+                * pow(clamp(1.0 - NoV, 0.0, 1.0), 5.0);
+        vec3 kS = F;
+        vec3 kD = (1.0 - kS) * (1.0 - metallic);
+
+        vec3 irradiance = textureLod(samplerIrradiance, N, lighting.iblParams.x).rgb;
+        vec3 diffuse = irradiance * albedo * kD;
+
+        vec3 R = reflect(-V, N);
+        vec3 prefiltered = textureLod(samplerPrefilter, R,
+                                      roughness * lighting.iblParams.x).rgb;
+        vec2 brdf = texture(samplerBrdfDFG, vec2(NoV, roughness)).rg;
+        vec3 specular = prefiltered * (F * brdf.r + brdf.g);
+
+        return diffuse + specular;
+    }
+
+    vec3 ambientColor = lighting.ambient.rgb * lighting.ambient.w;
+    return ambientColor * albedo;
+}
+
 void main()
 {
     vec3 g0 = texture(samplerG0, inUV).rgb;
@@ -154,12 +193,13 @@ void main()
     float scalarB = g3.a;
 
     vec3 V = normalize(lighting.viewPos.xyz - worldPos);
-    vec3 ambientColor = lighting.ambient.rgb * lighting.ambient.w;
-    vec3 result = ambientColor * albedo;
 
+    vec3 result;
     if (modelFlag < kBlinnMiddle) {
         float shininess = scalarA;
         float specularStrength = scalarB;
+        vec3 ambientColor = lighting.ambient.rgb * lighting.ambient.w;
+        result = ambientColor * albedo;
         result += calcDirectionalLightBlinn(N, V, albedo, shininess, specularStrength);
         for (int i = 0; i < int(lighting.lightCount.x); i++) {
             result += calcPointLightBlinn(lightBuffer.lights[i], N, V, worldPos,
@@ -168,6 +208,7 @@ void main()
     } else {
         float roughness = scalarA;
         float metallic = scalarB;
+        result = calcAmbientPBR(N, V, albedo, metallic, roughness);
         result += calcDirectionalLightPBR(N, V, albedo, metallic, roughness);
         for (int i = 0; i < int(lighting.lightCount.x); i++) {
             result += calcPointLightPBR(lightBuffer.lights[i], N, V, worldPos,

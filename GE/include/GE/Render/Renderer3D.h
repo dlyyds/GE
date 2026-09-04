@@ -336,12 +336,13 @@ private:
         glm::mat4 invView;                            ///< 视图矩阵逆（天空盒方向用）
         glm::mat4 invProj;                            ///< 投影矩阵逆（NDC -> 视空间）
         glm::vec4 clearColor;                         ///< 天空盒未启用时的背景色
-        glm::vec4 flags;                              ///< x = skyboxEnabled
+        glm::vec4 flags;                              ///< x = skyboxEnabled，y = IBL 开关
         glm::vec4 viewPos;                            ///< 相机位置（xyz, w 未用）
         glm::vec4 dirLightDirection;                  ///< 方向光方向（xyz, w 未用）
         glm::vec4 dirLightColor;                      ///< 方向光颜色(rgb) + 强度(a)
         glm::vec4 lightCount;                         ///< x = 点光源数量
         glm::vec4 ambient;                            ///< 环境光颜色(rgb) + 强度(a)
+        glm::vec4 iblParams;                  ///< x = 预滤波最大 mip 数（MAX_REFLECTION_LOD），yzw 预留
     };
     static_assert(sizeof(LightingUBO) % 16 == 0, "LightingUBO 必须 16 字节对齐");
 

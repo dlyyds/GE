@@ -37,13 +37,17 @@ glm::mat4 ComputeLightViewProj(const glm::vec3 &lightDir,
                                const glm::mat4 &view,
                                const glm::mat4 &projection) {
     // 光 view：GLM 相机视线方向（-Z）对准光传播方向 forward。
-    // 正交投影的深度分辨率只由 zNear/zFar 跨度决定，eye 摆位不影响结果（§6.1），
-    // 取固定距离把场景中心摆进 near/far 内即可。
+    // eye 必须放在「+forward = 光源所在侧」，相机朝 -forward（背离光源）看场景——
+    // 这样近面在离光源最近处（深度 0 = 离光源最近），eLess 每 texel 保留的是离光源
+    // 最近的遮挡面，影子才正确。若把 eye 放反侧（target - forward*d），深度顺序倒置，
+    // 遮挡面取成离光源最远的一侧 → 影子位置错乱（人物脚下取到地板深度、影子跑到下面）。
+    // （计划书 §6.1 的「eye = target - forward*d」与 §6.2「离 eye 越近=离光源越近」
+    // 自相矛盾，此处按 §6.2 语义取正号。）
     const glm::vec3 forward = glm::normalize(-lightDir);
     const glm::vec3 up = (std::abs(forward.y) < 0.99f) ? glm::vec3(0.0f, 1.0f, 0.0f)
                                                        : glm::vec3(1.0f, 0.0f, 0.0f);
     const glm::vec3 target(0.0f);
-    const glm::mat4 lightView = glm::lookAt(target - forward * 100.0f, target, up);
+    const glm::mat4 lightView = glm::lookAt(target + forward * 100.0f, target, up);
 
     // Light Space AABB：NDC 立方体 8 角点经逆 view-proj 变到世界，再转光空间取 min/max（§6.3）。
     // 相机投影用 ZO（Zero-to-One）深度约定（NDC z ∈ [0,1]，近面=0、远面=1），

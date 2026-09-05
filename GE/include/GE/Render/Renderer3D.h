@@ -181,6 +181,12 @@ public:
     /// 当前方向光阴影贴图尺寸（像素）。
     uint32_t GetShadowMapSize() const { return m_ShadowMapSize; }
 
+    /// 第 cascade 级阴影图尺寸（像素）：级 0 = 现状单级尺寸（m_ShadowMapSize，Lighting
+    /// 采样的主图，保持现有分辨率/观感）；级 1.. 默认 2048（CSM 计划书 §4.4，独立可配）。
+    uint32_t GetCascadeShadowSize(uint32_t cascade) const {
+        return (cascade == 0) ? m_ShadowMapSize : m_CascadeShadowSize[cascade];
+    }
+
     /// 设置方向光阴影深度偏差（常量偏差，缓解自阴影花斑；S4 调参入口）。
     void SetShadowBias(float bias) { m_ShadowBias = bias; }
 
@@ -307,20 +313,21 @@ public:
                             const void *skinKey);
 
     /**
-     * @brief 提交一个 3D 子网格到阴影专用集合（阴影剔除计划书 §4.4）。
+     * @brief 提交一个 3D 子网格到某级阴影专用集合（阴影剔除计划书 §4.4 / CSM 计划书 §4.3）。
      *
-     * 参数语义与 DrawSubMesh 一致，命中入 m_ShadowMeshes 而非 m_Meshes，供
-     * ShadowMap pass 单独成批（阴影集合含主视锥外物体，实例缓冲与主集合分离）。
-     * 由 Scene 第二遍遍历按阴影世界 AABB 剔除后提交（§4.3）。
+     * 参数语义与 DrawSubMesh 一致，命中入 m_ShadowMeshes[cascade] 而非 m_Meshes，供
+     * 对应级 ShadowMap pass 单独成批（阴影集合含主视锥外物体，实例缓冲与主集合分离）。
+     * 由 Scene 逐级遍历按该级阴影世界 AABB 剔除后提交（cascade = 命中级号）。
      */
     void DrawShadowSubMesh(const glm::mat4 &transform,
                            Mesh *mesh,
                            const SubMesh &submesh,
                            Material *material,
-                           const glm::vec4 &color = {1.0f, 1.0f, 1.0f, 1.0f});
+                           const glm::vec4 &color = {1.0f, 1.0f, 1.0f, 1.0f},
+                           uint32_t cascade = 0);
 
     /**
-     * @brief 提交一个被皮肤驱动的 3D 子网格到阴影专用集合（阴影剔除计划书 §4.4）。
+     * @brief 提交一个被皮肤驱动的 3D 子网格到某级阴影专用集合（阴影剔除计划书 §4.4）。
      *
      * 蒙皮实体绑定盒追不上变形，阴影遍历与主遍历一致跳过剔除、一律提交（§4.3）。
      * 其余语义同 DrawShadowSubMesh / DrawSkinnedSubMesh。
@@ -330,7 +337,8 @@ public:
                                   const SubMesh &submesh,
                                   Material *material,
                                   const glm::vec4 &color,
-                                  const void *skinKey);
+                                  const void *skinKey,
+                                  uint32_t cascade = 0);
 
     /**
      * @brief 注册本帧一个皮肤的关节矩阵 SSBO（EndScene 绑定用）。
@@ -367,8 +375,10 @@ public:
     /// 当前是否走延迟渲染路径。
     bool IsDeferred() const { return m_Deferred; }
 
-    /// 录制 ShadowMap pass（只画不透明段深度，零颜色附件 + 深度附件）。
-    void FlushShadow(PassExecuteContext &ctx);
+    /// 录制某级 ShadowMap pass（只画该级体积内的不透明段深度，零颜色附件 + 深度附件）。
+    /// cascade 指定级号：画 m_ShadowBatches[cascade] + m_ShadowInstanceBuffer[cascade]，
+    /// FrameUBO.view = cascadeViewProj[cascade]；视口 = 该级深度图尺寸（pass renderArea）。
+    void FlushShadow(PassExecuteContext &ctx, uint32_t cascade);
 
     /// 录制 GBuffer pass（MRT 输出 + 写入深度）。
     void FlushGBuffer(PassExecuteContext &ctx);
@@ -524,8 +534,8 @@ private:
      */
     void PrepareDeferredBatches(VulkanRenderFrame &frame);
 
-    /// 上传阴影 pass 专用 FrameUBO（projection=单位阵、view=光空间 view-proj）。
-    BufferAllocation UploadShadowFrameUBO(VulkanRenderFrame &frame);
+    /// 上传某级阴影 pass 专用 FrameUBO（projection=单位阵、view=该级光空间 view-proj）。
+    BufferAllocation UploadShadowFrameUBO(VulkanRenderFrame &frame, uint32_t cascade);
 
     /**
      * @brief 录制本帧网格批次的公共绘制段（排序 + 上传 + 绘制）。
@@ -613,7 +623,7 @@ private:
      *
      * DrawMesh / DrawSubMesh / DrawSkinnedSubMesh 均委托到此，统一走实例队列 + 排序键。
      * skinKey 非空时实例标记为蒙皮，参与蒙皮肤管线分组。
-     * forShadow 为 true 时命中入 m_ShadowMeshes（阴影专用集合）而非 m_Meshes。
+     * forShadow 为 true 时命中入 m_ShadowMeshes[cascade]（该级阴影专用集合）而非 m_Meshes。
      */
     void DrawSubMeshImpl(const glm::mat4 &transform,
                          Mesh *mesh,
@@ -622,7 +632,8 @@ private:
                          Material *material,
                          const glm::vec4 &color,
                          const void *skinKey = nullptr,
-                         bool forShadow = false);
+                         bool forShadow = false,
+                         uint32_t cascade = 0);
 
     /**
      * @brief 计算某个网格实例的排序键。
@@ -773,8 +784,13 @@ private:
     /// IBL 环境光强度（缩放 IBL 贡献，经 iblParams.y 传给着色器）
     float m_IBLIntensity = 1.0f;
 
-    /// 方向光阴影贴图尺寸（像素，阶段 1 取 2048）
+    /// 方向光阴影贴图尺寸（像素，阶段 1 取 4096；同时作为 CSM 级 0 的尺寸，Lighting
+    /// 采样的主图，见 GetCascadeShadowSize）
     uint32_t m_ShadowMapSize = 4096;
+
+    /// CSM 级 1.. 的阴影图尺寸（像素，默认 2048；级 0 走 m_ShadowMapSize 保持现状。
+    /// 每级独立可配：近级给大分辨率、远级可小，配合 texel 密度取舍，CSM 计划书 §4.4）。
+    std::array<uint32_t, kMaxCascades> m_CascadeShadowSize{2048, 2048, 2048, 2048};
 
     /// 方向光阴影深度偏差（常量偏差，经 shadowParams.y 传给着色器）
     float m_ShadowBias = 0.002f;
@@ -817,9 +833,9 @@ private:
     /// 待绘制的网格列表
     std::vector<MeshInstance> m_Meshes;
 
-    /// 阴影专用网格列表（Scene 第二遍遍历按阴影世界 AABB 剔除后提交，FlushShadow
-    /// 单独成批；BeginScene 清空，阴影剔除计划书 §4.4）。
-    std::vector<MeshInstance> m_ShadowMeshes;
+    /// 每级阴影专用网格列表（Scene 逐级遍历按该级阴影世界 AABB 剔除后提交，FlushShadow
+    /// 逐级单独成批；BeginScene 清空，阴影剔除计划书 §4.4 / CSM 计划书 §4.3）。
+    std::array<std::vector<MeshInstance>, kMaxCascades> m_ShadowMeshes;
 
     /// 本帧共享皮肤定义 → 关节矩阵 SSBO 分配（Scene 在 RenderMeshes3D 注册，EndScene 绑定用）。
     /// 仅本帧有效（帧池每帧重置），BeginScene 清空。键为 SkinDef*（nullptr 无意义，不进表）。
@@ -839,11 +855,12 @@ private:
     BufferAllocation m_CachedInstanceBuffer;
     bool m_HasDeferredBatches = false;
 
-    /// 阴影 pass 专用批次与实例缓冲（生命周期与 m_OpaqueBatches 一致，FlushTransparent
-    /// 尾部清空）。FlushShadow 画此套；集合由 Scene 阴影遍历按阴影世界 AABB 剔除后
-    /// 提交（阴影剔除计划书 §4.4）。
-    std::vector<RenderBatch> m_ShadowBatches;
-    BufferAllocation m_ShadowInstanceBuffer;
+    /// 每级阴影 pass 专用批次与实例缓冲（生命周期与 m_OpaqueBatches 一致，FlushTransparent
+    /// 尾部清空）。FlushShadow(ctx, c) 画 m_ShadowBatches[c] + m_ShadowInstanceBuffer[c]；
+    /// 集合由 Scene 逐级遍历按该级阴影世界 AABB 剔除后提交（阴影剔除计划书 §4.4 /
+    /// CSM 计划书 §4.3）。
+    std::array<std::vector<RenderBatch>, kMaxCascades> m_ShadowBatches;
+    std::array<BufferAllocation, kMaxCascades> m_ShadowInstanceBuffer;
 };
 
 } // namespace GE

@@ -384,8 +384,10 @@ void Renderer3D::BeginScene(const glm::mat4 &view,
     // 清空上一帧的网格列表
     m_Meshes.clear();
 
-    // 清空上一帧的阴影专用网格列表（本帧由 Scene 阴影遍历重新提交）
-    m_ShadowMeshes.clear();
+    // 清空上一帧的每级阴影专用网格列表（本帧由 Scene 逐级阴影遍历重新提交）
+    for (auto &shadowMeshes : m_ShadowMeshes) {
+        shadowMeshes.clear();
+    }
 
     // 清空上一帧的皮肤关节矩阵注册表（本帧由 Scene 重新注册）
     m_SkinJointBuffers.clear();
@@ -435,10 +437,11 @@ void Renderer3D::DrawShadowSubMesh(const glm::mat4 &transform,
                                    Mesh *mesh,
                                    const SubMesh &submesh,
                                    Material *material,
-                                   const glm::vec4 &color) {
+                                   const glm::vec4 &color,
+                                   uint32_t cascade) {
     DrawSubMeshImpl(transform, mesh,
                     submesh.firstIndex, submesh.indexCount, material, color,
-                    /*skinKey=*/nullptr, /*forShadow=*/true);
+                    /*skinKey=*/nullptr, /*forShadow=*/true, cascade);
 }
 
 void Renderer3D::DrawShadowSkinnedSubMesh(const glm::mat4 &transform,
@@ -446,10 +449,11 @@ void Renderer3D::DrawShadowSkinnedSubMesh(const glm::mat4 &transform,
                                           const SubMesh &submesh,
                                           Material *material,
                                           const glm::vec4 &color,
-                                          const void *skinKey) {
+                                          const void *skinKey,
+                                          uint32_t cascade) {
     DrawSubMeshImpl(transform, mesh,
                     submesh.firstIndex, submesh.indexCount, material, color, skinKey,
-                    /*forShadow=*/true);
+                    /*forShadow=*/true, cascade);
 }
 
 void Renderer3D::DrawSubMeshImpl(const glm::mat4 &transform,
@@ -459,7 +463,8 @@ void Renderer3D::DrawSubMeshImpl(const glm::mat4 &transform,
                                  Material *material,
                                  const glm::vec4 &color,
                                  const void *skinKey,
-                                 bool forShadow) {
+                                 bool forShadow,
+                                 uint32_t cascade) {
     GE_CORE_ASSERT(m_InScene, "DrawMesh called outside BeginScene/EndScene!");
 
     if (!mesh || indexCount == 0) {
@@ -482,7 +487,8 @@ void Renderer3D::DrawSubMeshImpl(const glm::mat4 &transform,
     const MeshInstance instance{
         transform, mesh, firstIndex, indexCount, material, color, sortKey, skinKey};
     if (forShadow) {
-        m_ShadowMeshes.push_back(instance);
+        // 命中入该级阴影集合（cascade 由 Scene 逐级遍历提交，CSM 计划书 §4.3）
+        m_ShadowMeshes[cascade].push_back(instance);
     } else {
         m_Meshes.push_back(instance);
     }
@@ -673,66 +679,73 @@ void Renderer3D::PrepareDeferredBatches(VulkanRenderFrame &frame) {
     m_TransparentBatches.assign(
         batches.begin() + static_cast<ptrdiff_t>(opaqueCount), batches.end());
 
-    // 阴影专用批次：m_ShadowMeshes 排序 → 切不透明段 → 上传独立实例缓冲，与主集合
-    // 分开（阴影集合含主视锥外物体，实例内容不同）。FlushShadow 画此套（阴影剔除
-    // 计划书 §4.4）。阴影 pass 只画不透明段（Blend 不投影），切分逻辑与主集合一致。
-    SortMeshes(m_ShadowMeshes);
-    std::vector<InstanceData> shadowInstances;
-    std::vector<RenderBatch> shadowBatches;
-    CollectBatches(m_ShadowMeshes, shadowInstances, shadowBatches);
-    const auto shadowTransparentIt = std::find_if(
-        shadowBatches.begin(), shadowBatches.end(), [](const RenderBatch &b) {
-            return b.material && b.material->alphaMode == Material::AlphaMode::Blend;
-        });
-    const size_t shadowOpaqueCount =
-        static_cast<size_t>(std::distance(shadowBatches.begin(), shadowTransparentIt));
-    m_ShadowBatches.assign(
-        shadowBatches.begin(),
-        shadowBatches.begin() + static_cast<ptrdiff_t>(shadowOpaqueCount));
-    m_ShadowInstanceBuffer = UploadInstanceBuffer(frame, shadowInstances);
+    // 每级阴影专用批次：for c in [0, cascadeCount)，对 m_ShadowMeshes[c] 排序 → 切
+    // 不透明段 → 上传独立实例缓冲，与主集合分开（阴影集合含主视锥外物体，实例内容
+    // 不同）。FlushShadow(ctx, c) 画对应级（CSM 计划书 §4.4）。阴影 pass 只画不透明段
+    // （Blend 不投影），切分逻辑与主集合一致。级数 = 1 时即现状单级（第 0 级 = 全视锥）。
+    const uint32_t cascadeCount = std::clamp(m_LightParams.cascadeCount, 1u, kMaxCascades);
+    for (uint32_t c = 0; c < cascadeCount; ++c) {
+        SortMeshes(m_ShadowMeshes[c]);
+        std::vector<InstanceData> shadowInstances;
+        std::vector<RenderBatch> shadowBatches;
+        CollectBatches(m_ShadowMeshes[c], shadowInstances, shadowBatches);
+        const auto shadowTransparentIt = std::find_if(
+            shadowBatches.begin(), shadowBatches.end(), [](const RenderBatch &b) {
+                return b.material && b.material->alphaMode == Material::AlphaMode::Blend;
+            });
+        const size_t shadowOpaqueCount =
+            static_cast<size_t>(std::distance(shadowBatches.begin(), shadowTransparentIt));
+        m_ShadowBatches[c].assign(
+            shadowBatches.begin(),
+            shadowBatches.begin() + static_cast<ptrdiff_t>(shadowOpaqueCount));
+        m_ShadowInstanceBuffer[c] = UploadInstanceBuffer(frame, shadowInstances);
+    }
 
     m_HasDeferredBatches = true;
 }
 
-BufferAllocation Renderer3D::UploadShadowFrameUBO(VulkanRenderFrame &frame) {
-    // 阴影 pass 专用 FrameUBO：projection = 单位阵、view = 光空间 view-proj。
-    // 顶点着色器算 gl_Position = projection * view * worldPos = lightViewProj * worldPos，
-    // 把几何从相机视角切到光源视角（复用 mesh.vert/mesh_skinned.vert，无需改动）。
+BufferAllocation Renderer3D::UploadShadowFrameUBO(VulkanRenderFrame &frame,
+                                                  uint32_t cascade) {
+    // 某级阴影 pass 专用 FrameUBO：projection = 单位阵、view = 该级光空间 view-proj。
+    // 顶点着色器算 gl_Position = projection * view * worldPos = cascadeViewProj * worldPos，
+    // 把几何从相机视角切到该级光源视角（复用 mesh.vert/mesh_skinned.vert，无需改动）。
     FrameUBO ubo{};
     ubo.projection = glm::mat4(1.0f);
-    ubo.view = m_LightParams.lightViewProj;
+    ubo.view = m_LightParams.cascadeViewProj[cascade];
     BufferAllocation alloc = frame.AllocateBuffer(
         vk::BufferUsageFlagBits::eUniformBuffer, sizeof(FrameUBO));
     alloc.update(ubo);
     return alloc;
 }
 
-void Renderer3D::FlushShadow(PassExecuteContext &ctx) {
+void Renderer3D::FlushShadow(PassExecuteContext &ctx, uint32_t cascade) {
     GE_PROFILE_SCOPE("Renderer3D::FlushShadow");
 
-    // 阴影 pass 画阴影专用批次（m_ShadowBatches + m_ShadowInstanceBuffer，阴影剔除
-    // 计划书 §4.4/§5 S3）：集合由 Scene 第二遍遍历按阴影世界 AABB 剔除后提交，含主
-    // 相机视锥外的投影物——否则其阴影整段丢失。批次在 PrepareDeferredBatches 构建
-    //（本 pass 先于 GBuffer 执行，幂等先算一次）。只画不透明段（Opaque + Mask，
-    // Blend 不投影、不接收阴影）。
+    // 某级阴影 pass 画该级阴影专用批次（m_ShadowBatches[cascade] +
+    // m_ShadowInstanceBuffer[cascade]，阴影剔除计划书 §4.4/§5 S3 / CSM 计划书 §4.4）：
+    // 集合由 Scene 逐级遍历按该级阴影世界 AABB 剔除后提交，含主相机视锥外的投影物
+    // ——否则其阴影整段丢失。批次在 PrepareDeferredBatches 构建（本 pass 先于 GBuffer
+    // 执行，幂等先算一次）。只画不透明段（Opaque + Mask，Blend 不投影、不接收阴影）。
     PrepareDeferredBatches(*ctx.frame);
 
     const vk::Format depthFormat = ctx.depthAttachmentView
                                        ? ctx.depthAttachmentView->get_format()
                                        : vk::Format::eUndefined;
 
-    const BufferAllocation shadowFrameUbo = UploadShadowFrameUBO(*ctx.frame);
+    const BufferAllocation shadowFrameUbo = UploadShadowFrameUBO(*ctx.frame, cascade);
 
+    // 视口 = 该级深度图尺寸（每级 pass 各自的 renderArea，见 SceneLayer 逐级声明）
     ConfigureShadowPipeline(*ctx.cmd, depthFormat, ctx.renderArea.extent);
 
-    // 阴影专用 FrameUBO（光空间）绑定 set0 b0；深度片元不读点光源 SSBO，
+    // 阴影专用 FrameUBO（该级光空间）绑定 set0 b0；深度片元不读点光源 SSBO，
     // 不绑 set0 b1（其布局无该 binding，避免校验告警）。
     auto &cmd = *ctx.cmd;
     cmd.BindBuffer(shadowFrameUbo.get_buffer(), shadowFrameUbo.get_offset(),
                    shadowFrameUbo.get_size(), 0, 0);
-    if (!m_ShadowBatches.empty()) {
-        DrawMeshInstances(*ctx.cmd, *ctx.frame, m_ShadowBatches,
-                          m_ShadowInstanceBuffer, /*gbuffer=*/false, /*shadow=*/true);
+    if (!m_ShadowBatches[cascade].empty()) {
+        DrawMeshInstances(*ctx.cmd, *ctx.frame, m_ShadowBatches[cascade],
+                          m_ShadowInstanceBuffer[cascade],
+                          /*gbuffer=*/false, /*shadow=*/true);
     }
 }
 
@@ -878,13 +891,17 @@ void Renderer3D::FlushTransparent(PassExecuteContext &ctx) {
 
         m_OpaqueBatches.clear();
         m_TransparentBatches.clear();
-        m_ShadowBatches.clear();
+        for (auto &shadowBatches : m_ShadowBatches) {
+            shadowBatches.clear();
+        }
         m_HasDeferredBatches = false;
     }
 
     // 所有延迟 pass 均已消费本帧网格，清空时机从 FlushScene 尾部移到这里。
     m_Meshes.clear();
-    m_ShadowMeshes.clear();
+    for (auto &shadowMeshes : m_ShadowMeshes) {
+        shadowMeshes.clear();
+    }
 }
 
 void Renderer3D::RecordScene(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame,

@@ -1077,7 +1077,8 @@ void Scene::RenderMeshes3D(const glm::mat4 &view, const glm::mat4 &projection,
     // 重叠，抽公共 lambda（阴影剔除计划书 §4.3）；剔除判交留在各自循环内。
     const auto drawSubMesh = [&](TransformComponent &tc, MeshRendererComponent &mc,
                                  const SubMesh &sub, uint32_t submeshIndex,
-                                 bool isSkinned, const void *skinDef, bool forShadow) {
+                                 bool isSkinned, const void *skinDef, bool forShadow,
+                                 uint32_t cascade = 0) {
         Material *mat = nullptr;
         auto it = mc.materialOverrides.find(submeshIndex);
         if (it != mc.materialOverrides.end()) {
@@ -1087,9 +1088,11 @@ void Scene::RenderMeshes3D(const glm::mat4 &view, const glm::mat4 &projection,
         }
         if (forShadow) {
             if (isSkinned) {
-                r3d.DrawShadowSkinnedSubMesh(tc.GetWorldMatrix(), mc.MeshPtr, sub, mat, mc.Color, skinDef);
+                r3d.DrawShadowSkinnedSubMesh(tc.GetWorldMatrix(), mc.MeshPtr, sub, mat,
+                                             mc.Color, skinDef, cascade);
             } else {
-                r3d.DrawShadowSubMesh(tc.GetWorldMatrix(), mc.MeshPtr, sub, mat, mc.Color);
+                r3d.DrawShadowSubMesh(tc.GetWorldMatrix(), mc.MeshPtr, sub, mat,
+                                      mc.Color, cascade);
             }
         } else {
             if (isSkinned) {
@@ -1151,19 +1154,25 @@ void Scene::RenderMeshes3D(const glm::mat4 &view, const glm::mat4 &projection,
         }
     }
 
-    // ---- 遍历② 阴影可见集合：按阴影世界 AABB 剔除，命中者提交到 m_ShadowMeshes ----
+    // ---- 遍历② 阴影可见集合：逐级按阴影世界 AABB 剔除，命中者提交到 m_ShadowMeshes[c] ----
     // 目的（阴影剔除计划书 §1/§3）：主相机视锥外的投影物（影子能投进视锥）也要进
-    // ShadowMap pass，否则其阴影整段丢失。剔除体 = 本帧光空间 AABB 转回世界的世界
-    // AABB（m_ShadowVolume，S1 在 UpdateLightParams 按「光方向 + 相机视锥」重算）；
-    // 无方向光 / castShadow=false 时置无效，整遍跳过。C1 阶段仍单遍用第 0 级体积
-    // （cascadeCount = 1 时 = 全视锥，与现状一致）；逐级遍历（每级体积各遍历一次、
-    // 命中者入该级集合）在 C2 落地（CSM 计划书 §4.3）。与主遍历的差异：
+    // ShadowMap pass，否则其阴影整段丢失。CSM（计划书 §4.3）把单体积遍历扩为逐级遍历：
+    // for c in [0, cascadeCount)，剔除体 = m_ShadowVolume[c]（无效则跳过该级），命中者
+    // 提交到该级集合（DrawShadow*SubMesh(..., cascade=c)）。物体跨多档进多档集合（每档
+    // 都能投影，正确）；单档物体只进一档——阴影总提交 ≈ 各档体积内物体之和，远小于
+    // N×全场景。cascadeCount=1 时退化为现状单遍（第 0 级 = 全视锥）。无方向光 /
+    // castShadow=false 时各级置无效，整遍跳过。与主遍历的差异：
     //   · 剔除体是阴影世界 AABB 而非主相机视锥
     //   · BoundingBoxComponent 子树粗剔暂不做（正确性优先，阴影盒与实体盒边界行为
     //     可与主遍不同，计划书 §4.3 列后续）
     //   · 其余（蒙皮跳过剔除、子网格细剔、Blend 不主动跳）与主遍历一致
-    if (m_ShadowVolume[0].IsValid()) {
-        const AABB &shadowVolume = m_ShadowVolume[0];
+    const uint32_t cascadeCount =
+        std::clamp(r3d.GetLightParams().cascadeCount, 1u, kMaxCascades);
+    for (uint32_t c = 0; c < cascadeCount; ++c) {
+        if (!m_ShadowVolume[c].IsValid()) {
+            continue;
+        }
+        const AABB &shadowVolume = m_ShadowVolume[c];
         for (auto entity : meshView) {
             auto &tc = meshView.get<TransformComponent>(entity);
             auto &mc = meshView.get<MeshRendererComponent>(entity);
@@ -1200,7 +1209,7 @@ void Scene::RenderMeshes3D(const glm::mat4 &view, const glm::mat4 &projection,
                 }
 
                 drawSubMesh(tc, mc, sub, static_cast<uint32_t>(i), isSkinned, skinDef,
-                            /*forShadow=*/true);
+                            /*forShadow=*/true, /*cascade=*/c);
             }
         }
     }

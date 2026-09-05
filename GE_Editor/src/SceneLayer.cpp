@@ -23,6 +23,9 @@
 
 #include <GLFW/glfw3.h>
 
+#include <algorithm>
+#include <array>
+
 #include "imgui.h"
 #include "ImGuizmo.h"
 #include "Render/Renderer2D.h"
@@ -209,34 +212,45 @@ void SceneLayer::RecordScenePasses(RenderTarget &viewportRT, const glm::vec4 &cl
         ResourceHandle hG2 = b.CreateVirtualResource(gdesc, "GBuffer_WorldPos");
         ResourceHandle hG3 = b.CreateVirtualResource(gdesc, "GBuffer_Emissive");
 
-        // 方向光阴影：有方向光实体（castShadow 由 Scene::UpdateLightParams 如实反映）
-        // 才声明 ShadowMap pass 并分配 hShadow；无则保持 kInvalidResource，Lighting 不
-        // 追加读、FlushShadow 永不执行，退回无阴影现状。
-        ResourceHandle hShadow = kInvalidResource;
+        // 方向光阴影（CSM C2）：逐级声明 ShadowMap_C0..C{N-1}，每级一张独立深度图
+        // （虚拟资源，格式 D32F，尺寸 = GetCascadeShadowSize(c)：级 0 保持现状 4096²、
+        // 其余默认 2048²，独立可配）。级数 = cascadeCount（默认 1 = 现状单级）；调大
+        // 仅供 RenderDoc 验证多级（Lighting 尚未接入级联采样，主画面不变）。
+        // 有方向光实体（castShadow 由 Scene::UpdateLightParams 如实反映）才声明并分配；
+        // 无则保持 kInvalidResource（数组值初始化 = 0），Lighting 不追加读、FlushShadow
+        // 永不执行，退回无阴影现状。阴影图尺寸与视口无关，池按 (desc, usage) 匹配复用
+        // （阴影贴图计划 §5.2）。
+        std::array<ResourceHandle, kMaxCascades> hShadow{};
+        uint32_t shadowCascadeCount = 0;
         if (Renderer::Get3DRenderer().GetLightParams().castShadow) {
-            // ShadowMap 深度图：虚拟资源，独立尺寸（2048²），格式 D32F。
-            // 阴影图尺寸与视口无关，池按 (desc, usage) 匹配复用（阴影贴图计划 §5.2）。
-            const uint32_t shadowMapSize = Renderer::Get3DRenderer().GetShadowMapSize();
-            RenderGraphResourceDesc shadowDesc;
-            shadowDesc.extent = vk::Extent2D{shadowMapSize, shadowMapSize};
-            shadowDesc.samples = vk::SampleCountFlagBits::e1;
-            shadowDesc.format = vk::Format::eD32Sfloat;
-            hShadow = b.CreateVirtualResource(shadowDesc, "ShadowMap");
+            const uint32_t cascadeCount = std::clamp(
+                Renderer::Get3DRenderer().GetLightParams().cascadeCount, 1u, kMaxCascades);
+            shadowCascadeCount = cascadeCount;
+            for (uint32_t c = 0; c < cascadeCount; ++c) {
+                const uint32_t size = Renderer::Get3DRenderer().GetCascadeShadowSize(c);
+                RenderGraphResourceDesc shadowDesc;
+                shadowDesc.extent = vk::Extent2D{size, size};
+                shadowDesc.samples = vk::SampleCountFlagBits::e1;
+                shadowDesc.format = vk::Format::eD32Sfloat;
+                hShadow[c] = b.CreateVirtualResource(shadowDesc,
+                                                     "ShadowMap_C" + std::to_string(c));
 
-            // Pass0 "ShadowMap"：零颜色 + 一深度，插在 GBuffer 之前（m_Meshes 尚未消费，
-            // 与 GBuffer 共享批次）。只画不透明段（Opaque + Mask）的深度。
-            RenderPassDesc &shadowPass = b.AddPass("ShadowMap");
-            shadowPass.renderArea = vk::Rect2D{{0, 0}, shadowDesc.extent};
-            AttachmentDesc shadowDepth;
-            shadowDepth.resource = hShadow;
-            shadowDepth.usage = ResourceUsage::DepthStencilAttachment;
-            shadowDepth.loadOp = vk::AttachmentLoadOp::eClear;   // 每帧清空重画
-            shadowDepth.storeOp = vk::AttachmentStoreOp::eStore; // 保留给 Lighting 采样（S4）
-            shadowDepth.finalLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
-            shadowPass.depthAttachment = shadowDepth;
-            shadowPass.execute = [](PassExecuteContext &ctx) {
-                Renderer::Get3DRenderer().FlushShadow(ctx);
-            };
+                // Pass "ShadowMap_C{c}"：零颜色 + 一深度，插在 GBuffer 之前（m_Meshes
+                // 尚未消费，与 GBuffer 共享批次）。只画该级体积内的不透明段（Opaque +
+                // Mask）深度。
+                RenderPassDesc &shadowPass = b.AddPass("ShadowMap_C" + std::to_string(c));
+                shadowPass.renderArea = vk::Rect2D{{0, 0}, shadowDesc.extent};
+                AttachmentDesc shadowDepth;
+                shadowDepth.resource = hShadow[c];
+                shadowDepth.usage = ResourceUsage::DepthStencilAttachment;
+                shadowDepth.loadOp = vk::AttachmentLoadOp::eClear;   // 每帧清空重画
+                shadowDepth.storeOp = vk::AttachmentStoreOp::eStore; // 保留给 Lighting 采样
+                shadowDepth.finalLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
+                shadowPass.depthAttachment = shadowDepth;
+                shadowPass.execute = [c](PassExecuteContext &ctx) {
+                    Renderer::Get3DRenderer().FlushShadow(ctx, c);
+                };
+            }
         }
 
         // Pass1 "GBuffer"：MRT 四张 + 深度清屏，只录制不透明段（Opaque + Mask）。
@@ -280,12 +294,13 @@ void SceneLayer::RecordScenePasses(RenderTarget &viewportRT, const glm::vec4 &cl
             {hG2, ResourceUsage::ShaderRead, vk::ImageLayout::eShaderReadOnlyOptimal});
         lightingPass.readImages.push_back(
             {hG3, ResourceUsage::ShaderRead, vk::ImageLayout::eShaderReadOnlyOptimal});
-        // 方向光阴影开启时追加读 hShadow（readImageViews 第 5 项 → binding 7）。
+        // 方向光阴影开启时追加读 hShadow_C0..C{N-1}（readImageViews 第 4..4+N-1 项 →
+        // binding 7 暂绑第 0 级单图，C2 未接级联采样、主画面不变；C3 改数组描述符）。
         // 图据此在「ShadowMap 深度写 → Lighting 采样读」之间插屏障、把布局转到
         // ShaderReadOnlyOptimal（§4：深度独享附件 + readImages 的常规推导）。
-        if (hShadow != kInvalidResource) {
+        for (uint32_t c = 0; c < shadowCascadeCount; ++c) {
             lightingPass.readImages.push_back(
-                {hShadow, ResourceUsage::ShaderRead, vk::ImageLayout::eShaderReadOnlyOptimal});
+                {hShadow[c], ResourceUsage::ShaderRead, vk::ImageLayout::eShaderReadOnlyOptimal});
         }
         AttachmentDesc lightingColorClear;
         lightingColorClear.resource = hColor;

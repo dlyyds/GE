@@ -49,16 +49,18 @@ glm::mat4 BuildLightVolumeCorners(const glm::vec3 worldCorners[8],
     // （计划书 §6.1 的「eye = target - forward*d」与 §6.2「离 eye 越近=离光源越近」
     // 自相矛盾，此处按 §6.2 语义取正号。）
     const glm::vec3 forward = glm::normalize(-lightDir);
-    const glm::vec3 up = (std::abs(forward.y) < 0.99f) ? glm::vec3(0.0f, 1.0f, 0.0f)
-                                                       : glm::vec3(1.0f, 0.0f, 0.0f);
+    const glm::vec3 up = (std::abs(forward.y) < 0.99f)
+                             ? glm::vec3(0.0f, 1.0f, 0.0f)
+                             : glm::vec3(1.0f, 0.0f, 0.0f);
     const glm::vec3 target(0.0f);
     const glm::mat4 lightView = glm::lookAt(target + forward * 100.0f, target, up);
 
     // Light Space AABB：8 个世界角点转光空间取 min/max（§6.3）。
+    // 数组形参退化为指针，不能范围 for，按下标遍历（与 SliceCorners 一致）。
     glm::vec3 minP(std::numeric_limits<float>::max());
     glm::vec3 maxP(std::numeric_limits<float>::lowest());
-    for (const auto &corner : worldCorners) {
-        const glm::vec3 lightP = glm::vec3(lightView * glm::vec4(corner, 1.0f));
+    for (int i = 0; i < 8; ++i) {
+        const glm::vec3 lightP = glm::vec3(lightView * glm::vec4(worldCorners[i], 1.0f));
         minP = glm::min(minP, lightP);
         maxP = glm::max(maxP, lightP);
     }
@@ -74,9 +76,12 @@ glm::mat4 BuildLightVolumeCorners(const glm::vec3 worldCorners[8],
     //   近面（离光源最近，z_view 最大）= -maxP.z，远面 = -minP.z。
     // 保证「离光源越近 → 深度越小（近面 NDC z=0）」，与 §3.4/§6.2 语义一致。
     // ZO 下光裁剪空间深度已是 [0,1]，S4 采样时直接读 proj.z（无需再 0.5+0.5 重映射）。
-    if (outMinP) *outMinP = minP;
-    if (outMaxP) *outMaxP = maxP;
-    if (outLightView) *outLightView = lightView;
+    if (outMinP)
+        *outMinP = minP;
+    if (outMaxP)
+        *outMaxP = maxP;
+    if (outLightView)
+        *outLightView = lightView;
     return glm::orthoRH_ZO(minP.x, maxP.x, minP.y, maxP.y, -maxP.z, -minP.z) * lightView;
 }
 
@@ -95,10 +100,10 @@ glm::mat4 ComputeLightViewProj(const glm::vec3 &lightDir,
     // 角点 z 取 0/1 与该约定一致（近裁剪面 ↔ z=0，远裁剪面 ↔ z=1）。
     const glm::mat4 invViewProj = glm::inverse(projection * view);
     const glm::vec4 ndcCorners[8] = {
-        {-1.0f, -1.0f, 0.0f, 1.0f}, { 1.0f, -1.0f, 0.0f, 1.0f},
-        {-1.0f,  1.0f, 0.0f, 1.0f}, { 1.0f,  1.0f, 0.0f, 1.0f},
-        {-1.0f, -1.0f, 1.0f, 1.0f}, { 1.0f, -1.0f, 1.0f, 1.0f},
-        {-1.0f,  1.0f, 1.0f, 1.0f}, { 1.0f,  1.0f, 1.0f, 1.0f},
+        {-1.0f, -1.0f, 0.0f, 1.0f}, {1.0f, -1.0f, 0.0f, 1.0f},
+        {-1.0f, 1.0f, 0.0f, 1.0f}, {1.0f, 1.0f, 0.0f, 1.0f},
+        {-1.0f, -1.0f, 1.0f, 1.0f}, {1.0f, -1.0f, 1.0f, 1.0f},
+        {-1.0f, 1.0f, 1.0f, 1.0f}, {1.0f, 1.0f, 1.0f, 1.0f},
     };
     glm::vec3 worldCorners[8];
     for (int i = 0; i < 8; ++i) {
@@ -117,13 +122,13 @@ void SliceCorners(const glm::mat4 &view, float tanHalfFovY, float aspect,
     const glm::mat4 invView = glm::inverse(view);
     const glm::vec3 viewCorners[8] = {
         {-tanHalfFovY * aspect * splitLo, -tanHalfFovY * splitLo, -splitLo},
-        { tanHalfFovY * aspect * splitLo, -tanHalfFovY * splitLo, -splitLo},
-        {-tanHalfFovY * aspect * splitLo,  tanHalfFovY * splitLo, -splitLo},
-        { tanHalfFovY * aspect * splitLo,  tanHalfFovY * splitLo, -splitLo},
+        {tanHalfFovY * aspect * splitLo, -tanHalfFovY * splitLo, -splitLo},
+        {-tanHalfFovY * aspect * splitLo, tanHalfFovY * splitLo, -splitLo},
+        {tanHalfFovY * aspect * splitLo, tanHalfFovY * splitLo, -splitLo},
         {-tanHalfFovY * aspect * splitHi, -tanHalfFovY * splitHi, -splitHi},
-        { tanHalfFovY * aspect * splitHi, -tanHalfFovY * splitHi, -splitHi},
-        {-tanHalfFovY * aspect * splitHi,  tanHalfFovY * splitHi, -splitHi},
-        { tanHalfFovY * aspect * splitHi,  tanHalfFovY * splitHi, -splitHi},
+        {tanHalfFovY * aspect * splitHi, -tanHalfFovY * splitHi, -splitHi},
+        {-tanHalfFovY * aspect * splitHi, tanHalfFovY * splitHi, -splitHi},
+        {tanHalfFovY * aspect * splitHi, tanHalfFovY * splitHi, -splitHi},
     };
     for (int i = 0; i < 8; ++i) {
         outCorners[i] = glm::vec3(invView * glm::vec4(viewCorners[i], 1.0f));
@@ -894,7 +899,7 @@ void Scene::UpdateLightParams(const glm::mat4 &view, const glm::mat4 &projection
                 if (ExtractPerspectiveParams(projection, nearZ, farZ, tanHalfFovY, aspect)) {
                     ComputeCascadeSplits(nearZ, farZ, cascadeCount,
                                          lightParams.cascadeSplitLambda,
-                                         lightParams.cascadeSplits);
+                                         lightParams.cascadeSplits.data());
                     for (uint32_t c = 0; c < cascadeCount; ++c) {
                         const float lo = (c == 0) ? nearZ : lightParams.cascadeSplits[c - 1];
                         const float hi = lightParams.cascadeSplits[c];

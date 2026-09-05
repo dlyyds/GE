@@ -7,9 +7,9 @@
  * 不可见，其余情况（完全在内 / 相交）保守保留。平面未归一化——符号判定
  * 不受均匀缩放影响，省去除法。
  *
- * 深度/NDC 约定与相机一致：投影由 glm::perspective 生成（GL 风格 z∈[-1,1]），
- * 未定义 GLM_FORCE_DEPTH_ZERO_TO_ONE，故裁剪体积为 clip 立方体 [-w,w]^3，
- * 近/远平面取 row3±row2。
+ * 深度/NDC 约定与相机一致：投影由 glm::perspectiveRH_ZO 生成（ZO，z∈[0,1]），
+ * 与 Vulkan 原生裁剪体积（0 ≤ Zc ≤ Wc）对齐——近平面在 clip z=0（= 矩阵 row2），
+ * 远平面在 clip z=w（= row3−row2），故近/远平面分别取 row2 与 row3−row2。
  */
 
 #pragma once
@@ -38,8 +38,8 @@ public:
     /**
      * @brief 由裁剪矩阵（viewProjection = projection * view）提取视锥。
      *
-     * Gribb-Hartmann：取矩阵三行（列主序 m[col][row]），第 3 行 ± 第 i 行
-     * 得对应 clip 平面方程。平面法线朝内。
+     * Gribb-Hartmann：取矩阵三行（列主序 m[col][row]），x/y 侧平面为第 3 行 ± 第 0/1 行；
+     * 深度方向按 ZO 裁剪体积取 row2（近）与 row3−row2（远）。平面法线朝内。
      */
     static Frustum FromViewProjection(const glm::mat4 &viewProj) {
         const glm::vec4 row0{viewProj[0][0], viewProj[1][0], viewProj[2][0], viewProj[3][0]};
@@ -52,7 +52,9 @@ public:
         f.m_Planes[kRight]  = row3 - row0;
         f.m_Planes[kBottom] = row3 + row1;
         f.m_Planes[kTop]    = row3 - row1;
-        f.m_Planes[kNear]   = row3 + row2;
+        // ZO 裁剪体积 0 ≤ Zc ≤ Wc：近平面即 clip z=0（row2），远平面 clip z=w（row3−row2）。
+        // （NO 约定下近面才是 row3+row2，即 clip z=−w。）
+        f.m_Planes[kNear]   = row2;
         f.m_Planes[kFar]    = row3 - row2;
         return f;
     }

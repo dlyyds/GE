@@ -46,14 +46,14 @@ glm::mat4 ComputeLightViewProj(const glm::vec3 &lightDir,
     const glm::mat4 lightView = glm::lookAt(target - forward * 100.0f, target, up);
 
     // Light Space AABB：NDC 立方体 8 角点经逆 view-proj 变到世界，再转光空间取 min/max（§6.3）。
-    // 相机投影用 OpenGL 深度约定（NDC z ∈ [-1,1]，Vulkan 经视口变换映射到 [0,1]），
-    // 角点 z 取 ±1 与该约定一致。
+    // 相机投影用 ZO（Zero-to-One）深度约定（NDC z ∈ [0,1]，近面=0、远面=1），
+    // 角点 z 取 0/1 与该约定一致（近裁剪面 ↔ z=0，远裁剪面 ↔ z=1）。
     const glm::mat4 invViewProj = glm::inverse(projection * view);
     const glm::vec4 ndcCorners[8] = {
-        {-1.0f, -1.0f, -1.0f, 1.0f}, { 1.0f, -1.0f, -1.0f, 1.0f},
-        {-1.0f,  1.0f, -1.0f, 1.0f}, { 1.0f,  1.0f, -1.0f, 1.0f},
-        {-1.0f, -1.0f,  1.0f, 1.0f}, { 1.0f, -1.0f,  1.0f, 1.0f},
-        {-1.0f,  1.0f,  1.0f, 1.0f}, { 1.0f,  1.0f,  1.0f, 1.0f},
+        {-1.0f, -1.0f, 0.0f, 1.0f}, { 1.0f, -1.0f, 0.0f, 1.0f},
+        {-1.0f,  1.0f, 0.0f, 1.0f}, { 1.0f,  1.0f, 0.0f, 1.0f},
+        {-1.0f, -1.0f, 1.0f, 1.0f}, { 1.0f, -1.0f, 1.0f, 1.0f},
+        {-1.0f,  1.0f, 1.0f, 1.0f}, { 1.0f,  1.0f, 1.0f, 1.0f},
     };
     glm::vec3 minP(std::numeric_limits<float>::max());
     glm::vec3 maxP(std::numeric_limits<float>::lowest());
@@ -70,11 +70,12 @@ glm::mat4 ComputeLightViewProj(const glm::vec3 &lightDir,
     minP.z -= zPad;
     maxP.z += zPad;
 
-    // glm::ortho（RH_NO，深度 [-1,1]）的近面在 z_view = -zNear。光 view 用 lookAt 朝 -Z
-    // 看，场景在光空间里 z 为负 → AABB 的 zMin/zMax 都是负数，近远面须取相反数：
+    // glm::orthoRH_ZO 的近面在 z_view = -zNear（近面 → NDC z=0）。光 view 用 lookAt 朝
+    // -Z 看，场景在光空间里 z 为负 → AABB 的 zMin/zMax 都是负数，近远面须取相反数：
     //   近面（离光源最近，z_view 最大）= -maxP.z，远面 = -minP.z。
-    // 保证「离光源越近 → 深度越小（近面 NDC z=-1 → depth 0）」，与 §3.4/§6.2 语义一致。
-    return glm::ortho(minP.x, maxP.x, minP.y, maxP.y, -maxP.z, -minP.z) * lightView;
+    // 保证「离光源越近 → 深度越小（近面 NDC z=0）」，与 §3.4/§6.2 语义一致。
+    // ZO 下光裁剪空间深度已是 [0,1]，S4 采样时直接读 proj.z（无需再 0.5+0.5 重映射）。
+    return glm::orthoRH_ZO(minP.x, maxP.x, minP.y, maxP.y, -maxP.z, -minP.z) * lightView;
 }
 } // namespace
 
@@ -1016,9 +1017,11 @@ void Scene::RenderSprites2D(const glm::mat4 &view, const glm::mat4 &projection) 
 
         // 正交投影：像素坐标，左上角 (0,0)，右下角 (w,h)
         // Vulkan 屏幕原点在左上角，top=0, bottom=h 即 Y 轴向下
+        // ZO 深度约定：近远面取 -1/1（与旧 RH_NO 相同的 z_view 窗口 [-1,1]），
+        // 但映射进 NDC [0,1] 与 Vulkan 原生深度一致，z_view∈[-1,1] 全可见
         float w = static_cast<float>(m_ViewportWidth);
         float h = static_cast<float>(m_ViewportHeight);
-        glm::mat4 uiProjection = glm::ortho(0.0f, w, h, 0.0f, -1.0f, 1.0f);
+        glm::mat4 uiProjection = glm::orthoRH_ZO(0.0f, w, h, 0.0f, -1.0f, 1.0f);
 
         r2d.BeginScene(glm::mat4(1.0f), uiProjection, false, glm::vec4(-1.0f));
         for (auto &sp : uiSprites) {

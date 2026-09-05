@@ -62,8 +62,12 @@ glm::mat4 Camera::GetView() const {
 }
 
 glm::mat4 Camera::GetProj() const {
-    glm::mat4 proj = glm::perspective(glm::radians(m_Fov), m_Aspect, m_Near, m_Far);
-    proj[1][1] *= -1.0f; // Vulkan NDC: Y-axis points down
+    // ZO（Zero-to-One）深度约定：近裁剪面 → NDC z=0、远裁剪面 → NDC z=1，
+    // 与 Vulkan 原生深度范围 [0,1]（视口深度变换恒等 Zf=Zd）直接对齐。
+    // 不再使用 RH_NO（NDC z∈[-1,1]），那会被 Vulkan 按 0≤Zc≤Wc 裁剪掉
+    // 近面附近约 2×zNear 的可见范围（有效近平面被静默推远）。
+    glm::mat4 proj = glm::perspectiveRH_ZO(glm::radians(m_Fov), m_Aspect, m_Near, m_Far);
+    proj[1][1] *= -1.0f; // Vulkan NDC: Y-axis points down（ZO 仅改深度，Y 翻转不变）
     return proj;
 }
 

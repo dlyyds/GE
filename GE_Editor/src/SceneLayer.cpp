@@ -587,6 +587,60 @@ void SceneLayer::OnImGuiRender() {
             Renderer::Get3DRenderer().SetDeferred(deferred);
         }
 
+        ImGui::Separator();
+        // ---- 编辑器相机：直接调整轨道/投影/灵敏度参数 ----
+        // EditorCamera 是工具视角（不进场景、不序列化），默认靠视口内鼠标漫游。
+        // 这里暴露其可调参数，便于在面板里精确摆位（角度/距离/裁剪面），
+        // 拖动时相机输入不受影响（输入只在悬停 Scene 视口时路由给相机）。
+        if (ImGui::CollapsingHeader("编辑器相机", ImGuiTreeNodeFlags_DefaultOpen)) {
+            Camera &cam = m_Context->EditorCamera;
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("调整编辑器导航相机（Orbit）；目标点与距离受滚轮影响，改动即时生效");
+
+            ImGui::TextDisabled("轨道");
+            glm::vec3 target = cam.GetTarget();
+            if (ImGui::DragFloat3("目标点", &target.x, 0.05f)) {
+                cam.SetTarget(target);
+            }
+            float theta = cam.GetTheta();
+            float phi = cam.GetPhi();
+            float dist = cam.GetDistance();
+            bool orbitChanged = false;
+            orbitChanged |= ImGui::DragFloat("方位角 θ", &theta, 0.5f);
+            orbitChanged |= ImGui::DragFloat("俯仰角 φ", &phi, 0.5f, -89.0f, 89.0f);
+            orbitChanged |= ImGui::DragFloat("距离", &dist, 0.05f, cam.MinDistance, cam.MaxDistance);
+            if (orbitChanged) {
+                cam.SetOrbit(theta, phi, dist);
+            }
+            // 只读显示当前相机位置（轨道模式由 target/角度/距离推算）
+            const glm::vec3 eyePos = cam.GetPosition();
+            ImGui::Text("相机位置: (%.2f, %.2f, %.2f)", eyePos.x, eyePos.y, eyePos.z);
+
+            ImGui::Separator();
+            ImGui::TextDisabled("投影");
+            float fov = cam.GetFov();
+            float nearP = cam.GetNear();
+            float farP = cam.GetFar();
+            if (ImGui::SliderFloat("FOV", &fov, 20.0f, 120.0f, "%.1f°")
+                || ImGui::DragFloat("近裁剪面", &nearP, 0.01f, 0.001f, 100.0f, "%.3f")
+                || ImGui::DragFloat("远裁剪面", &farP, 1.0f, 1.0f, 5000.0f)) {
+                cam.SetPerspective(fov, cam.GetAspect(), nearP, farP);
+            }
+
+            ImGui::Separator();
+            ImGui::TextDisabled("灵敏度");
+            ImGui::SliderFloat("鼠标旋转", &cam.MouseSensitivity, 0.01f, 1.0f, "%.2f");
+            ImGui::SliderFloat("滚轮缩放", &cam.ScrollSensitivity, 0.1f, 5.0f, "%.1f");
+
+            if (ImGui::Button("重置为默认")) {
+                cam.SetPerspective(60.0f, cam.GetAspect(), 0.1f, 500.0f);
+                cam.SetTarget(glm::vec3(0.0f, 0.5f, 0.0f));
+                cam.SetOrbit(0.0f, 25.0f, 8.0f);
+            }
+            ImGui::SameLine();
+            ImGui::TextDisabled("60° FOV / 轨道 (0°,25°,8) / 目标 (0,0.5,0)");
+        }
+
         ImGui::TextDisabled("提示：先在左侧 Hierarchy/Properties 中调整实体，再保存/加载验证");
     }
 

@@ -1501,17 +1501,39 @@ void SceneHierarchyPanel::DrawDirectionalLightComponent(DirectionalLightComponen
     ImGui::ColorEdit4("Color + Intensity", glm::value_ptr(component.Color));
     ImGui::Checkbox("Cast Shadow", &component.CastShadow);
 
-    // 阴影图尺寸（Renderer3D 全局设置，非组件字段）：2 的幂滑杆 512…8192。
-    // 分辨率越大阴影越清晰、开销越高；改动下帧重建阴影深度图后生效。
-    // 用对数指数滑杆保证只取 2 的幂（池按 desc 复用，尺寸变化会重新分配）。
+    // CSM 调参（Renderer3D 全局设置，非组件字段）：级数 / practical split 混合系数 /
+    // 每级尺寸 / 偏差 / PCF 半径。改动下帧随 UpdateLightParams（重算各级切分矩阵）与
+    // SceneLayer（重声明 N 个 pass）生效——渲染图每帧重建，无需重启。每级尺寸用对数
+    // 指数滑杆保证只取 2 的幂（池按 desc 复用，尺寸变化会重新分配）。
     if (component.CastShadow) {
         auto &r3d = Renderer::Get3DRenderer();
-        const uint32_t size = r3d.GetShadowMapSize();
-        int exponent = std::max(9, static_cast<int>(std::log2(static_cast<double>(size))));
-        if (ImGui::SliderInt("Shadow Map Size (log2)", &exponent, 9, 13, "%d")) {
-            r3d.SetShadowMapSize(1u << static_cast<uint32_t>(exponent));
+
+        int cascadeCount = static_cast<int>(r3d.GetCascadeCount());
+        if (ImGui::SliderInt("Cascade Count", &cascadeCount, 1,
+                             static_cast<int>(kMaxCascades), "%d")) {
+            r3d.SetCascadeCount(static_cast<uint32_t>(cascadeCount));
         }
-        ImGui::TextDisabled("当前分辨率 %u × %u px（2 的幂）", size, size);
+        float lambda = r3d.GetCascadeSplitLambda();
+        if (ImGui::SliderFloat("Split Lambda", &lambda, 0.0f, 1.0f, "%.2f")) {
+            r3d.SetCascadeSplitLambda(lambda);
+        }
+        for (uint32_t c = 0; c < r3d.GetCascadeCount(); ++c) {
+            const uint32_t csize = r3d.GetCascadeShadowSize(c);
+            int cexp = std::max(9, static_cast<int>(std::log2(static_cast<double>(csize))));
+            if (ImGui::SliderInt(("级 " + std::to_string(c) + " Size (log2)").c_str(),
+                                 &cexp, 9, 13, "%d")) {
+                r3d.SetCascadeShadowSize(c, 1u << static_cast<uint32_t>(cexp));
+            }
+        }
+        // 偏差 / PCF 半径各级共享（每级独立值列 CSM 计划书 §7）
+        float bias = r3d.GetShadowBias();
+        if (ImGui::DragFloat("Shadow Bias", &bias, 0.0001f, 0.0f, 0.01f, "%.4f")) {
+            r3d.SetShadowBias(bias);
+        }
+        float pcfRadius = r3d.GetShadowPcfRadius();
+        if (ImGui::DragFloat("PCF Radius", &pcfRadius, 0.1f, 0.0f, 4.0f, "%.1f")) {
+            r3d.SetShadowPcfRadius(pcfRadius);
+        }
     }
 
     ImGui::TextDisabled("照射方向由 Transform 的 Rotation 决定");

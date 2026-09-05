@@ -186,8 +186,45 @@ public:
         return (cascade == 0) ? m_ShadowMapSize : m_CascadeShadowSize[cascade];
     }
 
-    /// 设置方向光阴影深度偏差（常量偏差，缓解自阴影花斑；S4 调参入口）。
+    /// 设置第 cascade 级阴影图尺寸（像素，2 的幂）：级 0 即现状单级尺寸（同步
+    /// m_ShadowMapSize，Lighting shadowParams.x 的 texel 尺寸随之一致）；级 1.. 写
+    /// m_CascadeShadowSize。越界级号忽略。
+    void SetCascadeShadowSize(uint32_t cascade, uint32_t size) {
+        if (cascade == 0) {
+            m_ShadowMapSize = size;
+        } else if (cascade < kMaxCascades) {
+            m_CascadeShadowSize[cascade] = size;
+        }
+    }
+
+    /// 设置 CSM 生效级数（1..kMaxCascades；1 = 现状单级回退）。改动下帧经
+    /// Scene::UpdateLightParams 重算各级切分/矩阵、SceneLayer 重声明 N 个 pass 生效。
+    void SetCascadeCount(uint32_t count) {
+        m_LightParams.cascadeCount = glm::clamp(count, 1u, kMaxCascades);
+    }
+
+    /// 当前 CSM 生效级数。
+    uint32_t GetCascadeCount() const { return m_LightParams.cascadeCount; }
+
+    /// 设置 practical split 混合系数（0 = 均匀、1 = 对数，默认 0.5；CSM 计划书 §4.1）。
+    void SetCascadeSplitLambda(float lambda) {
+        m_LightParams.cascadeSplitLambda = glm::clamp(lambda, 0.0f, 1.0f);
+    }
+
+    /// 当前 practical split 混合系数。
+    float GetCascadeSplitLambda() const { return m_LightParams.cascadeSplitLambda; }
+
+    /// 设置方向光阴影深度偏差（常量偏差，缓解自阴影花斑；各级共享，每级独立值列 §7）。
     void SetShadowBias(float bias) { m_ShadowBias = bias; }
+
+    /// 当前方向光阴影深度偏差。
+    float GetShadowBias() const { return m_ShadowBias; }
+
+    /// 设置方向光阴影 PCF 半径（3×3 盒式核的采样半径，像素；各级共享，每级独立列 §7）。
+    void SetShadowPcfRadius(float radius) { m_ShadowPcfRadius = radius; }
+
+    /// 当前方向光阴影 PCF 半径。
+    float GetShadowPcfRadius() const { return m_ShadowPcfRadius; }
 
     // ========================================================================
     // 天空盒

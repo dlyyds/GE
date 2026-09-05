@@ -935,6 +935,15 @@ BufferAllocation Renderer3D::UploadLightingUBO(VulkanRenderFrame &frame) {
         static_cast<float>(m_LightParams.pointLights.size()), 0.0f, 0.0f, 0.0f);
     ubo.ambient = m_LightParams.ambient;
 
+    // 方向光阴影（S1）：光空间 view-proj 与参数打包。阶段 1 shader 尚不采样
+    // 这些字段（无视觉变化），S4 接阴影比较时消费。
+    ubo.lightViewProj = m_LightParams.lightViewProj;
+    ubo.shadowParams = glm::vec4(
+        static_cast<float>(m_ShadowMapSize),
+        m_ShadowBias,
+        m_LightParams.castShadow ? 1.0f : 0.0f,
+        m_ShadowPcfRadius);
+
     BufferAllocation alloc = frame.AllocateBuffer(
         vk::BufferUsageFlagBits::eUniformBuffer, sizeof(LightingUBO));
     alloc.update(ubo);

@@ -16,6 +16,8 @@ layout (set = 0, binding = 0, std140) uniform LightingUBO
     vec4 lightCount;
     vec4 ambient;
     vec4 iblParams;    // x = 预滤波最大 mip 数（MAX_REFLECTION_LOD），y = IBL 强度，zw 预留
+    mat4 lightViewProj; // 光空间 view-proj（世界 → 光裁剪空间），阴影比较用（S1 落地，S4 采样）
+    vec4 shadowParams;  // x = 阴影贴图尺寸（像素），y = 偏差，z = 阴影开关(0/1)，w = PCF 半径
 } lighting;
 
 struct PointLight

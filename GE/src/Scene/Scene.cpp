@@ -22,10 +22,61 @@
 #include <algorithm>
 #include <unordered_set>
 #include <cmath>
+#include <limits>
 #include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp> // glm::lookAt / glm::ortho（阴影光空间矩阵）
 #include <glm/gtc/quaternion.hpp>
 
 namespace GE {
+
+namespace {
+/// 方向光阴影：由光传播方向与相机视锥计算光空间 view-proj（阴影贴图计划 §6.1/§6.3）。
+/// lightDir = 光传播方向（光源 → 被照物）。覆盖范围用相机视锥 8 角点在世界空间框出
+/// （Light Space AABB），不依赖 GBuffer 深度重建；深度余量沿光方向两端各放宽 5%。
+glm::mat4 ComputeLightViewProj(const glm::vec3 &lightDir,
+                               const glm::mat4 &view,
+                               const glm::mat4 &projection) {
+    // 光 view：GLM 相机视线方向（-Z）对准光传播方向 forward。
+    // 正交投影的深度分辨率只由 zNear/zFar 跨度决定，eye 摆位不影响结果（§6.1），
+    // 取固定距离把场景中心摆进 near/far 内即可。
+    const glm::vec3 forward = glm::normalize(-lightDir);
+    const glm::vec3 up = (std::abs(forward.y) < 0.99f) ? glm::vec3(0.0f, 1.0f, 0.0f)
+                                                       : glm::vec3(1.0f, 0.0f, 0.0f);
+    const glm::vec3 target(0.0f);
+    const glm::mat4 lightView = glm::lookAt(target - forward * 100.0f, target, up);
+
+    // Light Space AABB：NDC 立方体 8 角点经逆 view-proj 变到世界，再转光空间取 min/max（§6.3）。
+    // 相机投影用 OpenGL 深度约定（NDC z ∈ [-1,1]，Vulkan 经视口变换映射到 [0,1]），
+    // 角点 z 取 ±1 与该约定一致。
+    const glm::mat4 invViewProj = glm::inverse(projection * view);
+    const glm::vec4 ndcCorners[8] = {
+        {-1.0f, -1.0f, -1.0f, 1.0f}, { 1.0f, -1.0f, -1.0f, 1.0f},
+        {-1.0f,  1.0f, -1.0f, 1.0f}, { 1.0f,  1.0f, -1.0f, 1.0f},
+        {-1.0f, -1.0f,  1.0f, 1.0f}, { 1.0f, -1.0f,  1.0f, 1.0f},
+        {-1.0f,  1.0f,  1.0f, 1.0f}, { 1.0f,  1.0f,  1.0f, 1.0f},
+    };
+    glm::vec3 minP(std::numeric_limits<float>::max());
+    glm::vec3 maxP(std::numeric_limits<float>::lowest());
+    for (const auto &corner : ndcCorners) {
+        const glm::vec4 world = invViewProj * corner;
+        const glm::vec4 lightP = lightView * (world / world.w);
+        minP = glm::min(minP, glm::vec3(lightP));
+        maxP = glm::max(maxP, glm::vec3(lightP));
+    }
+
+    // 深度余量：Z 范围沿光方向两端放宽，避免近平面恰好切到遮挡物 / 可见表面顶到远
+    // 平面被裁（§6.3 step 4）。
+    const float zPad = (maxP.z - minP.z) * 0.05f;
+    minP.z -= zPad;
+    maxP.z += zPad;
+
+    // glm::ortho（RH_NO，深度 [-1,1]）的近面在 z_view = -zNear。光 view 用 lookAt 朝 -Z
+    // 看，场景在光空间里 z 为负 → AABB 的 zMin/zMax 都是负数，近远面须取相反数：
+    //   近面（离光源最近，z_view 最大）= -maxP.z，远面 = -minP.z。
+    // 保证「离光源越近 → 深度越小（近面 NDC z=-1 → depth 0）」，与 §3.4/§6.2 语义一致。
+    return glm::ortho(minP.x, maxP.x, minP.y, maxP.y, -maxP.z, -minP.z) * lightView;
+}
+} // namespace
 
 
 Scene::Scene() {
@@ -534,7 +585,7 @@ void Scene::OnUpdate3D(Timestep ts,
     UpdateSkins();
 
     // ── 光源收集 ──
-    UpdateLightParams();
+    UpdateLightParams(view, projection);
 
     // ── 环境驱动 ──
     UpdateEnvironment();
@@ -680,7 +731,7 @@ void Scene::DispatchCollisionEvent(const Physics::CollisionEvent &evt) {
     }
 }
 
-void Scene::UpdateLightParams() {
+void Scene::UpdateLightParams(const glm::mat4 &view, const glm::mat4 &projection) {
     auto &r3d = Renderer::Get3DRenderer();
     auto &lightParams = r3d.GetLightParams();
 
@@ -705,10 +756,18 @@ void Scene::UpdateLightParams() {
             glm::vec3 lightDir = worldRot * glm::vec3(0.0f, 0.0f, -1.0f);
             lightParams.dirLightDirection = glm::normalize(-lightDir);
             lightParams.dirLightColor = dlc.Color;
+
+            // ---- 方向光阴影（S1）：算光空间 view-proj + 开关，只落地不采样 ----
+            // 有方向光实体即如实反映开关；矩阵按「光方向 + 本帧相机视锥」逐帧重算
+            // （覆盖范围随相机转，属方向光阴影的正常行为，阴影贴图计划 §6.3）。
+            lightParams.castShadow = true;
+            lightParams.lightViewProj =
+                ComputeLightViewProj(lightParams.dirLightDirection, view, projection);
         } else {
             // 场景中无方向光组件时，使用默认值（斜向下的白色方向光）
             lightParams.dirLightDirection = {0.0f, -1.0f, 0.0f};
             lightParams.dirLightColor = {1.0f, 1.0f, 1.0f, 1.0f};
+            lightParams.castShadow = false;
         }
     }
 

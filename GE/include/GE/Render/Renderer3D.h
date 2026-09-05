@@ -125,6 +125,10 @@ public:
         glm::vec3 dirLightDirection = {0.0f, -1.0f, 0.0f};     ///< 方向光方向（指向光源的反方向）
         glm::vec4 dirLightColor     = {1.0f, 1.0f, 1.0f, 1.0f}; ///< 方向光颜色(rgb) + 强度(a)
 
+        // 方向光阴影（S1：只算矩阵与开关，shader 尚未采样，无视觉变化）
+        bool      castShadow   = false;   ///< 方向光是否投阴影（无方向光实体时为 false）
+        glm::mat4 lightViewProj{1.0f};    ///< 光空间 view-proj（世界 → 光裁剪空间），Scene 每帧按相机视锥算好
+
         // 点光源数组（存入 SSBO 无编译期上限，按实际数量上传）
         std::vector<PointLight> pointLights{1}; ///< 点光源数组（默认 1 个）
 
@@ -151,6 +155,15 @@ public:
 
     /// 设置光照参数。
     void SetLightParams(const LightParams &params) { m_LightParams = params; }
+
+    /// 设置方向光阴影贴图尺寸（像素，阶段 1 取 2048）。
+    void SetShadowMapSize(uint32_t size) { m_ShadowMapSize = size; }
+
+    /// 当前方向光阴影贴图尺寸（像素）。
+    uint32_t GetShadowMapSize() const { return m_ShadowMapSize; }
+
+    /// 设置方向光阴影深度偏差（常量偏差，缓解自阴影花斑；S4 调参入口）。
+    void SetShadowBias(float bias) { m_ShadowBias = bias; }
 
     // ========================================================================
     // 天空盒
@@ -349,6 +362,8 @@ private:
         glm::vec4 lightCount;                         ///< x = 点光源数量
         glm::vec4 ambient;                            ///< 环境光颜色(rgb) + 强度(a)
         glm::vec4 iblParams;                  ///< x = 预滤波最大 mip 数（MAX_REFLECTION_LOD），yzw 预留
+        glm::mat4 lightViewProj;                      ///< 光空间 view-proj（世界 → 光裁剪空间），阴影比较用
+        glm::vec4 shadowParams;                       ///< x = 阴影贴图尺寸（像素），y = 偏差，z = 阴影开关(0/1)，w = PCF 半径
     };
     static_assert(sizeof(LightingUBO) % 16 == 0, "LightingUBO 必须 16 字节对齐");
 
@@ -655,6 +670,15 @@ private:
 
     /// IBL 环境光强度（缩放 IBL 贡献，经 iblParams.y 传给着色器）
     float m_IBLIntensity = 1.0f;
+
+    /// 方向光阴影贴图尺寸（像素，阶段 1 取 2048）
+    uint32_t m_ShadowMapSize = 2048;
+
+    /// 方向光阴影深度偏差（常量偏差，经 shadowParams.y 传给着色器）
+    float m_ShadowBias = 0.002f;
+
+    /// 方向光阴影 PCF 半径（阶段 1 固定 3×3 盒式，半径 = 1；经 shadowParams.w 传给着色器）
+    float m_ShadowPcfRadius = 1.0f;
 
     /// 默认 1x1 白色纹理（无纹理时的 fallback，由全局 TextureManager 持有，不拥有）
     Texture *m_DefaultWhiteTexture = nullptr;

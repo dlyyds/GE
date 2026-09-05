@@ -177,8 +177,9 @@ private:
     /// 单条碰撞事件按实体双侧投递到脚本（法线各向自己，B 侧翻转；reg.valid 兜底）
     void DispatchCollisionEvent(const Physics::CollisionEvent &evt);
 
-    /// 收集场景光源（方向光 / 环境光 / 点光源）到渲染器（OnUpdate3D 子步骤）
-    void UpdateLightParams();
+    /// 收集场景光源（方向光 / 环境光 / 点光源）到渲染器（OnUpdate3D 子步骤）。
+    /// view/projection 用于按相机视锥计算方向光阴影的光空间 AABB（阴影贴图计划 §6.3）。
+    void UpdateLightParams(const glm::mat4 &view, const glm::mat4 &projection);
 
     /// 依据环境组件驱动天空盒 + IBL（OnUpdate3D 子步骤）
     void UpdateEnvironment();

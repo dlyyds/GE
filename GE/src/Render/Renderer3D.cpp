@@ -154,6 +154,13 @@ Renderer3D::Renderer3D() {
         {m_VertShaderSkinned, m_FragShaderDepthOnly});
     m_PipelineLayoutSkinnedShadow->SetDebugName("Mesh3D_PipelineLayout_Skinned_Shadow");
 
+    // 阴影深度采样器：最近邻（深度不可线性插值，PCF 逐 tap 硬比较）+ 边缘钳制。
+    // 出界 tap 钳到边缘 texel 无碍——shader 已按中心 UV 判出界（§3.4/§5.6）。
+    m_ShadowSampler = &cache.RequestSampler(
+        vk::Filter::eNearest, vk::Filter::eNearest, vk::SamplerMipmapMode::eNearest,
+        vk::SamplerAddressMode::eClampToEdge, vk::SamplerAddressMode::eClampToEdge,
+        vk::SamplerAddressMode::eClampToEdge);
+
     // ── 延迟渲染：Lighting 全屏三角形着色器 + 管线布局 ──────────────
     m_LightingVert = &cache.RequestShaderModule(
         vk::ShaderStageFlagBits::eVertex,
@@ -757,6 +764,13 @@ void Renderer3D::FlushLighting(PassExecuteContext &ctx) {
         for (uint32_t i = 0; i < gbufferBindingCount; ++i) {
             cmd.BindImage(*ctx.readImageViews[i], gbufSampler, 1, i);
         }
+    }
+
+    // 阴影深度图（set 1, binding 7）：SceneLayer 在方向光阴影开启时才追加 hShadow 读，
+    // 故 readImageViews 多于 4 项即有阴影图（G0~G3 + ShadowMap）。采样器用最近邻
+    // （§5.6），PCF 逐 tap 硬比较在 shader 侧完成。无阴影时不绑，shader 走开关分支。
+    if (ctx.readImageViews.size() > 4 && m_ShadowSampler) {
+        cmd.BindImage(*ctx.readImageViews[4], *m_ShadowSampler, 1, 7);
     }
 
     // IBL 三件套（set 1, binding 4/5/6）：辐照度与预滤波共绑预滤波 cubemap，

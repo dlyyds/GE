@@ -45,6 +45,10 @@ layout (set = 1, binding = 4) uniform samplerCube samplerIrradiance;// 漫反射
 layout (set = 1, binding = 5) uniform samplerCube samplerPrefilter; // 镜面预滤波 mip 链 cubemap
 layout (set = 1, binding = 6) uniform sampler2D  samplerBrdfDFG;    // BRDF LUT（2D，(NoV, roughness)）
 
+// 方向光阴影深度图（D32F，读 .r）。普通采样器（非比较采样器）：PCF 逐 tap
+// 硬比较在 shader 侧完成，采样器用最近邻（§5.6，深度不可线性插值）。
+layout (set = 1, binding = 7) uniform sampler2D samplerShadowDepth;
+
 layout (location = 0) in vec2 inUV;
 layout (location = 0) out vec4 outColor;
 
@@ -169,6 +173,28 @@ vec3 calcAmbientPBR(vec3 N, vec3 V, vec3 albedo, float metallic, float roughness
     return ambientColor * albedo;
 }
 
+// 方向光阴影：3×3 盒式 PCF（阶段 1 简版，§5.7）。把片元投到光空间，在 UV 邻域做
+// 9 次深度硬比较取平均得半影强度（0~1 浮点），直接乘到方向光项上消除硬边抖动。
+// 出界（UV 超出 [0,1] 或深度超出 [0,1]，即片元不在光视锥/近远裁剪内）= 视为受光。
+// ZO 深度约定：lightViewProj 产出的 NDC z 已在 [0,1]（近=0 远=1），深度直接取 proj.z，
+// 无需再 0.5+0.5 重映射（与写入侧的视口恒等变换一致，§3.4）。
+float PCFShadow(vec3 worldPos, float bias) {
+    vec4 sc = lighting.lightViewProj * vec4(worldPos, 1.0);
+    vec3 proj = sc.xyz / sc.w;
+    vec2 uv = proj.xy * 0.5 + 0.5;  // NDC x/y ∈ [-1,1] → 纹理坐标 [0,1]
+    float depth = proj.z;           // ZO：光空间深度已是 [0,1]
+    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0
+        || depth < 0.0 || depth > 1.0) return 1.0;
+    float texel = 1.0 / lighting.shadowParams.x; // 单像素 UV 宽
+    float vis = 0.0;
+    for (int x = -1; x <= 1; x++)
+    for (int y = -1; y <= 1; y++) {
+        float sd = texture(samplerShadowDepth, uv + vec2(x, y) * texel).r;
+        vis += (depth <= sd + bias) ? 1.0 : 0.0; // 逐 tap 硬比较再平均 = 盒式 PCF
+    }
+    return vis / 9.0;
+}
+
 void main()
 {
     vec3 g0 = texture(samplerG0, inUV).rgb;
@@ -197,13 +223,20 @@ void main()
 
     vec3 V = normalize(lighting.viewPos.xyz - worldPos);
 
+    // 方向光阴影遮蔽（S4）：shadowParams.z 开关（0 = 无阴影，1 = 开启）。
+    // 只乘方向光直接光照项；点光源 / 环境光 / 自发光不受阴影影响（§1）。
+    float shadowVis = 1.0;
+    if (lighting.shadowParams.z > 0.5) {
+        shadowVis = PCFShadow(worldPos, lighting.shadowParams.y);
+    }
+
     vec3 result;
     if (modelFlag < kBlinnMiddle) {
         float shininess = scalarA;
         float specularStrength = scalarB;
         vec3 ambientColor = lighting.ambient.rgb * lighting.ambient.w;
         result = ambientColor * albedo;
-        result += calcDirectionalLightBlinn(N, V, albedo, shininess, specularStrength);
+        result += calcDirectionalLightBlinn(N, V, albedo, shininess, specularStrength) * shadowVis;
         for (int i = 0; i < int(lighting.lightCount.x); i++) {
             result += calcPointLightBlinn(lightBuffer.lights[i], N, V, worldPos,
                                           albedo, shininess, specularStrength);
@@ -212,7 +245,7 @@ void main()
         float roughness = scalarA;
         float metallic = scalarB;
         result = calcAmbientPBR(N, V, albedo, metallic, roughness);
-        result += calcDirectionalLightPBR(N, V, albedo, metallic, roughness);
+        result += calcDirectionalLightPBR(N, V, albedo, metallic, roughness) * shadowVis;
         for (int i = 0; i < int(lighting.lightCount.x); i++) {
             result += calcPointLightPBR(lightBuffer.lights[i], N, V, worldPos,
                                         albedo, metallic, roughness);

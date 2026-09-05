@@ -210,8 +210,9 @@ void SceneLayer::RecordScenePasses(RenderTarget &viewportRT, const glm::vec4 &cl
         ResourceHandle hG3 = b.CreateVirtualResource(gdesc, "GBuffer_Emissive");
 
         // 方向光阴影：有方向光实体（castShadow 由 Scene::UpdateLightParams 如实反映）
-        // 才声明 ShadowMap pass；无则图里没有该 pass、hShadow 不分配，FlushShadow
-        // 永不执行，Lighting 也读不到阴影（S4 才接线），退回无阴影现状。
+        // 才声明 ShadowMap pass 并分配 hShadow；无则保持 kInvalidResource，Lighting 不
+        // 追加读、FlushShadow 永不执行，退回无阴影现状。
+        ResourceHandle hShadow = kInvalidResource;
         if (Renderer::Get3DRenderer().GetLightParams().castShadow) {
             // ShadowMap 深度图：虚拟资源，独立尺寸（2048²），格式 D32F。
             // 阴影图尺寸与视口无关，池按 (desc, usage) 匹配复用（阴影贴图计划 §5.2）。
@@ -220,7 +221,7 @@ void SceneLayer::RecordScenePasses(RenderTarget &viewportRT, const glm::vec4 &cl
             shadowDesc.extent = vk::Extent2D{shadowMapSize, shadowMapSize};
             shadowDesc.samples = vk::SampleCountFlagBits::e1;
             shadowDesc.format = vk::Format::eD32Sfloat;
-            ResourceHandle hShadow = b.CreateVirtualResource(shadowDesc, "ShadowMap");
+            hShadow = b.CreateVirtualResource(shadowDesc, "ShadowMap");
 
             // Pass0 "ShadowMap"：零颜色 + 一深度，插在 GBuffer 之前（m_Meshes 尚未消费，
             // 与 GBuffer 共享批次）。只画不透明段（Opaque + Mask）的深度。
@@ -279,6 +280,13 @@ void SceneLayer::RecordScenePasses(RenderTarget &viewportRT, const glm::vec4 &cl
             {hG2, ResourceUsage::ShaderRead, vk::ImageLayout::eShaderReadOnlyOptimal});
         lightingPass.readImages.push_back(
             {hG3, ResourceUsage::ShaderRead, vk::ImageLayout::eShaderReadOnlyOptimal});
+        // 方向光阴影开启时追加读 hShadow（readImageViews 第 5 项 → binding 7）。
+        // 图据此在「ShadowMap 深度写 → Lighting 采样读」之间插屏障、把布局转到
+        // ShaderReadOnlyOptimal（§4：深度独享附件 + readImages 的常规推导）。
+        if (hShadow != kInvalidResource) {
+            lightingPass.readImages.push_back(
+                {hShadow, ResourceUsage::ShaderRead, vk::ImageLayout::eShaderReadOnlyOptimal});
+        }
         AttachmentDesc lightingColorClear;
         lightingColorClear.resource = hColor;
         lightingColorClear.usage = ResourceUsage::ColorAttachment;

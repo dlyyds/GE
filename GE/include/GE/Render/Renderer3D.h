@@ -43,6 +43,7 @@ class VulkanPipelineLayout;
 class VulkanShaderModule;
 class VulkanCommandBuffer;
 class VulkanRenderFrame;
+class VulkanSampler;
 struct PassExecuteContext;
 
 /**
@@ -678,6 +679,10 @@ private:
     /// 阴影深度 pass 管线布局（mesh.vert/mesh_skinned.vert + depth_only.frag）
     VulkanPipelineLayout *m_PipelineLayoutShadow = nullptr;
     VulkanPipelineLayout *m_PipelineLayoutSkinnedShadow = nullptr;
+
+    /// 阴影深度采样器（最近邻 + 边缘钳制；由全局资源缓存管理，不拥有）。
+    /// 深度值不可线性插值，PCF 用逐 tap 硬比较，故采样器必须 nearest（§5.6）。
+    VulkanSampler *m_ShadowSampler = nullptr;
 
     /// 延迟 Lighting 顶点/片元着色器（由全局资源缓存管理，不拥有）
     VulkanShaderModule   *m_LightingVert = nullptr;

@@ -893,13 +893,7 @@ void Scene::UpdateLightParams(const glm::mat4 &view, const glm::mat4 &projection
                     std::clamp(lightParams.cascadeCount, 1u, kMaxCascades);
                 lightParams.cascadeCount = cascadeCount; // 写回归一化，防数组越界
                 float nearZ = 0.0f, farZ = 0.0f, tanHalfFovY = 0.0f, aspect = 1.0f;
-                GE_CORE_INFO("[CSM] 方向光: castShadow=1 cascadeCount={} dir=({:.3f},{:.3f},{:.3f})",
-                             cascadeCount,
-                             lightParams.dirLightDirection.x, lightParams.dirLightDirection.y,
-                             lightParams.dirLightDirection.z);
                 if (ExtractPerspectiveParams(projection, nearZ, farZ, tanHalfFovY, aspect)) {
-                    GE_CORE_INFO("[CSM] 透视解析 OK: near={:.4f} far={:.4f} tanHalfFov={:.4f} aspect={:.4f}",
-                                 nearZ, farZ, tanHalfFovY, aspect);
                     ComputeCascadeSplits(nearZ, farZ, cascadeCount,
                                          lightParams.cascadeSplitLambda,
                                          lightParams.cascadeSplits.data());

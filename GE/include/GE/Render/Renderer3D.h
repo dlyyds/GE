@@ -733,7 +733,7 @@ private:
     float m_IBLIntensity = 1.0f;
 
     /// 方向光阴影贴图尺寸（像素，阶段 1 取 2048）
-    uint32_t m_ShadowMapSize = 2048;
+    uint32_t m_ShadowMapSize = 4096;
 
     /// 方向光阴影深度偏差（常量偏差，经 shadowParams.y 传给着色器）
     float m_ShadowBias = 0.002f;

@@ -30,17 +30,17 @@
 namespace GE {
 
 namespace {
-/// 方向光阴影：由光传播方向与相机视锥计算光空间 view-proj（阴影贴图计划 §6.1/§6.3）。
-/// lightDir = 光传播方向（光源 → 被照物）。覆盖范围用相机视锥 8 角点在世界空间框出
-/// （Light Space AABB），不依赖 GBuffer 深度重建；深度余量沿光方向两端各放宽 5%。
-/// outMinP/outMaxP 输出 Light Space AABB（已含 5% z 余量）、outLightView 输出光 view，
-/// Scene 侧据此构造阴影专用剔除体（阴影剔除计划书 §4.2）。
-glm::mat4 ComputeLightViewProj(const glm::vec3 &lightDir,
-                               const glm::mat4 &view,
-                               const glm::mat4 &projection,
-                               glm::vec3 *outMinP = nullptr,
-                               glm::vec3 *outMaxP = nullptr,
-                               glm::mat4 *outLightView = nullptr) {
+/// 方向光光体积公共核心（CSM 计划书 §4.2 step 1）：输入 8 个世界空间角点 + 光传播方向，
+/// 输出光 view、Light Space AABB（outMinP/outMaxP，含 5% z 余量）与 ortho*lightView。
+/// 现有全视锥路径（ComputeLightViewProj）与 CSM 每级切片（SliceCorners）共用此核心，
+/// 保证「级联数 = 1 退化全视锥」与现状同一套矩阵构造（§4.2 兼容回退即天然存在）。
+/// lightDir = 光传播方向（光源 → 被照物）。覆盖范围用角点在世界空间框出（Light Space
+/// AABB），不依赖 GBuffer 深度重建；深度余量沿光方向两端各放宽 5%。
+glm::mat4 BuildLightVolumeCorners(const glm::vec3 worldCorners[8],
+                                  const glm::vec3 &lightDir,
+                                  glm::vec3 *outMinP = nullptr,
+                                  glm::vec3 *outMaxP = nullptr,
+                                  glm::mat4 *outLightView = nullptr) {
     // 光 view：GLM 相机视线方向（-Z）对准光传播方向 forward。
     // eye 必须放在「+forward = 光源所在侧」，相机朝 -forward（背离光源）看场景——
     // 这样近面在离光源最近处（深度 0 = 离光源最近），eLess 每 texel 保留的是离光源
@@ -54,23 +54,13 @@ glm::mat4 ComputeLightViewProj(const glm::vec3 &lightDir,
     const glm::vec3 target(0.0f);
     const glm::mat4 lightView = glm::lookAt(target + forward * 100.0f, target, up);
 
-    // Light Space AABB：NDC 立方体 8 角点经逆 view-proj 变到世界，再转光空间取 min/max（§6.3）。
-    // 相机投影用 ZO（Zero-to-One）深度约定（NDC z ∈ [0,1]，近面=0、远面=1），
-    // 角点 z 取 0/1 与该约定一致（近裁剪面 ↔ z=0，远裁剪面 ↔ z=1）。
-    const glm::mat4 invViewProj = glm::inverse(projection * view);
-    const glm::vec4 ndcCorners[8] = {
-        {-1.0f, -1.0f, 0.0f, 1.0f}, { 1.0f, -1.0f, 0.0f, 1.0f},
-        {-1.0f,  1.0f, 0.0f, 1.0f}, { 1.0f,  1.0f, 0.0f, 1.0f},
-        {-1.0f, -1.0f, 1.0f, 1.0f}, { 1.0f, -1.0f, 1.0f, 1.0f},
-        {-1.0f,  1.0f, 1.0f, 1.0f}, { 1.0f,  1.0f, 1.0f, 1.0f},
-    };
+    // Light Space AABB：8 个世界角点转光空间取 min/max（§6.3）。
     glm::vec3 minP(std::numeric_limits<float>::max());
     glm::vec3 maxP(std::numeric_limits<float>::lowest());
-    for (const auto &corner : ndcCorners) {
-        const glm::vec4 world = invViewProj * corner;
-        const glm::vec4 lightP = lightView * (world / world.w);
-        minP = glm::min(minP, glm::vec3(lightP));
-        maxP = glm::max(maxP, glm::vec3(lightP));
+    for (const auto &corner : worldCorners) {
+        const glm::vec3 lightP = glm::vec3(lightView * glm::vec4(corner, 1.0f));
+        minP = glm::min(minP, lightP);
+        maxP = glm::max(maxP, lightP);
     }
 
     // 深度余量：Z 范围沿光方向两端放宽，避免近平面恰好切到遮挡物 / 可见表面顶到远
@@ -88,6 +78,92 @@ glm::mat4 ComputeLightViewProj(const glm::vec3 &lightDir,
     if (outMaxP) *outMaxP = maxP;
     if (outLightView) *outLightView = lightView;
     return glm::orthoRH_ZO(minP.x, maxP.x, minP.y, maxP.y, -maxP.z, -minP.z) * lightView;
+}
+
+/// 方向光阴影：由光传播方向与相机视锥计算光空间 view-proj（阴影贴图计划 §6.1/§6.3）。
+/// 全视锥路径：NDC 立方体 8 角点经逆 view-proj 反解世界角点，喂给公共核心
+/// BuildLightVolumeCorners（行为逐像素不变，CSM 计划书 §4.2 step 1）。
+/// outMinP/outMaxP 输出 Light Space AABB（已含 5% z 余量）、outLightView 输出光 view，
+/// Scene 侧据此构造阴影专用剔除体（阴影剔除计划书 §4.2）。
+glm::mat4 ComputeLightViewProj(const glm::vec3 &lightDir,
+                               const glm::mat4 &view,
+                               const glm::mat4 &projection,
+                               glm::vec3 *outMinP = nullptr,
+                               glm::vec3 *outMaxP = nullptr,
+                               glm::mat4 *outLightView = nullptr) {
+    // 相机投影用 ZO（Zero-to-One）深度约定（NDC z ∈ [0,1]，近面=0、远面=1），
+    // 角点 z 取 0/1 与该约定一致（近裁剪面 ↔ z=0，远裁剪面 ↔ z=1）。
+    const glm::mat4 invViewProj = glm::inverse(projection * view);
+    const glm::vec4 ndcCorners[8] = {
+        {-1.0f, -1.0f, 0.0f, 1.0f}, { 1.0f, -1.0f, 0.0f, 1.0f},
+        {-1.0f,  1.0f, 0.0f, 1.0f}, { 1.0f,  1.0f, 0.0f, 1.0f},
+        {-1.0f, -1.0f, 1.0f, 1.0f}, { 1.0f, -1.0f, 1.0f, 1.0f},
+        {-1.0f,  1.0f, 1.0f, 1.0f}, { 1.0f,  1.0f, 1.0f, 1.0f},
+    };
+    glm::vec3 worldCorners[8];
+    for (int i = 0; i < 8; ++i) {
+        const glm::vec4 world = invViewProj * ndcCorners[i];
+        worldCorners[i] = glm::vec3(world) / world.w;
+    }
+    return BuildLightVolumeCorners(worldCorners, lightDir, outMinP, outMaxP, outLightView);
+}
+
+/// 视锥切片角点（CSM 计划书 §4.2 step 2）：对 d ∈ {splitLo, splitHi} 各取 4 个视图空间
+/// 角点（±tanHalfFovY*aspect*d, ±tanHalfFovY*d, -d）（相机朝 -Z，d 为正值深度），
+/// inverse(view) 变到世界 → 8 角点。view 为 lookAt 无缩放视图矩阵，逆变换数值稳定。
+/// cascadeCount = 1 时该切片即全视锥，与 ComputeLightViewProj 的世界角点一致（兼容回退）。
+void SliceCorners(const glm::mat4 &view, float tanHalfFovY, float aspect,
+                  float splitLo, float splitHi, glm::vec3 outCorners[8]) {
+    const glm::mat4 invView = glm::inverse(view);
+    const glm::vec3 viewCorners[8] = {
+        {-tanHalfFovY * aspect * splitLo, -tanHalfFovY * splitLo, -splitLo},
+        { tanHalfFovY * aspect * splitLo, -tanHalfFovY * splitLo, -splitLo},
+        {-tanHalfFovY * aspect * splitLo,  tanHalfFovY * splitLo, -splitLo},
+        { tanHalfFovY * aspect * splitLo,  tanHalfFovY * splitLo, -splitLo},
+        {-tanHalfFovY * aspect * splitHi, -tanHalfFovY * splitHi, -splitHi},
+        { tanHalfFovY * aspect * splitHi, -tanHalfFovY * splitHi, -splitHi},
+        {-tanHalfFovY * aspect * splitHi,  tanHalfFovY * splitHi, -splitHi},
+        { tanHalfFovY * aspect * splitHi,  tanHalfFovY * splitHi, -splitHi},
+    };
+    for (int i = 0; i < 8; ++i) {
+        outCorners[i] = glm::vec3(invView * glm::vec4(viewCorners[i], 1.0f));
+    }
+}
+
+/// 由透视投影矩阵反解近/远平面距离、tan(halfFovY) 与宽高比（CSM 切分距离与切片角点用）。
+/// 相机投影 = perspectiveRH_ZO + Y 翻转（proj[1][1] *= -1，Vulkan NDC Y 向下），故
+/// f = -proj[1][1]；深度行（第 2/3 行）不受 Y 翻转影响，近远面按 ZO 标准公式反解：
+///   near = p32/p22、far = p22*near/(1+p22)（p22 = far/(near-far)、p32 = near*far/(near-far)）。
+/// 返回 false 表示非透视投影（如正交：proj[1][1] > 0 或 p32 = 0），无 FOV/近远语义，
+/// 调用方退化到单级全视锥（CSM 计划书 §4.1 建议不改接口、由投影矩阵反解）。
+bool ExtractPerspectiveParams(const glm::mat4 &projection,
+                              float &outNear, float &outFar,
+                              float &outTanHalfFovY, float &outAspect) {
+    const float f = -projection[1][1];
+    const float p22 = projection[2][2];
+    const float p32 = projection[3][2];
+    if (f <= 0.0f || std::abs(p32) < 1e-12f) {
+        return false;
+    }
+    outTanHalfFovY = 1.0f / f;
+    outAspect = f / projection[0][0];
+    outNear = p32 / p22;
+    outFar = p22 * outNear / (1.0f + p22);
+    return outNear > 0.0f && outFar > outNear;
+}
+
+/// practical split（CSM 计划书 §4.1）：混合均匀切分与对数切分，近密远疏（均匀屏幕感）。
+/// splits[c] = 第 c 级远端切分距离，末级恒为 far；第 0 级范围从 near 开始（split[0]=near）。
+/// lambda = 混合系数（0 = 均匀、1 = 对数，默认 0.5）。
+void ComputeCascadeSplits(float nearZ, float farZ, uint32_t cascadeCount,
+                          float lambda, float splits[kMaxCascades]) {
+    const float range = farZ - nearZ;
+    for (uint32_t c = 0; c < cascadeCount; ++c) {
+        const float t = static_cast<float>(c + 1) / static_cast<float>(cascadeCount);
+        const float uni = nearZ + range * t;
+        const float logSplit = nearZ * std::pow(farZ / nearZ, t);
+        splits[c] = uni * (1.0f - lambda) + logSplit * lambda;
+    }
 }
 
 /// 由 Light Space AABB（ComputeLightViewProj 输出的 minP/maxP，已含 5% z 余量）与光 view
@@ -790,25 +866,63 @@ void Scene::UpdateLightParams(const glm::mat4 &view, const glm::mat4 &projection
             lightParams.dirLightDirection = glm::normalize(-lightDir);
             lightParams.dirLightColor = dlc.Color;
 
-            // ---- 方向光阴影（S1/S5）：开关 = 组件 CastShadow（默认开）----
+            // ---- 方向光阴影（S1/S5/CSM C1）：开关 = 组件 CastShadow（默认开）----
             // castShadow 如实反映组件开关：false 时不声明 ShadowMap pass、Lighting 不
             // 采样，退回无阴影现状。矩阵按「光方向 + 本帧相机视锥」逐帧重算（覆盖范围
             // 随相机转，属方向光阴影的正常行为，阴影贴图计划 §6.3）；仅开启时计算，
             // 省一次逆投影。
             lightParams.castShadow = dlc.CastShadow;
             if (dlc.CastShadow) {
+                // 现有单级路径：全视锥光矩阵经公共核心 BuildLightVolumeCorners 构造，
+                // 行为逐位不变。C2/C3 接入逐级 pass 与级联采样前，ShadowMap/Lighting
+                // 仍用此矩阵（CSM 计划书 §4.2 step 1）。
                 glm::vec3 minP, maxP;
                 glm::mat4 lightView;
                 lightParams.lightViewProj = ComputeLightViewProj(
                     lightParams.dirLightDirection, view, projection, &minP, &maxP, &lightView);
-                // 阴影专用剔除体（世界空间 AABB）：本帧按「光方向 + 相机视锥」重算，
-                // S3 的阴影遍历以此对物体世界 AABB 判交（阴影剔除计划书 §4.3）。
-                // S1 阶段仅供观察/断点验证：RenderDoc 无视觉变化，确认数值随相机与
-                // 光方向正确变化即通过验收。
-                m_ShadowVolume = BuildShadowVolume(minP, maxP, lightView);
+
+                // CSM 切分（C1，纯 CPU、无视觉变化）：按「光方向 + 相机视锥」把视锥沿
+                // 深度切成 cascadeCount 档，每档由 SliceCorners（切片角点）+
+                // BuildLightVolumeCorners 算独立光矩阵 cascadeViewProj[c] 与每级世界
+                // 阴影视锥 m_ShadowVolume[c]（CSM 计划书 §4.1/§4.2）。默认 cascadeCount
+                // = 1 = 现状；调大仅供断点验证「近级体积 < 远级」，单 pass 尚未逐级化
+                // （C2），此时阴影遍历仅用第 0 级体积。
+                const uint32_t cascadeCount =
+                    std::clamp(lightParams.cascadeCount, 1u, kMaxCascades);
+                lightParams.cascadeCount = cascadeCount; // 写回归一化，防数组越界
+                float nearZ = 0.0f, farZ = 0.0f, tanHalfFovY = 0.0f, aspect = 1.0f;
+                if (ExtractPerspectiveParams(projection, nearZ, farZ, tanHalfFovY, aspect)) {
+                    ComputeCascadeSplits(nearZ, farZ, cascadeCount,
+                                         lightParams.cascadeSplitLambda,
+                                         lightParams.cascadeSplits);
+                    for (uint32_t c = 0; c < cascadeCount; ++c) {
+                        const float lo = (c == 0) ? nearZ : lightParams.cascadeSplits[c - 1];
+                        const float hi = lightParams.cascadeSplits[c];
+                        glm::vec3 sliceCorners[8];
+                        SliceCorners(view, tanHalfFovY, aspect, lo, hi, sliceCorners);
+                        glm::vec3 cMinP, cMaxP;
+                        glm::mat4 cLightView;
+                        lightParams.cascadeViewProj[c] = BuildLightVolumeCorners(
+                            sliceCorners, lightParams.dirLightDirection,
+                            &cMinP, &cMaxP, &cLightView);
+                        m_ShadowVolume[c] = BuildShadowVolume(cMinP, cMaxP, cLightView);
+                    }
+                } else {
+                    // 非透视投影（如正交）：无 FOV/切分语义，退化单级 = 全视锥（沿用
+                    // NDC 路径结果，与现状一致）
+                    lightParams.cascadeCount = 1;
+                    lightParams.cascadeViewProj[0] = lightParams.lightViewProj;
+                    m_ShadowVolume[0] = BuildShadowVolume(minP, maxP, lightView);
+                }
+                // 未激活级置无效盒，避免级数调小后残留上一帧体积参与遍历
+                for (uint32_t c = lightParams.cascadeCount; c < kMaxCascades; ++c) {
+                    m_ShadowVolume[c] = AABB();
+                }
             } else {
                 // 阴影关闭：置无效盒，阴影遍历整遍跳过（计划书 §4.3）
-                m_ShadowVolume = AABB();
+                for (auto &vol : m_ShadowVolume) {
+                    vol = AABB();
+                }
             }
         } else {
             // 场景中无方向光组件时，使用默认值（斜向下的白色方向光）
@@ -816,7 +930,9 @@ void Scene::UpdateLightParams(const glm::mat4 &view, const glm::mat4 &projection
             lightParams.dirLightColor = {1.0f, 1.0f, 1.0f, 1.0f};
             lightParams.castShadow = false;
             // 无方向光：同阴影关闭，置无效盒，避免沿用上一帧残留的剔除体
-            m_ShadowVolume = AABB();
+            for (auto &vol : m_ShadowVolume) {
+                vol = AABB();
+            }
         }
     }
 
@@ -1034,13 +1150,15 @@ void Scene::RenderMeshes3D(const glm::mat4 &view, const glm::mat4 &projection,
     // 目的（阴影剔除计划书 §1/§3）：主相机视锥外的投影物（影子能投进视锥）也要进
     // ShadowMap pass，否则其阴影整段丢失。剔除体 = 本帧光空间 AABB 转回世界的世界
     // AABB（m_ShadowVolume，S1 在 UpdateLightParams 按「光方向 + 相机视锥」重算）；
-    // 无方向光 / castShadow=false 时置无效，整遍跳过。与主遍历的差异：
+    // 无方向光 / castShadow=false 时置无效，整遍跳过。C1 阶段仍单遍用第 0 级体积
+    // （cascadeCount = 1 时 = 全视锥，与现状一致）；逐级遍历（每级体积各遍历一次、
+    // 命中者入该级集合）在 C2 落地（CSM 计划书 §4.3）。与主遍历的差异：
     //   · 剔除体是阴影世界 AABB 而非主相机视锥
     //   · BoundingBoxComponent 子树粗剔暂不做（正确性优先，阴影盒与实体盒边界行为
     //     可与主遍不同，计划书 §4.3 列后续）
     //   · 其余（蒙皮跳过剔除、子网格细剔、Blend 不主动跳）与主遍历一致
-    if (m_ShadowVolume.IsValid()) {
-        const AABB &shadowVolume = m_ShadowVolume;
+    if (m_ShadowVolume[0].IsValid()) {
+        const AABB &shadowVolume = m_ShadowVolume[0];
         for (auto entity : meshView) {
             auto &tc = meshView.get<TransformComponent>(entity);
             auto &mc = meshView.get<MeshRendererComponent>(entity);

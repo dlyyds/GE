@@ -24,9 +24,10 @@
 
 #include "Core/Base.h"
 #include "Render/BufferPool.h"
+#include "Render/EnvironmentMap.h"
 #include "Render/Material.h"
 #include "Render/Mesh.h"
-#include "Render/EnvironmentMap.h"
+#include "Render/ShadowCascade.h"
 
 #include <glm/glm.hpp>
 
@@ -134,6 +135,15 @@ public:
         // 方向光阴影（S1：只算矩阵与开关，shader 尚未采样，无视觉变化）
         bool castShadow = false; ///< 方向光是否投阴影（无方向光实体时为 false）
         glm::mat4 lightViewProj{1.0f}; ///< 光空间 view-proj（世界 → 光裁剪空间），Scene 每帧按相机视锥算好
+
+        // CSM（级联阴影映射，CSM 计划书 §4.2）：每级光矩阵与切分距离数组。
+        // C1 阶段仅 CPU 计算（Scene::UpdateLightParams 填充），尚未接入采样，无视觉变化；
+        // C2 逐级 ShadowMap pass、C3 Lighting 级联采样接入后消费。cascadeCount = 1 时
+        // cascadeViewProj[0] 退化为全视锥，与现状单级完全一致（§4.2 兼容回退）。
+        std::array<glm::mat4, kMaxCascades> cascadeViewProj{}; ///< 每级光空间 view-proj（世界 → 该级光裁剪空间）
+        std::array<float, kMaxCascades> cascadeSplits{}; ///< 每级远端切分距离（cascadeSplits[c] = 第 c 级远端；split[0]=near，末级=far）
+        uint32_t cascadeCount = 1; ///< 生效级数（默认 1 = 现状单级；C2/C3 调为 3；上限 kMaxCascades）
+        float cascadeSplitLambda = 0.5f; ///< practical split 混合系数（0 = 均匀、1 = 对数，默认 0.5）
 
         // 点光源数组（存入 SSBO 无编译期上限，按实际数量上传）
         std::vector<PointLight> pointLights{1}; ///< 点光源数组（默认 1 个）

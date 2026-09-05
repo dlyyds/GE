@@ -7,8 +7,10 @@
 #include "Core/Timestep.h"
 #include "Render/AABB.h"
 #include "Render/BufferPool.h"
+#include "Render/ShadowCascade.h"
 #include "Scene/ScriptEngine.h"
 #include <glm/glm.hpp>
+#include <array>
 #include <memory>
 #include <string>
 #include <vector>
@@ -248,11 +250,13 @@ private:
     /// 视锥剔除粒度（默认仅网格级，保留现有行为）
     CullingMode m_CullingMode = CullingMode::Mesh;
 
-    /// 阴影视锥（方向光阴影专用剔除体，世界空间 AABB，阴影剔除计划书 §3.1）。
-    /// UpdateLightParams 每帧按「光方向 + 本帧相机视锥」重算（含 5% z 余量）；
-    /// 无方向光或 castShadow=false 时置无效（IsValid()==false），阴影遍历整遍跳过（§4.3）。
+    /// 每级世界阴影视锥（方向光阴影专用剔除体，世界空间 AABB，阴影剔除计划书 §3.1）。
+    /// UpdateLightParams 每帧按「光方向 + 本帧相机视锥」重算（含 5% z 余量），CSM 逐级各存
+    /// 一份（CSM 计划书 §4.2）；无方向光或 castShadow=false 时全部置无效（IsValid()==false），
+    /// 阴影遍历整遍跳过（§4.3）。C1 阶段单 pass 遍历仍用第 0 级（cascadeCount=1 时 = 全视锥，
+    /// 与现状一致）；逐级遍历（每级各遍历一次）在 C2 落地。
     /// AABB 定义在独立头 Render/AABB.h（轻量、不引 Vulkan），Scene.h 可直接持有。
-    AABB m_ShadowVolume;
+    std::array<AABB, kMaxCascades> m_ShadowVolume;
 
     /// 模拟运行态（默认 Edit；瞬态不序列化，加载后恒为 Edit，见计划书决策 5.5）
     SimulationState m_SimulationState = SimulationState::Edit;

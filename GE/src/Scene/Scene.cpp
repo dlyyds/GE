@@ -33,9 +33,14 @@ namespace {
 /// 方向光阴影：由光传播方向与相机视锥计算光空间 view-proj（阴影贴图计划 §6.1/§6.3）。
 /// lightDir = 光传播方向（光源 → 被照物）。覆盖范围用相机视锥 8 角点在世界空间框出
 /// （Light Space AABB），不依赖 GBuffer 深度重建；深度余量沿光方向两端各放宽 5%。
+/// outMinP/outMaxP 输出 Light Space AABB（已含 5% z 余量）、outLightView 输出光 view，
+/// Scene 侧据此构造阴影专用剔除体（阴影剔除计划书 §4.2）。
 glm::mat4 ComputeLightViewProj(const glm::vec3 &lightDir,
                                const glm::mat4 &view,
-                               const glm::mat4 &projection) {
+                               const glm::mat4 &projection,
+                               glm::vec3 *outMinP = nullptr,
+                               glm::vec3 *outMaxP = nullptr,
+                               glm::mat4 *outLightView = nullptr) {
     // 光 view：GLM 相机视线方向（-Z）对准光传播方向 forward。
     // eye 必须放在「+forward = 光源所在侧」，相机朝 -forward（背离光源）看场景——
     // 这样近面在离光源最近处（深度 0 = 离光源最近），eLess 每 texel 保留的是离光源
@@ -79,7 +84,30 @@ glm::mat4 ComputeLightViewProj(const glm::vec3 &lightDir,
     //   近面（离光源最近，z_view 最大）= -maxP.z，远面 = -minP.z。
     // 保证「离光源越近 → 深度越小（近面 NDC z=0）」，与 §3.4/§6.2 语义一致。
     // ZO 下光裁剪空间深度已是 [0,1]，S4 采样时直接读 proj.z（无需再 0.5+0.5 重映射）。
+    if (outMinP) *outMinP = minP;
+    if (outMaxP) *outMaxP = maxP;
+    if (outLightView) *outLightView = lightView;
     return glm::orthoRH_ZO(minP.x, maxP.x, minP.y, maxP.y, -maxP.z, -minP.z) * lightView;
+}
+
+/// 由 Light Space AABB（ComputeLightViewProj 输出的 minP/maxP，已含 5% z 余量）与光 view
+/// 构造世界空间阴影视锥：光空间正交盒 8 角点经 inverse(lightView) 变回世界，取世界 min/max。
+/// inverse(lightView) 是刚体变换（lookAt 无缩放），世界 AABB 为旋转盒的轴对齐包络，略松
+/// 但无漏剔（阴影剔除计划书 §3.1/§3.3）。
+AABB BuildShadowVolume(const glm::vec3 &minP, const glm::vec3 &maxP,
+                       const glm::mat4 &lightView) {
+    const glm::mat4 invLightView = glm::inverse(lightView);
+    const glm::vec3 corners[8] = {
+        {minP.x, minP.y, minP.z}, {maxP.x, minP.y, minP.z},
+        {minP.x, maxP.y, minP.z}, {maxP.x, maxP.y, minP.z},
+        {minP.x, minP.y, maxP.z}, {maxP.x, minP.y, maxP.z},
+        {minP.x, maxP.y, maxP.z}, {maxP.x, maxP.y, maxP.z},
+    };
+    AABB out;
+    for (const auto &corner : corners) {
+        out.Expand(glm::vec3(invLightView * glm::vec4(corner, 1.0f)));
+    }
+    return out;
 }
 } // namespace
 
@@ -769,14 +797,30 @@ void Scene::UpdateLightParams(const glm::mat4 &view, const glm::mat4 &projection
             // 省一次逆投影。
             lightParams.castShadow = dlc.CastShadow;
             if (dlc.CastShadow) {
-                lightParams.lightViewProj =
-                    ComputeLightViewProj(lightParams.dirLightDirection, view, projection);
+                glm::vec3 minP, maxP;
+                glm::mat4 lightView;
+                lightParams.lightViewProj = ComputeLightViewProj(
+                    lightParams.dirLightDirection, view, projection, &minP, &maxP, &lightView);
+                // 阴影专用剔除体（世界空间 AABB）：本帧按「光方向 + 相机视锥」重算，
+                // S3 的阴影遍历以此对物体世界 AABB 判交（阴影剔除计划书 §4.3）。
+                // S1 阶段仅供观察/断点验证：RenderDoc 无视觉变化，确认数值随相机与
+                // 光方向正确变化即通过验收。
+                const AABB shadowVolume = BuildShadowVolume(minP, maxP, lightView);
+                m_ShadowVolumeMin = shadowVolume.min;
+                m_ShadowVolumeMax = shadowVolume.max;
+            } else {
+                // 阴影关闭：置无效盒，阴影遍历整遍跳过（计划书 §4.3）
+                m_ShadowVolumeMin = glm::vec3(0.0f);
+                m_ShadowVolumeMax = glm::vec3(-1.0f);
             }
         } else {
             // 场景中无方向光组件时，使用默认值（斜向下的白色方向光）
             lightParams.dirLightDirection = {0.0f, -1.0f, 0.0f};
             lightParams.dirLightColor = {1.0f, 1.0f, 1.0f, 1.0f};
             lightParams.castShadow = false;
+            // 无方向光：同阴影关闭，置无效盒，避免沿用上一帧残留的剔除体
+            m_ShadowVolumeMin = glm::vec3(0.0f);
+            m_ShadowVolumeMax = glm::vec3(-1.0f);
         }
     }
 

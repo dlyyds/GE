@@ -207,6 +207,17 @@ struct AABB {
         out.max = glm::vec3(m[3]) + m3 * center + (e0 * extent.x + e1 * extent.y + e2 * extent.z);
         return out;
     }
+
+    /// 与另一 AABB 是否相交（各轴分离判反例；无效盒视为不相交）。
+    /// 用于阴影剔除：物体世界 AABB 与阴影视锥（世界 AABB）判交（阴影剔除计划书 §4.1）。
+    bool Overlaps(const AABB &o) const {
+        if (!IsValid() || !o.IsValid()) {
+            return false;
+        }
+        return min.x <= o.max.x && max.x >= o.min.x
+            && min.y <= o.max.y && max.y >= o.min.y
+            && min.z <= o.max.z && max.z >= o.min.z;
+    }
 };
 
 /**

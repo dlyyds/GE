@@ -247,6 +247,13 @@ private:
     /// 视锥剔除粒度（默认仅网格级，保留现有行为）
     CullingMode m_CullingMode = CullingMode::Mesh;
 
+    /// 阴影视锥（方向光阴影专用剔除体，世界空间 AABB，阴影剔除计划书 §3.1）。
+    /// UpdateLightParams 每帧按「光方向 + 本帧相机视锥」重算（含 5% z 余量）；
+    /// 无方向光或 castShadow=false 时置无效（min.x > max.x），阴影遍历整遍跳过（§4.3）。
+    /// 存两个 vec3 而非 AABB：AABB 定义在 Render/Mesh.h（引 Vulkan 重头），Scene.h 不引入。
+    glm::vec3 m_ShadowVolumeMin{0.0f};
+    glm::vec3 m_ShadowVolumeMax{-1.0f};
+
     /// 模拟运行态（默认 Edit；瞬态不序列化，加载后恒为 Edit，见计划书决策 5.5）
     SimulationState m_SimulationState = SimulationState::Edit;
 

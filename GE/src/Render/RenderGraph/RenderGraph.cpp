@@ -16,6 +16,7 @@
 #include "Core/Log.h"
 #include "Debug/Assert.h"
 #include "Render/VulkanBase/VulkanCommandBuffer.h"
+#include "Render/VulkanBase/VulkanDebug.h" // ScopedDebugLabel（pass 调试标签）
 #include "Render/VulkanBase/VulkanDevice.h"
 #include "Render/VulkanBase/VulkanImage.h"
 #include "Render/VulkanBase/VulkanImageView.h"
@@ -599,9 +600,16 @@ void RenderGraph::Execute(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame) {
         ctx.colorAttachmentViews = std::move(colorAttachmentViews);
         ctx.readImageViews = std::move(readImageViews);
 
-        rinfo.Begin(cmd.GetHandle());
-        pass.execute(ctx);
-        VulkanRenderingInfo::End(cmd.GetHandle());
+        // 用 pass 名包一层调试标签：RenderDoc 里每个动态渲染 pass 显示为命名区域
+        // （等效传统 render pass 的名字），纯深度/零颜色 pass（如 ShadowMap）同样有效。
+        // validation 关闭时 GetDebugUtils() 是 Dummy 空实现，零开销。
+        {
+            ScopedDebugLabel passLabel(m_Device->GetDebugUtils(), cmd.GetHandle(),
+                                       pass.name, glm::vec4{0.30f, 0.60f, 1.00f, 1.0f});
+            rinfo.Begin(cmd.GetHandle());
+            pass.execute(ctx);
+            VulkanRenderingInfo::End(cmd.GetHandle());
+        }
 
         // ---- 收尾：写后布局转换（AttachmentDesc.finalLayout，S1 预留、S2 接线） ----
         // 附件在动态渲染内停在 LayoutForWrite(usage)（颜色/深度附件态）；若调用方

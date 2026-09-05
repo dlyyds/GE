@@ -85,26 +85,31 @@ public:
     /// 渲染段（不透明 / 透明）。作为排序最高语义分区：透明段从不透明段
     /// 独立排序绘制，其深度方向也与不透明相反。
     enum class Pass : uint8_t {
-        Opaque = 0,   ///< 不透明段（Opaque + Mask，深度写、近→远 early-z）
+        Opaque = 0, ///< 不透明段（Opaque + Mask，深度写、近→远 early-z）
         Transparent = 1, ///< 透明段（Blend，深度不写、远→近）
     };
 
     /// 排序键：按 pass → pipeline → material → mesh → submesh → depth 顺序比较。
     struct SortKey {
-        uint8_t  passId     = 0;  ///< 渲染段（0=不透明，1=透明；最高优先，保证两段连续前缀）
-        uint8_t  pipelineId = 0;  ///< 管线 id（材质 PBR 位 + 蒙皮位；段内次高）
-        uint64_t materialId = 0;  ///< 材质指针值（分组用）
-        uint64_t meshId     = 0;  ///< mesh 指针值（分组用）
-        uint64_t submeshId  = 0;  ///< 子网格范围（firstIndex<<32 | indexCount，分组用）
-        uint32_t depthBits  = 0;  ///< view 空间深度（不透明正序位模式；透明按位取反后仍升序排列 = 远→近）
+        uint8_t passId = 0; ///< 渲染段（0=不透明，1=透明；最高优先，保证两段连续前缀）
+        uint8_t pipelineId = 0; ///< 管线 id（材质 PBR 位 + 蒙皮位；段内次高）
+        uint64_t materialId = 0; ///< 材质指针值（分组用）
+        uint64_t meshId = 0; ///< mesh 指针值（分组用）
+        uint64_t submeshId = 0; ///< 子网格范围（firstIndex<<32 | indexCount，分组用）
+        uint32_t depthBits = 0; ///< view 空间深度（不透明正序位模式；透明按位取反后仍升序排列 = 远→近）
 
         /// 按优先级从高到低比较，供 std::sort 使用。
         bool operator<(const SortKey &o) const {
-            if (passId != o.passId) return passId < o.passId;
-            if (pipelineId != o.pipelineId) return pipelineId < o.pipelineId;
-            if (materialId != o.materialId) return materialId < o.materialId;
-            if (meshId != o.meshId) return meshId < o.meshId;
-            if (submeshId != o.submeshId) return submeshId < o.submeshId;
+            if (passId != o.passId)
+                return passId < o.passId;
+            if (pipelineId != o.pipelineId)
+                return pipelineId < o.pipelineId;
+            if (materialId != o.materialId)
+                return materialId < o.materialId;
+            if (meshId != o.meshId)
+                return meshId < o.meshId;
+            if (submeshId != o.submeshId)
+                return submeshId < o.submeshId;
             return depthBits < o.depthBits;
         }
     };
@@ -113,9 +118,9 @@ public:
      * @brief 单个点光源参数。
      */
     struct PointLight {
-        glm::vec3 position    = {0.0f, 2.0f, 0.0f};           ///< 点光源世界坐标位置
-        glm::vec4 color       = {1.0f, 1.0f, 1.0f, 1.0f};     ///< 点光源颜色(rgb) + 强度(a)
-        float     radiusInv   = 0.5f;                          ///< 点光源半径倒数（衰减系数）
+        glm::vec3 position = {0.0f, 2.0f, 0.0f}; ///< 点光源世界坐标位置
+        glm::vec4 color = {1.0f, 1.0f, 1.0f, 1.0f}; ///< 点光源颜色(rgb) + 强度(a)
+        float radiusInv = 0.5f; ///< 点光源半径倒数（衰减系数）
     };
 
     /**
@@ -123,18 +128,18 @@ public:
      */
     struct LightParams {
         // 方向光
-        glm::vec3 dirLightDirection = {0.0f, -1.0f, 0.0f};     ///< 方向光方向（指向光源的反方向）
-        glm::vec4 dirLightColor     = {1.0f, 1.0f, 1.0f, 1.0f}; ///< 方向光颜色(rgb) + 强度(a)
+        glm::vec3 dirLightDirection = {0.0f, -1.0f, 0.0f}; ///< 方向光方向（指向光源的反方向）
+        glm::vec4 dirLightColor = {1.0f, 1.0f, 1.0f, 1.0f}; ///< 方向光颜色(rgb) + 强度(a)
 
         // 方向光阴影（S1：只算矩阵与开关，shader 尚未采样，无视觉变化）
-        bool      castShadow   = false;   ///< 方向光是否投阴影（无方向光实体时为 false）
-        glm::mat4 lightViewProj{1.0f};    ///< 光空间 view-proj（世界 → 光裁剪空间），Scene 每帧按相机视锥算好
+        bool castShadow = false; ///< 方向光是否投阴影（无方向光实体时为 false）
+        glm::mat4 lightViewProj{1.0f}; ///< 光空间 view-proj（世界 → 光裁剪空间），Scene 每帧按相机视锥算好
 
         // 点光源数组（存入 SSBO 无编译期上限，按实际数量上传）
         std::vector<PointLight> pointLights{1}; ///< 点光源数组（默认 1 个）
 
         // 环境光
-        glm::vec4 ambient = {0.3f, 0.3f, 0.3f, 1.0f};          ///< 环境光颜色(rgb) + 强度(a)
+        glm::vec4 ambient = {0.3f, 0.3f, 0.3f, 1.0f}; ///< 环境光颜色(rgb) + 强度(a)
     };
 
     /// 构造：初始化着色器、pipeline layout。
@@ -143,8 +148,11 @@ public:
     ~Renderer3D();
 
     Renderer3D(const Renderer3D &) = delete;
+
     Renderer3D &operator=(const Renderer3D &) = delete;
+
     Renderer3D(Renderer3D &&) = delete;
+
     Renderer3D &operator=(Renderer3D &&) = delete;
 
     // ========================================================================
@@ -342,33 +350,35 @@ private:
 
     /// 帧级 UBO（每帧一个，所有网格共享）
     struct FrameUBO {
-        glm::mat4 projection;                         ///< 投影矩阵
-        glm::mat4 view;                               ///< 视图矩阵
-        glm::vec4 viewPos;                            ///< 相机位置（xyz, w 未用）
-        glm::vec4 dirLightDirection;                  ///< 方向光方向（xyz, w 未用）
-        glm::vec4 dirLightColor;                      ///< 方向光颜色(rgb) + 强度(a)
-        glm::vec4 lightCount;                    ///< x = 点光源数量，yzw 填充对齐（点光源本体在 SSBO）
-        glm::vec4 ambient;                            ///< 环境光颜色(rgb) + 强度(a)
-        glm::vec4 iblParams;                  ///< x = 预滤波最大 mip 数（MAX_REFLECTION_LOD），yzw 预留
+        glm::mat4 projection; ///< 投影矩阵
+        glm::mat4 view; ///< 视图矩阵
+        glm::vec4 viewPos; ///< 相机位置（xyz, w 未用）
+        glm::vec4 dirLightDirection; ///< 方向光方向（xyz, w 未用）
+        glm::vec4 dirLightColor; ///< 方向光颜色(rgb) + 强度(a)
+        glm::vec4 lightCount; ///< x = 点光源数量，yzw 填充对齐（点光源本体在 SSBO）
+        glm::vec4 ambient; ///< 环境光颜色(rgb) + 强度(a)
+        glm::vec4 iblParams; ///< x = 预滤波最大 mip 数（MAX_REFLECTION_LOD），yzw 预留
     };
+
     static_assert(sizeof(FrameUBO) % 16 == 0, "FrameUBO 必须 16 字节对齐");
 
     /// 延迟渲染 Lighting UBO（std140 布局，set 0 binding 0）
     /// 除前向共享光照字段外，额外携带反投影矩阵与背景色。
     struct LightingUBO {
-        glm::mat4 invView;                            ///< 视图矩阵逆（天空盒方向用）
-        glm::mat4 invProj;                            ///< 投影矩阵逆（NDC -> 视空间）
-        glm::vec4 clearColor;                         ///< 天空盒未启用时的背景色
-        glm::vec4 flags;                              ///< x = skyboxEnabled，y = IBL 开关
-        glm::vec4 viewPos;                            ///< 相机位置（xyz, w 未用）
-        glm::vec4 dirLightDirection;                  ///< 方向光方向（xyz, w 未用）
-        glm::vec4 dirLightColor;                      ///< 方向光颜色(rgb) + 强度(a)
-        glm::vec4 lightCount;                         ///< x = 点光源数量
-        glm::vec4 ambient;                            ///< 环境光颜色(rgb) + 强度(a)
-        glm::vec4 iblParams;                  ///< x = 预滤波最大 mip 数（MAX_REFLECTION_LOD），yzw 预留
-        glm::mat4 lightViewProj;                      ///< 光空间 view-proj（世界 → 光裁剪空间），阴影比较用
-        glm::vec4 shadowParams;                       ///< x = 阴影贴图尺寸（像素），y = 偏差，z = 阴影开关(0/1)，w = PCF 半径
+        glm::mat4 invView; ///< 视图矩阵逆（天空盒方向用）
+        glm::mat4 invProj; ///< 投影矩阵逆（NDC -> 视空间）
+        glm::vec4 clearColor; ///< 天空盒未启用时的背景色
+        glm::vec4 flags; ///< x = skyboxEnabled，y = IBL 开关
+        glm::vec4 viewPos; ///< 相机位置（xyz, w 未用）
+        glm::vec4 dirLightDirection; ///< 方向光方向（xyz, w 未用）
+        glm::vec4 dirLightColor; ///< 方向光颜色(rgb) + 强度(a)
+        glm::vec4 lightCount; ///< x = 点光源数量
+        glm::vec4 ambient; ///< 环境光颜色(rgb) + 强度(a)
+        glm::vec4 iblParams; ///< x = 预滤波最大 mip 数（MAX_REFLECTION_LOD），yzw 预留
+        glm::mat4 lightViewProj; ///< 光空间 view-proj（世界 → 光裁剪空间），阴影比较用
+        glm::vec4 shadowParams; ///< x = 阴影贴图尺寸（像素），y = 偏差，z = 阴影开关(0/1)，w = PCF 半径
     };
+
     static_assert(sizeof(LightingUBO) % 16 == 0, "LightingUBO 必须 16 字节对齐");
 
     /// per-instance 数据（阶段3，存入 SSBO，std430 布局）
@@ -376,18 +386,20 @@ private:
     /// 材质标量参数（shininess 等）已迁入 per-material UBO（MaterialUBO），
     /// 不再在此冗余存储，同时消除了 mat4 16B 对齐产生的 12B/实例 浪费。
     struct InstanceData {
-        glm::mat4 model;             ///< 模型矩阵（列主序）
-        glm::vec4 color;             ///< 叠加颜色（tint），与纹理颜色相乘
+        glm::mat4 model; ///< 模型矩阵（列主序）
+        glm::vec4 color; ///< 叠加颜色（tint），与纹理颜色相乘
     };
+
     static_assert(sizeof(InstanceData) == 80, "InstanceData 必须与 std430 布局一致");
 
     /// 点光源 GPU 布局（与 GLSL PointLight 一致：2 个 vec4 = 32 字节）。
     /// 存入 set 0, binding 1 的光源 SSBO（无上界动态数组，解除编译期数量上限）。
     /// position.xyz = 世界位置，position.w = 半径倒数；color.rgb = 颜色，color.a = 强度。
     struct LightGPU {
-        glm::vec4 position;  ///< xyz = 世界位置，w = 半径倒数
-        glm::vec4 color;     ///< rgb = 颜色，a = 强度
+        glm::vec4 position; ///< xyz = 世界位置，w = 半径倒数
+        glm::vec4 color; ///< rgb = 颜色，a = 强度
     };
+
     static_assert(sizeof(LightGPU) == 32, "LightGPU 必须与 GLSL PointLight 布局一致");
 
     /// 每材质 UBO（std140 布局，set 1 binding 2，按批次绑定）
@@ -398,41 +410,43 @@ private:
     ///   pbr.x = metallic，pbr.y = roughness（PBR 材质使用）
     ///   emissiveFactor.rgb = 自发光颜色因子（乘自发光贴图颜色）
     struct MaterialUBO {
-        glm::vec4 params;            ///< x = shininess，y = specularStrength，z 预留，w = uvTiling
-        glm::vec4 pbr;               ///< x = metallic，y = roughness（金属-粗糙度）
-        glm::vec4 emissiveFactor;    ///< rgb = 自发光颜色因子 [R,G,B]，w 预留
+        glm::vec4 params; ///< x = shininess，y = specularStrength，z 预留，w = uvTiling
+        glm::vec4 pbr; ///< x = metallic，y = roughness（金属-粗糙度）
+        glm::vec4 emissiveFactor; ///< rgb = 自发光颜色因子 [R,G,B]，w 预留
     };
+
     static_assert(sizeof(MaterialUBO) == 48, "MaterialUBO 必须 16 字节对齐");
 
     /// 天空盒 UBO（std140 布局，set 0 binding 0）
     /// 只存反投影所需矩阵：仅旋转视图矩阵逆（invView）+ 投影矩阵逆（invProj）。
     /// 2 个 mat4 = 128 字节，16 字节对齐。
     struct SkyboxUBO {
-        glm::mat4 invView;   ///< 仅旋转部分视图矩阵的逆（视方向 → 世界方向）
-        glm::mat4 invProj;   ///< 投影矩阵的逆（NDC → 视空间视线）
+        glm::mat4 invView; ///< 仅旋转部分视图矩阵的逆（视方向 → 世界方向）
+        glm::mat4 invProj; ///< 投影矩阵的逆（NDC → 视空间视线）
     };
+
     static_assert(sizeof(SkyboxUBO) == 128, "SkyboxUBO 必须 16 字节对齐");
 
     /// 一个待绘制的网格实例（可指向网格的某个子网格范围）
     struct MeshInstance {
-        glm::mat4 transform;   ///< 模型变换矩阵
-        Mesh     *mesh;        ///< 网格资源
-        uint32_t  firstIndex;  ///< 索引缓冲起始（元素索引）
-        uint32_t  indexCount;  ///< 索引数量
-        Material *material;    ///< 材质（可为 nullptr，nullptr 时使用白色 fallback）
-        glm::vec4 color;       ///< 叠加颜色
-        SortKey   sortKey;     ///< 排序键（EndScene 绘制前按此排序）
+        glm::mat4 transform; ///< 模型变换矩阵
+        Mesh *mesh; ///< 网格资源
+        uint32_t firstIndex; ///< 索引缓冲起始（元素索引）
+        uint32_t indexCount; ///< 索引数量
+        Material *material; ///< 材质（可为 nullptr，nullptr 时使用白色 fallback）
+        glm::vec4 color; ///< 叠加颜色
+        SortKey sortKey; ///< 排序键（EndScene 绘制前按此排序）
         const void *skinKey = nullptr; ///< 共享皮肤定义指针（SkinDef*，nullptr = 静态网格，走非蒙皮管线）
     };
 
     /// 阶段3：一个 instancing 绘制批次（相同 mesh + 相同子网格 + 相同材质）
     struct RenderBatch {
-        Mesh     *mesh;          ///< 网格资源
-        uint32_t  firstIndex;    ///< 索引缓冲起始（元素索引）
-        uint32_t  indexCount;    ///< 索引数量
-        Material *material;      ///< 材质
-        uint32_t  firstInstance; ///< 该批次在全局实例缓冲中的起始实例索引
-        uint32_t  instanceCount; ///< 实例数量
+        Mesh *mesh; ///< 网格资源
+        uint32_t firstIndex; ///< 索引缓冲起始（元素索引）
+        uint32_t indexCount; ///< 索引数量
+        Material *material; ///< 材质
+        uint32_t firstInstance; ///< 该批次在全局实例缓冲中的起始实例索引
+        uint32_t instanceCount; ///< 实例数量
         const void *skinKey = nullptr; ///< 共享皮肤定义指针（SkinDef*，nullptr = 静态）
     };
 
@@ -637,16 +651,16 @@ private:
     // ========================================================================
 
     /// 网格顶点着色器（由全局资源缓存管理，不拥有）
-    VulkanShaderModule   *m_VertShader = nullptr;
+    VulkanShaderModule *m_VertShader = nullptr;
 
     /// 网格片元着色器（Blinn-Phong，由全局资源缓存管理，不拥有）
-    VulkanShaderModule   *m_FragShader = nullptr;
+    VulkanShaderModule *m_FragShader = nullptr;
 
     /// PBR 片元着色器（Cook-Torrance，由全局资源缓存管理，不拥有）
-    VulkanShaderModule   *m_FragShaderPBR = nullptr;
+    VulkanShaderModule *m_FragShaderPBR = nullptr;
 
     /// PBR-IBL 片元着色器（HAS_IBL 变体，由全局资源缓存管理，不拥有）
-    VulkanShaderModule   *m_FragShaderPBR_IBL = nullptr;
+    VulkanShaderModule *m_FragShaderPBR_IBL = nullptr;
 
     /// Blinn-Phong 管线布局（由全局资源缓存管理，不拥有）
     VulkanPipelineLayout *m_PipelineLayout = nullptr;
@@ -659,7 +673,7 @@ private:
 
     /// 蒙皮顶点着色器（mesh_skinned.vert，声明 location 4/5 + set2 binding1 关节矩阵，
     /// 由全局资源缓存管理，不拥有）
-    VulkanShaderModule   *m_VertShaderSkinned = nullptr;
+    VulkanShaderModule *m_VertShaderSkinned = nullptr;
 
     /// 蒙皮肤管线布局（mesh_skinned.vert + 三种片元，由全局资源缓存管理，不拥有）
     VulkanPipelineLayout *m_PipelineLayoutSkinned = nullptr;
@@ -667,14 +681,14 @@ private:
     VulkanPipelineLayout *m_PipelineLayoutSkinnedPBR_IBL = nullptr;
 
     /// GBuffer 片元着色器（mesh_gbuffer.frag，MRT 输出，由全局资源缓存管理，不拥有）
-    VulkanShaderModule   *m_FragShaderGBuffer = nullptr;
+    VulkanShaderModule *m_FragShaderGBuffer = nullptr;
 
     /// GBuffer 管线布局（mesh.vert/mesh_skinned.vert + mesh_gbuffer.frag，由全局资源缓存管理，不拥有）
     VulkanPipelineLayout *m_PipelineLayoutGBuffer = nullptr;
     VulkanPipelineLayout *m_PipelineLayoutSkinnedGBuffer = nullptr;
 
     /// 阴影深度片元着色器（depth_only.frag：只采样 Albedo + MASK discard，无颜色输出）
-    VulkanShaderModule   *m_FragShaderDepthOnly = nullptr;
+    VulkanShaderModule *m_FragShaderDepthOnly = nullptr;
 
     /// 阴影深度 pass 管线布局（mesh.vert/mesh_skinned.vert + depth_only.frag）
     VulkanPipelineLayout *m_PipelineLayoutShadow = nullptr;
@@ -685,17 +699,17 @@ private:
     VulkanSampler *m_ShadowSampler = nullptr;
 
     /// 延迟 Lighting 顶点/片元着色器（由全局资源缓存管理，不拥有）
-    VulkanShaderModule   *m_LightingVert = nullptr;
-    VulkanShaderModule   *m_LightingFrag = nullptr;
+    VulkanShaderModule *m_LightingVert = nullptr;
+    VulkanShaderModule *m_LightingFrag = nullptr;
 
     /// 延迟 Lighting 管线布局（由全局资源缓存管理，不拥有）
     VulkanPipelineLayout *m_LightingLayout = nullptr;
 
     /// 天空盒顶点着色器（由全局资源缓存管理，不拥有）
-    VulkanShaderModule   *m_SkyboxVert = nullptr;
+    VulkanShaderModule *m_SkyboxVert = nullptr;
 
     /// 天空盒片元着色器（由全局资源缓存管理，不拥有）
-    VulkanShaderModule   *m_SkyboxFrag = nullptr;
+    VulkanShaderModule *m_SkyboxFrag = nullptr;
 
     /// 天空盒管线布局（由全局资源缓存管理，不拥有）
     VulkanPipelineLayout *m_SkyboxLayout = nullptr;
@@ -707,7 +721,7 @@ private:
     std::unique_ptr<EnvironmentMap> m_EnvironmentMap;
 
     /// 已退休待销毁的环境映射（延迟到 GPU 空闲 + 描述符池重置后销毁）
-    std::vector<std::unique_ptr<EnvironmentMap>> m_RetiredEnvironments;
+    std::vector<std::unique_ptr<EnvironmentMap> > m_RetiredEnvironments;
 
     /// 已加载环境的名称（用于 SetEnvironment 判断是否需重建）
     std::string m_EnvironmentName;

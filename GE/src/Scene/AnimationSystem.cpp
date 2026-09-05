@@ -59,17 +59,24 @@ bool EvalConditions(AnimStateMachineComponent &asmc, const AnimationComponent &a
             const float b = c.value;
             bool pass = false;
             switch (c.cmp) {
-            case AnimCondition::Cmp::Greater:   pass = a > b;  break;
-            case AnimCondition::Cmp::GreaterEq: pass = a >= b; break;
-            case AnimCondition::Cmp::Less:      pass = a < b;  break;
-            case AnimCondition::Cmp::LessEq:    pass = a <= b; break;
-            case AnimCondition::Cmp::NearEq:    pass = std::abs(a - b) <= kAnimNearEps; break;
-            default:                            pass = (a != b); break; // Not
+            case AnimCondition::Cmp::Greater: pass = a > b;
+                break;
+            case AnimCondition::Cmp::GreaterEq: pass = a >= b;
+                break;
+            case AnimCondition::Cmp::Less: pass = a < b;
+                break;
+            case AnimCondition::Cmp::LessEq: pass = a <= b;
+                break;
+            case AnimCondition::Cmp::NearEq: pass = std::abs(a - b) <= kAnimNearEps;
+                break;
+            default: pass = (a != b);
+                break; // Not
             }
             if (!pass) {
                 return false;
             }
-        } break;
+        }
+        break;
         case AnimCondition::Type::Bool: {
             const bool fired = asmc.triggers.count(c.param) > 0; // 读，不删（帧末统一消费）
             if (fired) {
@@ -79,21 +86,24 @@ bool EvalConditions(AnimStateMachineComponent &asmc, const AnimationComponent &a
             if (val != c.expect) {
                 return false;
             }
-        } break;
-        case AnimCondition::Type::StateTime:
-            if (asmc.stateTime < c.value) { // 驻留时间下限，防触发后立刻回跳（振铃）
+        }
+        break;
+        case AnimCondition::Type::StateTime: if (asmc.stateTime < c.value) {
+                // 驻留时间下限，防触发后立刻回跳（振铃）
                 return false;
             }
             break;
         case AnimCondition::Type::StateEnded: {
             const AnimationClip *clip = ac.activeClip();
-            if (!clip || ac.loop) { // 无有效 clip / 循环动画永不"播完"
+            if (!clip || ac.loop) {
+                // 无有效 clip / 循环动画永不"播完"
                 return false;
             }
             if (ac.time < clip->duration - kAnimNearEps) {
                 return false;
             }
-        } break;
+        }
+        break;
         }
     }
     return true;
@@ -244,7 +254,8 @@ void FireEvents(ScriptEngine &engine, entt::entity entity,
             if (e.time > a && e.time <= b)
                 engine.DispatchAnimationEvent(entity, e.name);
     };
-    if (loop && cur < prev) { // 回绕：跨过末尾 → 拆 (prev, duration] 与 [0, cur]
+    if (loop && cur < prev) {
+        // 回绕：跨过末尾 → 拆 (prev, duration] 与 [0, cur]
         fire(prev, duration);
         fire(0.0f, cur);
     } else if (cur > prev) {
@@ -282,7 +293,8 @@ void BlendAndApplyTransition(entt::registry &registry, AnimationComponent &ac, f
     for (size_t ci = 0; ci < targetClip->channels.size(); ++ci) {
         const auto &ch = targetClip->channels[ci];
         const entt::entity e = (ci < targetInst.channelTargets.size())
-            ? targetInst.channelTargets[ci] : entt::null;
+                                   ? targetInst.channelTargets[ci]
+                                   : entt::null;
         if (e == entt::null || !registry.try_get<TransformComponent>(e)) {
             continue;
         }
@@ -296,8 +308,10 @@ void BlendAndApplyTransition(entt::registry &registry, AnimationComponent &ac, f
         }
         switch (ch.path) {
         case Path::Translation:
-        case Path::Scale: buffer[s].v = SampleVec3Channel(ch, ac.time, targetHints[ci]); break;
-        case Path::Rotation: buffer[s].q = SampleQuatChannel(ch, ac.time, targetHints[ci]); break;
+        case Path::Scale: buffer[s].v = SampleVec3Channel(ch, ac.time, targetHints[ci]);
+            break;
+        case Path::Rotation: buffer[s].q = SampleQuatChannel(ch, ac.time, targetHints[ci]);
+            break;
         }
     }
 
@@ -311,7 +325,8 @@ void BlendAndApplyTransition(entt::registry &registry, AnimationComponent &ac, f
     for (size_t ci = 0; ci < fromClip->channels.size(); ++ci) {
         const auto &ch = fromClip->channels[ci];
         const entt::entity e = (ci < fromInst.channelTargets.size())
-            ? fromInst.channelTargets[ci] : entt::null;
+                                   ? fromInst.channelTargets[ci]
+                                   : entt::null;
         if (e == entt::null || !registry.try_get<TransformComponent>(e)) {
             continue;
         }
@@ -346,9 +361,12 @@ void BlendAndApplyTransition(entt::registry &registry, AnimationComponent &ac, f
             continue;
         }
         switch (slot.p) {
-        case Path::Translation: tc->Translation = slot.v; break;
-        case Path::Rotation: tc->Rotation = slot.q; break;
-        case Path::Scale: tc->Scale = slot.v; break;
+        case Path::Translation: tc->Translation = slot.v;
+            break;
+        case Path::Rotation: tc->Rotation = slot.q;
+            break;
+        case Path::Scale: tc->Scale = slot.v;
+            break;
         }
     }
 }
@@ -382,7 +400,7 @@ void UpdateAnimations(entt::registry &registry, ScriptEngine &scriptEngine, Time
                     EnterState(*asmc, ac, ResolveInitialStateIndex(*asmc), 0.0f);
                 }
                 if (asmc->current != SIZE_MAX) {
-                    ac.loop = asmc->states[asmc->current].loop;   // 状态参数持续生效（防外改漂移）
+                    ac.loop = asmc->states[asmc->current].loop; // 状态参数持续生效（防外改漂移）
                     ac.speed = asmc->states[asmc->current].speed;
                     asmc->stateTime += ts.GetSeconds();
 
@@ -405,9 +423,9 @@ void UpdateAnimations(entt::registry &registry, ScriptEngine &scriptEngine, Time
                             for (const auto &rn : consumedTriggers) {
                                 readNames += (readNames.empty() ? "" : ",") + rn;
                             }
-                            GE_CORE_INFO("[ASM] 状态 {} → {}（blend {:.2f}s）触发, 读取 trigger: {}",
-                                         asmc->states[fromState].name, asmc->states[t.to].name,
-                                         t.blendSec, readNames.empty() ? "-" : readNames);
+                            // GE_CORE_INFO("[ASM] 状态 {} → {}（blend {:.2f}s）触发, 读取 trigger: {}",
+                            //              asmc->states[fromState].name, asmc->states[t.to].name,
+                            //              t.blendSec, readNames.empty() ? "-" : readNames);
                         }
                         break; // 声明序首达优先
                     }
@@ -471,8 +489,8 @@ void UpdateAnimations(entt::registry &registry, ScriptEngine &scriptEngine, Time
         if (inTransition) {
             // 过渡期：双路求值 → buffer 混合 → 统一写回（决策 9.3）。
             const float alpha = (ac.transitionDuration > 0.0f)
-                ? std::clamp(ac.transitionElapsed / ac.transitionDuration, 0.0f, 1.0f)
-                : 1.0f;
+                                    ? std::clamp(ac.transitionElapsed / ac.transitionDuration, 0.0f, 1.0f)
+                                    : 1.0f;
             BlendAndApplyTransition(registry, ac, alpha);
             if (ac.transitionElapsed >= ac.transitionDuration) {
                 ac.transitionFrom = SIZE_MAX; // 过渡结束：仅目标 clip 驱动
@@ -519,7 +537,7 @@ bool ReloadClipSource(entt::registry &registry, entt::entity entity) {
 
     // 收集组件各 clip 的源键，并拆出去重后的独立源文件列表。
     // clips 里的旧键看不出"多了一条"——新增动画只能靠重读文件枚举 model.animations 发现。
-    std::vector<std::string> keys;      // 组件已有源键（判断已挂 / 新增）
+    std::vector<std::string> keys; // 组件已有源键（判断已挂 / 新增）
     std::vector<std::string> filepaths; // 独立源文件（每个只 LoadModel 一次）
     for (const auto &inst : ac->clips) {
         if (!inst.clip || inst.clip->source.empty()) {
@@ -528,7 +546,8 @@ bool ReloadClipSource(entt::registry &registry, entt::entity entity) {
         keys.push_back(inst.clip->source);
         const size_t hashPos = inst.clip->source.rfind('#');
         const std::string filepath = (hashPos == std::string::npos)
-            ? inst.clip->source : inst.clip->source.substr(0, hashPos);
+                                         ? inst.clip->source
+                                         : inst.clip->source.substr(0, hashPos);
         if (std::find(filepaths.begin(), filepaths.end(), filepath) == filepaths.end()) {
             filepaths.push_back(filepath);
         }

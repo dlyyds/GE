@@ -68,7 +68,10 @@ public:
     ResourceHandle Import(VulkanImageView *view, const std::string &name = {});
 
     /// 创建帧内虚拟图像资源（v1 仅登记描述，不分配 GPU 内存）。返回句柄。
-    ResourceHandle CreateVirtualResource(const RenderGraphResourceDesc &desc);
+    /// @param name 可选资源名（调试）；缺省 "virtual"。池分配的图像/视图以此命名，
+    ///             RenderDoc 纹理视图里可直接认出（如 "ShadowMap" 深度图）。
+    ResourceHandle CreateVirtualResource(const RenderGraphResourceDesc &desc,
+                                         const std::string &name = "virtual");
 
     /// 追加一个 Pass 声明。返回其下标。
     uint32_t AddPass(RenderPassDesc &&desc);
@@ -194,8 +197,9 @@ public:
     }
 
     /// 创建虚拟图像资源（转发）。
-    ResourceHandle CreateVirtualResource(const RenderGraphResourceDesc &desc) {
-        return m_Graph.CreateVirtualResource(desc);
+    ResourceHandle CreateVirtualResource(const RenderGraphResourceDesc &desc,
+                                         const std::string &name = "virtual") {
+        return m_Graph.CreateVirtualResource(desc, name);
     }
 
     /// 新建 pass 并返回引用供填充。

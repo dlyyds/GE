@@ -232,6 +232,13 @@ void RenderGraph::ResolveVirtualResources() {
         }
 
         PooledImage *entry = AcquirePoolEntry(rec.virtualDesc, usage);
+        // 虚拟资源命名：RenderDoc 纹理视图里直接认出每张图（如图名 "ShadowMap"）。
+        // SetDebugName 幂等——池条目跨帧复用时名保持不变（同一角色同一 desc+usage），
+        // 每帧重设一次无副作用；名以图像为主、视图加 _View 后缀。
+        if (!rec.name.empty()) {
+            entry->image->SetDebugName(rec.name);
+            entry->view->SetDebugName(rec.name + "_View");
+        }
         rec.pooledView = entry->view.get();
     }
 }
@@ -316,9 +323,10 @@ ResourceHandle RenderGraph::Import(VulkanImageView *view, const std::string &nam
     return static_cast<ResourceHandle>(m_Resources.size());
 }
 
-ResourceHandle RenderGraph::CreateVirtualResource(const RenderGraphResourceDesc &desc) {
+ResourceHandle RenderGraph::CreateVirtualResource(const RenderGraphResourceDesc &desc,
+                                                  const std::string &name) {
     ResourceRecord rec;
-    rec.name = "virtual";
+    rec.name = name.empty() ? "virtual" : name;
     rec.type = ResourceType::Image;
     rec.virtualDesc = desc;
     m_Resources.emplace_back(std::move(rec));

@@ -833,11 +833,22 @@ void Renderer3D::FlushLighting(PassExecuteContext &ctx) {
         }
     }
 
-    // 阴影深度图（set 1, binding 7）：SceneLayer 在方向光阴影开启时才追加 hShadow 读，
-    // 故 readImageViews 多于 4 项即有阴影图（G0~G3 + ShadowMap）。采样器用最近邻
-    // （§5.6），PCF 逐 tap 硬比较在 shader 侧完成。无阴影时不绑，shader 走开关分支。
-    if (ctx.readImageViews.size() > 4 && m_ShadowSampler) {
-        cmd.BindImage(*ctx.readImageViews[4], *m_ShadowSampler, 1, 7);
+    // 阴影深度图（set 1, binding 7）：SceneLayer 在方向光阴影开启时才追加 hShadow_C0 读，
+    // 故 readImageViews 多于 4 项即有阴影图（G0~G3 + ShadowMap_C0..）。采样器用最近邻
+    // （§5.6），PCF 逐 tap 硬比较在 shader 侧完成。**无阴影时也必须绑有效描述符**：
+    // shader 静态引用了 binding 7（PCFShadow 内 texture()），Vulkan 描述符有效性按静态
+    // 引用判定，即使 shadowParams.z=0 运行时跳过采样，描述符未更新也会触发
+    // VUID-vkCmdDraw-None-08114——故无阴影图时绑默认白纹兜底（内容不会被采样）。
+    VulkanImageView *shadowView = nullptr;
+    if (ctx.readImageViews.size() > 4) {
+        // 阴影开启：绑定级 0 深度图（C3 前仍单图采样；C3 改数组描述符绑各级）
+        shadowView = ctx.readImageViews[4];
+    } else if (m_DefaultWhiteTexture) {
+        // 阴影关闭：绑默认白纹兜底，保证描述符有效（shader 开关分支不采样它）
+        shadowView = &m_DefaultWhiteTexture->GetImageView();
+    }
+    if (shadowView && m_ShadowSampler) {
+        cmd.BindImage(*shadowView, *m_ShadowSampler, 1, 7);
     }
 
     // IBL 三件套（set 1, binding 4/5/6）：辐照度与预滤波共绑预滤波 cubemap，

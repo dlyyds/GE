@@ -18,6 +18,7 @@
 #include "GE/Render/TextureManager.h"
 #include "GE/Render/AssetManager.h"
 #include "GE/Render/Renderer.h"
+#include "GE/Render/Renderer3D.h"
 #include "GE/Render/Mesh.h"
 #include "GE/Render/MeshManager.h"
 #include "GE/Scene/GLTFSceneImporter.h"
@@ -1499,6 +1500,20 @@ void SceneHierarchyPanel::DrawDirectionalLightComponent(DirectionalLightComponen
     // 颜色 + 强度（alpha 通道作为强度）
     ImGui::ColorEdit4("Color + Intensity", glm::value_ptr(component.Color));
     ImGui::Checkbox("Cast Shadow", &component.CastShadow);
+
+    // 阴影图尺寸（Renderer3D 全局设置，非组件字段）：2 的幂滑杆 512…8192。
+    // 分辨率越大阴影越清晰、开销越高；改动下帧重建阴影深度图后生效。
+    // 用对数指数滑杆保证只取 2 的幂（池按 desc 复用，尺寸变化会重新分配）。
+    if (component.CastShadow) {
+        auto &r3d = Renderer::Get3DRenderer();
+        const uint32_t size = r3d.GetShadowMapSize();
+        int exponent = std::max(9, static_cast<int>(std::log2(static_cast<double>(size))));
+        if (ImGui::SliderInt("Shadow Map Size (log2)", &exponent, 9, 13, "%d")) {
+            r3d.SetShadowMapSize(1u << static_cast<uint32_t>(exponent));
+        }
+        ImGui::TextDisabled("当前分辨率 %u × %u px（2 的幂）", size, size);
+    }
+
     ImGui::TextDisabled("照射方向由 Transform 的 Rotation 决定");
 }
 

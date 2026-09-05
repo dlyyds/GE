@@ -536,6 +536,21 @@ private:
                            bool gbuffer = false,
                            bool shadow = false);
 
+    /**
+     * @brief 按 pass 模式与材质路由网格管线布局。
+     *
+     * 阴影 / GBuffer / 前向三种 pass 各有一套（静态 + 蒙皮）布局；前向再按
+     * PBR / IBL 拆出 IBL 变体。顺序判定（非嵌套三元），避免深层嵌套难读。
+     *
+     * @param shadow  是否阴影深度 pass
+     * @param gbuffer 是否 GBuffer pass
+     * @param pbr     材质是否为 PBR
+     * @param useIbl  IBL 是否启用（仅前向 PBR 相关）
+     * @param skinned 是否为蒙皮批次
+     */
+    VulkanPipelineLayout *ResolveMeshLayout(bool shadow, bool gbuffer,
+                                            bool pbr, bool useIbl, bool skinned);
+
     /// 统计 draw call 与三角形数量（draw call = 批次数量）
     void RecordStats(uint32_t drawCallCount);
 

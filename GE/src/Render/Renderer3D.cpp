@@ -1359,6 +1359,26 @@ void Renderer3D::BindSharedUniforms(VulkanCommandBuffer &cmd,
     }
 }
 
+VulkanPipelineLayout *Renderer3D::ResolveMeshLayout(bool shadow, bool gbuffer,
+                                                    bool pbr, bool useIbl,
+                                                    bool skinned) {
+    // 优先级：阴影 > GBuffer > 前向。前向按 PBR → IBL 逐级展开；
+    // 每个分支取「蒙皮 / 静态」对应布局。顺序判定代替嵌套三元，直读。
+    if (shadow) {
+        return skinned ? m_PipelineLayoutSkinnedShadow : m_PipelineLayoutShadow;
+    }
+    if (gbuffer) {
+        return skinned ? m_PipelineLayoutSkinnedGBuffer : m_PipelineLayoutGBuffer;
+    }
+    if (pbr && useIbl) {
+        return skinned ? m_PipelineLayoutSkinnedPBR_IBL : m_PipelineLayoutPBR_IBL;
+    }
+    if (pbr) {
+        return skinned ? m_PipelineLayoutSkinnedPBR : m_PipelineLayoutPBR;
+    }
+    return skinned ? m_PipelineLayoutSkinned : m_PipelineLayout;
+}
+
 void Renderer3D::DrawMeshInstances(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame,
                                    const std::vector<RenderBatch> &batches,
                                    const BufferAllocation &instanceBuffer,
@@ -1390,26 +1410,8 @@ void Renderer3D::DrawMeshInstances(VulkanCommandBuffer &cmd, VulkanRenderFrame &
         const bool pbr = ((pipelineId & 0x01u) != 0);
 
         if (pipelineId != currentPipelineId) {
-            VulkanPipelineLayout *targetLayout = m_PipelineLayout;
-            if (skinned) {
-                targetLayout = shadow
-                                   ? m_PipelineLayoutSkinnedShadow
-                                   : (gbuffer
-                                          ? m_PipelineLayoutSkinnedGBuffer
-                                          : (pbr
-                                                 ? (useIbl
-                                                        ? m_PipelineLayoutSkinnedPBR_IBL
-                                                        : m_PipelineLayoutSkinnedPBR)
-                                                 : m_PipelineLayoutSkinned));
-            } else {
-                targetLayout = shadow
-                                   ? m_PipelineLayoutShadow
-                                   : (gbuffer
-                                          ? m_PipelineLayoutGBuffer
-                                          : (pbr
-                                                 ? (useIbl ? m_PipelineLayoutPBR_IBL : m_PipelineLayoutPBR)
-                                                 : m_PipelineLayout));
-            }
+            VulkanPipelineLayout *targetLayout =
+                ResolveMeshLayout(shadow, gbuffer, pbr, useIbl, skinned);
 
             auto &ps = cmd.GetPipelineState();
             if (skinned) {

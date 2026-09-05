@@ -893,7 +893,13 @@ void Scene::UpdateLightParams(const glm::mat4 &view, const glm::mat4 &projection
                     std::clamp(lightParams.cascadeCount, 1u, kMaxCascades);
                 lightParams.cascadeCount = cascadeCount; // 写回归一化，防数组越界
                 float nearZ = 0.0f, farZ = 0.0f, tanHalfFovY = 0.0f, aspect = 1.0f;
+                GE_CORE_INFO("[CSM] 方向光: castShadow=1 cascadeCount={} dir=({:.3f},{:.3f},{:.3f})",
+                             cascadeCount,
+                             lightParams.dirLightDirection.x, lightParams.dirLightDirection.y,
+                             lightParams.dirLightDirection.z);
                 if (ExtractPerspectiveParams(projection, nearZ, farZ, tanHalfFovY, aspect)) {
+                    GE_CORE_INFO("[CSM] 透视解析 OK: near={:.4f} far={:.4f} tanHalfFov={:.4f} aspect={:.4f}",
+                                 nearZ, farZ, tanHalfFovY, aspect);
                     ComputeCascadeSplits(nearZ, farZ, cascadeCount,
                                          lightParams.cascadeSplitLambda,
                                          lightParams.cascadeSplits.data());
@@ -912,6 +918,7 @@ void Scene::UpdateLightParams(const glm::mat4 &view, const glm::mat4 &projection
                 } else {
                     // 非透视投影（如正交）：无 FOV/切分语义，退化单级 = 全视锥（沿用
                     // NDC 路径结果，与现状一致）
+                    GE_CORE_INFO("[CSM] 透视解析 FAILED（非透视投影？）→ 退化单级全视锥");
                     lightParams.cascadeCount = 1;
                     lightParams.cascadeViewProj[0] = fullFrustumViewProj;
                     m_ShadowVolume[0] = BuildShadowVolume(minP, maxP, lightView);
@@ -922,12 +929,14 @@ void Scene::UpdateLightParams(const glm::mat4 &view, const glm::mat4 &projection
                 }
             } else {
                 // 阴影关闭：置无效盒，阴影遍历整遍跳过（计划书 §4.3）
+                GE_CORE_INFO("[CSM] 方向光 CastShadow=false，关闭阴影");
                 for (auto &vol : m_ShadowVolume) {
                     vol = AABB();
                 }
             }
         } else {
             // 场景中无方向光组件时，使用默认值（斜向下的白色方向光）
+            GE_CORE_INFO("[CSM] 场景无方向光组件！");
             lightParams.dirLightDirection = {0.0f, -1.0f, 0.0f};
             lightParams.dirLightColor = {1.0f, 1.0f, 1.0f, 1.0f};
             lightParams.castShadow = false;

@@ -762,12 +762,16 @@ void Scene::UpdateLightParams(const glm::mat4 &view, const glm::mat4 &projection
             lightParams.dirLightDirection = glm::normalize(-lightDir);
             lightParams.dirLightColor = dlc.Color;
 
-            // ---- 方向光阴影（S1）：算光空间 view-proj + 开关，只落地不采样 ----
-            // 有方向光实体即如实反映开关；矩阵按「光方向 + 本帧相机视锥」逐帧重算
-            // （覆盖范围随相机转，属方向光阴影的正常行为，阴影贴图计划 §6.3）。
-            lightParams.castShadow = true;
-            lightParams.lightViewProj =
-                ComputeLightViewProj(lightParams.dirLightDirection, view, projection);
+            // ---- 方向光阴影（S1/S5）：开关 = 组件 CastShadow（默认开）----
+            // castShadow 如实反映组件开关：false 时不声明 ShadowMap pass、Lighting 不
+            // 采样，退回无阴影现状。矩阵按「光方向 + 本帧相机视锥」逐帧重算（覆盖范围
+            // 随相机转，属方向光阴影的正常行为，阴影贴图计划 §6.3）；仅开启时计算，
+            // 省一次逆投影。
+            lightParams.castShadow = dlc.CastShadow;
+            if (dlc.CastShadow) {
+                lightParams.lightViewProj =
+                    ComputeLightViewProj(lightParams.dirLightDirection, view, projection);
+            }
         } else {
             // 场景中无方向光组件时，使用默认值（斜向下的白色方向光）
             lightParams.dirLightDirection = {0.0f, -1.0f, 0.0f};

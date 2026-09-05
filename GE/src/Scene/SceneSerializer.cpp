@@ -816,6 +816,7 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
             const auto &dlc = entity.GetComponent<DirectionalLightComponent>();
             YAML::Node lightNode = entityNode["DirectionalLight"];
             lightNode["Color"] = SerializeVec4(dlc.Color);
+            lightNode["CastShadow"] = dlc.CastShadow;
         }
 
         // ---- AmbientLightComponent ----
@@ -1365,6 +1366,7 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
             auto &dlc = entity.AddComponent<DirectionalLightComponent>();
 
             dlc.Color = DeserializeVec4(lightNode["Color"], {1.0f, 1.0f, 1.0f, 1.0f});
+            dlc.CastShadow = lightNode["CastShadow"] ? lightNode["CastShadow"].as<bool>(true) : true;
         }
 
         // ---- AmbientLightComponent ----

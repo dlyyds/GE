@@ -399,6 +399,7 @@ struct PointLightComponent {
  */
 struct DirectionalLightComponent {
     glm::vec4 Color{1.0f, 1.0f, 1.0f, 1.0f}; ///< 光源颜色(rgb) + 强度(a)
+    bool CastShadow = true;                  ///< 是否投方向光阴影（默认开）
 
     DirectionalLightComponent() = default;
 

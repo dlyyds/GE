@@ -1498,6 +1498,7 @@ void SceneHierarchyPanel::DrawPointLightComponent(PointLightComponent &component
 void SceneHierarchyPanel::DrawDirectionalLightComponent(DirectionalLightComponent &component) {
     // 颜色 + 强度（alpha 通道作为强度）
     ImGui::ColorEdit4("Color + Intensity", glm::value_ptr(component.Color));
+    ImGui::Checkbox("Cast Shadow", &component.CastShadow);
     ImGui::TextDisabled("照射方向由 Transform 的 Rotation 决定");
 }
 

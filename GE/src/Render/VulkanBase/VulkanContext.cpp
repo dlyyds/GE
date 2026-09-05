@@ -103,6 +103,9 @@ void VulkanContext::ApplyDefaultExtensions() {
     // -- Device 默认扩展 --
     m_DeviceExtensions.try_emplace(VK_KHR_SWAPCHAIN_EXTENSION_NAME, RequestMode::Required);
     m_DeviceExtensions.try_emplace(VK_EXT_EXTENDED_DYNAMIC_STATE_EXTENSION_NAME, RequestMode::Required);
+    // 描述符索引（CSM 逐片元选片：Lighting 按片元 viewZ 非均匀索引 samplerShadowDepth 数组，
+    // 需要 shaderSampledImageArrayNonUniformIndexing 特性，见 CreateDevice 特性回调）
+    m_DeviceExtensions.try_emplace(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME, RequestMode::Required);
 }
 
 VulkanContext::VulkanContext(Window &window) {
@@ -220,6 +223,12 @@ std::unique_ptr<VulkanDevice> VulkanContext::CreateDevice() {
             // 启用 Extended Dynamic State
             auto &ext_dyn_state = gpu.AddExtensionFeatures<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>();
             ext_dyn_state.extendedDynamicState = true;
+
+            // 启用采样器数组非均匀索引（CSM C3）：Lighting 逐片元选片后按动态索引采样
+            // samplerShadowDepth[cascade]，片元间索引不一致（非均匀），需此特性。现代
+            // 桌面 GPU 均支持；不支持则无法运行 CSM（级联数=1 同样走动态索引路径）。
+            REQUEST_REQUIRED_FEATURE(gpu, vk::PhysicalDeviceDescriptorIndexingFeatures,
+                                     shaderSampledImageArrayNonUniformIndexing);
 
             // 启用各向异性过滤（所有现代 GPU 均支持，用于提升曲面纹理质量）
             if (gpu.GetFeatures().samplerAnisotropy) {

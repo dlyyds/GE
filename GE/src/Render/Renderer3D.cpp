@@ -833,22 +833,25 @@ void Renderer3D::FlushLighting(PassExecuteContext &ctx) {
         }
     }
 
-    // 阴影深度图（set 1, binding 7）：SceneLayer 在方向光阴影开启时才追加 hShadow_C0 读，
-    // 故 readImageViews 多于 4 项即有阴影图（G0~G3 + ShadowMap_C0..）。采样器用最近邻
-    // （§5.6），PCF 逐 tap 硬比较在 shader 侧完成。**无阴影时也必须绑有效描述符**：
-    // shader 静态引用了 binding 7（PCFShadow 内 texture()），Vulkan 描述符有效性按静态
-    // 引用判定，即使 shadowParams.z=0 运行时跳过采样，描述符未更新也会触发
-    // VUID-vkCmdDraw-None-08114——故无阴影图时绑默认白纹兜底（内容不会被采样）。
-    VulkanImageView *shadowView = nullptr;
-    if (ctx.readImageViews.size() > 4) {
-        // 阴影开启：绑定级 0 深度图（C3 前仍单图采样；C3 改数组描述符绑各级）
-        shadowView = ctx.readImageViews[4];
-    } else if (m_DefaultWhiteTexture) {
-        // 阴影关闭：绑默认白纹兜底，保证描述符有效（shader 开关分支不采样它）
-        shadowView = &m_DefaultWhiteTexture->GetImageView();
-    }
-    if (shadowView && m_ShadowSampler) {
-        cmd.BindImage(*shadowView, *m_ShadowSampler, 1, 7);
+    // 阴影深度图数组（set 1, binding 7, samplerShadowDepth[kMaxCascades]）：SceneLayer
+    // 在方向光阴影开启时才追加 hShadow_C0..C{N-1} 读，故 readImageViews 多于 4 项即有
+    // 各级阴影图（G0~G3 + ShadowMap_C0..）。逐级绑到数组元素；**未激活级/无阴影图时也
+    // 必须绑有效描述符**：shader 静态索引 binding 7（CascadePCF 内 texture()），Vulkan
+    // 描述符有效性按静态引用判定，数组所有元素未更新都会触发 VUID-vkCmdDraw-None-08114
+    // ——故用默认白纹兜底（shadowParams.z=0 或未选中时不被采样，内容无关）。采样器用
+    // 最近邻（§5.6），PCF 逐 tap 硬比较在 shader 侧完成。
+    if (m_ShadowSampler) {
+        for (uint32_t c = 0; c < kMaxCascades; ++c) {
+            const size_t viewIdx = 4u + c;
+            VulkanImageView *shadowView =
+                (viewIdx < ctx.readImageViews.size())
+                    ? ctx.readImageViews[viewIdx]
+                    : (m_DefaultWhiteTexture ? &m_DefaultWhiteTexture->GetImageView()
+                                             : nullptr);
+            if (shadowView) {
+                cmd.BindImage(*shadowView, *m_ShadowSampler, 1, 7, c);
+            }
+        }
     }
 
     // IBL 三件套（set 1, binding 4/5/6）：辐照度与预滤波共绑预滤波 cubemap，
@@ -1151,9 +1154,17 @@ BufferAllocation Renderer3D::UploadLightingUBO(VulkanRenderFrame &frame) {
         static_cast<float>(m_LightParams.pointLights.size()), 0.0f, 0.0f, 0.0f);
     ubo.ambient = m_LightParams.ambient;
 
-    // 方向光阴影（S1）：光空间 view-proj 与参数打包。阶段 1 shader 尚不采样
-    // 这些字段（无视觉变化），S4 接阴影比较时消费。
-    ubo.lightViewProj = m_LightParams.lightViewProj;
+    // 方向光阴影（CSM C3）：每级光矩阵 + 切分距离 + 生效级数打包，shader 选片后按级
+    // 采样对应深度图。shadowParams 各级共享（阶段 1：texel 尺寸/偏差/PCF 半径均用级 0
+    // 值，每级独立偏差与 PCF 半径列 CSM 计划书 §7）。
+    for (uint32_t c = 0; c < kMaxCascades; ++c) {
+        ubo.cascadeViewProj[c] = m_LightParams.cascadeViewProj[c];
+    }
+    ubo.cascadeSplits = glm::vec4(
+        m_LightParams.cascadeSplits[0], m_LightParams.cascadeSplits[1],
+        m_LightParams.cascadeSplits[2], m_LightParams.cascadeSplits[3]);
+    ubo.cascadeParams = glm::vec4(
+        static_cast<float>(m_LightParams.cascadeCount), 0.0f, 0.0f, 0.0f);
     ubo.shadowParams = glm::vec4(
         static_cast<float>(m_ShadowMapSize),
         m_ShadowBias,

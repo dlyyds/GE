@@ -1,5 +1,10 @@
 #version 460
 
+// GL_EXT_nonuniform_qualifier：CSM 逐片元选档后动态索引采样器数组
+// （samplerShadowDepth[nonuniformEXT(cascade)]，片元间索引不一致），需此扩展
+// 与设备特性 shaderSampledImageArrayNonUniformIndexing（VulkanContext 已启用）。
+#extension GL_EXT_nonuniform_qualifier : require
+
 // 延迟 Lighting 片元着色器：逐像素读 GBuffer 做 PBR / Blinn-Phong 光照，
 // 并把天空盒背景并入此 pass。G0.a 为着色模型哨兵，0 表示天空像素。
 // PBR 环境光支持 split-sum IBL（flags.y 门控），未就绪时回退常量环境光。
@@ -16,8 +21,13 @@ layout (set = 0, binding = 0, std140) uniform LightingUBO
     vec4 lightCount;
     vec4 ambient;
     vec4 iblParams;    // x = 预滤波最大 mip 数（MAX_REFLECTION_LOD），y = IBL 强度，zw 预留
-    mat4 lightViewProj; // 光空间 view-proj（世界 → 光裁剪空间），阴影比较用（S1 落地，S4 采样）
-    vec4 shadowParams;  // x = 阴影贴图尺寸（像素），y = 偏差，z = 阴影开关(0/1)，w = PCF 半径
+    // CSM 级联（C3）：每级光空间 view-proj（世界 → 该级光裁剪空间）。std140 下
+    // mat4 数组每级 64B 连续；cascadeSplits.x/y/z/w = split[0..3]（每级远端切分距离，
+    // cascadeCount 之后作废）；cascadeParams.x = 生效级数。
+    mat4 cascadeViewProj[4];
+    vec4 cascadeSplits;
+    vec4 cascadeParams;
+    vec4 shadowParams;  // x = 级 0 阴影图尺寸（像素），y = 偏差，z = 阴影开关(0/1)，w = PCF 半径
 } lighting;
 
 struct PointLight
@@ -45,9 +55,10 @@ layout (set = 1, binding = 4) uniform samplerCube samplerIrradiance;// 漫反射
 layout (set = 1, binding = 5) uniform samplerCube samplerPrefilter; // 镜面预滤波 mip 链 cubemap
 layout (set = 1, binding = 6) uniform sampler2D  samplerBrdfDFG;    // BRDF LUT（2D，(NoV, roughness)）
 
-// 方向光阴影深度图（D32F，读 .r）。普通采样器（非比较采样器）：PCF 逐 tap
-// 硬比较在 shader 侧完成，采样器用最近邻（§5.6，深度不可线性插值）。
-layout (set = 1, binding = 7) uniform sampler2D samplerShadowDepth;
+// 方向光阴影深度图数组（D32F，读 .r）：每级一张独立深度图（CSM C3）。普通采样器
+// （非比较采样器）：PCF 逐 tap 硬比较在 shader 侧完成，采样器用最近邻（§5.6，深度
+// 不可线性插值）。按片元所在档位动态索引数组（非均匀，见顶部扩展声明）。
+layout (set = 1, binding = 7) uniform sampler2D samplerShadowDepth[4];
 
 layout (location = 0) in vec2 inUV;
 layout (location = 0) out vec4 outColor;
@@ -173,13 +184,30 @@ vec3 calcAmbientPBR(vec3 N, vec3 V, vec3 albedo, float metallic, float roughness
     return ambientColor * albedo;
 }
 
-// 方向光阴影：3×3 盒式 PCF（阶段 1 简版，§5.7）。把片元投到光空间，在 UV 邻域做
-// 9 次深度硬比较取平均得半影强度（0~1 浮点），直接乘到方向光项上消除硬边抖动。
-// 出界（UV 超出 [0,1] 或深度超出 [0,1]，即片元不在光视锥/近远裁剪内）= 视为受光。
-// ZO 深度约定：lightViewProj 产出的 NDC z 已在 [0,1]（近=0 远=1），深度直接取 proj.z，
-// 无需再 0.5+0.5 重映射（与写入侧的视口恒等变换一致，§3.4）。
-float PCFShadow(vec3 worldPos, float bias) {
-    vec4 sc = lighting.lightViewProj * vec4(worldPos, 1.0);
+// 选片（CSM 计划书 §3.3）：片元视图空间深度 viewDist（正值，相机朝 -Z 取 -viewZ）
+// 落在哪档取该档索引。cascadeSplits[i] = 第 i 级远端；末级兜底（生效级数
+// = cascadeParams.x）。落在近平面之前 → 0 档，超出远平面 → 最后一档。
+int CascadeIndex(float viewDist) {
+    int count = int(lighting.cascadeParams.x);
+    int cascade = count - 1;
+    for (int i = 0; i < count - 1; ++i) {
+        if (viewDist <= lighting.cascadeSplits[i]) {
+            cascade = i;
+            break;
+        }
+    }
+    return cascade;
+}
+
+// 级联 PCF（CSM 计划书 §4.5）：3×3 盒式 PCF（阶段 1 简版，§5.7）。用该级光矩阵把
+// 片元投到该级光空间，在 UV 邻域做 9 次深度硬比较取平均得半影强度（0~1 浮点）。
+// 出界（UV 超出 [0,1] 或深度超出 [0,1]，即片元不在该级光视锥/近远裁剪内）= 视为受光
+// （§4.6，杜绝级边界一片黑）。ZO 深度约定：cascadeViewProj 产出的 NDC z 已在 [0,1]
+// （近=0 远=1），深度直接取 proj.z，无需再 0.5+0.5 重映射（与写入侧视口恒等变换一致，
+// §3.4）。texel 尺寸/偏差各级共享（shadowParams.x = 级 0 尺寸，每级独立尺寸/偏差列
+// 计划书 §7）。
+float CascadePCF(vec3 worldPos, int cascade, float bias) {
+    vec4 sc = lighting.cascadeViewProj[cascade] * vec4(worldPos, 1.0);
     vec3 proj = sc.xyz / sc.w;
     vec2 uv = proj.xy * 0.5 + 0.5;  // NDC x/y ∈ [-1,1] → 纹理坐标 [0,1]
     float depth = proj.z;           // ZO：光空间深度已是 [0,1]
@@ -189,7 +217,8 @@ float PCFShadow(vec3 worldPos, float bias) {
     float vis = 0.0;
     for (int x = -1; x <= 1; x++)
     for (int y = -1; y <= 1; y++) {
-        float sd = texture(samplerShadowDepth, uv + vec2(x, y) * texel).r;
+        float sd = texture(samplerShadowDepth[nonuniformEXT(cascade)],
+                           uv + vec2(x, y) * texel).r;
         vis += (depth <= sd + bias) ? 1.0 : 0.0; // 逐 tap 硬比较再平均 = 盒式 PCF
     }
     return vis / 9.0;
@@ -223,11 +252,15 @@ void main()
 
     vec3 V = normalize(lighting.viewPos.xyz - worldPos);
 
-    // 方向光阴影遮蔽（S4）：shadowParams.z 开关（0 = 无阴影，1 = 开启）。
+    // 方向光阴影遮蔽（S4/CSM C3）：shadowParams.z 开关（0 = 无阴影，1 = 开启）。
+    // 开启时按片元视图深度选档（CascadeIndex），用该级光矩阵投影 + 采样该级深度图
+    // （CascadePCF）。级间硬切换（切档处密度突变缝）为阶段 1 已知问题（计划书 §6.1）。
     // 只乘方向光直接光照项；点光源 / 环境光 / 自发光不受阴影影响（§1）。
     float shadowVis = 1.0;
     if (lighting.shadowParams.z > 0.5) {
-        shadowVis = PCFShadow(worldPos, lighting.shadowParams.y);
+        vec4 viewP = lighting.invView * vec4(worldPos, 1.0); // 视图空间（相机朝 -Z，z 为负）
+        int cascade = CascadeIndex(-viewP.z);                // 正值深度选档
+        shadowVis = CascadePCF(worldPos, cascade, lighting.shadowParams.y);
     }
 
     vec3 result;

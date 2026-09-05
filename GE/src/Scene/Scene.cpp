@@ -878,20 +878,17 @@ void Scene::UpdateLightParams(const glm::mat4 &view, const glm::mat4 &projection
             // 省一次逆投影。
             lightParams.castShadow = dlc.CastShadow;
             if (dlc.CastShadow) {
-                // 现有单级路径：全视锥光矩阵经公共核心 BuildLightVolumeCorners 构造，
-                // 行为逐位不变。C2/C3 接入逐级 pass 与级联采样前，ShadowMap/Lighting
-                // 仍用此矩阵（CSM 计划书 §4.2 step 1）。
+                // 全视锥光矩阵经公共核心 BuildLightVolumeCorners 构造（NDC 路径），
+                // 行为逐位不变；非透视投影退化时用作单级矩阵（CSM 计划书 §4.2 step 1）。
                 glm::vec3 minP, maxP;
                 glm::mat4 lightView;
-                lightParams.lightViewProj = ComputeLightViewProj(
+                const glm::mat4 fullFrustumViewProj = ComputeLightViewProj(
                     lightParams.dirLightDirection, view, projection, &minP, &maxP, &lightView);
 
-                // CSM 切分（C1，纯 CPU、无视觉变化）：按「光方向 + 相机视锥」把视锥沿
-                // 深度切成 cascadeCount 档，每档由 SliceCorners（切片角点）+
-                // BuildLightVolumeCorners 算独立光矩阵 cascadeViewProj[c] 与每级世界
-                // 阴影视锥 m_ShadowVolume[c]（CSM 计划书 §4.1/§4.2）。默认 cascadeCount
-                // = 1 = 现状；调大仅供断点验证「近级体积 < 远级」，单 pass 尚未逐级化
-                // （C2），此时阴影遍历仅用第 0 级体积。
+                // CSM 切分（C1/C3）：按「光方向 + 相机视锥」把视锥沿深度切成
+                // cascadeCount 档，每档由 SliceCorners（切片角点）+ BuildLightVolumeCorners
+                // 算独立光矩阵 cascadeViewProj[c] 与每级世界阴影视锥 m_ShadowVolume[c]
+                // （CSM 计划书 §4.1/§4.2）。cascadeCount = 1 时第 0 级即全视锥（兼容回退）。
                 const uint32_t cascadeCount =
                     std::clamp(lightParams.cascadeCount, 1u, kMaxCascades);
                 lightParams.cascadeCount = cascadeCount; // 写回归一化，防数组越界
@@ -916,7 +913,7 @@ void Scene::UpdateLightParams(const glm::mat4 &view, const glm::mat4 &projection
                     // 非透视投影（如正交）：无 FOV/切分语义，退化单级 = 全视锥（沿用
                     // NDC 路径结果，与现状一致）
                     lightParams.cascadeCount = 1;
-                    lightParams.cascadeViewProj[0] = lightParams.lightViewProj;
+                    lightParams.cascadeViewProj[0] = fullFrustumViewProj;
                     m_ShadowVolume[0] = BuildShadowVolume(minP, maxP, lightView);
                 }
                 // 未激活级置无效盒，避免级数调小后残留上一帧体积参与遍历

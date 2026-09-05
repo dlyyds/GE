@@ -322,6 +322,9 @@ public:
     /// 当前是否走延迟渲染路径。
     bool IsDeferred() const { return m_Deferred; }
 
+    /// 录制 ShadowMap pass（只画不透明段深度，零颜色附件 + 深度附件）。
+    void FlushShadow(PassExecuteContext &ctx);
+
     /// 录制 GBuffer pass（MRT 输出 + 写入深度）。
     void FlushGBuffer(PassExecuteContext &ctx);
 
@@ -460,6 +463,17 @@ private:
     BufferAllocation UploadLightingUBO(VulkanRenderFrame &frame);
 
     /**
+     * @brief 计算并缓存本帧延迟链批次（幂等）：排序 + 切不透明段 + 上传缓冲。
+     *
+     * ShadowMap 在 GBuffer 之前执行，需先算好批次；GBuffer/Transparent 直接复用
+     * 缓存，避免各自重排 m_Meshes 造成批次不一致。m_HasDeferredBatches 标记已算过。
+     */
+    void PrepareDeferredBatches(VulkanRenderFrame &frame);
+
+    /// 上传阴影 pass 专用 FrameUBO（projection=单位阵、view=光空间 view-proj）。
+    BufferAllocation UploadShadowFrameUBO(VulkanRenderFrame &frame);
+
+    /**
      * @brief 录制本帧网格批次的公共绘制段（排序 + 上传 + 绘制）。
      *
      * FlushScene（渲染图 execute 回调）调用；动态渲染已由图打开，本方法不再
@@ -493,6 +507,11 @@ private:
                                   vk::Format depthFormat,
                                   vk::Extent2D extent);
 
+    /// 配置阴影深度 pass 管线状态（零颜色附件 + 深度附件，视口 = 阴影图尺寸）
+    void ConfigureShadowPipeline(VulkanCommandBuffer &cmd,
+                                 vk::Format depthFormat,
+                                 vk::Extent2D extent);
+
     /// 配置延迟 Lighting 管线状态（全屏三角形 / 单个颜色附件）
     void ConfigureLightingPipeline(VulkanCommandBuffer &cmd,
                                    vk::Format colorFormat,
@@ -514,10 +533,11 @@ private:
     void DrawMeshInstances(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame,
                            const std::vector<RenderBatch> &batches,
                            const BufferAllocation &instanceBuffer,
-                           bool gbuffer = false);
+                           bool gbuffer = false,
+                           bool shadow = false);
 
     /// 统计 draw call 与三角形数量（draw call = 批次数量）
-    void RecordStats(const std::vector<RenderBatch> &batches);
+    void RecordStats(uint32_t drawCallCount);
 
     /**
      * @brief 提交一个网格实例（内部实现，按索引范围绘制）。
@@ -636,6 +656,13 @@ private:
     /// GBuffer 管线布局（mesh.vert/mesh_skinned.vert + mesh_gbuffer.frag，由全局资源缓存管理，不拥有）
     VulkanPipelineLayout *m_PipelineLayoutGBuffer = nullptr;
     VulkanPipelineLayout *m_PipelineLayoutSkinnedGBuffer = nullptr;
+
+    /// 阴影深度片元着色器（depth_only.frag：只采样 Albedo + MASK discard，无颜色输出）
+    VulkanShaderModule   *m_FragShaderDepthOnly = nullptr;
+
+    /// 阴影深度 pass 管线布局（mesh.vert/mesh_skinned.vert + depth_only.frag）
+    VulkanPipelineLayout *m_PipelineLayoutShadow = nullptr;
+    VulkanPipelineLayout *m_PipelineLayoutSkinnedShadow = nullptr;
 
     /// 延迟 Lighting 顶点/片元着色器（由全局资源缓存管理，不拥有）
     VulkanShaderModule   *m_LightingVert = nullptr;

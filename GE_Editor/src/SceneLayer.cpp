@@ -207,7 +207,36 @@ void SceneLayer::RecordScenePasses(RenderTarget &viewportRT, const glm::vec4 &cl
         ResourceHandle hG2 = b.CreateVirtualResource(gdesc);
         ResourceHandle hG3 = b.CreateVirtualResource(gdesc);
 
-        // Pass0 "GBuffer"：MRT 四张 + 深度清屏，只录制不透明段（Opaque + Mask）。
+        // 方向光阴影：有方向光实体（castShadow 由 Scene::UpdateLightParams 如实反映）
+        // 才声明 ShadowMap pass；无则图里没有该 pass、hShadow 不分配，FlushShadow
+        // 永不执行，Lighting 也读不到阴影（S4 才接线），退回无阴影现状。
+        if (Renderer::Get3DRenderer().GetLightParams().castShadow) {
+            // ShadowMap 深度图：虚拟资源，独立尺寸（2048²），格式 D32F。
+            // 阴影图尺寸与视口无关，池按 (desc, usage) 匹配复用（阴影贴图计划 §5.2）。
+            const uint32_t shadowMapSize = Renderer::Get3DRenderer().GetShadowMapSize();
+            RenderGraphResourceDesc shadowDesc;
+            shadowDesc.extent = vk::Extent2D{shadowMapSize, shadowMapSize};
+            shadowDesc.samples = vk::SampleCountFlagBits::e1;
+            shadowDesc.format = vk::Format::eD32Sfloat;
+            ResourceHandle hShadow = b.CreateVirtualResource(shadowDesc);
+
+            // Pass0 "ShadowMap"：零颜色 + 一深度，插在 GBuffer 之前（m_Meshes 尚未消费，
+            // 与 GBuffer 共享批次）。只画不透明段（Opaque + Mask）的深度。
+            RenderPassDesc &shadowPass = b.AddPass("ShadowMap");
+            shadowPass.renderArea = vk::Rect2D{{0, 0}, shadowDesc.extent};
+            AttachmentDesc shadowDepth;
+            shadowDepth.resource = hShadow;
+            shadowDepth.usage = ResourceUsage::DepthStencilAttachment;
+            shadowDepth.loadOp = vk::AttachmentLoadOp::eClear;   // 每帧清空重画
+            shadowDepth.storeOp = vk::AttachmentStoreOp::eStore; // 保留给 Lighting 采样（S4）
+            shadowDepth.finalLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
+            shadowPass.depthAttachment = shadowDepth;
+            shadowPass.execute = [](PassExecuteContext &ctx) {
+                Renderer::Get3DRenderer().FlushShadow(ctx);
+            };
+        }
+
+        // Pass1 "GBuffer"：MRT 四张 + 深度清屏，只录制不透明段（Opaque + Mask）。
         RenderPassDesc &gbufferPass = b.AddPass("GBuffer");
         gbufferPass.renderArea = renderArea;
         AttachmentDesc g0Clear;
@@ -237,7 +266,7 @@ void SceneLayer::RecordScenePasses(RenderTarget &viewportRT, const glm::vec4 &cl
             Renderer::Get3DRenderer().FlushGBuffer(ctx);
         };
 
-        // Pass1 "Lighting"：读 G0~G3，写视口颜色 eClear；天空盒并入此 pass。
+        // Pass2 "Lighting"：读 G0~G3，写视口颜色 eClear；天空盒并入此 pass。
         RenderPassDesc &lightingPass = b.AddPass("Lighting");
         lightingPass.renderArea = renderArea;
         lightingPass.readImages.push_back(
@@ -259,7 +288,7 @@ void SceneLayer::RecordScenePasses(RenderTarget &viewportRT, const glm::vec4 &cl
             Renderer::Get3DRenderer().FlushLighting(ctx);
         };
 
-        // Pass2 "Transparent"：颜色/深度 eLoad，叠在前向透明混合管线上。
+        // Pass3 "Transparent"：颜色/深度 eLoad，叠在前向透明混合管线上。
         RenderPassDesc &transparentPass = b.AddPass("Transparent");
         transparentPass.renderArea = renderArea;
         AttachmentDesc transparentColorLoad;

@@ -136,6 +136,24 @@ Renderer3D::Renderer3D() {
         {m_VertShaderSkinned, m_FragShaderGBuffer});
     m_PipelineLayoutSkinnedGBuffer->SetDebugName("Mesh3D_PipelineLayout_Skinned_GBuffer");
 
+    // ── 阴影深度 pass：depth_only.frag + 静态/蒙皮两份管线布局 ────────
+    // 顶点级复用 mesh.vert / mesh_skinned.vert（输出 varyings 是超集，多出的忽略），
+    // 片元只采样 Albedo 做 MASK 镂空、无颜色输出；阴影 pass 只有深度附件。
+    m_FragShaderDepthOnly = &cache.RequestShaderModule(
+        vk::ShaderStageFlagBits::eFragment,
+        ShaderSource(Renderer::GetAssetManager()
+            .ResolvePath(std::string(AssetPaths::Shaders) + "/depth_only.frag.spv")
+            .string()),
+        "main", ShaderVariant{});
+
+    m_PipelineLayoutShadow = &cache.RequestPipelineLayout(
+        {m_VertShader, m_FragShaderDepthOnly});
+    m_PipelineLayoutShadow->SetDebugName("Mesh3D_PipelineLayout_Shadow");
+
+    m_PipelineLayoutSkinnedShadow = &cache.RequestPipelineLayout(
+        {m_VertShaderSkinned, m_FragShaderDepthOnly});
+    m_PipelineLayoutSkinnedShadow->SetDebugName("Mesh3D_PipelineLayout_Skinned_Shadow");
+
     // ── 延迟渲染：Lighting 全屏三角形着色器 + 管线布局 ──────────────
     m_LightingVert = &cache.RequestShaderModule(
         vk::ShaderStageFlagBits::eVertex,
@@ -565,29 +583,8 @@ void Renderer3D::FlushGBuffer(PassExecuteContext &ctx) {
                                        ? ctx.depthAttachmentView->get_format()
                                        : vk::Format::eUndefined;
 
-    SortMeshes();
-
-    m_CachedFrameUBO = UploadFrameUBO(*ctx.frame);
-
-    std::vector<InstanceData> instances;
-    std::vector<RenderBatch> batches;
-    CollectBatches(instances, batches);
-
-    const auto transparentIt = std::find_if(
-        batches.begin(), batches.end(), [](const RenderBatch &b) {
-            return b.material && b.material->alphaMode == Material::AlphaMode::Blend;
-        });
-    const size_t opaqueCount =
-        static_cast<size_t>(std::distance(batches.begin(), transparentIt));
-
-    m_CachedInstanceBuffer = UploadInstanceBuffer(*ctx.frame, instances);
-    m_CachedLightBuffer = UploadLightBuffer(*ctx.frame);
-
-    m_OpaqueBatches.assign(batches.begin(),
-                           batches.begin() + static_cast<ptrdiff_t>(opaqueCount));
-    m_TransparentBatches.assign(
-        batches.begin() + static_cast<ptrdiff_t>(opaqueCount), batches.end());
-    m_HasDeferredBatches = true;
+    // 批次/缓冲由公共入口计算并缓存：ShadowMap 先于本 pass 执行，此处直接复用。
+    PrepareDeferredBatches(*ctx.frame);
 
     ConfigureGBufferPipeline(*ctx.cmd, colorFormats, depthFormat, ctx.renderArea.extent);
 
@@ -599,7 +596,127 @@ void Renderer3D::FlushGBuffer(PassExecuteContext &ctx) {
                           m_CachedInstanceBuffer, /*gbuffer=*/true);
     }
 
-    RecordStats(batches);
+    RecordStats(static_cast<uint32_t>(m_OpaqueBatches.size() + m_TransparentBatches.size()));
+}
+
+void Renderer3D::PrepareDeferredBatches(VulkanRenderFrame &frame) {
+    // 延迟链三条 pass 共享一次「排序 + 切分 + 上传」（阴影贴图计划 §5.5/S3）：
+    // ShadowMap 在 GBuffer 之前执行，先算好并缓存；GBuffer/Transparent 直接复用，
+    // 避免各自重排 m_Meshes 造成批次不一致。幂等：m_HasDeferredBatches 标记已算过。
+    if (m_HasDeferredBatches) {
+        return;
+    }
+
+    SortMeshes();
+    m_CachedFrameUBO = UploadFrameUBO(frame);
+
+    std::vector<InstanceData> instances;
+    std::vector<RenderBatch> batches;
+    CollectBatches(instances, batches);
+
+    // 按 pass 切分批次为「不透明前缀 + 透明后缀」：CollectBatches 沿排序后的
+    // m_Meshes 顺序生成批次（不透明 run 先、Blend 逐实例后），首个 Blend 批次
+    // 之前的全部批次即不透明段（与 RecordScene 的切分逻辑一致）。空场景 / 全不透明
+    // 时切分点在 end，透明段自然为空。
+    const auto transparentIt = std::find_if(
+        batches.begin(), batches.end(), [](const RenderBatch &b) {
+            return b.material && b.material->alphaMode == Material::AlphaMode::Blend;
+        });
+    const size_t opaqueCount =
+        static_cast<size_t>(std::distance(batches.begin(), transparentIt));
+
+    m_CachedInstanceBuffer = UploadInstanceBuffer(frame, instances);
+    m_CachedLightBuffer = UploadLightBuffer(frame);
+
+    m_OpaqueBatches.assign(batches.begin(),
+                           batches.begin() + static_cast<ptrdiff_t>(opaqueCount));
+    m_TransparentBatches.assign(
+        batches.begin() + static_cast<ptrdiff_t>(opaqueCount), batches.end());
+    m_HasDeferredBatches = true;
+}
+
+BufferAllocation Renderer3D::UploadShadowFrameUBO(VulkanRenderFrame &frame) {
+    // 阴影 pass 专用 FrameUBO：projection = 单位阵、view = 光空间 view-proj。
+    // 顶点着色器算 gl_Position = projection * view * worldPos = lightViewProj * worldPos，
+    // 把几何从相机视角切到光源视角（复用 mesh.vert/mesh_skinned.vert，无需改动）。
+    FrameUBO ubo{};
+    ubo.projection = glm::mat4(1.0f);
+    ubo.view = m_LightParams.lightViewProj;
+    BufferAllocation alloc = frame.AllocateBuffer(
+        vk::BufferUsageFlagBits::eUniformBuffer, sizeof(FrameUBO));
+    alloc.update(ubo);
+    return alloc;
+}
+
+void Renderer3D::FlushShadow(PassExecuteContext &ctx) {
+    GE_PROFILE_SCOPE("Renderer3D::FlushShadow");
+
+    // 阴影 pass 与 GBuffer 共享批次/实例/皮肤缓冲（§5.5）：本 pass 先于 GBuffer
+    // 执行，若本帧尚未算过则先算一次缓存（幂等）。只画不透明段（Opaque + Mask，
+    // Blend 不投影、不接收阴影）。
+    PrepareDeferredBatches(*ctx.frame);
+
+    const vk::Format depthFormat = ctx.depthAttachmentView
+                                       ? ctx.depthAttachmentView->get_format()
+                                       : vk::Format::eUndefined;
+
+    const BufferAllocation shadowFrameUbo = UploadShadowFrameUBO(*ctx.frame);
+
+    ConfigureShadowPipeline(*ctx.cmd, depthFormat, ctx.renderArea.extent);
+
+    // 阴影专用 FrameUBO（光空间）绑定 set0 b0；深度片元不读点光源 SSBO，
+    // 不绑 set0 b1（其布局无该 binding，避免校验告警）。
+    auto &cmd = *ctx.cmd;
+    cmd.BindBuffer(shadowFrameUbo.get_buffer(), shadowFrameUbo.get_offset(),
+                   shadowFrameUbo.get_size(), 0, 0);
+    if (!m_OpaqueBatches.empty()) {
+        DrawMeshInstances(*ctx.cmd, *ctx.frame, m_OpaqueBatches,
+                          m_CachedInstanceBuffer, /*gbuffer=*/false, /*shadow=*/true);
+    }
+}
+
+void Renderer3D::ConfigureShadowPipeline(VulkanCommandBuffer &cmd,
+                                         vk::Format depthFormat,
+                                         vk::Extent2D extent) {
+    // 阴影深度 pass：零颜色附件 + 深度附件。顶点输入/动态状态与网格管线一致；
+    // 剔除沿用逐批次 doubleSided 动态值（DrawMeshInstances 内设置），正面写深度。
+    cmd.BindPipelineLayout(*m_PipelineLayoutShadow);
+
+    auto &ps = cmd.GetPipelineState();
+    ps.setRenderingFormats({}, depthFormat);
+
+    // 无颜色附件 → 混合附件列表为空（与 0 颜色附件匹配）
+    ps.setColorBlendAttachments({});
+
+    ps.setVertexInputFromShader(*m_VertShader, 0, vk::VertexInputRate::eVertex,
+                                static_cast<uint32_t>(sizeof(Vertex)));
+    ps.setInputAssembly(vk::PrimitiveTopology::eTriangleList)
+        .setCullMode(vk::CullModeFlagBits::eBack)
+        .setFrontFace(vk::FrontFace::eCounterClockwise)
+        .setDepthTestEnable(VK_TRUE)
+        .setDepthWriteEnable(VK_TRUE)
+        .setDepthCompareOp(vk::CompareOp::eLess);
+
+    ps.enableDynamicState(vk::DynamicState::eViewport)
+        .enableDynamicState(vk::DynamicState::eScissor)
+        .enableDynamicState(vk::DynamicState::eCullMode)
+        .enableDynamicState(vk::DynamicState::eFrontFace)
+        .enableDynamicState(vk::DynamicState::ePrimitiveTopology)
+        .enableDynamicState(vk::DynamicState::eDepthTestEnable)
+        .enableDynamicState(vk::DynamicState::eDepthWriteEnable)
+        .enableDynamicState(vk::DynamicState::eDepthCompareOp);
+
+    vk::Viewport vp;
+    vp.width = static_cast<float>(extent.width);
+    vp.height = static_cast<float>(extent.height);
+    vp.minDepth = 0.0f;
+    vp.maxDepth = 1.0f;
+    cmd.SetViewport(0, {vp});
+
+    vk::Rect2D scissor;
+    scissor.extent.width = extent.width;
+    scissor.extent.height = extent.height;
+    cmd.SetScissor(0, {scissor});
 }
 
 void Renderer3D::FlushLighting(PassExecuteContext &ctx) {
@@ -758,7 +875,7 @@ void Renderer3D::RecordScene(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame,
     }
 
     // ── 统计 draw call 与三角形数量 ──
-    RecordStats(batches);
+    RecordStats(static_cast<uint32_t>(batches.size()));
 }
 
 void Renderer3D::SortMeshes() {
@@ -1245,14 +1362,16 @@ void Renderer3D::BindSharedUniforms(VulkanCommandBuffer &cmd,
 void Renderer3D::DrawMeshInstances(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame,
                                    const std::vector<RenderBatch> &batches,
                                    const BufferAllocation &instanceBuffer,
-                                   bool gbuffer) {
+                                   bool gbuffer,
+                                   bool shadow) {
     // ── 6. 逐批次 instanced 绘制 ─────────────────────────────────────
     vk::DeviceSize vertexOffset = 0;
 
     // IBL 是否启用（全局）：需要已加载环境图且三张图均已就绪且 IBL 开关打开，
     // 此时 PBR 批次走 IBL 变体管线并绑定三张 IBL 图；否则回退无 IBL 变体
     // （常量环境光）。异步加载中环境图未就绪则本帧不启用 IBL，就绪后自动切换。
-    const bool useIbl = !gbuffer
+    // 阴影深度 pass 不做 IBL。
+    const bool useIbl = !gbuffer && !shadow
                         && (m_EnvironmentMap != nullptr) && m_EnvironmentMap->IsReady()
                         && m_IBLEnabled;
 
@@ -1273,19 +1392,23 @@ void Renderer3D::DrawMeshInstances(VulkanCommandBuffer &cmd, VulkanRenderFrame &
         if (pipelineId != currentPipelineId) {
             VulkanPipelineLayout *targetLayout = m_PipelineLayout;
             if (skinned) {
-                targetLayout = gbuffer
-                                   ? m_PipelineLayoutSkinnedGBuffer
-                                   : (pbr
-                                          ? (useIbl
-                                                 ? m_PipelineLayoutSkinnedPBR_IBL
-                                                 : m_PipelineLayoutSkinnedPBR)
-                                          : m_PipelineLayoutSkinned);
+                targetLayout = shadow
+                                   ? m_PipelineLayoutSkinnedShadow
+                                   : (gbuffer
+                                          ? m_PipelineLayoutSkinnedGBuffer
+                                          : (pbr
+                                                 ? (useIbl
+                                                        ? m_PipelineLayoutSkinnedPBR_IBL
+                                                        : m_PipelineLayoutSkinnedPBR)
+                                                 : m_PipelineLayoutSkinned));
             } else {
-                targetLayout = gbuffer
-                                   ? m_PipelineLayoutGBuffer
-                                   : (pbr
-                                          ? (useIbl ? m_PipelineLayoutPBR_IBL : m_PipelineLayoutPBR)
-                                          : m_PipelineLayout);
+                targetLayout = shadow
+                                   ? m_PipelineLayoutShadow
+                                   : (gbuffer
+                                          ? m_PipelineLayoutGBuffer
+                                          : (pbr
+                                                 ? (useIbl ? m_PipelineLayoutPBR_IBL : m_PipelineLayoutPBR)
+                                                 : m_PipelineLayout));
             }
 
             auto &ps = cmd.GetPipelineState();
@@ -1337,29 +1460,35 @@ void Renderer3D::DrawMeshInstances(VulkanCommandBuffer &cmd, VulkanRenderFrame &
         }
 
         // 法线贴图（set 1, binding 1）：无材质或无纹理时使用默认"平坦法线"
-        // 纹理，其映射回 (0,0,1) 不改变光照，保证材质无需法线贴图也能正常渲染
-        Texture *normalTex = GetEffectiveNormalTexture(batch.material);
-        if (normalTex) {
-            cmd.BindImage(normalTex->GetImageView(),
-                          normalTex->GetSampler(),
-                          1, 1);
+        // 纹理，其映射回 (0,0,1) 不改变光照，保证材质无需法线贴图也能正常渲染。
+        // 阴影深度片元不读法线（depth_only.frag 布局无 binding 1），跳过。
+        if (!shadow) {
+            Texture *normalTex = GetEffectiveNormalTexture(batch.material);
+            if (normalTex) {
+                cmd.BindImage(normalTex->GetImageView(),
+                              normalTex->GetSampler(),
+                              1, 1);
+            }
         }
 
         // 自发光贴图（set 1, binding 3）：无材质或无纹理时使用默认白色纹理，
         // 采样为 (1,1,1)，自发光 = emissiveFactor 颜色，支持"仅因子发光"。
-        // 有贴图时贴图颜色 × 因子，贴图黑色区域不发光。
-        Texture *emissiveTex = GetEffectiveEmissiveTexture(batch.material);
-        if (emissiveTex) {
-            cmd.BindImage(emissiveTex->GetImageView(),
-                          emissiveTex->GetSampler(),
-                          1, 3);
+        // 有贴图时贴图颜色 × 因子，贴图黑色区域不发光。阴影深度片元不读，跳过。
+        if (!shadow) {
+            Texture *emissiveTex = GetEffectiveEmissiveTexture(batch.material);
+            if (emissiveTex) {
+                cmd.BindImage(emissiveTex->GetImageView(),
+                              emissiveTex->GetSampler(),
+                              1, 3);
+            }
         }
 
         // 金属-粗糙度贴图（set 1, binding 4）：仅 PBR 材质使用。无 MR 贴图时
         // 绑定默认 (G=1, B=1) 纹理，回退到标量 metallic/roughness。
         // Blinn-Phong 批次不绑定（其 set 1 布局无 binding 4，绑了也会被过滤，
         // 这里显式判断更清晰，避免多余绑定）。PBR 蒙皮肤也一样要绑。
-        if (pbr || gbuffer) {
+        // 阴影深度片元不读 MR（depth_only.frag 布局无 binding 4），跳过。
+        if ((pbr || gbuffer) && !shadow) {
             Texture *mrTex = GetEffectiveMetallicRoughnessTexture(batch.material);
             if (mrTex) {
                 cmd.BindImage(mrTex->GetImageView(),
@@ -1450,20 +1579,20 @@ void Renderer3D::DrawMeshInstances(VulkanCommandBuffer &cmd, VulkanRenderFrame &
     }
 }
 
-void Renderer3D::RecordStats(const std::vector<RenderBatch> &batches) {
+void Renderer3D::RecordStats(uint32_t drawCallCount) {
     // ── 6b. 统计 draw call 与三角形数量 ───────────────────────────────
-    // draw call = 不透明批次数 + 透明批次数 = batches 总量（RecordScene 把两段
-    // 合起来统计，半透明逐实例成批已计入）。三角形按实例累计：m_Meshes 线性
-    // 包含全部实例，两段不重复计数。
+    // draw call = 不透明批次数 + 透明批次数（RecordScene 把两段合起来统计，
+    // 半透明逐实例成批已计入；延迟链由 PrepareDeferredBatches 切分后的两段之和）。
+    // 三角形按实例累计：m_Meshes 线性包含全部实例，两段不重复计数。
     uint32_t triangles = 0;
     for (const auto &instance : m_Meshes) {
         triangles += instance.indexCount / 3;
     }
-    Renderer::Get().AddStats3D(static_cast<uint32_t>(batches.size()), triangles);
+    Renderer::Get().AddStats3D(drawCallCount, triangles);
 
     // 统计 instancing 批次数量（相同 mesh + 相同材质分一组），
     // 用于观察合批收益：批次数越少 → draw call 越少
-    Renderer::Get().AddBatches3D(static_cast<uint32_t>(batches.size()));
+    Renderer::Get().AddBatches3D(drawCallCount);
 }
 
 

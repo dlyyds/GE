@@ -297,6 +297,33 @@ public:
                             const void *skinKey);
 
     /**
+     * @brief 提交一个 3D 子网格到阴影专用集合（阴影剔除计划书 §4.4）。
+     *
+     * 参数语义与 DrawSubMesh 一致，命中入 m_ShadowMeshes 而非 m_Meshes，供
+     * ShadowMap pass 单独成批（阴影集合含主视锥外物体，实例缓冲与主集合分离）。
+     * S3 后由 Scene 第二遍遍历用阴影世界 AABB 剔除后提交；S2 阶段 Scene 暂把
+     * 主可见物同步提交两份，便于验证两套批次与实例缓冲。
+     */
+    void DrawShadowSubMesh(const glm::mat4 &transform,
+                           Mesh *mesh,
+                           const SubMesh &submesh,
+                           Material *material,
+                           const glm::vec4 &color = {1.0f, 1.0f, 1.0f, 1.0f});
+
+    /**
+     * @brief 提交一个被皮肤驱动的 3D 子网格到阴影专用集合（阴影剔除计划书 §4.4）。
+     *
+     * 蒙皮实体绑定盒追不上变形，阴影遍历与主遍历一致跳过剔除、一律提交（§4.3）。
+     * 其余语义同 DrawShadowSubMesh / DrawSkinnedSubMesh。
+     */
+    void DrawShadowSkinnedSubMesh(const glm::mat4 &transform,
+                                  Mesh *mesh,
+                                  const SubMesh &submesh,
+                                  Material *material,
+                                  const glm::vec4 &color,
+                                  const void *skinKey);
+
+    /**
      * @brief 注册本帧一个皮肤的关节矩阵 SSBO（EndScene 绑定用）。
      *
      * Scene 每帧在 BeginScene 之后、EndScene 之前调用，为本帧存在的每个
@@ -456,15 +483,18 @@ private:
 
     // ---------- EndScene 子步骤（拆分大函数，按渲染阶段） ----------
 
-    /// 按排序键排序网格实例（材质 → mesh → 子网格 → 深度），使可合批实例连续
-    void SortMeshes();
+    /// 按排序键排序网格实例（材质 → mesh → 子网格 → 深度），使可合批实例连续。
+    /// 主集合（m_Meshes）与阴影集合（m_ShadowMeshes）各调一次。
+    void SortMeshes(std::vector<MeshInstance> &meshes);
 
     /// 分配并上传帧级 UBO（投影 / 视图 / 相机位置 / 光照 / IBL 参数）
     BufferAllocation UploadFrameUBO(VulkanRenderFrame &frame);
 
     /// 单趟扫描把 (mesh, 子网格, material) 相等且连续的实例归成批次，
-    /// 同时收集每个实例的 per-instance 数据（model + color）
-    void CollectBatches(std::vector<InstanceData> &instances,
+    /// 同时收集每个实例的 per-instance 数据（model + color）。meshes 为源实例列表
+    /// （主/阴影集合通用）。
+    void CollectBatches(const std::vector<MeshInstance> &meshes,
+                        std::vector<InstanceData> &instances,
                         std::vector<RenderBatch> &batches) const;
 
     /// 分配并上传全局 per-instance SSBO（所有批次共享同一缓冲）
@@ -574,6 +604,7 @@ private:
      *
      * DrawMesh / DrawSubMesh / DrawSkinnedSubMesh 均委托到此，统一走实例队列 + 排序键。
      * skinKey 非空时实例标记为蒙皮，参与蒙皮肤管线分组。
+     * forShadow 为 true 时命中入 m_ShadowMeshes（阴影专用集合）而非 m_Meshes。
      */
     void DrawSubMeshImpl(const glm::mat4 &transform,
                          Mesh *mesh,
@@ -581,7 +612,8 @@ private:
                          uint32_t indexCount,
                          Material *material,
                          const glm::vec4 &color,
-                         const void *skinKey = nullptr);
+                         const void *skinKey = nullptr,
+                         bool forShadow = false);
 
     /**
      * @brief 计算某个网格实例的排序键。
@@ -776,6 +808,10 @@ private:
     /// 待绘制的网格列表
     std::vector<MeshInstance> m_Meshes;
 
+    /// 阴影专用网格列表（Scene 第二遍遍历按阴影世界 AABB 剔除后提交，FlushShadow
+    /// 单独成批；BeginScene 清空，阴影剔除计划书 §4.4）。
+    std::vector<MeshInstance> m_ShadowMeshes;
+
     /// 本帧共享皮肤定义 → 关节矩阵 SSBO 分配（Scene 在 RenderMeshes3D 注册，EndScene 绑定用）。
     /// 仅本帧有效（帧池每帧重置），BeginScene 清空。键为 SkinDef*（nullptr 无意义，不进表）。
     std::unordered_map<const void *, BufferAllocation> m_SkinJointBuffers;
@@ -793,6 +829,12 @@ private:
     BufferAllocation m_CachedLightBuffer;
     BufferAllocation m_CachedInstanceBuffer;
     bool m_HasDeferredBatches = false;
+
+    /// 阴影 pass 专用批次与实例缓冲（生命周期与 m_OpaqueBatches 一致，FlushTransparent
+    /// 尾部清空）。S2 阶段已随 PrepareDeferredBatches 构建但 FlushShadow 未切换；
+    /// S3 切换后 ShadowMap 改画此套（阴影剔除计划书 §4.4）。
+    std::vector<RenderBatch> m_ShadowBatches;
+    BufferAllocation m_ShadowInstanceBuffer;
 };
 
 } // namespace GE

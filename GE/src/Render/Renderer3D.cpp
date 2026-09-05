@@ -384,6 +384,9 @@ void Renderer3D::BeginScene(const glm::mat4 &view,
     // 清空上一帧的网格列表
     m_Meshes.clear();
 
+    // 清空上一帧的阴影专用网格列表（本帧由 Scene 阴影遍历重新提交）
+    m_ShadowMeshes.clear();
+
     // 清空上一帧的皮肤关节矩阵注册表（本帧由 Scene 重新注册）
     m_SkinJointBuffers.clear();
 }
@@ -428,13 +431,35 @@ void Renderer3D::DrawSkinnedSubMesh(const glm::mat4 &transform,
                     submesh.firstIndex, submesh.indexCount, material, color, skinKey);
 }
 
+void Renderer3D::DrawShadowSubMesh(const glm::mat4 &transform,
+                                   Mesh *mesh,
+                                   const SubMesh &submesh,
+                                   Material *material,
+                                   const glm::vec4 &color) {
+    DrawSubMeshImpl(transform, mesh,
+                    submesh.firstIndex, submesh.indexCount, material, color,
+                    /*skinKey=*/nullptr, /*forShadow=*/true);
+}
+
+void Renderer3D::DrawShadowSkinnedSubMesh(const glm::mat4 &transform,
+                                          Mesh *mesh,
+                                          const SubMesh &submesh,
+                                          Material *material,
+                                          const glm::vec4 &color,
+                                          const void *skinKey) {
+    DrawSubMeshImpl(transform, mesh,
+                    submesh.firstIndex, submesh.indexCount, material, color, skinKey,
+                    /*forShadow=*/true);
+}
+
 void Renderer3D::DrawSubMeshImpl(const glm::mat4 &transform,
                                  Mesh *mesh,
                                  uint32_t firstIndex,
                                  uint32_t indexCount,
                                  Material *material,
                                  const glm::vec4 &color,
-                                 const void *skinKey) {
+                                 const void *skinKey,
+                                 bool forShadow) {
     GE_CORE_ASSERT(m_InScene, "DrawMesh called outside BeginScene/EndScene!");
 
     if (!mesh || indexCount == 0) {
@@ -449,10 +474,18 @@ void Renderer3D::DrawSubMeshImpl(const glm::mat4 &transform,
     // 计算排序键（pipeline → 材质 → mesh → 子网格 → view 空间深度），用于 EndScene
     // 前分组排序，使同材质同 mesh 同子网格的实例连续，便于 instancing 合批。
     // 蒙皮实例的 pipelineId 带蒙皮位，与静态实例分组隔离（管线不同不可合批）。
+    // 阴影集合复用同一排序键：阴影 pass 为深度只写无混合，实例序不影响结果，
+    // 只保证同 mesh 同材质连续便于合批。
     const bool skinned = (skinKey != nullptr);
     SortKey sortKey = ComputeSortKey(material, mesh, firstIndex, indexCount, transform, skinned);
 
-    m_Meshes.push_back({transform, mesh, firstIndex, indexCount, material, color, sortKey, skinKey});
+    const MeshInstance instance{
+        transform, mesh, firstIndex, indexCount, material, color, sortKey, skinKey};
+    if (forShadow) {
+        m_ShadowMeshes.push_back(instance);
+    } else {
+        m_Meshes.push_back(instance);
+    }
 }
 
 // ============================================================================
@@ -614,12 +647,12 @@ void Renderer3D::PrepareDeferredBatches(VulkanRenderFrame &frame) {
         return;
     }
 
-    SortMeshes();
+    SortMeshes(m_Meshes);
     m_CachedFrameUBO = UploadFrameUBO(frame);
 
     std::vector<InstanceData> instances;
     std::vector<RenderBatch> batches;
-    CollectBatches(instances, batches);
+    CollectBatches(m_Meshes, instances, batches);
 
     // 按 pass 切分批次为「不透明前缀 + 透明后缀」：CollectBatches 沿排序后的
     // m_Meshes 顺序生成批次（不透明 run 先、Blend 逐实例后），首个 Blend 批次
@@ -639,6 +672,26 @@ void Renderer3D::PrepareDeferredBatches(VulkanRenderFrame &frame) {
                            batches.begin() + static_cast<ptrdiff_t>(opaqueCount));
     m_TransparentBatches.assign(
         batches.begin() + static_cast<ptrdiff_t>(opaqueCount), batches.end());
+
+    // 阴影专用批次：m_ShadowMeshes 排序 → 切不透明段 → 上传独立实例缓冲，与主集合
+    // 分开（阴影集合含主视锥外物体，实例内容不同）。S2 阶段 FlushShadow 仍画
+    // m_OpaqueBatches，此构建为 S3 切换铺路（阴影剔除计划书 §4.4）。阴影 pass 只画
+    // 不透明段（Blend 不投影），切分逻辑与主集合一致。
+    SortMeshes(m_ShadowMeshes);
+    std::vector<InstanceData> shadowInstances;
+    std::vector<RenderBatch> shadowBatches;
+    CollectBatches(m_ShadowMeshes, shadowInstances, shadowBatches);
+    const auto shadowTransparentIt = std::find_if(
+        shadowBatches.begin(), shadowBatches.end(), [](const RenderBatch &b) {
+            return b.material && b.material->alphaMode == Material::AlphaMode::Blend;
+        });
+    const size_t shadowOpaqueCount =
+        static_cast<size_t>(std::distance(shadowBatches.begin(), shadowTransparentIt));
+    m_ShadowBatches.assign(
+        shadowBatches.begin(),
+        shadowBatches.begin() + static_cast<ptrdiff_t>(shadowOpaqueCount));
+    m_ShadowInstanceBuffer = UploadInstanceBuffer(frame, shadowInstances);
+
     m_HasDeferredBatches = true;
 }
 
@@ -824,11 +877,13 @@ void Renderer3D::FlushTransparent(PassExecuteContext &ctx) {
 
         m_OpaqueBatches.clear();
         m_TransparentBatches.clear();
+        m_ShadowBatches.clear();
         m_HasDeferredBatches = false;
     }
 
     // 所有延迟 pass 均已消费本帧网格，清空时机从 FlushScene 尾部移到这里。
     m_Meshes.clear();
+    m_ShadowMeshes.clear();
 }
 
 void Renderer3D::RecordScene(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame,
@@ -836,14 +891,14 @@ void Renderer3D::RecordScene(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame,
                              vk::Extent2D extent) {
     GE_PROFILE_SCOPE("Renderer3D::RecordScene");
 
-    SortMeshes();
+    SortMeshes(m_Meshes);
 
     // ── 共享描述符数据上传：Frame UBO / per-instance SSBO / 点光源 SSBO ──
     BufferAllocation frameUboAlloc = UploadFrameUBO(frame);
 
     std::vector<InstanceData> instances;
     std::vector<RenderBatch> batches;
-    CollectBatches(instances, batches);
+    CollectBatches(m_Meshes, instances, batches);
 
     // 按 pass 切分批次为「不透明前缀 + 透明后缀」：CollectBatches 沿排序后的
     // m_Meshes 顺序生成批次（不透明 run 先、Blend 逐实例后），批次序与实例序
@@ -892,7 +947,7 @@ void Renderer3D::RecordScene(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame,
     RecordStats(static_cast<uint32_t>(batches.size()));
 }
 
-void Renderer3D::SortMeshes() {
+void Renderer3D::SortMeshes(std::vector<MeshInstance> &meshes) {
     // ── 0. 按排序键排序（pass → 材质 → mesh → 深度方向）───────────────
     //    SortKey 的 operator< 依次比较 pass → pipeline → material → mesh →
     //    submesh → depthBits：pass 在最高位，使不透明（Opaque/Mask）与透明
@@ -900,7 +955,7 @@ void Renderer3D::SortMeshes() {
     //    首个 Blend 批次切分两段。段内按 pipeline/material/mesh 连续（便于
     //    instancing 合批与减切换），深度方向正确（不透明近→远吃 early-z；
     //    透明远→近供 alpha 混合）。
-    std::sort(m_Meshes.begin(), m_Meshes.end(),
+    std::sort(meshes.begin(), meshes.end(),
               [](const MeshInstance &a, const MeshInstance &b) {
                   return a.sortKey < b.sortKey;
               });
@@ -936,20 +991,21 @@ BufferAllocation Renderer3D::UploadFrameUBO(VulkanRenderFrame &frame) {
     return frameUboAlloc;
 }
 
-void Renderer3D::CollectBatches(std::vector<InstanceData> &instances,
+void Renderer3D::CollectBatches(const std::vector<MeshInstance> &meshes,
+                                std::vector<InstanceData> &instances,
                                 std::vector<RenderBatch> &batches) const {
     // ── 2. 阶段3：按 (mesh, material) 分组合批，构建 per-instance SSBO ──
     //    排序键已保证同材质同 mesh 的实例连续。单趟扫描把 (mesh, material)
     //    指针相等且连续的实例归为一个 RenderBatch，并把每个实例的 (model,
     //    color) 收集进 instances 数组，最终一次性上传到全局 storage buffer。
     instances.clear();
-    instances.reserve(m_Meshes.size());
+    instances.reserve(meshes.size());
 
     batches.clear();
-    batches.reserve(m_Meshes.size());
+    batches.reserve(meshes.size());
 
-    for (size_t i = 0; i < m_Meshes.size();) {
-        const auto &first = m_Meshes[i];
+    for (size_t i = 0; i < meshes.size();) {
+        const auto &first = meshes[i];
         Material *mat = first.material;
         Mesh *mesh = first.mesh;
         uint32_t firstIndex = first.firstIndex;
@@ -961,12 +1017,12 @@ void Renderer3D::CollectBatches(std::vector<InstanceData> &instances,
         // 注：batchKey（混合附件状态）在 ComputeSortKey 中排序聚拢、保证 Opaque/Mask
         // 混合状态只切换一次，但**不参与合批**（见下 transparent 分支）。
         size_t runStart = i;
-        while (i < m_Meshes.size()
-               && m_Meshes[i].material == mat
-               && m_Meshes[i].mesh == mesh
-               && m_Meshes[i].firstIndex == firstIndex
-               && m_Meshes[i].indexCount == indexCount
-               && m_Meshes[i].skinKey == skinKey) {
+        while (i < meshes.size()
+               && meshes[i].material == mat
+               && meshes[i].mesh == mesh
+               && meshes[i].firstIndex == firstIndex
+               && meshes[i].indexCount == indexCount
+               && meshes[i].skinKey == skinKey) {
             ++i;
         }
 
@@ -977,7 +1033,7 @@ void Renderer3D::CollectBatches(std::vector<InstanceData> &instances,
         if (mat && mat->alphaMode == Material::AlphaMode::Blend) {
             uint32_t firstInstance = static_cast<uint32_t>(instances.size());
             for (size_t k = runStart; k < i; ++k) {
-                const auto &inst = m_Meshes[k];
+                const auto &inst = meshes[k];
                 instances.push_back(InstanceData{inst.transform, inst.color});
                 // 每个透明实例各自一批：RunEnd 紧邻 RunStart，instanceCount=1。
                 batches.push_back(RenderBatch{
@@ -993,7 +1049,7 @@ void Renderer3D::CollectBatches(std::vector<InstanceData> &instances,
         // 在绘制循环中按批次绑定，不在此冗余写入实例数据。
         uint32_t firstInstance = static_cast<uint32_t>(instances.size());
         for (size_t k = runStart; k < i; ++k) {
-            const auto &inst = m_Meshes[k];
+            const auto &inst = meshes[k];
             instances.push_back(InstanceData{inst.transform, inst.color});
         }
 

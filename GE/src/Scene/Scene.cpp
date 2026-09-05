@@ -1008,6 +1008,15 @@ void Scene::RenderMeshes3D(const glm::mat4 &view, const glm::mat4 &projection,
             } else {
                 r3d.DrawSubMesh(tc.GetWorldMatrix(), mc.MeshPtr, sub, mat, mc.Color);
             }
+
+            // S2 临时：主可见物同步提一份到阴影集合，验证两套批次/实例缓冲结构一致
+            //（阴影剔除计划书 §5 S2 验收「主可见物在两个集合里都有」）。S3 将删除此处，
+            // 改为第二遍遍历按阴影世界 AABB 剔除后提交（§4.3/§4.5）。
+            if (isSkinned) {
+                r3d.DrawShadowSkinnedSubMesh(tc.GetWorldMatrix(), mc.MeshPtr, sub, mat, mc.Color, skinDef);
+            } else {
+                r3d.DrawShadowSubMesh(tc.GetWorldMatrix(), mc.MeshPtr, sub, mat, mc.Color);
+            }
         }
     }
 

@@ -692,11 +692,12 @@ void Scene::UpdateLightParams() {
             auto &tc = dirLightView.get<TransformComponent>(entity);
             auto &dlc = dirLightView.get<DirectionalLightComponent>(entity);
 
-            // 由世界矩阵的旋转部分推导出方向光方向（前向向量，-Z 轴旋转后为光线射出方向）。
-            // 读世界矩阵而非局部 Rotation：挂在父子层级下时父级旋转一并作用于照射方向。
+            // 由世界矩阵的旋转部分推导出方向光方向：前向向量（-Z 轴旋转后）指向光源，
+            // 即"从被照物指向光源"（朝太阳的方向）。读世界矩阵而非局部 Rotation：
+            // 挂在父子层级下时父级旋转一并作用于照射方向。
             // 缩放会乘进 mat3 的三列，先逐列归一化消除后再转四元数（uniform/非 uniform 缩放均安全）。
-            // 着色器中 dirLightDirection 表示"指向光源的方向"（即从表面指向光源），
-            // 与光线射出方向相反，因此取反
+            // 着色器光照用 L = normalize(-dirLightDirection)，L 需指向光源（N·L 用），
+            // 故这里存光传播方向 dirLightDirection = -lightDir（从光源指向被照物），着色器取反还原。
             const glm::mat3 rot3 = glm::mat3(tc.GetWorldMatrix());
             const glm::mat3 normalizedRot(
                 glm::normalize(rot3[0]), glm::normalize(rot3[1]), glm::normalize(rot3[2]));

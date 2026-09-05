@@ -389,7 +389,9 @@ struct PointLightComponent {
  * @brief 方向光组件 —— 挂载到实体上的方向光。
  *
  * 与 TransformComponent 配合使用：Transform 的 Rotation 决定方向光的照射方向。
- * 光线方向取 Transform 前向向量（即 -Z 轴经过旋转后的方向），从光源指向被照物体。
+ * 光线方向取 Transform 前向向量（即 -Z 轴经过旋转后的方向），指向光源（朝太阳）；
+ * 其相反方向（-lightDir）即光传播方向（从光源指向被照物），由 Scene 取反后存入
+ * LightParams.dirLightDirection，着色器再取反还原为朝光方向做 N·L。
  * Color 的 rgb 分量表示光源颜色，a 分量表示光源强度。
  *
  * 由 Scene 在渲染前收集方向光组件，取场景中第一个方向光作为主方向光，

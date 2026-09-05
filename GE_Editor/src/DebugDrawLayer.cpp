@@ -319,11 +319,13 @@ void DebugDrawLayer::DrawColliders(const Camera &camera, const glm::vec2 &imageP
             return false; // 整段在相机背面
         }
         glm::vec4 cA = ca, cB = cb;
-        if (aFront && !bFront) { // b 在背面：沿线段插值到近平面
+        if (aFront && !bFront) {
+            // b 在背面：沿线段插值到近平面
             const float t = (kNearW - cb.w) / (ca.w - cb.w);
             cB = cb + (ca - cb) * t;
             cB.w = kNearW;
-        } else if (!aFront && bFront) { // a 在背面：沿线段插值到近平面
+        } else if (!aFront && bFront) {
+            // a 在背面：沿线段插值到近平面
             const float t = (kNearW - ca.w) / (cb.w - ca.w);
             cA = ca + (cb - ca) * t;
             cA.w = kNearW;
@@ -350,7 +352,7 @@ void DebugDrawLayer::DrawColliders(const Camera &camera, const glm::vec2 &imageP
     // 刚体胶囊与角色控制器胶囊共用，保证两处线框形态一致。
     const auto drawCapsuleMesh = [&](const glm::vec3 &center, const glm::quat &capsuleRot,
                                      float radius, float halfHeight) {
-        constexpr int kMeri = 8;    // 经线数量
+        constexpr int kMeri = 8; // 经线数量
         constexpr int kArcSegs = 8; // 每条半球帽弧的分段数
         for (int m = 0; m < kMeri; ++m) {
             const float ang = (2.0f * kPi * m) / kMeri;
@@ -360,9 +362,9 @@ void DebugDrawLayer::DrawColliders(const Camera &camera, const glm::vec2 &imageP
             for (int i = 1; i <= kArcSegs; ++i) {
                 const float a = (static_cast<float>(i) / kArcSegs) * kPi * 0.5f;
                 const glm::vec3 cur = center + capsuleRot * glm::vec3(
-                    std::sin(a) * radius * dx,
-                    halfHeight + std::cos(a) * radius,
-                    std::sin(a) * radius * dz);
+                                          std::sin(a) * radius * dx,
+                                          halfHeight + std::cos(a) * radius,
+                                          std::sin(a) * radius * dz);
                 drawWorldSegment(prev, cur);
                 prev = cur;
             }
@@ -375,9 +377,9 @@ void DebugDrawLayer::DrawColliders(const Camera &camera, const glm::vec2 &imageP
             for (int i = 1; i <= kArcSegs; ++i) {
                 const float a = (static_cast<float>(i) / kArcSegs) * kPi * 0.5f;
                 const glm::vec3 cur = center + capsuleRot * glm::vec3(
-                    std::sin(a) * radius * dx,
-                    -halfHeight - std::cos(a) * radius,
-                    std::sin(a) * radius * dz);
+                                          std::sin(a) * radius * dx,
+                                          -halfHeight - std::cos(a) * radius,
+                                          std::sin(a) * radius * dz);
                 drawWorldSegment(prev2, cur);
                 prev2 = cur;
             }
@@ -418,13 +420,13 @@ void DebugDrawLayer::DrawColliders(const Camera &camera, const glm::vec2 &imageP
             // 外棱：12 条边（角点序与 kEdges 一致：bit0=X, bit1=Y, bit2=Z）
             const glm::vec3 wc[8] = {
                 center + rot * (half * glm::vec3(-1.0f, -1.0f, -1.0f)),
-                center + rot * (half * glm::vec3( 1.0f, -1.0f, -1.0f)),
-                center + rot * (half * glm::vec3(-1.0f,  1.0f, -1.0f)),
-                center + rot * (half * glm::vec3( 1.0f,  1.0f, -1.0f)),
-                center + rot * (half * glm::vec3(-1.0f, -1.0f,  1.0f)),
-                center + rot * (half * glm::vec3( 1.0f, -1.0f,  1.0f)),
-                center + rot * (half * glm::vec3(-1.0f,  1.0f,  1.0f)),
-                center + rot * (half * glm::vec3( 1.0f,  1.0f,  1.0f)),
+                center + rot * (half * glm::vec3(1.0f, -1.0f, -1.0f)),
+                center + rot * (half * glm::vec3(-1.0f, 1.0f, -1.0f)),
+                center + rot * (half * glm::vec3(1.0f, 1.0f, -1.0f)),
+                center + rot * (half * glm::vec3(-1.0f, -1.0f, 1.0f)),
+                center + rot * (half * glm::vec3(1.0f, -1.0f, 1.0f)),
+                center + rot * (half * glm::vec3(-1.0f, 1.0f, 1.0f)),
+                center + rot * (half * glm::vec3(1.0f, 1.0f, 1.0f)),
             };
             for (int e = 0; e < 12; ++e) {
                 drawWorldSegment(wc[kEdges[e][0]], wc[kEdges[e][1]]);
@@ -500,12 +502,10 @@ void DebugDrawLayer::DrawColliders(const Camera &camera, const glm::vec2 &imageP
         glm::vec3 shift(0.0f);
         constexpr float kSqrtHalf = 0.707106781f;
         switch (cc.Axis) {
-        case CapsuleAxis::X:
-            axisRot = glm::quat(kSqrtHalf, 0.0f, 0.0f, -kSqrtHalf);
+        case CapsuleAxis::X: axisRot = glm::quat(kSqrtHalf, 0.0f, 0.0f, -kSqrtHalf);
             shift = {cc.Height * 0.5f, 0.0f, 0.0f};
             break;
-        case CapsuleAxis::Z:
-            axisRot = glm::quat(kSqrtHalf, kSqrtHalf, 0.0f, 0.0f);
+        case CapsuleAxis::Z: axisRot = glm::quat(kSqrtHalf, kSqrtHalf, 0.0f, 0.0f);
             shift = {0.0f, 0.0f, cc.Height * 0.5f};
             break;
         default: // Y（默认）
@@ -546,7 +546,7 @@ void DebugDrawLayer::DrawFirstPersonEyes(const Camera &camera, const glm::vec2 &
     const ImU32 footColor = ImGui::ColorConvertFloat4ToU32(ImVec4(1.00f, 0.65f, 0.10f, 0.45f));
 
     const auto fpsView = m_Context->Scene->Reg().view<TransformComponent, CharacterControllerComponent,
-                                                        FirstPersonCameraComponent>();
+                                                      FirstPersonCameraComponent>();
     for (auto entity : fpsView) {
         const auto &tc = fpsView.get<TransformComponent>(entity);
         const auto &fp = fpsView.get<FirstPersonCameraComponent>(entity);
@@ -601,11 +601,13 @@ void DebugDrawLayer::DrawDirectionalLights(const Camera &camera, const glm::vec2
             return false; // 整段在相机背面
         }
         glm::vec4 cA = ca, cB = cb;
-        if (aFront && !bFront) { // b 在背面：沿线段插值到近平面
+        if (aFront && !bFront) {
+            // b 在背面：沿线段插值到近平面
             const float t = (kNearW - cb.w) / (ca.w - cb.w);
             cB = cb + (ca - cb) * t;
             cB.w = kNearW;
-        } else if (!aFront && bFront) { // a 在背面：沿线段插值到近平面
+        } else if (!aFront && bFront) {
+            // a 在背面：沿线段插值到近平面
             const float t = (kNearW - ca.w) / (cb.w - ca.w);
             cA = ca + (cb - ca) * t;
             cA.w = kNearW;
@@ -636,8 +638,9 @@ void DebugDrawLayer::DrawDirectionalLights(const Camera &camera, const glm::vec2
         const auto &tc = dirView.get<TransformComponent>(entity);
         const auto &dlc = dirView.get<DirectionalLightComponent>(entity);
 
-        // 由世界矩阵的旋转部分推导光出射方向（与 Scene::CollectLightParams 一致）：
-        // 前向向量 -Z 旋转后为光线射出方向；缩放逐列归一化后再转四元数
+        // 由世界矩阵的旋转部分推导前向方向（与 Scene::UpdateLightParams 的 lightDir 一致）：
+        // 前向向量 -Z 旋转后指向光源（朝太阳）；光芒沿 -dir 即光传播方向照向被照物。
+        // 缩放逐列归一化后再转四元数
         const glm::mat3 rot3 = glm::mat3(tc.GetWorldMatrix());
         const glm::mat3 normalizedRot(
             glm::normalize(rot3[0]), glm::normalize(rot3[1]), glm::normalize(rot3[2]));
@@ -651,15 +654,16 @@ void DebugDrawLayer::DrawDirectionalLights(const Camera &camera, const glm::vec2
             std::min(dlc.Color.b, 1.0f), 1.0f));
 
         // 盘面正交基 u/v（法线沿光出射方向）：任选一个与 dir 不共线的参考轴叉积构造
-        const glm::vec3 ref = (std::fabs(dir.y) < 0.99f) ? glm::vec3(0.0f, 1.0f, 0.0f)
-                                                         : glm::vec3(1.0f, 0.0f, 0.0f);
+        const glm::vec3 ref = (std::fabs(dir.y) < 0.99f)
+                                  ? glm::vec3(0.0f, 1.0f, 0.0f)
+                                  : glm::vec3(1.0f, 0.0f, 0.0f);
         const glm::vec3 u = glm::normalize(glm::cross(ref, dir));
         const glm::vec3 v = glm::cross(dir, u);
 
         constexpr float kDiscRadius = 0.5f; // 太阳盘半径
-        constexpr float kRayLength = 2.0f;  // 光线束长度
-        constexpr int kSegs = 24;           // 盘面圆环/辐条分段
-        constexpr int kRays = 8;            // 光线束数量
+        constexpr float kRayLength = 2.0f; // 光线束长度
+        constexpr int kSegs = 24; // 盘面圆环/辐条分段
+        constexpr int kRays = 8; // 光线束数量
 
         // 1) 太阳盘：外圈圆环 + 中心到外圈的辐条（盘面法线背向光照方向）
         for (int i = 0; i < kSegs; ++i) {
@@ -676,8 +680,6 @@ void DebugDrawLayer::DrawDirectionalLights(const Camera &camera, const glm::vec2
                              lightColor);
         }
 
-        // 2) 光线束：从盘面外缘逆着光出射方向辐射出去（即指向光源方向，
-        //    与着色器 dirLightDirection 同向），直观指示光线照射来源
         for (int i = 0; i < kRays; ++i) {
             const float a = (2.0f * kPi * i) / kRays;
             const glm::vec3 start =

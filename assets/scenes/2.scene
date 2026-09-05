@@ -1,774 +1,86 @@
 Scene:
   Entities:
-    - Name: car2
-      Id: e5fda1ea0f81073cecce1370338fb9cc789b79b3d35dba0d9f87693c7fa02e89
+    - Name: mixamorig:RightToe_End
+      Id: 9f02f3ee6a5653f5efae7d6dc4efb488683e8f5cfea00873a10fa6661c999e45
+      Parent: 4c9a4670e96e320a07febc0ccd99e43520de20419be36007a072ebf1265c82b8
       Transform:
-        Translation: [-0.11845638, -1.1009448, 5.8653255]
-        Rotation: [1, 0, 0, 0]
-        Scale: [1, 1, 1]
-      MeshRenderer:
-        Color: [1, 1, 1, 1]
-        Mesh: builtin:sphere
-        MaterialOverrides:
-          0:
-            Type: PBR
-            Name: scene:PBR;Albedo:F:\yxy\project\GameEngine\assets\Metal049A_2K-JPG\Metal049A_2K-JPG_Color.jpg;Normal:F:\yxy\project\GameEngine\assets\Metal049A_2K-JPG\Metal049A_2K-JPG_NormalGL.jpg;MetallicRoughness:F:\yxy\project\GameEngine\assets\Metal049A_2K-JPG\Metal049A_2K-JPG_MetalRough.png;emissiveStrength=0;metallic=1;roughness=1;uvTiling=0.54;
-            AlbedoTexture: F:\yxy\project\GameEngine\assets\Metal049A_2K-JPG\Metal049A_2K-JPG_Color.jpg
-            AlbedoTextureSampler:
-              MagFilter: Linear
-              MinFilter: Linear
-              AddressMode: Repeat
-              Anisotropy: true
-            NormalTexture: F:\yxy\project\GameEngine\assets\Metal049A_2K-JPG\Metal049A_2K-JPG_NormalGL.jpg
-            NormalTextureSampler:
-              MagFilter: Linear
-              MinFilter: Linear
-              AddressMode: Repeat
-              Anisotropy: true
-            MetallicRoughnessTexture: F:\yxy\project\GameEngine\assets\Metal049A_2K-JPG\Metal049A_2K-JPG_MetalRough.png
-            MetallicRoughnessTextureSampler:
-              MagFilter: Linear
-              MinFilter: Linear
-              AddressMode: Repeat
-              Anisotropy: true
-            FloatParams:
-              uvTiling: 0.54
-              metallic: 1
-              roughness: 1
-              emissiveStrength: 0
-            EmissiveFactor: [0, 0, 0]
-    - Name: PhysicsBall
-      Id: 99d6ebc44be2b191015fb8180f28c828d813b06e287a69a5ba6e464a5f00cb9a
-      Transform:
-        Translation: [0, 5, 0]
-        Rotation: [1, 0, 0, 0]
-        Scale: [0.5, 0.5, 0.5]
-      MeshRenderer:
-        Color: [0.2, 0.6, 1, 1]
-        Mesh: builtin:sphere
-      RigidBody:
-        Type: Kinematic
-        Mass: 1
-        Friction: 0.6
-        Restitution: 0.3
-        LinearDamping: 0.05
-        AngularDamping: 0.05
-        IsSensor: false
-      SphereCollider:
-        Radius: 1
-        Offset: [0, 0, 0]
-        DrawDebug: true
-    - Name: PhysicsFloor
-      Id: 943c5580c0f8760d7c4cccfce60004e06c8d34d9193608d70ffbaace8486a0c7
-      Transform:
-        Translation: [0, -12.713734, 0]
-        Rotation: [1, 0, 0, 0]
-        Scale: [149.1, 2.6, 170.51]
-      MeshRenderer:
-        Color: [0.5, 0.5, 0.5, 1]
-        Mesh: builtin:cube
-        MaterialOverrides:
-          0:
-            Type: PBR
-            Name: 沙地
-            AlbedoTexture: F:\yxy\project\GameEngine\assets\materal\Ground054_4K-JPG\Ground054_4K-JPG_Color.jpg
-            AlbedoTextureSampler:
-              MagFilter: Linear
-              MinFilter: Linear
-              AddressMode: Repeat
-              Anisotropy: true
-            NormalTexture: F:\yxy\project\GameEngine\assets\materal\Ground054_4K-JPG\Ground054_4K-JPG_NormalGL.jpg
-            NormalTextureSampler:
-              MagFilter: Linear
-              MinFilter: Linear
-              AddressMode: Repeat
-              Anisotropy: true
-            MetallicRoughnessTexture: F:\yxy\project\GameEngine\assets\materal\Ground054_4K-JPG\Ground054_4K-JPG_Roughness.jpg
-            MetallicRoughnessTextureSampler:
-              MagFilter: Linear
-              MinFilter: Linear
-              AddressMode: Repeat
-              Anisotropy: true
-            FloatParams:
-              uvTiling: 7.41
-              metallic: 0
-              roughness: 1
-              emissiveStrength: 0
-            EmissiveFactor: [0, 0, 0]
-      RigidBody:
-        Type: Static
-        Mass: 1
-        Friction: 0.6
-        Restitution: 0
-        LinearDamping: 0.05
-        AngularDamping: 0.05
-        IsSensor: false
-      BoxCollider:
-        HalfExtents: [1, 1, 1]
-        Offset: [0, 0, 0]
-        DrawDebug: false
-    - Name: AmbientLight
-      Id: 5326df47538e59a050d18b65bba62b4d095c22b9f0e3a294048cf6816d10183f
-      Transform:
-        Translation: [0, 0, 0]
-        Rotation: [1, 0, 0, 0]
-        Scale: [1, 1, 1]
-      AmbientLight:
-        Color: [0.3019608, 0.3019608, 0.34901962, 1]
-      Environment:
-        Name: DaySkyHDRI065B
-        Enabled: true
-        SkyboxEnabled: true
-        IBLEnabled: true
-    - Name: DirectionalLight
-      Id: 0074f65bba8e740a2119c9d10b8a3b9a6a6c8b3a081869b32533bf3630a3ca81
-      Transform:
-        Translation: [0, 0, 0]
-        Rotation: [0.8923991, -0.36964384, 0.23911761, 0.09904577]
-        Scale: [1, 1, 1]
-      DirectionalLight:
-        Color: [1, 0.9490196, 0.8509804, 0]
-    - Name: BluePointLight
-      Id: ddf849a1dcf4af0fddd1675a2b1af018e5ec552783503973b6af88a137a04cca
-      Transform:
-        Translation: [1.2468404, -9.963747, -0.8467588]
-        Rotation: [0.99956465, -0.020912861, 2.118664e-05, -0.020814579]
-        Scale: [0.15, 0.15, 0.15]
-      MeshRenderer:
-        Color: [0.4, 0.5, 1, 1]
-        Mesh: builtin:sphere
-      PointLight:
-        Color: [0.2, 0.3, 1, 1.5]
-        RadiusInv: 0.4
-      RigidBody:
-        Type: Dynamic
-        Mass: 1
-        Friction: 0.6
-        Restitution: 0.3
-        LinearDamping: 0.05
-        AngularDamping: 0.05
-        IsSensor: false
-      SphereCollider:
-        Radius: 1
-        Offset: [0, 0, 0]
-        DrawDebug: true
-    - Name: RedPointLight
-      Id: c88f8ae7961cda32b607d446dd6f855a2e18cd88b6f626666b6d806b23cea09f
-      Transform:
-        Translation: [2.1701374, -0.013627559, -0.012405559]
-        Rotation: [1, 0, 0, 0]
-        Scale: [0.15, 0.15, 0.15]
-      MeshRenderer:
-        Color: [1, 0.4, 0.4, 1]
-        Mesh: builtin:sphere
-      PointLight:
-        Color: [1, 0.2, 0.2, 1.5]
-        RadiusInv: 0.4
-    - Name: MainCamera
-      Id: 43d97364c81cc01660e3d38cfc9b82b188d31979e5937f987067ae53de18a63f
-      Transform:
-        Translation: [-2.3251343, -42.407475, -176.30014]
-        Rotation: [1, 4.263256e-14, 0, 0]
-        Scale: [1, 1, 1]
-      Camera:
-        Primary: true
-        FixedAspectRatio: false
-        Mode: FPS
-        Fov: 60
-        Aspect: 1.3522191
-        Near: 0.1
-        Far: 100
-        Target: [20.311443, 1.0204772, -3.2527063]
-        Theta: 368.7024
-        Phi: 9.449544
-        Distance: 33
-        Position: [-4.697946, 16.478474, 16.070837]
-        Yaw: 23.900154
-        Pitch: -29.200033
-    - Name: car1
-      Id: 74295f1eb52dc8d990ef849959ce39687bdf3e73091957880a02af4b4b758dc1
-      Transform:
-        Translation: [-0.2605561, -2.8314323, 2.041085]
-        Rotation: [1, 0, 0, 0]
-        Scale: [1, 1, 1]
-      MeshRenderer:
-        Color: [1, 1, 1, 1]
-        Mesh: builtin:cube
-        MaterialOverrides:
-          0:
-            Type: PBR
-            Name: 沙子
-            AlbedoTexture: F:\yxy\project\GameEngine\assets\materal\Ground054_4K-JPG\Ground054_4K-JPG_Color.jpg
-            AlbedoTextureSampler:
-              MagFilter: Linear
-              MinFilter: Linear
-              AddressMode: Repeat
-              Anisotropy: true
-            NormalTexture: F:\yxy\project\GameEngine\assets\materal\Ground054_4K-JPG\Ground054_4K-JPG_NormalGL.jpg
-            NormalTextureSampler:
-              MagFilter: Linear
-              MinFilter: Linear
-              AddressMode: Repeat
-              Anisotropy: true
-            MetallicRoughnessTexture: F:\yxy\project\GameEngine\assets\materal\Ground054_4K-JPG\Ground054_4K-JPG_Roughness.jpg
-            MetallicRoughnessTextureSampler:
-              MagFilter: Linear
-              MinFilter: Linear
-              AddressMode: Repeat
-              Anisotropy: true
-            FloatParams:
-              uvTiling: 1
-              metallic: 0
-              roughness: 1
-              emissiveStrength: 0
-            EmissiveFactor: [0, 0, 0]
-      RigidBody:
-        Type: Static
-        Mass: 1
-        Friction: 0.6
-        Restitution: 0
-        LinearDamping: 0.05
-        AngularDamping: 0.05
-        IsSensor: false
-      BoxCollider:
-        HalfExtents: [1, 1, 1]
-        Offset: [0, 0, 0]
-        DrawDebug: true
-    - Name: mixamorig:RightToeBase
-      Id: 4c9a4670e96e320a07febc0ccd99e43520de20419be36007a072ebf1265c82b8
-      Parent: 403c89a23cac231607e67faa2902d9b939c63cda6e672f0e70e40a400e9c15f2
-      Transform:
-        Translation: [-2.5967927e-06, 20.199995, 3.352988e-06]
-        Rotation: [0.91683203, 0.39757907, 0.035400987, 0.009830851]
-        Scale: [0.9999998, 0.99999994, 0.99999994]
+        Translation: [9.293198e-07, 7.525992, -3.7252835e-08]
+        Rotation: [1, 2.989691e-08, -1.9548906e-08, -1.0541241e-08]
+        Scale: [1.0000002, 1.0000001, 1]
       Joint:
-        JointIndex: 9
-    - Name: mixamorig:RightFoot
-      Id: 403c89a23cac231607e67faa2902d9b939c63cda6e672f0e70e40a400e9c15f2
-      Parent: 6bdb17db1cdcc60f461db28f2f0cfeed7ebe1c03929344fc7dec39a00e3d8eec
+        JointIndex: 10
+    - Name: mixamorig:LeftHandMiddle2
+      Id: b4aaa32cdedc524051b015f76b1f7d66bf993cb2153de37595284785eb0ad2b9
+      Parent: 155a49065c79ec1197cf479e6343f99e55aa711f27d1dee86a78649bb7bffca6
       Transform:
-        Translation: [2.2026973e-06, 37.492996, 9.3012346e-07]
-        Rotation: [0.78861356, 0.5961072, 0.11066514, 0.1024607]
-        Scale: [1, 1.0000001, 1]
-      Joint:
-        JointIndex: 8
-    - Name: mixamorig:RightLeg
-      Id: 6bdb17db1cdcc60f461db28f2f0cfeed7ebe1c03929344fc7dec39a00e3d8eec
-      Parent: 4f60fb70452d9685e4d3222fad87676f033e9285e154e20e70b78abd37c3b8fb
-      Transform:
-        Translation: [4.6747152e-07, 41.151672, 6.5190005e-07]
-        Rotation: [0.93450886, -0.3473436, 0.074605376, -0.021900188]
-        Scale: [1, 0.99999964, 0.9999996]
-      Joint:
-        JointIndex: 7
-    - Name: mixamorig:LeftShoulder
-      Id: dbaab97497e400426f15ec4375c2ec254edd7ccedfa0917858df64d93855d4d6
-      Parent: ba4466419ebfece170ef3772aa58d8215fdca000f91fb2abe5a8d02241e68d20
-      Transform:
-        Translation: [6.2642508, 12.592015, -1.4592793]
-        Rotation: [0.3869982, 0.5948136, 0.39933124, -0.5804859]
-        Scale: [0.9999995, 0.99999946, 0.9999998]
-      Joint:
-        JointIndex: 14
-    - Name: mixamorig:Spine2
-      Id: ba4466419ebfece170ef3772aa58d8215fdca000f91fb2abe5a8d02241e68d20
-      Parent: 3527431b36af2f91bfce80a28aadf2f1daab26cb5ffa5a0c5b79c0314fc348d0
-      Transform:
-        Translation: [-5.271286e-07, 14.038224, 4.1269794e-07]
-        Rotation: [0.9858496, 0.14613418, 0.080812514, -0.0146519095]
+        Translation: [-2.4376791e-07, 2.7342236, 1.1696883e-05]
+        Rotation: [0.9794737, 0.19972953, 0.0011362853, 0.027169863]
         Scale: [0.99999994, 1, 1]
       Joint:
-        JointIndex: 13
-    - Name: mixamorig:Spine1
-      Id: 3527431b36af2f91bfce80a28aadf2f1daab26cb5ffa5a0c5b79c0314fc348d0
-      Parent: eefe3b1557946629d3206e6f928738d03d7b987105733ddb5ed854851604a82b
+        JointIndex: 23
+    - Name: mixamorig:LeftHandMiddle3
+      Id: 13a95958bbbf610803a09d2b6bb11bb88bd8b66b47816073fd96f5c092c61415
+      Parent: b4aaa32cdedc524051b015f76b1f7d66bf993cb2153de37595284785eb0ad2b9
       Transform:
-        Translation: [-7.109586e-07, 12.1748085, -1.19209105e-07]
-        Rotation: [0.9916897, 0.099026784, 0.08141845, -0.010787354]
-        Scale: [1, 1.0000001, 1]
-      Joint:
-        JointIndex: 12
-    - Name: mixamorig:Spine
-      Id: eefe3b1557946629d3206e6f928738d03d7b987105733ddb5ed854851604a82b
-      Parent: 2990d6ee1ca647838ad82cd2153bc7a37ced7dc4287fe3e09f37001131dd3a90
-      Transform:
-        Translation: [0.012400919, 10.4452305, -0.9962743]
-        Rotation: [0.9991313, 0.0020089457, 0.04109925, -0.0065879896]
-        Scale: [1, 1, 1]
-      Joint:
-        JointIndex: 11
-    - Name: mixamorig:LeftHandIndex1
-      Id: a67dd657096b42ea02db1bbef2756d4a807170d7d57033d2768b54cd26fcb182
-      Parent: 007190e17fcaefdd6b7feaaa73e81b19df7bb2bffd8e5928c388a720385e0c2b
-      Transform:
-        Translation: [-2.8032408, 13.619135, 0.61431265]
-        Rotation: [0.9976269, 0.041844245, -0.0071950234, 0.05420219]
-        Scale: [0.9999998, 0.99999994, 1]
-      Joint:
-        JointIndex: 18
-    - Name: mixamorig:LeftHand
-      Id: 007190e17fcaefdd6b7feaaa73e81b19df7bb2bffd8e5928c388a720385e0c2b
-      Parent: 0623e3b0be0a6ac4497033cd69449429c0bf48d164dda1b2ed9439e1a64d0d1f
-      Transform:
-        Translation: [-7.297378e-06, 26.464098, 2.0083203e-06]
-        Rotation: [0.9766201, -0.16332173, 0.1392101, 0.012640068]
-        Scale: [0.99999994, 0.9999998, 0.99999994]
-      Joint:
-        JointIndex: 17
-    - Name: mixamorig:LeftForeArm
-      Id: 0623e3b0be0a6ac4497033cd69449429c0bf48d164dda1b2ed9439e1a64d0d1f
-      Parent: 5c9d4f78468a22ca26b92f3fb259986302dbf29e2a8512329f99fac4a1f1bff3
-      Transform:
-        Translation: [2.0687921e-06, 21.773022, -3.4423506e-06]
-        Rotation: [0.9068108, -0.012395803, 0.060301896, 0.41701832]
-        Scale: [1.0000001, 1, 1]
-      Joint:
-        JointIndex: 16
-    - Name: mixamorig:LeftArm
-      Id: 5c9d4f78468a22ca26b92f3fb259986302dbf29e2a8512329f99fac4a1f1bff3
-      Parent: dbaab97497e400426f15ec4375c2ec254edd7ccedfa0917858df64d93855d4d6
-      Transform:
-        Translation: [-9.875323e-06, 13.826992, 1.3065663e-05]
-        Rotation: [0.90261304, 0.41249824, -0.10630808, 0.06191536]
-        Scale: [1, 1.0000002, 1.0000004]
-      Joint:
-        JointIndex: 15
-    - Name: mixamorig:RightUpLeg
-      Id: 4f60fb70452d9685e4d3222fad87676f033e9285e154e20e70b78abd37c3b8fb
-      Parent: 2990d6ee1ca647838ad82cd2153bc7a37ced7dc4287fe3e09f37001131dd3a90
-      Transform:
-        Translation: [-10.015143, -5.802842, -0.5826999]
-        Rotation: [0.13222222, -0.121468075, 0.022824222, 0.9834845]
-        Scale: [0.9999999, 0.9999998, 1.000001]
-      Joint:
-        JointIndex: 6
-    - Name: mixamorig:LeftToe_End
-      Id: ba0e563efab5820be5359ac2e1df9b3eba7c25356c54de080402fcb1c4ca8e4b
-      Parent: 89e5cfe76ca5b15ac17087a51a3aeabc3202f0274deb0981ec8e65155ecc7e50
-      Transform:
-        Translation: [3.543753e-06, 7.525987, 1.8626402e-07]
-        Rotation: [1, 5.0895324e-08, -4.3623345e-09, -1.7359261e-09]
-        Scale: [1.0000001, 1.0000001, 1]
-      Joint:
-        JointIndex: 5
-    - Name: mixamorig:LeftToeBase
-      Id: 89e5cfe76ca5b15ac17087a51a3aeabc3202f0274deb0981ec8e65155ecc7e50
-      Parent: b3d7dec37e1da4e675f44e8e9e734329ff79e77845144568f9f5867ad2cbcd70
-      Transform:
-        Translation: [-1.2010584e-06, 20.19999, 5.102912e-07]
-        Rotation: [0.913724, 0.40444118, -0.01818933, -0.034711067]
-        Scale: [0.99999976, 0.99999994, 1]
-      Joint:
-        JointIndex: 4
-    - Name: mixamorig:LeftFoot
-      Id: b3d7dec37e1da4e675f44e8e9e734329ff79e77845144568f9f5867ad2cbcd70
-      Parent: f6dc86489a0c55db562fb0f35a4bf52fbaba4a70589650257f046a34af41c73c
-      Transform:
-        Translation: [-4.6568684e-06, 37.492992, 2.2952831e-06]
-        Rotation: [0.8731919, 0.4820695, -0.070199974, -0.014725514]
-        Scale: [0.99999994, 1, 0.9999999]
-      Joint:
-        JointIndex: 3
-    - Name: mixamorig:LeftHandPinky4
-      Id: 92a54be41f8fe8b0eb876c1cef70cc83740e7e578cb6b8831bf3baf12a9dc4c1
-      Parent: 3344205de28aceafa74ef762d7ea324db194444a3cc3c3aaf76b45cfc55d26ce
-      Transform:
-        Translation: [3.9120205e-06, 1.8941718, 1.3301615e-05]
-        Rotation: [1, 1.5993011e-08, -1.3103089e-08, 1.1664129e-08]
-        Scale: [1.0000001, 0.9999999, 1]
-      Joint:
-        JointIndex: 29
-    - Name: mixamorig:LeftHandRing1
-      Id: ecab2722b9bff996581dbebbdc25a5b1db016930793d561333c7600644107f9f
-      Parent: 007190e17fcaefdd6b7feaaa73e81b19df7bb2bffd8e5928c388a720385e0c2b
-      Transform:
-        Translation: [2.8652747, 12.981088, -0.31295124]
-        Rotation: [0.9539438, 0.2720164, -0.014288023, -0.12567441]
-        Scale: [0.9999999, 1.0000001, 0.99999994]
-      Joint:
-        JointIndex: 30
-    - Name: mixamorig:LeftHandRing2
-      Id: a10d412a196bdced762a9ea1f1b781a2356f464541c0e85e9cfe37ab866fd28f
-      Parent: ecab2722b9bff996581dbebbdc25a5b1db016930793d561333c7600644107f9f
-      Transform:
-        Translation: [5.6468724e-07, 2.592457, 7.1484264e-06]
-        Rotation: [0.9602738, 0.27803227, 0.0016567257, 0.023864876]
-        Scale: [1.0000001, 0.9999999, 0.99999994]
-      Joint:
-        JointIndex: 31
-    - Name: mixamorig:LeftHandPinky3
-      Id: 3344205de28aceafa74ef762d7ea324db194444a3cc3c3aaf76b45cfc55d26ce
-      Parent: 7419e87a0de530f2a167e1355cfab8c31528bb5443a5f75f42a5b55ef813c9d8
-      Transform:
-        Translation: [-1.5416152e-06, 1.491963, -4.4047547e-06]
-        Rotation: [0.999763, 0.021462955, -1.8319495e-05, -0.0036547843]
-        Scale: [1, 0.99999994, 0.9999998]
-      Joint:
-        JointIndex: 28
-    - Name: mixamorig:LeftHandPinky2
-      Id: 7419e87a0de530f2a167e1355cfab8c31528bb5443a5f75f42a5b55ef813c9d8
-      Parent: 655a3ccae5c1564fd5e74b1fee419a17b1497fee9fb2093261bd1acbaff6b26d
-      Transform:
-        Translation: [5.3170584e-06, 1.8336645, 5.624259e-07]
-        Rotation: [0.94156593, 0.33011973, 0.01734513, 0.06460474]
-        Scale: [1, 0.99999994, 1]
-      Joint:
-        JointIndex: 27
-    - Name: mixamorig:Head
-      Id: 5c996d719a2f214c0e61d2adcdfa244329418b1c3880db8a49aa69bf2c321d45
-      Parent: 657c5e1149295d3a855526d5750eaefe38ac4406f0c78bed0729e8bb37b74b87
-      Transform:
-        Translation: [-2.2626545e-33, 7.0131626, 0.91843796]
-        Rotation: [0.98247474, -0.058225892, 0.17686558, -0.008463902]
-        Scale: [1, 0.9999999, 1.0000001]
-      Joint:
-        JointIndex: 39
-    - Name: mixamorig:Neck
-      Id: 657c5e1149295d3a855526d5750eaefe38ac4406f0c78bed0729e8bb37b74b87
-      Parent: ba4466419ebfece170ef3772aa58d8215fdca000f91fb2abe5a8d02241e68d20
-      Transform:
-        Translation: [0.049887557, 15.686722, -1.4916565]
-        Rotation: [0.99945396, -0.031394497, -0.010287818, 0.0006352822]
-        Scale: [1, 1, 0.9999999]
-      Joint:
-        JointIndex: 38
-    - Name: mixamorig:LeftHandThumb4
-      Id: f445fe56431f1dce543ab8d31998c7e3fd020b71d12184737e8cf1129eec16c4
-      Parent: 4858396a874ad089b5879f16592427c8eff1b1405244ce9bb0c962f448f66adb
-      Transform:
-        Translation: [5.4836273e-06, 3.2865896, -4.7683716e-06]
-        Rotation: [1, 2.220446e-15, -2.4214387e-08, -1.67638e-08]
-        Scale: [1.0000002, 1.0000002, 1.0000001]
-      Joint:
-        JointIndex: 37
-    - Name: mixamorig:LeftHandThumb3
-      Id: 4858396a874ad089b5879f16592427c8eff1b1405244ce9bb0c962f448f66adb
-      Parent: f4e2ce97618953187711710297cf87499a5e25914ada1cfa5ce707452e68e03f
-      Transform:
-        Translation: [-8.0010095e-06, 4.102429, 5.77733e-06]
-        Rotation: [0.99953395, -0.01937826, -0.00044909856, -0.023582224]
-        Scale: [0.9999999, 0.99999994, 0.99999976]
-      Joint:
-        JointIndex: 36
-    - Name: mixamorig:RightShoulder
-      Id: 4062184a68bc10503a2c24f750467761cf4db4c0f13ecc5caa909e3e342d776c
-      Parent: ba4466419ebfece170ef3772aa58d8215fdca000f91fb2abe5a8d02241e68d20
-      Transform:
-        Translation: [-6.1681876, 12.592014, -1.5240226]
-        Rotation: [0.4072614, 0.6409564, -0.36430213, 0.5390705]
-        Scale: [1, 1, 1.0000001]
-      Joint:
-        JointIndex: 43
-    - Name: RightEye
-      Id: bee0313d96f1e06669b569f76b11d1317195bacfd73a8d7d49124bbacd414acd
-      Parent: 5c996d719a2f214c0e61d2adcdfa244329418b1c3880db8a49aa69bf2c321d45
-      Transform:
-        Translation: [-2.866932, 9.781047, 8.202075]
-        Rotation: [1, 1.7188313e-09, 6.730261e-11, -2.6775524e-09]
-        Scale: [1, 1, 1]
-      Joint:
-        JointIndex: 42
-    - Name: mixamorig:HeadTop_End
-      Id: 250e7863c9b8241f81134963782178601c733aa6d8946b39d5de97cd1bfa7553
-      Parent: 5c996d719a2f214c0e61d2adcdfa244329418b1c3880db8a49aa69bf2c321d45
-      Transform:
-        Translation: [0.17337796, 21.490591, 2.7023675]
-        Rotation: [1, 1.7188313e-09, 6.730261e-11, -2.6775524e-09]
-        Scale: [1, 1, 1]
-      Joint:
-        JointIndex: 41
-    - Name: LeftEye
-      Id: b07c5ee9df47233b752719eab9b0356c0ab75f22e2e9efb76eb09317ab4fd3ed
-      Parent: 5c996d719a2f214c0e61d2adcdfa244329418b1c3880db8a49aa69bf2c321d45
-      Transform:
-        Translation: [3.023154, 9.781039, 8.3399315]
-        Rotation: [1, 1.7188313e-09, 6.730261e-11, -2.6775524e-09]
-        Scale: [1, 1, 1]
-      Joint:
-        JointIndex: 40
-    - Name: mixamorig:RightHandIndex1
-      Id: 11e6e27978f8f43ff9f8728839ba40ac450732e7ddda42da707f31c5f92977c4
-      Parent: 51e2da7d27f743c769fa6adbb5a1938065c1535ecb3c103e510f284c9a4c3eca
-      Transform:
-        Translation: [2.9655752, 13.623698, 0.47133055]
-        Rotation: [0.9992759, 0.036479115, 0.009836694, 0.004491964]
-        Scale: [0.9999999, 0.9999998, 0.99999994]
-      Joint:
-        JointIndex: 47
-    - Name: mixamorig:RightHand
-      Id: 51e2da7d27f743c769fa6adbb5a1938065c1535ecb3c103e510f284c9a4c3eca
-      Parent: 8a683214b333bf3ac6e97b8c7e413e324b19411aae054c7c78835e310c002ed8
-      Transform:
-        Translation: [8.461065e-07, 26.395052, 3.2302817e-06]
-        Rotation: [0.99295956, 0.0910041, -0.049139436, -0.05774923]
-        Scale: [0.99999994, 1, 0.9999999]
-      Joint:
-        JointIndex: 46
-    - Name: mixamorig:RightForeArm
-      Id: 8a683214b333bf3ac6e97b8c7e413e324b19411aae054c7c78835e310c002ed8
-      Parent: 116127681d4ac7e04d890a13db081f7d5f53935d601af3df3c336506b44c29e8
-      Transform:
-        Translation: [-2.0935903e-07, 21.68007, -1.5820259e-06]
-        Rotation: [0.9289817, 0.049619444, 0.030781953, -0.3654908]
-        Scale: [0.99999964, 0.99999976, 0.99999976]
-      Joint:
-        JointIndex: 45
-    - Name: mixamorig:RightArm
-      Id: 116127681d4ac7e04d890a13db081f7d5f53935d601af3df3c336506b44c29e8
-      Parent: 4062184a68bc10503a2c24f750467761cf4db4c0f13ecc5caa909e3e342d776c
-      Transform:
-        Translation: [-1.0499164e-05, 13.922129, -2.5484946e-06]
-        Rotation: [0.89997286, 0.3845451, 0.11380738, 0.17094412]
-        Scale: [1, 1, 1]
-      Joint:
-        JointIndex: 44
-    - Name: mixamorig:RightHandMiddle1
-      Id: 22e54074eecde414cb81ea77e8b9a909f46366bf0612ebbbb2a2cd87546f1fa7
-      Parent: 51e2da7d27f743c769fa6adbb5a1938065c1535ecb3c103e510f284c9a4c3eca
-      Transform:
-        Translation: [0.112465285, 13.970368, -0.033342756]
-        Rotation: [0.992695, 0.11848293, 0.007752282, 0.021411637]
-        Scale: [1, 1, 1]
-      Joint:
-        JointIndex: 51
-    - Name: mixamorig:RightHandIndex4
-      Id: ba6726034a6c40e6a53e64d524b3b22cba6fec91e9c65d222ad40c4672476919
-      Parent: 022225a8744e665ec8f3ae87915ee3a27b037d87a90a49f504072e6e8874bccb
-      Transform:
-        Translation: [4.9024816e-06, 2.7303145, -1.7965329e-05]
-        Rotation: [1, 1.2801137e-09, -9.1586205e-10, 1.3844355e-08]
-        Scale: [1.0000001, 1.0000001, 1]
-      Joint:
-        JointIndex: 50
-    - Name: mixamorig:RightHandIndex3
-      Id: 022225a8744e665ec8f3ae87915ee3a27b037d87a90a49f504072e6e8874bccb
-      Parent: 692945424c49094f18c6937b6184f5da626a3a30fdca0f80eedfccf05e6b5f68
-      Transform:
-        Translation: [5.481168e-07, 2.0594387, 2.3036937e-06]
-        Rotation: [0.99990654, -0.013371518, 4.832613e-05, -0.0028616495]
-        Scale: [1, 0.9999998, 0.99999994]
-      Joint:
-        JointIndex: 49
-    - Name: mixamorig:RightHandIndex2
-      Id: 692945424c49094f18c6937b6184f5da626a3a30fdca0f80eedfccf05e6b5f68
-      Parent: 11e6e27978f8f43ff9f8728839ba40ac450732e7ddda42da707f31c5f92977c4
-      Transform:
-        Translation: [-8.905257e-07, 2.4450455, 5.664813e-06]
-        Rotation: [0.9891593, 0.1465078, 0.00015471241, 0.009970028]
-        Scale: [1, 1.0000001, 1.0000001]
-      Joint:
-        JointIndex: 48
-    - Name: mixamorig:RightHandPinky1
-      Id: 43db0401887cfd46c9b70b28f5166e079d842bbdc119a6183fc43611f9c0af45
-      Parent: 51e2da7d27f743c769fa6adbb5a1938065c1535ecb3c103e510f284c9a4c3eca
-      Transform:
-        Translation: [-4.565398, 11.387088, 0.47880855]
-        Rotation: [0.9696897, 0.2212822, -0.009773564, 0.10315238]
-        Scale: [1, 1, 1]
-      Joint:
-        JointIndex: 55
-    - Name: mixamorig:RightHandMiddle4
-      Id: 88672a76b9ed4f2fc307405dd968b944717119284e30b2dfa41a934c98cd7c06
-      Parent: 8f4835e3aab04e206e910f526b6cfb5227697eccb2bb07bace8bec5d97d0b9ed
-      Transform:
-        Translation: [-1.17952e-06, 2.919819, -2.4104665e-06]
-        Rotation: [1, 1.1703719e-08, -5.7807483e-09, 2.810829e-09]
-        Scale: [1, 0.99999994, 1]
-      Joint:
-        JointIndex: 54
-    - Name: mixamorig:RightHandMiddle3
-      Id: 8f4835e3aab04e206e910f526b6cfb5227697eccb2bb07bace8bec5d97d0b9ed
-      Parent: 61fe47e86caa1f5dbc159b67b8106c21b76276e41c217f5238f9ff78e36679c2
-      Transform:
-        Translation: [4.0200357e-06, 2.3521905, 5.26875e-07]
-        Rotation: [0.9999569, -0.00883961, 3.6486275e-05, 0.002835306]
-        Scale: [1.0000002, 1.0000001, 1.0000001]
-      Joint:
-        JointIndex: 53
-    - Name: mixamorig:RightHandMiddle2
-      Id: 61fe47e86caa1f5dbc159b67b8106c21b76276e41c217f5238f9ff78e36679c2
-      Parent: 22e54074eecde414cb81ea77e8b9a909f46366bf0612ebbbb2a2cd87546f1fa7
-      Transform:
-        Translation: [-5.115462e-07, 2.734258, 2.7073067e-06]
-        Rotation: [0.96015805, 0.27782708, -0.0021989576, -0.030063717]
-        Scale: [0.9999997, 0.99999964, 0.99999976]
-      Joint:
-        JointIndex: 52
-    - Name: mixamorig:LeftHandThumb2
-      Id: f4e2ce97618953187711710297cf87499a5e25914ada1cfa5ce707452e68e03f
-      Parent: 567c04d693f5440c7ea79650ac0c1d42a5700c5e8c79c7d86b50bcf15efb4fb3
-      Transform:
-        Translation: [6.1583532e-06, 3.9019506, -2.4183244e-05]
-        Rotation: [0.9996519, 0.024825064, 0.0014683871, -0.008813248]
-        Scale: [1.0000001, 1, 1.0000002]
-      Joint:
-        JointIndex: 35
-    - Name: mixamorig:LeftHandThumb1
-      Id: 567c04d693f5440c7ea79650ac0c1d42a5700c5e8c79c7d86b50bcf15efb4fb3
-      Parent: 007190e17fcaefdd6b7feaaa73e81b19df7bb2bffd8e5928c388a720385e0c2b
-      Transform:
-        Translation: [-2.0807278, 3.8894079, 1.8793728]
-        Rotation: [0.9344139, 0.27762488, 0.12409724, 0.18545906]
-        Scale: [0.99999976, 0.9999999, 1]
-      Joint:
-        JointIndex: 34
-    - Name: mixamorig:LeftHandRing4
-      Id: 0e38b306340a53f962be22354d73f4df6398fccb760f035a5363dac0961d1825
-      Parent: 59382ce64cff09bfd20d737dca5d5d33cdd91d1a3f06889238279b14fdba1c08
-      Transform:
-        Translation: [1.9306317e-06, 2.9127855, 2.5240593e-06]
-        Rotation: [1, 7.459507e-09, 4.650248e-09, 1.1789112e-08]
-        Scale: [1, 1, 1]
-      Joint:
-        JointIndex: 33
-    - Name: mixamorig:LeftHandRing3
-      Id: 59382ce64cff09bfd20d737dca5d5d33cdd91d1a3f06889238279b14fdba1c08
-      Parent: a10d412a196bdced762a9ea1f1b781a2356f464541c0e85e9cfe37ab866fd28f
-      Transform:
-        Translation: [1.4338448e-06, 2.171616, 2.2048812e-06]
-        Rotation: [0.9999958, 0.0028692144, 1.5336846e-06, 0.00033448366]
-        Scale: [0.9999998, 0.99999994, 0.99999994]
-      Joint:
-        JointIndex: 32
-    - Name: mixamorig:LeftLeg
-      Id: f6dc86489a0c55db562fb0f35a4bf52fbaba4a70589650257f046a34af41c73c
-      Parent: 7f2703a33cd56c4620f4b3ec6b6405e0b63df8468891d55ff6505e944c292e96
-      Transform:
-        Translation: [-2.4857206e-06, 41.151733, -6.7875817e-06]
-        Rotation: [0.92626476, -0.35578457, 0.11976954, -0.033259388]
-        Scale: [0.9999998, 0.9999997, 0.9999992]
-      Joint:
-        JointIndex: 2
-    - Name: mixamorig:LeftUpLeg
-      Id: 7f2703a33cd56c4620f4b3ec6b6405e0b63df8468891d55ff6505e944c292e96
-      Parent: 2990d6ee1ca647838ad82cd2153bc7a37ced7dc4287fe3e09f37001131dd3a90
-      Transform:
-        Translation: [10.128667, -5.8028316, -0.5827037]
-        Rotation: [0.10616598, -0.077462174, -0.23018545, -0.9642319]
-        Scale: [1.0000001, 1.0000002, 1.0000011]
-      Joint:
-        JointIndex: 1
-    - Name: mixamorig:Hips
-      Id: 2990d6ee1ca647838ad82cd2153bc7a37ced7dc4287fe3e09f37001131dd3a90
-      Parent: 2425661bf391e96b3f47dfbbee1fefd165aa3d817f57cf7b2807375d43406623
-      Transform:
-        Translation: [-0.4870657, 0.08341026, -90.624275]
-        Rotation: [0.6303377, -0.68348134, -0.2695066, 0.25078648]
-        Scale: [1, 1, 1]
-      Joint:
-        JointIndex: 0
-    - Name: mixamorig:RightHandRing2
-      Id: 5f003e3ad7718d7d596e4ece452fed9cd8c3a8370de7f48455494f01bcf405b4
-      Parent: 282e7c7becaee9be87c12441d25c15df4f00ec77e030f2786f36eab64242dca9
-      Transform:
-        Translation: [5.6245273e-08, 2.4558194, -1.4369295e-05]
-        Rotation: [0.94457173, 0.32650506, -0.0023713985, -0.03425119]
-        Scale: [0.9999998, 0.9999999, 0.9999998]
-      Joint:
-        JointIndex: 60
-    - Name: mixamorig:RightHandRing1
-      Id: 282e7c7becaee9be87c12441d25c15df4f00ec77e030f2786f36eab64242dca9
-      Parent: 51e2da7d27f743c769fa6adbb5a1938065c1535ecb3c103e510f284c9a4c3eca
-      Transform:
-        Translation: [-2.7493682, 13.308053, -0.012113576]
-        Rotation: [0.9776631, 0.19685979, -0.006903699, 0.07330412]
-        Scale: [1, 1, 1.0000001]
-      Joint:
-        JointIndex: 59
-    - Name: mixamorig:RightHandPinky4
-      Id: 7ca1a9e7a5f86841f7b799bd6fdf0966b5ce4da98ae0be453065be3a4daac22e
-      Parent: f6bf4f44ec4e124678382875a77a0678d865b169677af32dea6aa743c256f673
-      Transform:
-        Translation: [1.5762635e-06, 2.3157017, -6.4400956e-06]
-        Rotation: [1, -1.9012991e-09, 7.2757356e-12, 8.35132e-09]
-        Scale: [1, 0.99999994, 1]
-      Joint:
-        JointIndex: 58
-    - Name: mixamorig:RightHandPinky3
-      Id: f6bf4f44ec4e124678382875a77a0678d865b169677af32dea6aa743c256f673
-      Parent: 83039e0b71815692bf6b4f1efd5a1b0d6f60cea1ab7ff05be609b325b4c1020e
-      Transform:
-        Translation: [2.9280372e-06, 2.0220976, -5.20182e-06]
-        Rotation: [0.99980897, 0.01911255, 0.00010742834, 0.0041064057]
-        Scale: [0.9999999, 1, 0.9999999]
-      Joint:
-        JointIndex: 57
-    - Name: mixamorig:RightHandPinky2
-      Id: 83039e0b71815692bf6b4f1efd5a1b0d6f60cea1ab7ff05be609b325b4c1020e
-      Parent: 43db0401887cfd46c9b70b28f5166e079d842bbdc119a6183fc43611f9c0af45
-      Transform:
-        Translation: [-2.512147e-08, 2.2283227, 3.1208172e-06]
-        Rotation: [0.93485194, 0.34479174, -0.018755432, -0.082576044]
-        Scale: [1, 0.99999976, 0.9999998]
-      Joint:
-        JointIndex: 56
-    - Name: mixamorig:RightHandThumb3
-      Id: 6b7bce6c3c3eb7361b1e69dcabbc1852ef9039f9eda882e716b5c2674650fb0f
-      Parent: 9ff95899b675ab65f0e734c7b23f21bd9833506a2b741ac2bdbb932117218b11
-      Transform:
-        Translation: [-1.8718981e-06, 4.1022906, 3.4302745e-06]
-        Rotation: [0.9996381, -0.015736207, 0.00089112547, 0.021801341]
-        Scale: [0.9999999, 1, 0.9999999]
-      Joint:
-        JointIndex: 65
-    - Name: mixamorig:RightHandThumb2
-      Id: 9ff95899b675ab65f0e734c7b23f21bd9833506a2b741ac2bdbb932117218b11
-      Parent: 65aec32e1f761f655a457a1c8b96f04d32d10264c4b1a15ea9c857b16b9c59cd
-      Transform:
-        Translation: [-9.844321e-06, 4.0464725, -2.160401e-05]
-        Rotation: [0.9811301, 0.044012234, -0.0045455196, 0.18821763]
-        Scale: [1, 0.9999999, 1]
-      Joint:
-        JointIndex: 64
-    - Name: mixamorig:RightHandThumb1
-      Id: 65aec32e1f761f655a457a1c8b96f04d32d10264c4b1a15ea9c857b16b9c59cd
-      Parent: 51e2da7d27f743c769fa6adbb5a1938065c1535ecb3c103e510f284c9a4c3eca
-      Transform:
-        Translation: [2.3528247, 4.06006, 1.9054917]
-        Rotation: [0.95106256, 0.19000179, 0.018287383, -0.24299167]
+        Translation: [-1.4121572e-06, 2.352197, 5.8285596e-06]
+        Rotation: [0.99995565, -0.008981914, 6.1024098e-06, -0.0028256576]
         Scale: [1, 1, 0.99999994]
       Joint:
-        JointIndex: 63
-    - Name: mixamorig:RightHandRing4
-      Id: 42491ab76558e2e8280eeaadb82d914cfda777b23bff743a446bba3cc959550d
-      Parent: 12ff987546006c0b42b9ac1c54a9a26722c751bcc1f3b4ea830690dac7c9e25d
+        JointIndex: 24
+    - Name: mixamorig:LeftHandMiddle4
+      Id: 90a22178ec63830e0a29639b26657e72cb55d1df47bf65d1cc2bd8c619c680e5
+      Parent: 13a95958bbbf610803a09d2b6bb11bb88bd8b66b47816073fd96f5c092c61415
       Transform:
-        Translation: [1.5366822e-06, 2.912747, -6.7288056e-07]
-        Rotation: [1, -1.5357013e-08, 1.8653732e-09, 3.678053e-09]
-        Scale: [1.0000001, 1.0000001, 0.9999999]
+        Translation: [5.587946e-08, 2.919788, -9.023352e-06]
+        Rotation: [1, -2.2271299e-10, -7.4096542e-09, -1.5107299e-08]
+        Scale: [0.99999994, 0.99999976, 0.9999999]
       Joint:
-        JointIndex: 62
-    - Name: mixamorig:RightHandRing3
-      Id: 12ff987546006c0b42b9ac1c54a9a26722c751bcc1f3b4ea830690dac7c9e25d
-      Parent: 5f003e3ad7718d7d596e4ece452fed9cd8c3a8370de7f48455494f01bcf405b4
+        JointIndex: 25
+    - Name: mixamorig:LeftHandPinky1
+      Id: 655a3ccae5c1564fd5e74b1fee419a17b1497fee9fb2093261bd1acbaff6b26d
+      Parent: 007190e17fcaefdd6b7feaaa73e81b19df7bb2bffd8e5928c388a720385e0c2b
       Transform:
-        Translation: [-9.219555e-07, 2.1717007, 1.9849871e-05]
-        Rotation: [0.9999962, 0.0027469166, -4.2602924e-06, -0.0003346531]
-        Scale: [0.9999999, 0.9999999, 1.0000001]
+        Translation: [5.564865, 12.410241, 0.64168507]
+        Rotation: [0.94031745, 0.2995777, -0.019637851, -0.16022128]
+        Scale: [0.99999994, 0.9999999, 1.0000001]
       Joint:
-        JointIndex: 61
-    - Name: ely_vanguardsoldier_kerwinatienza_Mesh
-      Id: c101c7d42a6a7110b07ba3b799405f5ccfdd215c4641cc42787f1c1fe2a8c7d6
-      Parent: 2425661bf391e96b3f47dfbbee1fefd165aa3d817f57cf7b2807375d43406623
+        JointIndex: 26
+    - Name: mixamorig:LeftHandIndex2
+      Id: 280bf88320e960009b0a7a9d4ed3dcdb479dfd2052e85f97787237aef3f1c562
+      Parent: a67dd657096b42ea02db1bbef2756d4a807170d7d57033d2768b54cd26fcb182
       Transform:
-        Translation: [0, 0, 0]
-        Rotation: [1, 0, 0, 0]
-        Scale: [100, 100, 100]
-      MeshRenderer:
-        Color: [1, 1, 1, 1]
-        Mesh: F:\yxy\project\GameEngine\assets\models\people3\people.gemesh
-      Skin:
-        Id: bb1a73761ae7ea66ecabf46c157591e6c74ccc71c34de791c9b47d99231abdb6
-        Mesh: F:\yxy\project\GameEngine\assets\models\people3\people.gemesh
-    - Name: mixamorig:RightHandThumb4
-      Id: 9d6ee64d87deeefb7631ae568e0dca3d1ed7e51156eb305de9a0634e4c205be8
-      Parent: 6b7bce6c3c3eb7361b1e69dcabbc1852ef9039f9eda882e716b5c2674650fb0f
-      Transform:
-        Translation: [-2.8610268e-06, 2.9946787, 1.5154482e-05]
-        Rotation: [1, 1.792796e-08, 1.2060627e-07, 2.7939677e-08]
-        Scale: [0.99999994, 1, 0.99999994]
+        Translation: [6.5343693e-06, 2.4450896, -6.520344e-06]
+        Rotation: [0.98890203, 0.14842205, -0.00087860867, -0.006553218]
+        Scale: [1.0000001, 1.0000002, 1]
       Joint:
-        JointIndex: 66
+        JointIndex: 19
+    - Name: mixamorig:LeftHandIndex3
+      Id: 6790b3c577e0fe328d9e1eb9e8e6d8b360e4087f1eec70c4a6577a1e85d4ccc7
+      Parent: 280bf88320e960009b0a7a9d4ed3dcdb479dfd2052e85f97787237aef3f1c562
+      Transform:
+        Translation: [-1.9136949e-06, 2.0594382, 7.113955e-07]
+        Rotation: [0.9999081, -0.013250753, -3.201794e-05, 0.0028735152]
+        Scale: [1, 0.9999997, 0.99999976]
+      Joint:
+        JointIndex: 20
+    - Name: mixamorig:LeftHandIndex4
+      Id: 906111f5f96169943f8e15d750a80989bac23d7664a2abc6c008fa7c3afe47b3
+      Parent: 6790b3c577e0fe328d9e1eb9e8e6d8b360e4087f1eec70c4a6577a1e85d4ccc7
+      Transform:
+        Translation: [-5.4747798e-06, 2.7302308, 4.977046e-07]
+        Rotation: [1, -2.303966e-08, 7.4460327e-09, 2.142042e-08]
+        Scale: [1, 1, 1.0000001]
+      Joint:
+        JointIndex: 21
+    - Name: mixamorig:LeftHandMiddle1
+      Id: 155a49065c79ec1197cf479e6343f99e55aa711f27d1dee86a78649bb7bffca6
+      Parent: 007190e17fcaefdd6b7feaaa73e81b19df7bb2bffd8e5928c388a720385e0c2b
+      Transform:
+        Translation: [-0.061487213, 13.711576, -0.13313632]
+        Rotation: [0.9871381, 0.13715845, 0.0032753127, -0.08206738]
+        Scale: [0.99999976, 1, 0.99999994]
+      Joint:
+        JointIndex: 22
     - Name: Armature
       Id: 2425661bf391e96b3f47dfbbee1fefd165aa3d817f57cf7b2807375d43406623
       Transform:
@@ -780,7 +92,7 @@ Scene:
         FixedAspectRatio: false
         Mode: FPS
         Fov: 45
-        Aspect: 1.4305949
+        Aspect: 1.6557378
         Near: 0.1
         Far: 100
         Target: [0, 0, 0]
@@ -788,8 +100,8 @@ Scene:
         Phi: 0
         Distance: 2
         Position: [-4.697946, 16.478474, 16.070837]
-        Yaw: 47.89983
-        Pitch: -34.499973
+        Yaw: 340.49884
+        Pitch: -34.700058
       CharacterController:
         Radius: 3.45
         Height: 17.7
@@ -819,7 +131,7 @@ Scene:
             Value: 10.5
       Animation:
         Active: 1
-        Time: 7.689453
+        Time: 7.4300537
         Speed: 1
         Playing: true
         Loop: true
@@ -903,89 +215,750 @@ Scene:
                 Param: speed
                 Cmp: Greater
                 Value: 0.2
-    - Name: mixamorig:LeftHandMiddle1
-      Id: 155a49065c79ec1197cf479e6343f99e55aa711f27d1dee86a78649bb7bffca6
-      Parent: 007190e17fcaefdd6b7feaaa73e81b19df7bb2bffd8e5928c388a720385e0c2b
+    - Name: mixamorig:RightHandThumb4
+      Id: 9d6ee64d87deeefb7631ae568e0dca3d1ed7e51156eb305de9a0634e4c205be8
+      Parent: 6b7bce6c3c3eb7361b1e69dcabbc1852ef9039f9eda882e716b5c2674650fb0f
       Transform:
-        Translation: [-0.061487213, 13.711576, -0.13313632]
-        Rotation: [0.98710144, 0.13398588, 0.004507898, -0.0875126]
-        Scale: [0.99999976, 1, 0.99999994]
+        Translation: [-2.8610268e-06, 2.9946787, 1.5154482e-05]
+        Rotation: [1, 1.792796e-08, 1.2060627e-07, 2.7939677e-08]
+        Scale: [0.99999994, 1, 0.99999994]
       Joint:
-        JointIndex: 22
-    - Name: mixamorig:LeftHandIndex4
-      Id: 906111f5f96169943f8e15d750a80989bac23d7664a2abc6c008fa7c3afe47b3
-      Parent: 6790b3c577e0fe328d9e1eb9e8e6d8b360e4087f1eec70c4a6577a1e85d4ccc7
+        JointIndex: 66
+    - Name: ely_vanguardsoldier_kerwinatienza_Mesh
+      Id: c101c7d42a6a7110b07ba3b799405f5ccfdd215c4641cc42787f1c1fe2a8c7d6
+      Parent: 2425661bf391e96b3f47dfbbee1fefd165aa3d817f57cf7b2807375d43406623
       Transform:
-        Translation: [-5.4747798e-06, 2.7302308, 4.977046e-07]
-        Rotation: [1, -2.303966e-08, 7.4460327e-09, 2.142042e-08]
-        Scale: [1, 1, 1.0000001]
+        Translation: [0, 0, 0]
+        Rotation: [1, 0, 0, 0]
+        Scale: [100, 100, 100]
+      MeshRenderer:
+        Color: [1, 1, 1, 1]
+        Mesh: F:\yxy\project\GameEngine\assets\models\people3\people.gemesh
+      Skin:
+        Id: d71cd27449b41d8d1082f1c549ff25a0a767170c10fdaffb448cfa1f9f6da293
+        Mesh: F:\yxy\project\GameEngine\assets\models\people3\people.gemesh
+    - Name: mixamorig:RightHandRing3
+      Id: 12ff987546006c0b42b9ac1c54a9a26722c751bcc1f3b4ea830690dac7c9e25d
+      Parent: 5f003e3ad7718d7d596e4ece452fed9cd8c3a8370de7f48455494f01bcf405b4
+      Transform:
+        Translation: [-9.219555e-07, 2.1717007, 1.9849871e-05]
+        Rotation: [0.9999962, 0.0027469166, -4.2602924e-06, -0.0003346531]
+        Scale: [0.9999999, 0.9999999, 1.0000001]
       Joint:
-        JointIndex: 21
-    - Name: mixamorig:LeftHandIndex3
-      Id: 6790b3c577e0fe328d9e1eb9e8e6d8b360e4087f1eec70c4a6577a1e85d4ccc7
-      Parent: 280bf88320e960009b0a7a9d4ed3dcdb479dfd2052e85f97787237aef3f1c562
+        JointIndex: 61
+    - Name: mixamorig:RightHandRing4
+      Id: 42491ab76558e2e8280eeaadb82d914cfda777b23bff743a446bba3cc959550d
+      Parent: 12ff987546006c0b42b9ac1c54a9a26722c751bcc1f3b4ea830690dac7c9e25d
       Transform:
-        Translation: [-1.9136949e-06, 2.0594382, 7.113955e-07]
-        Rotation: [0.9999081, -0.013250753, -3.201794e-05, 0.0028735152]
-        Scale: [1, 0.9999997, 0.99999976]
+        Translation: [1.5366822e-06, 2.912747, -6.7288056e-07]
+        Rotation: [1, -1.5357013e-08, 1.8653732e-09, 3.678053e-09]
+        Scale: [1.0000001, 1.0000001, 0.9999999]
       Joint:
-        JointIndex: 20
-    - Name: mixamorig:LeftHandIndex2
-      Id: 280bf88320e960009b0a7a9d4ed3dcdb479dfd2052e85f97787237aef3f1c562
-      Parent: a67dd657096b42ea02db1bbef2756d4a807170d7d57033d2768b54cd26fcb182
+        JointIndex: 62
+    - Name: mixamorig:RightHandThumb1
+      Id: 65aec32e1f761f655a457a1c8b96f04d32d10264c4b1a15ea9c857b16b9c59cd
+      Parent: 51e2da7d27f743c769fa6adbb5a1938065c1535ecb3c103e510f284c9a4c3eca
       Transform:
-        Translation: [6.5343693e-06, 2.4450896, -6.520344e-06]
-        Rotation: [0.9894002, 0.14504528, -0.0007905438, -0.0069627734]
-        Scale: [1.0000001, 1.0000002, 1]
-      Joint:
-        JointIndex: 19
-    - Name: mixamorig:LeftHandPinky1
-      Id: 655a3ccae5c1564fd5e74b1fee419a17b1497fee9fb2093261bd1acbaff6b26d
-      Parent: 007190e17fcaefdd6b7feaaa73e81b19df7bb2bffd8e5928c388a720385e0c2b
-      Transform:
-        Translation: [5.564865, 12.410241, 0.64168507]
-        Rotation: [0.94063884, 0.29595596, -0.017036675, -0.16528319]
-        Scale: [0.99999994, 0.9999999, 1.0000001]
-      Joint:
-        JointIndex: 26
-    - Name: mixamorig:LeftHandMiddle4
-      Id: 90a22178ec63830e0a29639b26657e72cb55d1df47bf65d1cc2bd8c619c680e5
-      Parent: 13a95958bbbf610803a09d2b6bb11bb88bd8b66b47816073fd96f5c092c61415
-      Transform:
-        Translation: [5.587946e-08, 2.919788, -9.023352e-06]
-        Rotation: [1, -2.2271299e-10, -7.4096542e-09, -1.5107299e-08]
-        Scale: [0.99999994, 0.99999976, 0.9999999]
-      Joint:
-        JointIndex: 25
-    - Name: mixamorig:LeftHandMiddle3
-      Id: 13a95958bbbf610803a09d2b6bb11bb88bd8b66b47816073fd96f5c092c61415
-      Parent: b4aaa32cdedc524051b015f76b1f7d66bf993cb2153de37595284785eb0ad2b9
-      Transform:
-        Translation: [-1.4121572e-06, 2.352197, 5.8285596e-06]
-        Rotation: [0.99995565, -0.008981914, 6.1024098e-06, -0.0028256576]
+        Translation: [2.3528247, 4.06006, 1.9054917]
+        Rotation: [0.951184, 0.18939896, 0.019014528, -0.24293129]
         Scale: [1, 1, 0.99999994]
       Joint:
-        JointIndex: 24
-    - Name: mixamorig:LeftHandMiddle2
-      Id: b4aaa32cdedc524051b015f76b1f7d66bf993cb2153de37595284785eb0ad2b9
-      Parent: 155a49065c79ec1197cf479e6343f99e55aa711f27d1dee86a78649bb7bffca6
+        JointIndex: 63
+    - Name: mixamorig:RightHandThumb2
+      Id: 9ff95899b675ab65f0e734c7b23f21bd9833506a2b741ac2bdbb932117218b11
+      Parent: 65aec32e1f761f655a457a1c8b96f04d32d10264c4b1a15ea9c857b16b9c59cd
       Transform:
-        Translation: [-2.4376791e-07, 2.7342236, 1.1696883e-05]
-        Rotation: [0.9804474, 0.19496363, 0.0011101312, 0.026658967]
+        Translation: [-9.844321e-06, 4.0464725, -2.160401e-05]
+        Rotation: [0.9813582, 0.044380948, -0.0048566223, 0.18693046]
+        Scale: [1, 0.9999999, 1]
+      Joint:
+        JointIndex: 64
+    - Name: mixamorig:RightHandThumb3
+      Id: 6b7bce6c3c3eb7361b1e69dcabbc1852ef9039f9eda882e716b5c2674650fb0f
+      Parent: 9ff95899b675ab65f0e734c7b23f21bd9833506a2b741ac2bdbb932117218b11
+      Transform:
+        Translation: [-1.8718981e-06, 4.1022906, 3.4302745e-06]
+        Rotation: [0.9996381, -0.015736207, 0.00089112547, 0.021801341]
+        Scale: [0.9999999, 1, 0.9999999]
+      Joint:
+        JointIndex: 65
+    - Name: mixamorig:RightHandPinky2
+      Id: 83039e0b71815692bf6b4f1efd5a1b0d6f60cea1ab7ff05be609b325b4c1020e
+      Parent: 43db0401887cfd46c9b70b28f5166e079d842bbdc119a6183fc43611f9c0af45
+      Transform:
+        Translation: [-2.512147e-08, 2.2283227, 3.1208172e-06]
+        Rotation: [0.93068284, 0.35571373, -0.019392988, -0.08319224]
+        Scale: [1, 0.99999976, 0.9999998]
+      Joint:
+        JointIndex: 56
+    - Name: mixamorig:RightHandPinky3
+      Id: f6bf4f44ec4e124678382875a77a0678d865b169677af32dea6aa743c256f673
+      Parent: 83039e0b71815692bf6b4f1efd5a1b0d6f60cea1ab7ff05be609b325b4c1020e
+      Transform:
+        Translation: [2.9280372e-06, 2.0220976, -5.20182e-06]
+        Rotation: [0.99980897, 0.01911255, 0.00010742834, 0.0041064057]
+        Scale: [0.9999999, 1, 0.9999999]
+      Joint:
+        JointIndex: 57
+    - Name: mixamorig:RightHandPinky4
+      Id: 7ca1a9e7a5f86841f7b799bd6fdf0966b5ce4da98ae0be453065be3a4daac22e
+      Parent: f6bf4f44ec4e124678382875a77a0678d865b169677af32dea6aa743c256f673
+      Transform:
+        Translation: [1.5762635e-06, 2.3157017, -6.4400956e-06]
+        Rotation: [1, -1.9012991e-09, 7.2757356e-12, 8.35132e-09]
+        Scale: [1, 0.99999994, 1]
+      Joint:
+        JointIndex: 58
+    - Name: mixamorig:RightHandRing1
+      Id: 282e7c7becaee9be87c12441d25c15df4f00ec77e030f2786f36eab64242dca9
+      Parent: 51e2da7d27f743c769fa6adbb5a1938065c1535ecb3c103e510f284c9a4c3eca
+      Transform:
+        Translation: [-2.7493682, 13.308053, -0.012113576]
+        Rotation: [0.9757935, 0.20618579, -0.006041826, 0.072647914]
+        Scale: [1, 1, 1.0000001]
+      Joint:
+        JointIndex: 59
+    - Name: mixamorig:RightHandRing2
+      Id: 5f003e3ad7718d7d596e4ece452fed9cd8c3a8370de7f48455494f01bcf405b4
+      Parent: 282e7c7becaee9be87c12441d25c15df4f00ec77e030f2786f36eab64242dca9
+      Transform:
+        Translation: [5.6245273e-08, 2.4558194, -1.4369295e-05]
+        Rotation: [0.9415483, 0.33504972, -0.00242016, -0.034965042]
+        Scale: [0.9999998, 0.9999999, 0.9999998]
+      Joint:
+        JointIndex: 60
+    - Name: mixamorig:Hips
+      Id: 2990d6ee1ca647838ad82cd2153bc7a37ced7dc4287fe3e09f37001131dd3a90
+      Parent: 2425661bf391e96b3f47dfbbee1fefd165aa3d817f57cf7b2807375d43406623
+      Transform:
+        Translation: [-0.51161957, 0.3795337, -90.79184]
+        Rotation: [0.628871, -0.6844182, -0.26988515, 0.25150558]
+        Scale: [1, 1, 1]
+      Joint:
+        JointIndex: 0
+    - Name: mixamorig:LeftUpLeg
+      Id: 7f2703a33cd56c4620f4b3ec6b6405e0b63df8468891d55ff6505e944c292e96
+      Parent: 2990d6ee1ca647838ad82cd2153bc7a37ced7dc4287fe3e09f37001131dd3a90
+      Transform:
+        Translation: [10.128667, -5.8028316, -0.5827037]
+        Rotation: [0.10425545, -0.07801255, -0.22496617, -0.9656269]
+        Scale: [1.0000001, 1.0000002, 1.0000011]
+      Joint:
+        JointIndex: 1
+    - Name: mixamorig:LeftLeg
+      Id: f6dc86489a0c55db562fb0f35a4bf52fbaba4a70589650257f046a34af41c73c
+      Parent: 7f2703a33cd56c4620f4b3ec6b6405e0b63df8468891d55ff6505e944c292e96
+      Transform:
+        Translation: [-2.4857206e-06, 41.151733, -6.7875817e-06]
+        Rotation: [0.9275655, -0.3527744, 0.11880546, -0.03252296]
+        Scale: [0.9999998, 0.9999997, 0.9999992]
+      Joint:
+        JointIndex: 2
+    - Name: mixamorig:LeftHandRing3
+      Id: 59382ce64cff09bfd20d737dca5d5d33cdd91d1a3f06889238279b14fdba1c08
+      Parent: a10d412a196bdced762a9ea1f1b781a2356f464541c0e85e9cfe37ab866fd28f
+      Transform:
+        Translation: [1.4338448e-06, 2.171616, 2.2048812e-06]
+        Rotation: [0.9999958, 0.0028692144, 1.5336846e-06, 0.00033448366]
+        Scale: [0.9999998, 0.99999994, 0.99999994]
+      Joint:
+        JointIndex: 32
+    - Name: mixamorig:LeftHandRing4
+      Id: 0e38b306340a53f962be22354d73f4df6398fccb760f035a5363dac0961d1825
+      Parent: 59382ce64cff09bfd20d737dca5d5d33cdd91d1a3f06889238279b14fdba1c08
+      Transform:
+        Translation: [1.9306317e-06, 2.9127855, 2.5240593e-06]
+        Rotation: [1, 7.459507e-09, 4.650248e-09, 1.1789112e-08]
+        Scale: [1, 1, 1]
+      Joint:
+        JointIndex: 33
+    - Name: mixamorig:LeftHandThumb1
+      Id: 567c04d693f5440c7ea79650ac0c1d42a5700c5e8c79c7d86b50bcf15efb4fb3
+      Parent: 007190e17fcaefdd6b7feaaa73e81b19df7bb2bffd8e5928c388a720385e0c2b
+      Transform:
+        Translation: [-2.0807278, 3.8894079, 1.8793728]
+        Rotation: [0.93504894, 0.27600846, 0.12520842, 0.18391806]
+        Scale: [0.99999976, 0.9999999, 1]
+      Joint:
+        JointIndex: 34
+    - Name: mixamorig:LeftHandThumb2
+      Id: f4e2ce97618953187711710297cf87499a5e25914ada1cfa5ce707452e68e03f
+      Parent: 567c04d693f5440c7ea79650ac0c1d42a5700c5e8c79c7d86b50bcf15efb4fb3
+      Transform:
+        Translation: [6.1583532e-06, 3.9019506, -2.4183244e-05]
+        Rotation: [0.99969554, 0.023332585, 0.0011521365, -0.007945705]
+        Scale: [1.0000001, 1, 1.0000002]
+      Joint:
+        JointIndex: 35
+    - Name: mixamorig:RightHandMiddle2
+      Id: 61fe47e86caa1f5dbc159b67b8106c21b76276e41c217f5238f9ff78e36679c2
+      Parent: 22e54074eecde414cb81ea77e8b9a909f46366bf0612ebbbb2a2cd87546f1fa7
+      Transform:
+        Translation: [-5.115462e-07, 2.734258, 2.7073067e-06]
+        Rotation: [0.95479935, 0.29555616, -0.0022838716, -0.031616513]
+        Scale: [0.9999997, 0.99999964, 0.99999976]
+      Joint:
+        JointIndex: 52
+    - Name: mixamorig:RightHandMiddle3
+      Id: 8f4835e3aab04e206e910f526b6cfb5227697eccb2bb07bace8bec5d97d0b9ed
+      Parent: 61fe47e86caa1f5dbc159b67b8106c21b76276e41c217f5238f9ff78e36679c2
+      Transform:
+        Translation: [4.0200357e-06, 2.3521905, 5.26875e-07]
+        Rotation: [0.9999569, -0.00883961, 3.6486275e-05, 0.002835306]
+        Scale: [1.0000002, 1.0000001, 1.0000001]
+      Joint:
+        JointIndex: 53
+    - Name: mixamorig:RightHandMiddle4
+      Id: 88672a76b9ed4f2fc307405dd968b944717119284e30b2dfa41a934c98cd7c06
+      Parent: 8f4835e3aab04e206e910f526b6cfb5227697eccb2bb07bace8bec5d97d0b9ed
+      Transform:
+        Translation: [-1.17952e-06, 2.919819, -2.4104665e-06]
+        Rotation: [1, 1.1703719e-08, -5.7807483e-09, 2.810829e-09]
+        Scale: [1, 0.99999994, 1]
+      Joint:
+        JointIndex: 54
+    - Name: mixamorig:RightHandPinky1
+      Id: 43db0401887cfd46c9b70b28f5166e079d842bbdc119a6183fc43611f9c0af45
+      Parent: 51e2da7d27f743c769fa6adbb5a1938065c1535ecb3c103e510f284c9a4c3eca
+      Transform:
+        Translation: [-4.565398, 11.387088, 0.47880855]
+        Rotation: [0.96966773, 0.22129951, -0.009787761, 0.10332114]
+        Scale: [1, 1, 1]
+      Joint:
+        JointIndex: 55
+    - Name: mixamorig:RightHandIndex2
+      Id: 692945424c49094f18c6937b6184f5da626a3a30fdca0f80eedfccf05e6b5f68
+      Parent: 11e6e27978f8f43ff9f8728839ba40ac450732e7ddda42da707f31c5f92977c4
+      Transform:
+        Translation: [-8.905257e-07, 2.4450455, 5.664813e-06]
+        Rotation: [0.9890967, 0.14693241, 0.00018819384, 0.009930907]
+        Scale: [1, 1.0000001, 1.0000001]
+      Joint:
+        JointIndex: 48
+    - Name: mixamorig:RightHandIndex3
+      Id: 022225a8744e665ec8f3ae87915ee3a27b037d87a90a49f504072e6e8874bccb
+      Parent: 692945424c49094f18c6937b6184f5da626a3a30fdca0f80eedfccf05e6b5f68
+      Transform:
+        Translation: [5.481168e-07, 2.0594387, 2.3036937e-06]
+        Rotation: [0.99990654, -0.013371518, 4.832613e-05, -0.0028616495]
+        Scale: [1, 0.9999998, 0.99999994]
+      Joint:
+        JointIndex: 49
+    - Name: mixamorig:RightHandIndex4
+      Id: ba6726034a6c40e6a53e64d524b3b22cba6fec91e9c65d222ad40c4672476919
+      Parent: 022225a8744e665ec8f3ae87915ee3a27b037d87a90a49f504072e6e8874bccb
+      Transform:
+        Translation: [4.9024816e-06, 2.7303145, -1.7965329e-05]
+        Rotation: [1, 1.2801137e-09, -9.1586205e-10, 1.3844355e-08]
+        Scale: [1.0000001, 1.0000001, 1]
+      Joint:
+        JointIndex: 50
+    - Name: mixamorig:RightHandMiddle1
+      Id: 22e54074eecde414cb81ea77e8b9a909f46366bf0612ebbbb2a2cd87546f1fa7
+      Parent: 51e2da7d27f743c769fa6adbb5a1938065c1535ecb3c103e510f284c9a4c3eca
+      Transform:
+        Translation: [0.112465285, 13.970368, -0.033342756]
+        Rotation: [0.9927424, 0.118104674, 0.0077551394, 0.021301465]
+        Scale: [1, 1, 1]
+      Joint:
+        JointIndex: 51
+    - Name: mixamorig:RightArm
+      Id: 116127681d4ac7e04d890a13db081f7d5f53935d601af3df3c336506b44c29e8
+      Parent: 4062184a68bc10503a2c24f750467761cf4db4c0f13ecc5caa909e3e342d776c
+      Transform:
+        Translation: [-1.0499164e-05, 13.922129, -2.5484946e-06]
+        Rotation: [0.8992679, 0.38598236, 0.11005088, 0.17384961]
+        Scale: [1, 1, 1]
+      Joint:
+        JointIndex: 44
+    - Name: mixamorig:RightForeArm
+      Id: 8a683214b333bf3ac6e97b8c7e413e324b19411aae054c7c78835e310c002ed8
+      Parent: 116127681d4ac7e04d890a13db081f7d5f53935d601af3df3c336506b44c29e8
+      Transform:
+        Translation: [-2.0935903e-07, 21.68007, -1.5820259e-06]
+        Rotation: [0.929129, 0.055991765, 0.020271773, -0.36492905]
+        Scale: [0.99999964, 0.99999976, 0.99999976]
+      Joint:
+        JointIndex: 45
+    - Name: mixamorig:RightHand
+      Id: 51e2da7d27f743c769fa6adbb5a1938065c1535ecb3c103e510f284c9a4c3eca
+      Parent: 8a683214b333bf3ac6e97b8c7e413e324b19411aae054c7c78835e310c002ed8
+      Transform:
+        Translation: [8.461065e-07, 26.395052, 3.2302817e-06]
+        Rotation: [0.9924232, 0.09725136, -0.04626532, -0.05914305]
+        Scale: [0.99999994, 1, 0.9999999]
+      Joint:
+        JointIndex: 46
+    - Name: mixamorig:RightHandIndex1
+      Id: 11e6e27978f8f43ff9f8728839ba40ac450732e7ddda42da707f31c5f92977c4
+      Parent: 51e2da7d27f743c769fa6adbb5a1938065c1535ecb3c103e510f284c9a4c3eca
+      Transform:
+        Translation: [2.9655752, 13.623698, 0.47133055]
+        Rotation: [0.99928576, 0.0362283, 0.009839208, 0.0043349047]
+        Scale: [0.9999999, 0.9999998, 0.99999994]
+      Joint:
+        JointIndex: 47
+    - Name: LeftEye
+      Id: b07c5ee9df47233b752719eab9b0356c0ab75f22e2e9efb76eb09317ab4fd3ed
+      Parent: 5c996d719a2f214c0e61d2adcdfa244329418b1c3880db8a49aa69bf2c321d45
+      Transform:
+        Translation: [3.023154, 9.781039, 8.3399315]
+        Rotation: [1, 1.7188313e-09, 6.730261e-11, -2.6775524e-09]
+        Scale: [1, 1, 1]
+      Joint:
+        JointIndex: 40
+    - Name: mixamorig:HeadTop_End
+      Id: 250e7863c9b8241f81134963782178601c733aa6d8946b39d5de97cd1bfa7553
+      Parent: 5c996d719a2f214c0e61d2adcdfa244329418b1c3880db8a49aa69bf2c321d45
+      Transform:
+        Translation: [0.17337796, 21.490591, 2.7023675]
+        Rotation: [1, 1.7188313e-09, 6.730261e-11, -2.6775524e-09]
+        Scale: [1, 1, 1]
+      Joint:
+        JointIndex: 41
+    - Name: RightEye
+      Id: bee0313d96f1e06669b569f76b11d1317195bacfd73a8d7d49124bbacd414acd
+      Parent: 5c996d719a2f214c0e61d2adcdfa244329418b1c3880db8a49aa69bf2c321d45
+      Transform:
+        Translation: [-2.866932, 9.781047, 8.202075]
+        Rotation: [1, 1.7188313e-09, 6.730261e-11, -2.6775524e-09]
+        Scale: [1, 1, 1]
+      Joint:
+        JointIndex: 42
+    - Name: mixamorig:RightShoulder
+      Id: 4062184a68bc10503a2c24f750467761cf4db4c0f13ecc5caa909e3e342d776c
+      Parent: ba4466419ebfece170ef3772aa58d8215fdca000f91fb2abe5a8d02241e68d20
+      Transform:
+        Translation: [-6.1681876, 12.592014, -1.5240226]
+        Rotation: [0.40935627, 0.6360814, -0.3701535, 0.53927207]
+        Scale: [1, 1, 1.0000001]
+      Joint:
+        JointIndex: 43
+    - Name: mixamorig:LeftHandThumb3
+      Id: 4858396a874ad089b5879f16592427c8eff1b1405244ce9bb0c962f448f66adb
+      Parent: f4e2ce97618953187711710297cf87499a5e25914ada1cfa5ce707452e68e03f
+      Transform:
+        Translation: [-8.0010095e-06, 4.102429, 5.77733e-06]
+        Rotation: [0.99953395, -0.01937826, -0.00044909856, -0.023582224]
+        Scale: [0.9999999, 0.99999994, 0.99999976]
+      Joint:
+        JointIndex: 36
+    - Name: mixamorig:LeftHandThumb4
+      Id: f445fe56431f1dce543ab8d31998c7e3fd020b71d12184737e8cf1129eec16c4
+      Parent: 4858396a874ad089b5879f16592427c8eff1b1405244ce9bb0c962f448f66adb
+      Transform:
+        Translation: [5.4836273e-06, 3.2865896, -4.7683716e-06]
+        Rotation: [1, 2.220446e-15, -2.4214387e-08, -1.67638e-08]
+        Scale: [1.0000002, 1.0000002, 1.0000001]
+      Joint:
+        JointIndex: 37
+    - Name: mixamorig:Neck
+      Id: 657c5e1149295d3a855526d5750eaefe38ac4406f0c78bed0729e8bb37b74b87
+      Parent: ba4466419ebfece170ef3772aa58d8215fdca000f91fb2abe5a8d02241e68d20
+      Transform:
+        Translation: [0.049887557, 15.686722, -1.4916565]
+        Rotation: [0.9996377, -0.024652902, -0.0106396545, 0.0018092007]
+        Scale: [1, 1, 0.9999999]
+      Joint:
+        JointIndex: 38
+    - Name: mixamorig:Head
+      Id: 5c996d719a2f214c0e61d2adcdfa244329418b1c3880db8a49aa69bf2c321d45
+      Parent: 657c5e1149295d3a855526d5750eaefe38ac4406f0c78bed0729e8bb37b74b87
+      Transform:
+        Translation: [-2.2626545e-33, 7.0131626, 0.91843796]
+        Rotation: [0.9817385, -0.06606678, 0.17830123, -0.005774839]
+        Scale: [1, 0.9999999, 1.0000001]
+      Joint:
+        JointIndex: 39
+    - Name: mixamorig:LeftHandPinky2
+      Id: 7419e87a0de530f2a167e1355cfab8c31528bb5443a5f75f42a5b55ef813c9d8
+      Parent: 655a3ccae5c1564fd5e74b1fee419a17b1497fee9fb2093261bd1acbaff6b26d
+      Transform:
+        Translation: [5.3170584e-06, 1.8336645, 5.624259e-07]
+        Rotation: [0.93997025, 0.33462042, 0.01761634, 0.06461172]
+        Scale: [1, 0.99999994, 1]
+      Joint:
+        JointIndex: 27
+    - Name: mixamorig:LeftHandPinky3
+      Id: 3344205de28aceafa74ef762d7ea324db194444a3cc3c3aaf76b45cfc55d26ce
+      Parent: 7419e87a0de530f2a167e1355cfab8c31528bb5443a5f75f42a5b55ef813c9d8
+      Transform:
+        Translation: [-1.5416152e-06, 1.491963, -4.4047547e-06]
+        Rotation: [0.999763, 0.021462955, -1.8319495e-05, -0.0036547843]
+        Scale: [1, 0.99999994, 0.9999998]
+      Joint:
+        JointIndex: 28
+    - Name: mixamorig:LeftHandRing2
+      Id: a10d412a196bdced762a9ea1f1b781a2356f464541c0e85e9cfe37ab866fd28f
+      Parent: ecab2722b9bff996581dbebbdc25a5b1db016930793d561333c7600644107f9f
+      Transform:
+        Translation: [5.6468724e-07, 2.592457, 7.1484264e-06]
+        Rotation: [0.95880187, 0.28304195, 0.0017072911, 0.024154833]
+        Scale: [1.0000001, 0.9999999, 0.99999994]
+      Joint:
+        JointIndex: 31
+    - Name: mixamorig:LeftHandRing1
+      Id: ecab2722b9bff996581dbebbdc25a5b1db016930793d561333c7600644107f9f
+      Parent: 007190e17fcaefdd6b7feaaa73e81b19df7bb2bffd8e5928c388a720385e0c2b
+      Transform:
+        Translation: [2.8652747, 12.981088, -0.31295124]
+        Rotation: [0.95361245, 0.27522954, -0.016633596, -0.12081056]
+        Scale: [0.9999999, 1.0000001, 0.99999994]
+      Joint:
+        JointIndex: 30
+    - Name: mixamorig:LeftHandPinky4
+      Id: 92a54be41f8fe8b0eb876c1cef70cc83740e7e578cb6b8831bf3baf12a9dc4c1
+      Parent: 3344205de28aceafa74ef762d7ea324db194444a3cc3c3aaf76b45cfc55d26ce
+      Transform:
+        Translation: [3.9120205e-06, 1.8941718, 1.3301615e-05]
+        Rotation: [1, 1.5993011e-08, -1.3103089e-08, 1.1664129e-08]
+        Scale: [1.0000001, 0.9999999, 1]
+      Joint:
+        JointIndex: 29
+    - Name: mixamorig:LeftFoot
+      Id: b3d7dec37e1da4e675f44e8e9e734329ff79e77845144568f9f5867ad2cbcd70
+      Parent: f6dc86489a0c55db562fb0f35a4bf52fbaba4a70589650257f046a34af41c73c
+      Transform:
+        Translation: [-4.6568684e-06, 37.492992, 2.2952831e-06]
+        Rotation: [0.87305117, 0.4823941, -0.06987085, -0.013986663]
+        Scale: [0.99999994, 1, 0.9999999]
+      Joint:
+        JointIndex: 3
+    - Name: mixamorig:LeftToeBase
+      Id: 89e5cfe76ca5b15ac17087a51a3aeabc3202f0274deb0981ec8e65155ecc7e50
+      Parent: b3d7dec37e1da4e675f44e8e9e734329ff79e77845144568f9f5867ad2cbcd70
+      Transform:
+        Translation: [-1.2010584e-06, 20.19999, 5.102912e-07]
+        Rotation: [0.9139637, 0.40398675, -0.017064346, -0.03426304]
+        Scale: [0.99999976, 0.99999994, 1]
+      Joint:
+        JointIndex: 4
+    - Name: mixamorig:LeftToe_End
+      Id: ba0e563efab5820be5359ac2e1df9b3eba7c25356c54de080402fcb1c4ca8e4b
+      Parent: 89e5cfe76ca5b15ac17087a51a3aeabc3202f0274deb0981ec8e65155ecc7e50
+      Transform:
+        Translation: [3.543753e-06, 7.525987, 1.8626402e-07]
+        Rotation: [1, 5.0895324e-08, -4.3623345e-09, -1.7359261e-09]
+        Scale: [1.0000001, 1.0000001, 1]
+      Joint:
+        JointIndex: 5
+    - Name: mixamorig:RightUpLeg
+      Id: 4f60fb70452d9685e4d3222fad87676f033e9285e154e20e70b78abd37c3b8fb
+      Parent: 2990d6ee1ca647838ad82cd2153bc7a37ced7dc4287fe3e09f37001131dd3a90
+      Transform:
+        Translation: [-10.015143, -5.802842, -0.5826999]
+        Rotation: [0.13429682, -0.122122034, 0.016641721, 0.9832465]
+        Scale: [0.9999999, 0.9999998, 1.000001]
+      Joint:
+        JointIndex: 6
+    - Name: mixamorig:LeftArm
+      Id: 5c9d4f78468a22ca26b92f3fb259986302dbf29e2a8512329f99fac4a1f1bff3
+      Parent: dbaab97497e400426f15ec4375c2ec254edd7ccedfa0917858df64d93855d4d6
+      Transform:
+        Translation: [-9.875323e-06, 13.826992, 1.3065663e-05]
+        Rotation: [0.89955693, 0.41994888, -0.10268249, 0.062422726]
+        Scale: [1, 1.0000002, 1.0000004]
+      Joint:
+        JointIndex: 15
+    - Name: mixamorig:LeftForeArm
+      Id: 0623e3b0be0a6ac4497033cd69449429c0bf48d164dda1b2ed9439e1a64d0d1f
+      Parent: 5c9d4f78468a22ca26b92f3fb259986302dbf29e2a8512329f99fac4a1f1bff3
+      Transform:
+        Translation: [2.0687921e-06, 21.773022, -3.4423506e-06]
+        Rotation: [0.9042594, -0.010647925, 0.063111216, 0.42215934]
+        Scale: [1.0000001, 1, 1]
+      Joint:
+        JointIndex: 16
+    - Name: mixamorig:LeftHand
+      Id: 007190e17fcaefdd6b7feaaa73e81b19df7bb2bffd8e5928c388a720385e0c2b
+      Parent: 0623e3b0be0a6ac4497033cd69449429c0bf48d164dda1b2ed9439e1a64d0d1f
+      Transform:
+        Translation: [-7.297378e-06, 26.464098, 2.0083203e-06]
+        Rotation: [0.977206, -0.15992703, 0.13900748, 0.012991357]
+        Scale: [0.99999994, 0.9999998, 0.99999994]
+      Joint:
+        JointIndex: 17
+    - Name: mixamorig:LeftHandIndex1
+      Id: a67dd657096b42ea02db1bbef2756d4a807170d7d57033d2768b54cd26fcb182
+      Parent: 007190e17fcaefdd6b7feaaa73e81b19df7bb2bffd8e5928c388a720385e0c2b
+      Transform:
+        Translation: [-2.8032408, 13.619135, 0.61431265]
+        Rotation: [0.99754566, 0.042987596, -0.006727033, 0.05485921]
+        Scale: [0.9999998, 0.99999994, 1]
+      Joint:
+        JointIndex: 18
+    - Name: mixamorig:Spine
+      Id: eefe3b1557946629d3206e6f928738d03d7b987105733ddb5ed854851604a82b
+      Parent: 2990d6ee1ca647838ad82cd2153bc7a37ced7dc4287fe3e09f37001131dd3a90
+      Transform:
+        Translation: [0.012400919, 10.4452305, -0.9962743]
+        Rotation: [0.9991213, 0.000909393, 0.041422043, -0.006330506]
+        Scale: [1, 1, 1]
+      Joint:
+        JointIndex: 11
+    - Name: mixamorig:Spine1
+      Id: 3527431b36af2f91bfce80a28aadf2f1daab26cb5ffa5a0c5b79c0314fc348d0
+      Parent: eefe3b1557946629d3206e6f928738d03d7b987105733ddb5ed854851604a82b
+      Transform:
+        Translation: [-7.109586e-07, 12.1748085, -1.19209105e-07]
+        Rotation: [0.9918528, 0.0968439, 0.08210442, -0.010397811]
+        Scale: [1, 1.0000001, 1]
+      Joint:
+        JointIndex: 12
+    - Name: mixamorig:Spine2
+      Id: ba4466419ebfece170ef3772aa58d8215fdca000f91fb2abe5a8d02241e68d20
+      Parent: 3527431b36af2f91bfce80a28aadf2f1daab26cb5ffa5a0c5b79c0314fc348d0
+      Transform:
+        Translation: [-5.271286e-07, 14.038224, 4.1269794e-07]
+        Rotation: [0.9861165, 0.14396156, 0.08151608, -0.014295449]
         Scale: [0.99999994, 1, 1]
       Joint:
-        JointIndex: 23
-    - Name: mixamorig:RightToe_End
-      Id: 9f02f3ee6a5653f5efae7d6dc4efb488683e8f5cfea00873a10fa6661c999e45
-      Parent: 4c9a4670e96e320a07febc0ccd99e43520de20419be36007a072ebf1265c82b8
+        JointIndex: 13
+    - Name: mixamorig:LeftShoulder
+      Id: dbaab97497e400426f15ec4375c2ec254edd7ccedfa0917858df64d93855d4d6
+      Parent: ba4466419ebfece170ef3772aa58d8215fdca000f91fb2abe5a8d02241e68d20
       Transform:
-        Translation: [9.293198e-07, 7.525992, -3.7252835e-08]
-        Rotation: [1, 2.989691e-08, -1.9548906e-08, -1.0541241e-08]
-        Scale: [1.0000002, 1.0000001, 1]
+        Translation: [6.2642508, 12.592015, -1.4592793]
+        Rotation: [0.3895013, 0.5865754, 0.40907514, -0.5804097]
+        Scale: [0.9999995, 0.99999946, 0.9999998]
       Joint:
-        JointIndex: 10
+        JointIndex: 14
+    - Name: mixamorig:RightLeg
+      Id: 6bdb17db1cdcc60f461db28f2f0cfeed7ebe1c03929344fc7dec39a00e3d8eec
+      Parent: 4f60fb70452d9685e4d3222fad87676f033e9285e154e20e70b78abd37c3b8fb
+      Transform:
+        Translation: [4.6747152e-07, 41.151672, 6.5190005e-07]
+        Rotation: [0.93753105, -0.3393697, 0.073620245, -0.021066668]
+        Scale: [1, 0.99999964, 0.9999996]
+      Joint:
+        JointIndex: 7
+    - Name: mixamorig:RightFoot
+      Id: 403c89a23cac231607e67faa2902d9b939c63cda6e672f0e70e40a400e9c15f2
+      Parent: 6bdb17db1cdcc60f461db28f2f0cfeed7ebe1c03929344fc7dec39a00e3d8eec
+      Transform:
+        Translation: [2.2026973e-06, 37.492996, 9.3012346e-07]
+        Rotation: [0.7908635, 0.5930768, 0.11063643, 0.10273398]
+        Scale: [1, 1.0000001, 1]
+      Joint:
+        JointIndex: 8
+    - Name: mixamorig:RightToeBase
+      Id: 4c9a4670e96e320a07febc0ccd99e43520de20419be36007a072ebf1265c82b8
+      Parent: 403c89a23cac231607e67faa2902d9b939c63cda6e672f0e70e40a400e9c15f2
+      Transform:
+        Translation: [-2.5967927e-06, 20.199995, 3.352988e-06]
+        Rotation: [0.9165982, 0.39806828, 0.036018312, 0.009588427]
+        Scale: [0.9999998, 0.99999994, 0.99999994]
+      Joint:
+        JointIndex: 9
+    - Name: car1
+      Id: 74295f1eb52dc8d990ef849959ce39687bdf3e73091957880a02af4b4b758dc1
+      Transform:
+        Translation: [-0.2605561, -2.8314323, 2.041085]
+        Rotation: [1, 0, 0, 0]
+        Scale: [1, 1, 1]
+      MeshRenderer:
+        Color: [1, 1, 1, 1]
+        Mesh: builtin:cube
+        MaterialOverrides:
+          0:
+            Type: PBR
+            Name: 沙子
+            AlbedoTexture: F:\yxy\project\GameEngine\assets\materal\Ground054_4K-JPG\Ground054_4K-JPG_Color.jpg
+            AlbedoTextureSampler:
+              MagFilter: Linear
+              MinFilter: Linear
+              AddressMode: Repeat
+              Anisotropy: true
+            NormalTexture: F:\yxy\project\GameEngine\assets\materal\Ground054_4K-JPG\Ground054_4K-JPG_NormalGL.jpg
+            NormalTextureSampler:
+              MagFilter: Linear
+              MinFilter: Linear
+              AddressMode: Repeat
+              Anisotropy: true
+            MetallicRoughnessTexture: F:\yxy\project\GameEngine\assets\materal\Ground054_4K-JPG\Ground054_4K-JPG_Roughness.jpg
+            MetallicRoughnessTextureSampler:
+              MagFilter: Linear
+              MinFilter: Linear
+              AddressMode: Repeat
+              Anisotropy: true
+            FloatParams:
+              uvTiling: 1
+              metallic: 0
+              roughness: 1
+              emissiveStrength: 0
+            EmissiveFactor: [0, 0, 0]
+      RigidBody:
+        Type: Static
+        Mass: 1
+        Friction: 0.6
+        Restitution: 0
+        LinearDamping: 0.05
+        AngularDamping: 0.05
+        IsSensor: false
+      BoxCollider:
+        HalfExtents: [1, 1, 1]
+        Offset: [0, 0, 0]
+        DrawDebug: true
+    - Name: MainCamera
+      Id: 43d97364c81cc01660e3d38cfc9b82b188d31979e5937f987067ae53de18a63f
+      Transform:
+        Translation: [-2.3251343, -42.407475, -176.30014]
+        Rotation: [1, 4.263256e-14, 0, 0]
+        Scale: [1, 1, 1]
+      Camera:
+        Primary: true
+        FixedAspectRatio: false
+        Mode: FPS
+        Fov: 60
+        Aspect: 1.2479407
+        Near: 0.1
+        Far: 100
+        Target: [20.311443, 1.0204772, -3.2527063]
+        Theta: 368.7024
+        Phi: 9.449544
+        Distance: 33
+        Position: [-4.697946, 16.478474, 16.070837]
+        Yaw: 368.99982
+        Pitch: -27.200191
+    - Name: RedPointLight
+      Id: c88f8ae7961cda32b607d446dd6f855a2e18cd88b6f626666b6d806b23cea09f
+      Transform:
+        Translation: [2.1701374, -0.013627559, -0.012405559]
+        Rotation: [1, 0, 0, 0]
+        Scale: [0.15, 0.15, 0.15]
+      MeshRenderer:
+        Color: [1, 0.4, 0.4, 1]
+        Mesh: builtin:sphere
+      PointLight:
+        Color: [1, 0.2, 0.2, 1.5]
+        RadiusInv: 0.4
+    - Name: BluePointLight
+      Id: ddf849a1dcf4af0fddd1675a2b1af018e5ec552783503973b6af88a137a04cca
+      Transform:
+        Translation: [1.2468404, -9.963747, -0.8467588]
+        Rotation: [0.99956465, -0.020912858, 2.1159416e-05, -0.020814637]
+        Scale: [0.15, 0.15, 0.15]
+      MeshRenderer:
+        Color: [0.4, 0.5, 1, 1]
+        Mesh: builtin:sphere
+      PointLight:
+        Color: [0.2, 0.3, 1, 1.5]
+        RadiusInv: 0.4
+      RigidBody:
+        Type: Dynamic
+        Mass: 1
+        Friction: 0.6
+        Restitution: 0.3
+        LinearDamping: 0.05
+        AngularDamping: 0.05
+        IsSensor: false
+      SphereCollider:
+        Radius: 1
+        Offset: [0, 0, 0]
+        DrawDebug: true
+    - Name: DirectionalLight
+      Id: 0074f65bba8e740a2119c9d10b8a3b9a6a6c8b3a081869b32533bf3630a3ca81
+      Transform:
+        Translation: [0, 0, 0]
+        Rotation: [0.41338307, 0.5930968, 0.6889498, -0.051949754]
+        Scale: [0.9999406, 0.99993324, 0.99992675]
+      DirectionalLight:
+        Color: [1, 1, 1, 1]
+    - Name: AmbientLight
+      Id: 5326df47538e59a050d18b65bba62b4d095c22b9f0e3a294048cf6816d10183f
+      Transform:
+        Translation: [0, -2.9218194, 0]
+        Rotation: [1, 0, 0, 0]
+        Scale: [1, 1, 1]
+      AmbientLight:
+        Color: [1, 1, 1, 0.43137255]
+      Environment:
+        Name: DaySkyHDRI065B
+        Enabled: true
+        SkyboxEnabled: true
+        IBLEnabled: true
+        IBLIntensity: 0.64
+    - Name: PhysicsFloor
+      Id: 943c5580c0f8760d7c4cccfce60004e06c8d34d9193608d70ffbaace8486a0c7
+      Transform:
+        Translation: [0, -12.713734, 0]
+        Rotation: [1, 0, 0, 0]
+        Scale: [149.1, 2.6, 170.51]
+      MeshRenderer:
+        Color: [0.5, 0.5, 0.5, 1]
+        Mesh: builtin:cube
+      RigidBody:
+        Type: Static
+        Mass: 1
+        Friction: 0.6
+        Restitution: 0
+        LinearDamping: 0.05
+        AngularDamping: 0.05
+        IsSensor: false
+      BoxCollider:
+        HalfExtents: [1, 1, 1]
+        Offset: [0, 0, 0]
+        DrawDebug: false
+    - Name: PhysicsBall
+      Id: 99d6ebc44be2b191015fb8180f28c828d813b06e287a69a5ba6e464a5f00cb9a
+      Transform:
+        Translation: [0, 5, 0]
+        Rotation: [1, 0, 0, 0]
+        Scale: [0.5, 0.5, 0.5]
+      MeshRenderer:
+        Color: [0.2, 0.6, 1, 1]
+        Mesh: builtin:sphere
+      RigidBody:
+        Type: Kinematic
+        Mass: 1
+        Friction: 0.6
+        Restitution: 0.3
+        LinearDamping: 0.05
+        AngularDamping: 0.05
+        IsSensor: false
+      SphereCollider:
+        Radius: 1
+        Offset: [0, 0, 0]
+        DrawDebug: true
+    - Name: car2
+      Id: e5fda1ea0f81073cecce1370338fb9cc789b79b3d35dba0d9f87693c7fa02e89
+      Transform:
+        Translation: [-0.11845638, -1.1009448, 5.8653255]
+        Rotation: [1, 0, 0, 0]
+        Scale: [1, 1, 1]
+      MeshRenderer:
+        Color: [1, 1, 1, 1]
+        Mesh: builtin:sphere
+        MaterialOverrides:
+          0:
+            Type: PBR
+            Name: scene:PBR;Albedo:F:\yxy\project\GameEngine\assets\Metal049A_2K-JPG\Metal049A_2K-JPG_Color.jpg;Normal:F:\yxy\project\GameEngine\assets\Metal049A_2K-JPG\Metal049A_2K-JPG_NormalGL.jpg;MetallicRoughness:F:\yxy\project\GameEngine\assets\Metal049A_2K-JPG\Metal049A_2K-JPG_MetalRough.png;emissiveStrength=0;metallic=1;roughness=1;uvTiling=0.54;
+            AlbedoTexture: F:\yxy\project\GameEngine\assets\Metal049A_2K-JPG\Metal049A_2K-JPG_Color.jpg
+            AlbedoTextureSampler:
+              MagFilter: Linear
+              MinFilter: Linear
+              AddressMode: Repeat
+              Anisotropy: true
+            NormalTexture: F:\yxy\project\GameEngine\assets\Metal049A_2K-JPG\Metal049A_2K-JPG_NormalGL.jpg
+            NormalTextureSampler:
+              MagFilter: Linear
+              MinFilter: Linear
+              AddressMode: Repeat
+              Anisotropy: true
+            MetallicRoughnessTexture: F:\yxy\project\GameEngine\assets\Metal049A_2K-JPG\Metal049A_2K-JPG_MetalRough.png
+            MetallicRoughnessTextureSampler:
+              MagFilter: Linear
+              MinFilter: Linear
+              AddressMode: Repeat
+              Anisotropy: true
+            FloatParams:
+              uvTiling: 0.54
+              metallic: 1
+              roughness: 1
+              emissiveStrength: 0
+            EmissiveFactor: [0, 0, 0]
   Skins:
-    - Id: bb1a73761ae7ea66ecabf46c157591e6c74ccc71c34de791c9b47d99231abdb6
+    - Id: d71cd27449b41d8d1082f1c549ff25a0a767170c10fdaffb448cfa1f9f6da293
       Joints: [2990d6ee1ca647838ad82cd2153bc7a37ced7dc4287fe3e09f37001131dd3a90, 7f2703a33cd56c4620f4b3ec6b6405e0b63df8468891d55ff6505e944c292e96, f6dc86489a0c55db562fb0f35a4bf52fbaba4a70589650257f046a34af41c73c, b3d7dec37e1da4e675f44e8e9e734329ff79e77845144568f9f5867ad2cbcd70, 89e5cfe76ca5b15ac17087a51a3aeabc3202f0274deb0981ec8e65155ecc7e50, ba0e563efab5820be5359ac2e1df9b3eba7c25356c54de080402fcb1c4ca8e4b, 4f60fb70452d9685e4d3222fad87676f033e9285e154e20e70b78abd37c3b8fb, 6bdb17db1cdcc60f461db28f2f0cfeed7ebe1c03929344fc7dec39a00e3d8eec, 403c89a23cac231607e67faa2902d9b939c63cda6e672f0e70e40a400e9c15f2, 4c9a4670e96e320a07febc0ccd99e43520de20419be36007a072ebf1265c82b8, 9f02f3ee6a5653f5efae7d6dc4efb488683e8f5cfea00873a10fa6661c999e45, eefe3b1557946629d3206e6f928738d03d7b987105733ddb5ed854851604a82b, 3527431b36af2f91bfce80a28aadf2f1daab26cb5ffa5a0c5b79c0314fc348d0, ba4466419ebfece170ef3772aa58d8215fdca000f91fb2abe5a8d02241e68d20, dbaab97497e400426f15ec4375c2ec254edd7ccedfa0917858df64d93855d4d6, 5c9d4f78468a22ca26b92f3fb259986302dbf29e2a8512329f99fac4a1f1bff3, 0623e3b0be0a6ac4497033cd69449429c0bf48d164dda1b2ed9439e1a64d0d1f, 007190e17fcaefdd6b7feaaa73e81b19df7bb2bffd8e5928c388a720385e0c2b, a67dd657096b42ea02db1bbef2756d4a807170d7d57033d2768b54cd26fcb182, 280bf88320e960009b0a7a9d4ed3dcdb479dfd2052e85f97787237aef3f1c562, 6790b3c577e0fe328d9e1eb9e8e6d8b360e4087f1eec70c4a6577a1e85d4ccc7, 906111f5f96169943f8e15d750a80989bac23d7664a2abc6c008fa7c3afe47b3, 155a49065c79ec1197cf479e6343f99e55aa711f27d1dee86a78649bb7bffca6, b4aaa32cdedc524051b015f76b1f7d66bf993cb2153de37595284785eb0ad2b9, 13a95958bbbf610803a09d2b6bb11bb88bd8b66b47816073fd96f5c092c61415, 90a22178ec63830e0a29639b26657e72cb55d1df47bf65d1cc2bd8c619c680e5, 655a3ccae5c1564fd5e74b1fee419a17b1497fee9fb2093261bd1acbaff6b26d, 7419e87a0de530f2a167e1355cfab8c31528bb5443a5f75f42a5b55ef813c9d8, 3344205de28aceafa74ef762d7ea324db194444a3cc3c3aaf76b45cfc55d26ce, 92a54be41f8fe8b0eb876c1cef70cc83740e7e578cb6b8831bf3baf12a9dc4c1, ecab2722b9bff996581dbebbdc25a5b1db016930793d561333c7600644107f9f, a10d412a196bdced762a9ea1f1b781a2356f464541c0e85e9cfe37ab866fd28f, 59382ce64cff09bfd20d737dca5d5d33cdd91d1a3f06889238279b14fdba1c08, 0e38b306340a53f962be22354d73f4df6398fccb760f035a5363dac0961d1825, 567c04d693f5440c7ea79650ac0c1d42a5700c5e8c79c7d86b50bcf15efb4fb3, f4e2ce97618953187711710297cf87499a5e25914ada1cfa5ce707452e68e03f, 4858396a874ad089b5879f16592427c8eff1b1405244ce9bb0c962f448f66adb, f445fe56431f1dce543ab8d31998c7e3fd020b71d12184737e8cf1129eec16c4, 657c5e1149295d3a855526d5750eaefe38ac4406f0c78bed0729e8bb37b74b87, 5c996d719a2f214c0e61d2adcdfa244329418b1c3880db8a49aa69bf2c321d45, b07c5ee9df47233b752719eab9b0356c0ab75f22e2e9efb76eb09317ab4fd3ed, 250e7863c9b8241f81134963782178601c733aa6d8946b39d5de97cd1bfa7553, bee0313d96f1e06669b569f76b11d1317195bacfd73a8d7d49124bbacd414acd, 4062184a68bc10503a2c24f750467761cf4db4c0f13ecc5caa909e3e342d776c, 116127681d4ac7e04d890a13db081f7d5f53935d601af3df3c336506b44c29e8, 8a683214b333bf3ac6e97b8c7e413e324b19411aae054c7c78835e310c002ed8, 51e2da7d27f743c769fa6adbb5a1938065c1535ecb3c103e510f284c9a4c3eca, 11e6e27978f8f43ff9f8728839ba40ac450732e7ddda42da707f31c5f92977c4, 692945424c49094f18c6937b6184f5da626a3a30fdca0f80eedfccf05e6b5f68, 022225a8744e665ec8f3ae87915ee3a27b037d87a90a49f504072e6e8874bccb, ba6726034a6c40e6a53e64d524b3b22cba6fec91e9c65d222ad40c4672476919, 22e54074eecde414cb81ea77e8b9a909f46366bf0612ebbbb2a2cd87546f1fa7, 61fe47e86caa1f5dbc159b67b8106c21b76276e41c217f5238f9ff78e36679c2, 8f4835e3aab04e206e910f526b6cfb5227697eccb2bb07bace8bec5d97d0b9ed, 88672a76b9ed4f2fc307405dd968b944717119284e30b2dfa41a934c98cd7c06, 43db0401887cfd46c9b70b28f5166e079d842bbdc119a6183fc43611f9c0af45, 83039e0b71815692bf6b4f1efd5a1b0d6f60cea1ab7ff05be609b325b4c1020e, f6bf4f44ec4e124678382875a77a0678d865b169677af32dea6aa743c256f673, 7ca1a9e7a5f86841f7b799bd6fdf0966b5ce4da98ae0be453065be3a4daac22e, 282e7c7becaee9be87c12441d25c15df4f00ec77e030f2786f36eab64242dca9, 5f003e3ad7718d7d596e4ece452fed9cd8c3a8370de7f48455494f01bcf405b4, 12ff987546006c0b42b9ac1c54a9a26722c751bcc1f3b4ea830690dac7c9e25d, 42491ab76558e2e8280eeaadb82d914cfda777b23bff743a446bba3cc959550d, 65aec32e1f761f655a457a1c8b96f04d32d10264c4b1a15ea9c857b16b9c59cd, 9ff95899b675ab65f0e734c7b23f21bd9833506a2b741ac2bdbb932117218b11, 6b7bce6c3c3eb7361b1e69dcabbc1852ef9039f9eda882e716b5c2674650fb0f, 9d6ee64d87deeefb7631ae568e0dca3d1ed7e51156eb305de9a0634e4c205be8]
       InverseBindMatrices:
         - [100, -0.00016411452, -1.2360266e-05, -0, 0.00016411452, 100, 7.5497696e-06, -0, 1.2360253e-05, -7.5497887e-06, 100, -0, 0.05660569, -98.25526, -0.65341324, 1]

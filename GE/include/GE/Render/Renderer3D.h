@@ -301,8 +301,7 @@ public:
      *
      * 参数语义与 DrawSubMesh 一致，命中入 m_ShadowMeshes 而非 m_Meshes，供
      * ShadowMap pass 单独成批（阴影集合含主视锥外物体，实例缓冲与主集合分离）。
-     * S3 后由 Scene 第二遍遍历用阴影世界 AABB 剔除后提交；S2 阶段 Scene 暂把
-     * 主可见物同步提交两份，便于验证两套批次与实例缓冲。
+     * 由 Scene 第二遍遍历按阴影世界 AABB 剔除后提交（§4.3）。
      */
     void DrawShadowSubMesh(const glm::mat4 &transform,
                            Mesh *mesh,
@@ -831,8 +830,8 @@ private:
     bool m_HasDeferredBatches = false;
 
     /// 阴影 pass 专用批次与实例缓冲（生命周期与 m_OpaqueBatches 一致，FlushTransparent
-    /// 尾部清空）。S2 阶段已随 PrepareDeferredBatches 构建但 FlushShadow 未切换；
-    /// S3 切换后 ShadowMap 改画此套（阴影剔除计划书 §4.4）。
+    /// 尾部清空）。FlushShadow 画此套；集合由 Scene 阴影遍历按阴影世界 AABB 剔除后
+    /// 提交（阴影剔除计划书 §4.4）。
     std::vector<RenderBatch> m_ShadowBatches;
     BufferAllocation m_ShadowInstanceBuffer;
 };

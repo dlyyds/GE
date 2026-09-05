@@ -950,6 +950,35 @@ void Scene::RenderMeshes3D(const glm::mat4 &view, const glm::mat4 &projection,
     }
 
     auto meshView = m_Registry.view<TransformComponent, MeshRendererComponent>();
+
+    // 两遍遍历（主视锥 / 阴影 AABB）共用的子网格提交：解析材质（实体覆写优先，
+    // 否则子网格默认材质）并路由到 静态/蒙皮 × 主/阴影 四个入口。两遍逻辑高度
+    // 重叠，抽公共 lambda（阴影剔除计划书 §4.3）；剔除判交留在各自循环内。
+    const auto drawSubMesh = [&](TransformComponent &tc, MeshRendererComponent &mc,
+                                 const SubMesh &sub, uint32_t submeshIndex,
+                                 bool isSkinned, const void *skinDef, bool forShadow) {
+        Material *mat = nullptr;
+        auto it = mc.materialOverrides.find(submeshIndex);
+        if (it != mc.materialOverrides.end()) {
+            mat = it->second;
+        } else {
+            mat = sub.defaultMaterial;
+        }
+        if (forShadow) {
+            if (isSkinned) {
+                r3d.DrawShadowSkinnedSubMesh(tc.GetWorldMatrix(), mc.MeshPtr, sub, mat, mc.Color, skinDef);
+            } else {
+                r3d.DrawShadowSubMesh(tc.GetWorldMatrix(), mc.MeshPtr, sub, mat, mc.Color);
+            }
+        } else {
+            if (isSkinned) {
+                r3d.DrawSkinnedSubMesh(tc.GetWorldMatrix(), mc.MeshPtr, sub, mat, mc.Color, skinDef);
+            } else {
+                r3d.DrawSubMesh(tc.GetWorldMatrix(), mc.MeshPtr, sub, mat, mc.Color);
+            }
+        }
+    };
+
     for (auto entity : meshView) {
         auto &tc = meshView.get<TransformComponent>(entity);
         auto &mc = meshView.get<MeshRendererComponent>(entity);
@@ -996,26 +1025,59 @@ void Scene::RenderMeshes3D(const glm::mat4 &view, const glm::mat4 &projection,
                 continue;
             }
 
-            Material *mat = nullptr;
-            auto it = mc.materialOverrides.find(static_cast<uint32_t>(i));
-            if (it != mc.materialOverrides.end()) {
-                mat = it->second;
-            } else {
-                mat = sub.defaultMaterial;
-            }
-            if (isSkinned) {
-                r3d.DrawSkinnedSubMesh(tc.GetWorldMatrix(), mc.MeshPtr, sub, mat, mc.Color, skinDef);
-            } else {
-                r3d.DrawSubMesh(tc.GetWorldMatrix(), mc.MeshPtr, sub, mat, mc.Color);
+            drawSubMesh(tc, mc, sub, static_cast<uint32_t>(i), isSkinned, skinDef,
+                        /*forShadow=*/false);
+        }
+    }
+
+    // ---- 遍历② 阴影可见集合：按阴影世界 AABB 剔除，命中者提交到 m_ShadowMeshes ----
+    // 目的（阴影剔除计划书 §1/§3）：主相机视锥外的投影物（影子能投进视锥）也要进
+    // ShadowMap pass，否则其阴影整段丢失。剔除体 = 本帧光空间 AABB 转回世界的世界
+    // AABB（m_ShadowVolume，S1 在 UpdateLightParams 按「光方向 + 相机视锥」重算）；
+    // 无方向光 / castShadow=false 时置无效，整遍跳过。与主遍历的差异：
+    //   · 剔除体是阴影世界 AABB 而非主相机视锥
+    //   · BoundingBoxComponent 子树粗剔暂不做（正确性优先，阴影盒与实体盒边界行为
+    //     可与主遍不同，计划书 §4.3 列后续）
+    //   · 其余（蒙皮跳过剔除、子网格细剔、Blend 不主动跳）与主遍历一致
+    if (m_ShadowVolume.IsValid()) {
+        const AABB &shadowVolume = m_ShadowVolume;
+        for (auto entity : meshView) {
+            auto &tc = meshView.get<TransformComponent>(entity);
+            auto &mc = meshView.get<MeshRendererComponent>(entity);
+
+            if (!mc.MeshPtr) {
+                continue;
             }
 
-            // S2 临时：主可见物同步提一份到阴影集合，验证两套批次/实例缓冲结构一致
-            //（阴影剔除计划书 §5 S2 验收「主可见物在两个集合里都有」）。S3 将删除此处，
-            // 改为第二遍遍历按阴影世界 AABB 剔除后提交（§4.3/§4.5）。
-            if (isSkinned) {
-                r3d.DrawShadowSkinnedSubMesh(tc.GetWorldMatrix(), mc.MeshPtr, sub, mat, mc.Color, skinDef);
-            } else {
-                r3d.DrawShadowSubMesh(tc.GetWorldMatrix(), mc.MeshPtr, sub, mat, mc.Color);
+            // 蒙皮实体：绑定盒追不上变形，与主遍历一致跳过剔除、一律提交（保守）
+            const auto *skinC = m_Registry.try_get<SkinComponent>(entity);
+            const void *skinDef = (skinC && skinC->skin) ? skinC->skin.get() : nullptr;
+            const bool isSkinned = (skinDef != nullptr) && activeSkins.count(skinDef) > 0;
+
+            // 网格级粗筛：世界空间包围盒与阴影视锥判交。蒙皮跳过；无效包围盒（如
+            // 异步网格尚未注入）保守不剔除，避免瞬态误剔。
+            const AABB &meshAabb = mc.MeshPtr->GetAABB();
+            const bool shadowVisible = isSkinned
+                                       || !meshAabb.IsValid()
+                                       || shadowVolume.Overlaps(
+                                           meshAabb.Transformed(tc.GetWorldMatrix()));
+            if (!shadowVisible) {
+                continue;
+            }
+
+            const auto &subMeshes = mc.MeshPtr->GetSubMeshes();
+            for (size_t i = 0; i < subMeshes.size(); ++i) {
+                const SubMesh &sub = subMeshes[i];
+
+                // 子网格级细剔除（仅 SubMesh 模式）：与主遍历一致，蒙皮跳过。
+                if (cullSubMesh && !isSkinned && sub.aabb.IsValid()
+                    && !shadowVolume.Overlaps(
+                        sub.aabb.Transformed(tc.GetWorldMatrix()))) {
+                    continue;
+                }
+
+                drawSubMesh(tc, mc, sub, static_cast<uint32_t>(i), isSkinned, skinDef,
+                            /*forShadow=*/true);
             }
         }
     }

@@ -674,9 +674,8 @@ void Renderer3D::PrepareDeferredBatches(VulkanRenderFrame &frame) {
         batches.begin() + static_cast<ptrdiff_t>(opaqueCount), batches.end());
 
     // 阴影专用批次：m_ShadowMeshes 排序 → 切不透明段 → 上传独立实例缓冲，与主集合
-    // 分开（阴影集合含主视锥外物体，实例内容不同）。S2 阶段 FlushShadow 仍画
-    // m_OpaqueBatches，此构建为 S3 切换铺路（阴影剔除计划书 §4.4）。阴影 pass 只画
-    // 不透明段（Blend 不投影），切分逻辑与主集合一致。
+    // 分开（阴影集合含主视锥外物体，实例内容不同）。FlushShadow 画此套（阴影剔除
+    // 计划书 §4.4）。阴影 pass 只画不透明段（Blend 不投影），切分逻辑与主集合一致。
     SortMeshes(m_ShadowMeshes);
     std::vector<InstanceData> shadowInstances;
     std::vector<RenderBatch> shadowBatches;
@@ -711,8 +710,10 @@ BufferAllocation Renderer3D::UploadShadowFrameUBO(VulkanRenderFrame &frame) {
 void Renderer3D::FlushShadow(PassExecuteContext &ctx) {
     GE_PROFILE_SCOPE("Renderer3D::FlushShadow");
 
-    // 阴影 pass 与 GBuffer 共享批次/实例/皮肤缓冲（§5.5）：本 pass 先于 GBuffer
-    // 执行，若本帧尚未算过则先算一次缓存（幂等）。只画不透明段（Opaque + Mask，
+    // 阴影 pass 画阴影专用批次（m_ShadowBatches + m_ShadowInstanceBuffer，阴影剔除
+    // 计划书 §4.4/§5 S3）：集合由 Scene 第二遍遍历按阴影世界 AABB 剔除后提交，含主
+    // 相机视锥外的投影物——否则其阴影整段丢失。批次在 PrepareDeferredBatches 构建
+    //（本 pass 先于 GBuffer 执行，幂等先算一次）。只画不透明段（Opaque + Mask，
     // Blend 不投影、不接收阴影）。
     PrepareDeferredBatches(*ctx.frame);
 
@@ -729,9 +730,9 @@ void Renderer3D::FlushShadow(PassExecuteContext &ctx) {
     auto &cmd = *ctx.cmd;
     cmd.BindBuffer(shadowFrameUbo.get_buffer(), shadowFrameUbo.get_offset(),
                    shadowFrameUbo.get_size(), 0, 0);
-    if (!m_OpaqueBatches.empty()) {
-        DrawMeshInstances(*ctx.cmd, *ctx.frame, m_OpaqueBatches,
-                          m_CachedInstanceBuffer, /*gbuffer=*/false, /*shadow=*/true);
+    if (!m_ShadowBatches.empty()) {
+        DrawMeshInstances(*ctx.cmd, *ctx.frame, m_ShadowBatches,
+                          m_ShadowInstanceBuffer, /*gbuffer=*/false, /*shadow=*/true);
     }
 }
 

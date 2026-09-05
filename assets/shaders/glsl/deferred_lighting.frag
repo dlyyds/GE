@@ -12,6 +12,7 @@
 layout (set = 0, binding = 0, std140) uniform LightingUBO
 {
     mat4 invView;
+    mat4 view;
     mat4 invProj;
     vec4 clearColor;
     vec4 flags;        // x = 天空盒开关，y = IBL 开关，zw 预留
@@ -258,7 +259,7 @@ void main()
     // 只乘方向光直接光照项；点光源 / 环境光 / 自发光不受阴影影响（§1）。
     float shadowVis = 1.0;
     if (lighting.shadowParams.z > 0.5) {
-        vec4 viewP = lighting.invView * vec4(worldPos, 1.0); // 视图空间（相机朝 -Z，z 为负）
+        vec4 viewP = lighting.view * vec4(worldPos, 1.0);    // 视图空间（相机朝 -Z，z 为负）
         int cascade = CascadeIndex(-viewP.z);                // 正值深度选档
         shadowVis = CascadePCF(worldPos, cascade, lighting.shadowParams.y);
     }

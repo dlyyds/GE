@@ -1126,6 +1126,7 @@ BufferAllocation Renderer3D::UploadLightingUBO(VulkanRenderFrame &frame) {
     // 直接输出 clearColor，与现前向路径的 DrawSkybox 门控一致。
     LightingUBO ubo{};
     ubo.invView = glm::inverse(glm::mat4(glm::mat3(m_View)));
+    ubo.view = m_View;
     ubo.invProj = glm::inverse(m_Projection);
     ubo.clearColor = m_ClearColor;
 

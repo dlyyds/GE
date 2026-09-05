@@ -448,6 +448,7 @@ private:
     /// 除前向共享光照字段外，额外携带反投影矩阵与背景色。
     struct LightingUBO {
         glm::mat4 invView; ///< 视图矩阵逆（天空盒方向用）
+        glm::mat4 view;    ///< 相机视图矩阵（CSM 选档用 world -> view）
         glm::mat4 invProj; ///< 投影矩阵逆（NDC -> 视空间）
         glm::vec4 clearColor; ///< 天空盒未启用时的背景色
         glm::vec4 flags; ///< x = skyboxEnabled，y = IBL 开关

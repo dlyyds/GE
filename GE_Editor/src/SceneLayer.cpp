@@ -197,16 +197,17 @@ void SceneLayer::RecordScenePasses(RenderTarget &viewportRT, const glm::vec4 &cl
 
     if (Renderer::Get3DRenderer().IsDeferred()) {
         // GBuffer 虚拟资源：由渲染图池本帧解析分配，屏障/布局/生命周期由图承接。
-        // 资源名供 RenderDoc 纹理视图识别（G0 反照率+哨兵 / G1 法线 / G2 世界坐标+标量A / G3 自发光+标量B）。
+        // 资源名按用途命名，RenderDoc 纹理视图一眼可认：
+        //   Albedo 反照率(+着色模型哨兵) / Normal 世界法线 / WorldPos 世界坐标(+标量A) / Emissive 自发光(+标量B)
         RenderGraphResourceDesc gdesc;
         gdesc.extent = extent;
         gdesc.samples = vk::SampleCountFlagBits::e1;
         gdesc.format = vk::Format::eR8G8B8A8Unorm;
-        ResourceHandle hG0 = b.CreateVirtualResource(gdesc, "GBuffer_G0");
+        ResourceHandle hG0 = b.CreateVirtualResource(gdesc, "GBuffer_Albedo");
         gdesc.format = vk::Format::eR16G16B16A16Sfloat;
-        ResourceHandle hG1 = b.CreateVirtualResource(gdesc, "GBuffer_G1");
-        ResourceHandle hG2 = b.CreateVirtualResource(gdesc, "GBuffer_G2");
-        ResourceHandle hG3 = b.CreateVirtualResource(gdesc, "GBuffer_G3");
+        ResourceHandle hG1 = b.CreateVirtualResource(gdesc, "GBuffer_Normal");
+        ResourceHandle hG2 = b.CreateVirtualResource(gdesc, "GBuffer_WorldPos");
+        ResourceHandle hG3 = b.CreateVirtualResource(gdesc, "GBuffer_Emissive");
 
         // 方向光阴影：有方向光实体（castShadow 由 Scene::UpdateLightParams 如实反映）
         // 才声明 ShadowMap pass；无则图里没有该 pass、hShadow 不分配，FlushShadow

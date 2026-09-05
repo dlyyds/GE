@@ -14,7 +14,7 @@
 
 #pragma once
 
-#include "Render/Mesh.h"
+#include "Render/AABB.h"
 
 #include <glm/glm.hpp>
 

@@ -805,13 +805,10 @@ void Scene::UpdateLightParams(const glm::mat4 &view, const glm::mat4 &projection
                 // S3 的阴影遍历以此对物体世界 AABB 判交（阴影剔除计划书 §4.3）。
                 // S1 阶段仅供观察/断点验证：RenderDoc 无视觉变化，确认数值随相机与
                 // 光方向正确变化即通过验收。
-                const AABB shadowVolume = BuildShadowVolume(minP, maxP, lightView);
-                m_ShadowVolumeMin = shadowVolume.min;
-                m_ShadowVolumeMax = shadowVolume.max;
+                m_ShadowVolume = BuildShadowVolume(minP, maxP, lightView);
             } else {
                 // 阴影关闭：置无效盒，阴影遍历整遍跳过（计划书 §4.3）
-                m_ShadowVolumeMin = glm::vec3(0.0f);
-                m_ShadowVolumeMax = glm::vec3(-1.0f);
+                m_ShadowVolume = AABB();
             }
         } else {
             // 场景中无方向光组件时，使用默认值（斜向下的白色方向光）
@@ -819,8 +816,7 @@ void Scene::UpdateLightParams(const glm::mat4 &view, const glm::mat4 &projection
             lightParams.dirLightColor = {1.0f, 1.0f, 1.0f, 1.0f};
             lightParams.castShadow = false;
             // 无方向光：同阴影关闭，置无效盒，避免沿用上一帧残留的剔除体
-            m_ShadowVolumeMin = glm::vec3(0.0f);
-            m_ShadowVolumeMax = glm::vec3(-1.0f);
+            m_ShadowVolume = AABB();
         }
     }
 

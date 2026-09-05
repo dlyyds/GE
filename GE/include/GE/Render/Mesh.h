@@ -37,20 +37,20 @@ namespace GE {
  * 在此处解析为绝对路径（相对 OBJ 所在目录）。
  */
 struct MaterialData {
-    std::string name;               ///< MTL 材质名（与 SubMesh::materialName 对应）
-    glm::vec3   baseColor{1.0f};    ///< 漫反射颜色（Kd）
-    glm::vec3   specular{0.0f};     ///< 高光颜色（Ks）
-    glm::vec3   emissive{0.0f};     ///< 自发光颜色（Ke）
-    float       shininess  = 32.0f; ///< 高光指数（Ns）
-    float       dissolve   = 1.0f;  ///< 不透明度（d，1=不透明）
-    float       metallic   = 0.0f;  ///< 金属度（Pm，PBR 扩展）
-    float       roughness  = 0.5f;  ///< 粗糙度（Pr，PBR 扩展）
-    bool        hasPBR     = false; ///< 是否含 PBR 扩展参数（决定材质类型）
+    std::string name; ///< MTL 材质名（与 SubMesh::materialName 对应）
+    glm::vec3 baseColor{1.0f}; ///< 漫反射颜色（Kd）
+    glm::vec3 specular{0.0f}; ///< 高光颜色（Ks）
+    glm::vec3 emissive{0.0f}; ///< 自发光颜色（Ke）
+    float shininess = 32.0f; ///< 高光指数（Ns）
+    float dissolve = 1.0f; ///< 不透明度（d，1=不透明）
+    float metallic = 0.0f; ///< 金属度（Pm，PBR 扩展）
+    float roughness = 0.5f; ///< 粗糙度（Pr，PBR 扩展）
+    bool hasPBR = false; ///< 是否含 PBR 扩展参数（决定材质类型）
 
-    std::string albedoMap;    ///< 漫反射贴图（map_Kd，绝对路径）
-    std::string normalMap;    ///< 法线贴图（map_bump / norm，绝对路径）
-    std::string emissiveMap;  ///< 自发光贴图（map_Ke，绝对路径）
-    std::string metallicMap;  ///< 金属度贴图（map_Pm，OBJ 独立灰度图，绝对路径）
+    std::string albedoMap; ///< 漫反射贴图（map_Kd，绝对路径）
+    std::string normalMap; ///< 法线贴图（map_bump / norm，绝对路径）
+    std::string emissiveMap; ///< 自发光贴图（map_Ke，绝对路径）
+    std::string metallicMap; ///< 金属度贴图（map_Pm，OBJ 独立灰度图，绝对路径）
     std::string roughnessMap; ///< 粗糙度贴图（map_Pr，OBJ 独立灰度图，绝对路径）
     std::string metallicRoughnessMap; ///< 金属-粗糙度合并贴图（glTF 惯例：B=金属度, G=粗糙度，绝对路径）
 
@@ -58,7 +58,7 @@ struct MaterialData {
 
     /// glTF alpha 语义（默认不透明）。OBJ 无 alphaMode 概念，仅 dissolve<1 可推断为 Blend。
     Material::AlphaMode alphaMode = Material::AlphaMode::Opaque;
-    float alphaCutoff = 0.5f;  ///< MASK 裁剪阈值（glTF alphaCutoff，默认 0.5）
+    float alphaCutoff = 0.5f; ///< MASK 裁剪阈值（glTF alphaCutoff，默认 0.5）
 };
 
 /**
@@ -77,12 +77,12 @@ struct MaterialData {
  * 蒙皮顶点着色器在权重全 0 时退化为恒等（见 mesh_skinned.vert 归一化处理）。
  */
 struct Vertex {
-    glm::vec3 Position{0.0f};   ///< 位置
-    glm::vec3 Normal{0.0f};     ///< 法线
-    glm::vec2 TexCoord{0.0f};   ///< 纹理坐标
-    glm::vec4 Tangent{0.0f, 0.0f, 0.0f, 1.0f};   ///< 切线(xyz) + 手性符号(w)
+    glm::vec3 Position{0.0f}; ///< 位置
+    glm::vec3 Normal{0.0f}; ///< 法线
+    glm::vec2 TexCoord{0.0f}; ///< 纹理坐标
+    glm::vec4 Tangent{0.0f, 0.0f, 0.0f, 1.0f}; ///< 切线(xyz) + 手性符号(w)
     glm::uvec4 JointIdx{0u, 0u, 0u, 0u}; ///< 蒙皮关节索引（4 个，0..N-1；静态网格恒 0）
-    glm::vec4  Weight{0.0f, 0.0f, 0.0f, 0.0f}; ///< 蒙皮权重（与 JointIdx 对应，和≈1；静态网格恒 0）
+    glm::vec4 Weight{0.0f, 0.0f, 0.0f, 0.0f}; ///< 蒙皮权重（与 JointIdx 对应，和≈1；静态网格恒 0）
 
     /**
      * @brief 量化精度：将坐标投影到 1/10000 的均匀网格上。
@@ -95,23 +95,26 @@ struct Vertex {
 
     /// 将单个浮点量化到网格上（roundf 取整后除以精度，结果位模式确定）
     static float Quantize(float v) { return std::roundf(v * kQuantScale) / kQuantScale; }
+
     static glm::vec3 Quantize(const glm::vec3 &v) {
         return {Quantize(v.x), Quantize(v.y), Quantize(v.z)};
     }
+
     static glm::vec2 Quantize(const glm::vec2 &v) {
         return {Quantize(v.x), Quantize(v.y)};
     }
+
     static glm::vec4 Quantize(const glm::vec4 &v) {
         return {Quantize(v.x), Quantize(v.y), Quantize(v.z), Quantize(v.w)};
     }
 
     bool operator==(const Vertex &other) const {
         return Position == other.Position
-            && Normal == other.Normal
-            && TexCoord == other.TexCoord
-            && Tangent == other.Tangent
-            && JointIdx == other.JointIdx
-            && Weight == other.Weight;
+               && Normal == other.Normal
+               && TexCoord == other.TexCoord
+               && Tangent == other.Tangent
+               && JointIdx == other.JointIdx
+               && Weight == other.Weight;
     }
 };
 
@@ -145,9 +148,9 @@ struct hash<GE::Vertex> {
         size_t h20 = hash<float>()(v.Weight.w);
         // 简易组合哈希
         return h1 ^ (h2 << 1) ^ (h3 << 2) ^ (h4 << 3) ^ (h5 << 4) ^ (h6 << 5) ^ (h7 << 6) ^ (h8 << 7)
-             ^ (h9 << 8) ^ (h10 << 9) ^ (h11 << 10) ^ (h12 << 11)
-             ^ (h13 << 12) ^ (h14 << 13) ^ (h15 << 14) ^ (h16 << 15)
-             ^ (h17 << 16) ^ (h18 << 17) ^ (h19 << 18) ^ (h20 << 19);
+               ^ (h9 << 8) ^ (h10 << 9) ^ (h11 << 10) ^ (h12 << 11)
+               ^ (h13 << 12) ^ (h14 << 13) ^ (h15 << 14) ^ (h16 << 15)
+               ^ (h17 << 16) ^ (h18 << 17) ^ (h19 << 18) ^ (h20 << 19);
     }
 };
 } // namespace std
@@ -165,25 +168,14 @@ namespace GE {
  * 实体可通过 MeshRendererComponent.materialOverrides 覆写某个子网格的材质。
  * materialName 为加载期记录的源材质名（OBJ 材质名 / 未来 glTF 材质名）。
  */
-/**
- * @brief 子网格：共享同一顶点/索引缓冲，仅用索引范围区分，带默认材质。
- *
- * 一个 Mesh 可含多个子网格（如 OBJ 按 (shape, material_id) 拆分、未来 glTF
- * 按 primitive）。所有子网格共用 Mesh 持有的单个顶点缓冲 + 索引缓冲，
- * 仅通过 firstIndex / indexCount 划定各自的索引范围进行绘制。
- *
- * defaultMaterial 为模型加载时的默认材质（MaterialManager 持有，只读借用）；
- * 实体可通过 MeshRendererComponent.materialOverrides 覆写某个子网格的材质。
- * materialName 为加载期记录的源材质名（OBJ 材质名 / 未来 glTF 材质名）。
- */
 struct SubMesh {
-    uint32_t  firstVertex = 0;   ///< 顶点缓冲起始（共享缓冲，通常为 0）
-    uint32_t  vertexCount = 0;   ///< 顶点数量
-    uint32_t  firstIndex  = 0;   ///< 索引缓冲起始（元素索引，非字节）
-    uint32_t  indexCount  = 0;   ///< 索引数量
-    std::string materialName;    ///< 源材质名（加载期填充，用于创建/查找材质）
+    uint32_t firstVertex = 0; ///< 顶点缓冲起始（共享缓冲，通常为 0）
+    uint32_t vertexCount = 0; ///< 顶点数量
+    uint32_t firstIndex = 0; ///< 索引缓冲起始（元素索引，非字节）
+    uint32_t indexCount = 0; ///< 索引数量
+    std::string materialName; ///< 源材质名（加载期填充，用于创建/查找材质）
     Material *defaultMaterial = nullptr; ///< 默认材质（MeshManager 填充，MaterialManager 持有）
-    AABB aabb;                   ///< 本地（模型）空间几何包围盒（装配时按索引范围现算兜底，供子网格级视锥剔除）
+    AABB aabb; ///< 本地（模型）空间几何包围盒（装配时按索引范围现算兜底，供子网格级视锥剔除）
 };
 
 /**
@@ -194,12 +186,12 @@ struct SubMesh {
  * 材质数据与顶点/索引计数等轻量摘要，整份 CPU 顶点副本不常驻内存。
  */
 struct MeshData {
-    std::vector<Vertex>      vertices;      ///< 已量化 + 去重（构建期用，上传后释放）
-    std::vector<uint32_t>    indices;       ///< 索引数组
-    std::vector<SubMesh>     subMeshes;     ///< 渲染范围 + materialName
+    std::vector<Vertex> vertices; ///< 已量化 + 去重（构建期用，上传后释放）
+    std::vector<uint32_t> indices; ///< 索引数组
+    std::vector<SubMesh> subMeshes; ///< 渲染范围 + materialName
     std::vector<MaterialData> materialData; ///< 材质匹配用（MeshManager 读取）
-    AABB  aabb;                            ///< 模型空间包围盒（解析器可选预计算，.gemesh 从 META 回填；未填时装配现算兜底）
-    int   skinIndex = -1;                  ///< 该 mesh 是否被皮肤（骨骼）驱动：-1=静态，>=0= glTF 皮肤索引（顶点带 JOINTS_0/WEIGHTS_0）
+    AABB aabb; ///< 模型空间包围盒（解析器可选预计算，.gemesh 从 META 回填；未填时装配现算兜底）
+    int skinIndex = -1; ///< 该 mesh 是否被皮肤（骨骼）驱动：-1=静态，>=0= glTF 皮肤索引（顶点带 JOINTS_0/WEIGHTS_0）
 };
 
 /**
@@ -256,8 +248,11 @@ public:
     ~Mesh();
 
     Mesh(Mesh &&other) noexcept;
+
     Mesh(const Mesh &) = delete;
+
     Mesh &operator=(Mesh &&) = delete;
+
     Mesh &operator=(const Mesh &) = delete;
 
     // ========================================================================
@@ -273,8 +268,8 @@ public:
      * unload 均跑在主线程，故 target/abandoned 无需原子。
      */
     struct AsyncPendingSlot {
-        Mesh *target = nullptr;   ///< 待注入的目标空壳（析构时置空）
-        bool abandoned = false;   ///< 目标已销毁，finalize 应跳过
+        Mesh *target = nullptr; ///< 待注入的目标空壳（析构时置空）
+        bool abandoned = false; ///< 目标已销毁，finalize 应跳过
     };
 
     /**
@@ -410,15 +405,15 @@ private:
     // 成员
     // ========================================================================
 
-    std::vector<SubMesh>  m_SubMeshes;      ///< 渲染范围（含 defaultMaterial 指针）
+    std::vector<SubMesh> m_SubMeshes; ///< 渲染范围（含 defaultMaterial 指针）
     std::vector<MaterialData> m_MaterialData; ///< 从 MTL 捕获的材质数据（加载时填充）
-    uint32_t m_VertexCount = 0;             ///< 顶点数量摘要（替代整份 CPU 顶点数组）
-    uint32_t m_IndexCount  = 0;             ///< 索引数量摘要（替代整份 CPU 索引数组）
-    AABB     m_AABB;                        ///< 模型空间轴对齐包围盒（装配时从顶点算出）
-    std::string           m_FilePath;       ///< 源文件路径（从文件加载时有值）
+    uint32_t m_VertexCount = 0; ///< 顶点数量摘要（替代整份 CPU 顶点数组）
+    uint32_t m_IndexCount = 0; ///< 索引数量摘要（替代整份 CPU 索引数组）
+    AABB m_AABB; ///< 模型空间轴对齐包围盒（装配时从顶点算出）
+    std::string m_FilePath; ///< 源文件路径（从文件加载时有值）
 
     std::unique_ptr<VulkanBuffer> m_VertexBuffer; ///< GPU 顶点缓冲
-    std::unique_ptr<VulkanBuffer> m_IndexBuffer;  ///< GPU 索引缓冲
+    std::unique_ptr<VulkanBuffer> m_IndexBuffer; ///< GPU 索引缓冲
 
     // 异步加载状态（空壳网格专用；同步路径构造后 m_Ready 恒 true）
     std::atomic<bool> m_Ready{false}; ///< 异步加载是否已就绪

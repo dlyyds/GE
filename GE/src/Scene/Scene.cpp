@@ -46,7 +46,8 @@ glm::mat4 BuildLightVolumeCorners(const glm::vec3 worldCorners[8],
                                   const glm::vec3 &lightDir,
                                   glm::vec3 *outMinP = nullptr,
                                   glm::vec3 *outMaxP = nullptr,
-                                  glm::mat4 *outLightView = nullptr) {
+                                  glm::mat4 *outLightView = nullptr,
+                                  uint32_t shadowMapSize = 0) {
     // 光 view：GLM 相机视线方向（-Z）对准光传播方向 forward。
     // eye 必须放在「+forward = 光源所在侧」，相机朝 -forward（背离光源）看场景——
     // 这样近面在离光源最近处（深度 0 = 离光源最近），eLess 每 texel 保留的是离光源
@@ -82,6 +83,22 @@ glm::mat4 BuildLightVolumeCorners(const glm::vec3 worldCorners[8],
     //   近面（离光源最近，z_view 最大）= -maxP.z，远面 = -minP.z。
     // 保证「离光源越近 → 深度越小（近面 NDC z=0）」，与 §3.4/§6.2 语义一致。
     // ZO 下光裁剪空间深度已是 [0,1]，S4 采样时直接读 proj.z（无需再 0.5+0.5 重映射）。
+    // texel 稳定化（阴影贴图计划书 §7）：把 Light Space AABB 的 x/y 边界对齐到阴影图
+    // texel 网格。相机连续移动时，光正交矩阵只按整 texel 步进跳变，避免每帧重投影
+    // 造成阴影边缘爬动（texel 抖动）——肉眼看起来就像角色/地面在移动时轻微抖动。
+    if (shadowMapSize > 0) {
+        const float texelX = (maxP.x - minP.x) / static_cast<float>(shadowMapSize);
+        const float texelY = (maxP.y - minP.y) / static_cast<float>(shadowMapSize);
+        if (texelX > 0.0f) {
+            minP.x = std::floor(minP.x / texelX) * texelX;
+            maxP.x = minP.x + texelX * static_cast<float>(shadowMapSize);
+        }
+        if (texelY > 0.0f) {
+            minP.y = std::floor(minP.y / texelY) * texelY;
+            maxP.y = minP.y + texelY * static_cast<float>(shadowMapSize);
+        }
+    }
+
     if (outMinP)
         *outMinP = minP;
     if (outMaxP)
@@ -101,7 +118,8 @@ glm::mat4 ComputeLightViewProj(const glm::vec3 &lightDir,
                                const glm::mat4 &projection,
                                glm::vec3 *outMinP = nullptr,
                                glm::vec3 *outMaxP = nullptr,
-                               glm::mat4 *outLightView = nullptr) {
+                               glm::mat4 *outLightView = nullptr,
+                               uint32_t shadowMapSize = 0) {
     // 相机投影用 ZO（Zero-to-One）深度约定（NDC z ∈ [0,1]，近面=0、远面=1），
     // 角点 z 取 0/1 与该约定一致（近裁剪面 ↔ z=0，远裁剪面 ↔ z=1）。
     const glm::mat4 invViewProj = glm::inverse(projection * view);
@@ -116,7 +134,8 @@ glm::mat4 ComputeLightViewProj(const glm::vec3 &lightDir,
         const glm::vec4 world = invViewProj * ndcCorners[i];
         worldCorners[i] = glm::vec3(world) / world.w;
     }
-    return BuildLightVolumeCorners(worldCorners, lightDir, outMinP, outMaxP, outLightView);
+    return BuildLightVolumeCorners(worldCorners, lightDir, outMinP, outMaxP, outLightView,
+                                   shadowMapSize);
 }
 
 /// 视锥切片角点（CSM 计划书 §4.2 step 2）：对 d ∈ {splitLo, splitHi} 各取 4 个视图空间
@@ -929,7 +948,8 @@ void Scene::UpdateLightParams(const glm::mat4 &view, const glm::mat4 &projection
                 glm::vec3 minP, maxP;
                 glm::mat4 lightView;
                 const glm::mat4 fullFrustumViewProj = ComputeLightViewProj(
-                    lightParams.dirLightDirection, view, projection, &minP, &maxP, &lightView);
+                    lightParams.dirLightDirection, view, projection, &minP, &maxP, &lightView,
+                    r3d.GetShadowMapSize());
 
                 // CSM 切分（C1/C3）：按「光方向 + 相机视锥」把视锥沿深度切成
                 // cascadeCount 档，每档由 SliceCorners（切片角点）+ BuildLightVolumeCorners
@@ -952,7 +972,8 @@ void Scene::UpdateLightParams(const glm::mat4 &view, const glm::mat4 &projection
                         glm::mat4 cLightView;
                         lightParams.cascadeViewProj[c] = BuildLightVolumeCorners(
                             sliceCorners, lightParams.dirLightDirection,
-                            &cMinP, &cMaxP, &cLightView);
+                            &cMinP, &cMaxP, &cLightView,
+                            r3d.GetCascadeShadowSize(c));
                         // 近靠光源一侧需要把遮挡范围放宽到整个相机视锥，否则近档只看
                         // 自己这一薄片，上方/近光侧的阴影投射物会被该档光正交 near 裁剪
                         // （RenderDoc 里表现为阴影贴图内容被裁，CSM=1 全视锥时不会出现）。

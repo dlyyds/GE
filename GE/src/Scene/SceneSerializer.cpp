@@ -879,17 +879,31 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
         }
 
         // ---- FollowCameraComponent ----
-        // 纯配置字段，无运行时数据（姿态存在 CameraComponent 的 Camera 里，不落盘）
+        // 运行时数据（CurrentMode/CurrentDistance/CurrentPos/SnapPending）不落盘，
+        // 姿态存在 CameraComponent 的 Camera 里；作者配置全部落盘。
         if (entity.HasComponent<FollowCameraComponent>()) {
             const auto &fcc = entity.GetComponent<FollowCameraComponent>();
             YAML::Node fcNode = entityNode["FollowCamera"];
             fcNode["Enabled"] = fcc.Enabled;
+            fcNode["StartMode"] = (fcc.StartMode == FollowCameraViewMode::FirstPerson) ? "First" : "Third";
+            fcNode["ToggleEnabled"] = fcc.ToggleEnabled;
+            fcNode["ToggleKey"] = fcc.ToggleKey;
             fcNode["EyeOffset"] = SerializeVec3(fcc.EyeOffset);
             fcNode["YawSpeed"] = fcc.YawSpeed;
             fcNode["PitchSpeed"] = fcc.PitchSpeed;
             fcNode["MinPitch"] = fcc.MinPitch;
             fcNode["MaxPitch"] = fcc.MaxPitch;
             fcNode["InvertY"] = fcc.InvertY;
+            fcNode["TargetOffset"] = SerializeVec3(fcc.TargetOffset);
+            fcNode["Distance"] = fcc.Distance;
+            fcNode["MinDistance"] = fcc.MinDistance;
+            fcNode["MaxDistance"] = fcc.MaxDistance;
+            fcNode["ShoulderOffset"] = fcc.ShoulderOffset;
+            fcNode["CollisionEnabled"] = fcc.CollisionEnabled;
+            fcNode["CollisionRadius"] = fcc.CollisionRadius;
+            fcNode["CollisionMargin"] = fcc.CollisionMargin;
+            fcNode["Smoothing"] = fcc.Smoothing;
+            fcNode["ZoomSpeed"] = fcc.ZoomSpeed;
         }
 
         // ---- BoxColliderComponent ----
@@ -1430,18 +1444,36 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
         }
 
         // ---- FollowCameraComponent ----
-        // AddComponent 触发 OnComponentAdded（纯配置，无物理重建）
+        // AddComponent 触发 OnComponentAdded（纯配置，无物理重建）。
+        // 旧字段缺省即默认值；旧 FirstPersonCamera 节点继续兼容（FollowCamera 优先）。
         YAML::Node fcNode = entityNode["FollowCamera"] ? entityNode["FollowCamera"] : entityNode["FirstPersonCamera"];
         if (fcNode) {
             auto &fcc = entity.AddComponent<FollowCameraComponent>();
 
             fcc.Enabled = fcNode["Enabled"] ? fcNode["Enabled"].as<bool>(true) : true;
+            const std::string startMode = fcNode["StartMode"] ? fcNode["StartMode"].as<std::string>("First") : "First";
+            fcc.StartMode = (startMode == "Third") ? FollowCameraViewMode::ThirdPerson : FollowCameraViewMode::FirstPerson;
+            fcc.ToggleEnabled = fcNode["ToggleEnabled"] ? fcNode["ToggleEnabled"].as<bool>(true) : true;
+            fcc.ToggleKey = fcNode["ToggleKey"] ? static_cast<KeyCode>(fcNode["ToggleKey"].as<unsigned int>(Key::V)) : Key::V;
             fcc.EyeOffset = DeserializeVec3(fcNode["EyeOffset"], {0.0f, 1.65f, 0.0f});
             fcc.YawSpeed = fcNode["YawSpeed"] ? fcNode["YawSpeed"].as<float>(0.10f) : 0.10f;
             fcc.PitchSpeed = fcNode["PitchSpeed"] ? fcNode["PitchSpeed"].as<float>(0.10f) : 0.10f;
             fcc.MinPitch = fcNode["MinPitch"] ? fcNode["MinPitch"].as<float>(-89.0f) : -89.0f;
             fcc.MaxPitch = fcNode["MaxPitch"] ? fcNode["MaxPitch"].as<float>(89.0f) : 89.0f;
             fcc.InvertY = fcNode["InvertY"] ? fcNode["InvertY"].as<bool>(false) : false;
+            fcc.TargetOffset = DeserializeVec3(fcNode["TargetOffset"], {0.0f, 1.60f, 0.0f});
+            fcc.Distance = fcNode["Distance"] ? fcNode["Distance"].as<float>(3.50f) : 3.50f;
+            fcc.MinDistance = fcNode["MinDistance"] ? fcNode["MinDistance"].as<float>(1.00f) : 1.00f;
+            fcc.MaxDistance = fcNode["MaxDistance"] ? fcNode["MaxDistance"].as<float>(12.0f) : 12.0f;
+            fcc.ShoulderOffset = fcNode["ShoulderOffset"] ? fcNode["ShoulderOffset"].as<float>(0.00f) : 0.00f;
+            fcc.CollisionEnabled = fcNode["CollisionEnabled"] ? fcNode["CollisionEnabled"].as<bool>(true) : true;
+            fcc.CollisionRadius = fcNode["CollisionRadius"] ? fcNode["CollisionRadius"].as<float>(0.25f) : 0.25f;
+            fcc.CollisionMargin = fcNode["CollisionMargin"] ? fcNode["CollisionMargin"].as<float>(0.05f) : 0.05f;
+            fcc.Smoothing = fcNode["Smoothing"] ? fcNode["Smoothing"].as<float>(8.0f) : 8.0f;
+            fcc.ZoomSpeed = fcNode["ZoomSpeed"] ? fcNode["ZoomSpeed"].as<float>(0.40f) : 0.40f;
+            // 目标距离必须落在 [MinDistance, MaxDistance]：旧场景/手改 Min/Max 导致越界时，
+            // 运行时会被 clamp，而面板仍显示越界值造成“数值一样但效果不同”的困惑。
+            fcc.Distance = std::clamp(fcc.Distance, fcc.MinDistance, fcc.MaxDistance);
         }
 
         // ---- BoxColliderComponent ----

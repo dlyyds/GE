@@ -209,9 +209,10 @@ private:
     void UpdateAnimations(Timestep ts);
 
     /// 每帧跟随相机同步：鼠标视角 → 相机 yaw/pitch，相机朝向 →
-    /// 角色朝向（FacingYaw 通道），角色位置 → 相机位置（EyeOffset）。
+    /// 角色朝向（FacingYaw 通道），按当前模式更新角色位置 → 相机位置
+    /// （第一人称 EyeOffset / 第三人称第三人称跟随 + 平滑）。
     /// 必须在 StepPhysics（物理子步消费 FacingYaw）之后、UpdateWorldTransforms 之前调用。
-    void UpdateFollowCamera();
+    void UpdateFollowCamera(Timestep ts);
 
 
     /// 将输入事件路由给主相机（控制相机视角）
@@ -267,7 +268,9 @@ private:
         glm::vec3 translation{0.0f, 0.0f, 0.0f};
         glm::quat rotation{1.0f, 0.0f, 0.0f, 0.0f};
     };
+
     std::vector<PlayTransformSnapshot> m_PlaySnapshot;
+
 
     template <typename T>
     void OnComponentAdded(Entity entity, T &component);

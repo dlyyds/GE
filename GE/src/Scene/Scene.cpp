@@ -352,6 +352,7 @@ void Scene::ClearAllEntities() {
     // 残留 pending / 快照一并清掉，避免下次 Play 用错位/失效句柄建体。
     m_SimulationState = SimulationState::Edit;
     m_PlaySnapshot.clear();
+
     if (m_PhysicsWorld) {
         m_PhysicsWorld->ClearPendingBodies();
         m_PhysicsWorld->ClearPendingCharacters();
@@ -443,14 +444,14 @@ void Scene::Play() {
     // 4. 跟随相机初始化：切 FreeLook 姿态模式、用角色当前朝向初始化 yaw/pitch、
     //    位置钉到角色视点，避免相机从默认姿态"跳"到角色朝向。
     auto followView = m_Registry.view<TransformComponent, CharacterControllerComponent,
-                                  FollowCameraComponent>();
+                                      FollowCameraComponent>();
     if (followView.begin() != followView.end()) {
         Entity fcCamEnt = GetPrimaryCameraEntity();
         if (fcCamEnt && fcCamEnt.HasComponent<CameraComponent>()) {
             const entt::entity player = followView.front();
             const auto &tc = followView.get<TransformComponent>(player);
             const auto &cc = followView.get<CharacterControllerComponent>(player);
-            const auto &fc = followView.get<FollowCameraComponent>(player);
+            auto &fc = followView.get<FollowCameraComponent>(player);
             auto &camComp = fcCamEnt.GetComponent<CameraComponent>();
             Camera &cam = camComp.CameraInstance;
 
@@ -477,6 +478,12 @@ void Scene::Play() {
             const float initYaw = glm::degrees(cc.FacingYaw + modelYaw);
             cam.SetYawPitch(initYaw, 0.0f);
             cam.SetPosition(tc.Translation + fc.EyeOffset);
+
+            // 第三人称运行时状态初始化：每次 Play 用作者配置重置，避免污染存档。
+            fc.CurrentMode = fc.StartMode;
+            fc.CurrentDistance = std::clamp(fc.Distance, fc.MinDistance, fc.MaxDistance);
+            fc.CurrentPos = tc.Translation + fc.EyeOffset;
+            fc.ThirdPersonSnapPending = (fc.StartMode == FollowCameraViewMode::ThirdPerson);
         }
     }
 
@@ -525,7 +532,18 @@ void Scene::Stop() {
     }
     m_PlaySnapshot.clear();
 
-    // 5. 累加器归零：Edit 态不再步进，把干净状态留给下次 Play
+    // 5. 跟随相机运行时状态复位：Play 中切换/缩放/平滑位置不污染 Edit 态，
+    //    也让编辑面板/调试标记重新反映作者配置（StartMode/Distance）。
+    auto fcView = m_Registry.view<FollowCameraComponent>();
+    for (auto entity : fcView) {
+        auto &fc = fcView.get<FollowCameraComponent>(entity);
+        fc.CurrentMode = fc.StartMode;
+        fc.CurrentDistance = std::clamp(fc.Distance, fc.MinDistance, fc.MaxDistance);
+        fc.CurrentPos = glm::vec3(0.0f);
+        fc.ThirdPersonSnapPending = false;
+    }
+
+    // 6. 累加器归零：Edit 态不再步进，把干净状态留给下次 Play
     m_PhysicsWorld->ResetAccumulator();
 
     m_SimulationState = SimulationState::Edit;
@@ -688,7 +706,7 @@ void Scene::OnUpdate3D(Timestep ts,
     // ── 跟随相机 ─────────────────────────────────────────────
     // 放在物理步进之后：相机侧写的 FacingYaw 落在物理子步消费【之后】，
     // 下一帧物理才用到；位置取角色最新脚底。世界矩阵在其后重算，渲染即用最新姿态。
-    UpdateFollowCamera();
+    UpdateFollowCamera(ts);
 
     // ── 动画更新：采样键帧写目标实体的局部 TRS ────────────────────────
     // 放在物理之后、UpdateWorldTransforms 之前：动画写的是局部 TRS，稍后 DFS
@@ -723,7 +741,7 @@ void Scene::UpdateScripts(Timestep ts) {
     m_ScriptEngine.OnUpdate(ts);
 }
 
-void Scene::UpdateFollowCamera() {
+void Scene::UpdateFollowCamera(Timestep ts) {
     // 编辑态不跟随：跟随相机只服务 Play 模拟（编辑视角由 EditorCamera 独立持有）
     if (m_SimulationState != SimulationState::Playing) {
         return;
@@ -758,7 +776,21 @@ void Scene::UpdateFollowCamera() {
     cam.MinPitch = fc.MinPitch;
     cam.MaxPitch = fc.MaxPitch;
 
-    // 4. 鼠标视角 → yaw/pitch（读本帧输入快照的鼠标增量；灵敏度单位 = 度/像素）
+    // 4. 运行时模式切换（默认 V）
+    if (fc.ToggleEnabled && m_InputState.JustPressed(fc.ToggleKey)) {
+        fc.CurrentMode = (fc.CurrentMode == FollowCameraViewMode::FirstPerson)
+                             ? FollowCameraViewMode::ThirdPerson
+                             : FollowCameraViewMode::FirstPerson;
+        if (fc.CurrentMode == FollowCameraViewMode::ThirdPerson) {
+            // 首次进入第三人称时补齐运行距离/起点，避免从默认值跳变
+            if (fc.CurrentDistance < 0.0f)
+                fc.CurrentDistance = fc.Distance;
+            fc.CurrentPos = cam.GetPosition();
+            fc.ThirdPersonSnapPending = true;
+        }
+    }
+
+    // 5. 鼠标视角 → yaw/pitch（读本帧输入快照的鼠标增量；灵敏度单位 = 度/像素）
     //    GLFW 窗口坐标 y 向下为正，鼠标上移 → mouseDelta.y 为负；减号让上移 → pitch 增大 → 抬头。
     const glm::vec2 mouseDelta = m_InputState.GetMouseDelta();
     const float yawSign = (fc.InvertY ? -1.0f : 1.0f);
@@ -766,15 +798,60 @@ void Scene::UpdateFollowCamera() {
     float pitch = cam.GetPitch() - yawSign * mouseDelta.y * fc.PitchSpeed;
     cam.SetYawPitch(yaw, pitch); // SetYawPitch 内部按 MinPitch/MaxPitch clamp
 
-    // 6. 角色位置 → 相机位置（角色局部 EyeOffset 随朝向旋转后加到脚底；
-    //    yaw 每帧已与相机同步，绕 up 旋转等于绕相机朝向系旋转 → 纯 +Y 不变，
-    //    带水平分量自动成"过肩视角"：相机向后拉、随角色转身）
-    const float yawRad = glm::radians(cam.GetYaw());
-    const glm::vec3 offset(
-        fc.EyeOffset.x * std::cos(yawRad) + fc.EyeOffset.z * std::sin(yawRad),
-        fc.EyeOffset.y,
-        -fc.EyeOffset.x * std::sin(yawRad) + fc.EyeOffset.z * std::cos(yawRad));
-    cam.SetPosition(tc.Translation + offset);
+    // 6. 按当前视图模式更新相机位置
+    if (fc.CurrentMode == FollowCameraViewMode::ThirdPerson) {
+        // 反序列化/脚本切换时 CurrentDistance 可能尚未初始化：兜底回退到作者配置 Distance，
+        // 避免面板显示“Distance=30”而运行时却用 -1/0 的默认值导致效果不一致。
+        if (fc.CurrentDistance < 0.0f)
+            fc.CurrentDistance = fc.Distance;
+        // 滚轮 Zoom：只改运行时 CurrentDistance，不污染作者配置 Distance。
+        // 刚切到第三人称的首帧沿用配置 Distance，避免编辑态残留滚轮增量污染起始距离。
+        if (!fc.ThirdPersonSnapPending) {
+            fc.CurrentDistance += m_InputState.GetScrollDelta() * fc.ZoomSpeed;
+        }
+        fc.CurrentDistance = std::clamp(fc.CurrentDistance, fc.MinDistance, fc.MaxDistance);
+
+        const float dt = std::max(ts.GetSeconds(), 0.0f);
+        const float yawRad = glm::radians(cam.GetYaw());
+        const float pitchRad = glm::radians(cam.GetPitch());
+
+        // 与 Camera::GetForward() 同语义（yaw=0 时朝向 -Z）
+        const glm::vec3 forward(
+            -std::cos(pitchRad) * std::sin(yawRad),
+            std::sin(pitchRad),
+            -std::cos(pitchRad) * std::cos(yawRad));
+        const glm::vec3 right = glm::normalize(glm::cross(forward, glm::vec3(0.0f, 1.0f, 0.0f)));
+
+        // 角色锚点（脚底 + 绕 yaw 旋转的 TargetOffset）→ 期望相机位置
+        const glm::vec3 targetOffset(
+            fc.TargetOffset.x * std::cos(yawRad) + fc.TargetOffset.z * std::sin(yawRad),
+            fc.TargetOffset.y,
+            -fc.TargetOffset.x * std::sin(yawRad) + fc.TargetOffset.z * std::cos(yawRad));
+        const glm::vec3 target = tc.Translation + targetOffset;
+        const glm::vec3 desired = target - forward * fc.CurrentDistance + right * fc.ShoulderOffset;
+
+        // 位置平滑阻尼（M1 不含物理防穿墙；M2 将在此处插入 CameraRaycastClampedFraction）
+        // 刚切到第三人称时硬切到目标位置（初版不做切换过渡动画）
+        if (fc.ThirdPersonSnapPending) {
+            fc.CurrentPos = desired;
+            fc.ThirdPersonSnapPending = false;
+        } else {
+            const float alpha = 1.0f - std::exp(-std::max(fc.Smoothing, 0.0f) * dt);
+            fc.CurrentPos = glm::mix(fc.CurrentPos, desired, alpha);
+        }
+        cam.SetPosition(fc.CurrentPos);
+    } else {
+        // 第一人称：角色局部 EyeOffset 随朝向旋转后加到脚底；
+        // yaw 每帧已与相机同步，绕 up 旋转等于绕相机朝向系旋转 → 纯 +Y 不变，
+        // 带水平分量自动成"过肩视角"：相机向后拉、随角色转身
+        const float yawRad = glm::radians(cam.GetYaw());
+        const glm::vec3 offset(
+            fc.EyeOffset.x * std::cos(yawRad) + fc.EyeOffset.z * std::sin(yawRad),
+            fc.EyeOffset.y,
+            -fc.EyeOffset.x * std::sin(yawRad) + fc.EyeOffset.z * std::cos(yawRad));
+        fc.CurrentPos = tc.Translation + offset;
+        cam.SetPosition(fc.CurrentPos);
+    }
 }
 
 void Scene::StepPhysics(Timestep ts) {

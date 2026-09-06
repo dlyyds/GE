@@ -1802,15 +1802,76 @@ void SceneHierarchyPanel::DrawFollowCameraComponent(FollowCameraComponent &compo
     ImGui::Checkbox("Enabled", &component.Enabled);
     ImGui::Separator();
 
-    DrawVec3Control("Eye Offset", component.EyeOffset, 0.05f, 120);
-    ImGui::TextDisabled("相机相对角色的局部偏移（默认 +Y = 角色头顶上方）");
+    // ---- 模式 ----
+    const char *modeNames[] = {"First Person", "Third Person"};
+    const int startModeIndex = component.StartMode == FollowCameraViewMode::ThirdPerson ? 1 : 0;
+    if (ImGui::BeginCombo("Start Mode", modeNames[startModeIndex])) {
+        for (int i = 0; i < 2; ++i) {
+            const bool selected = startModeIndex == i;
+            if (ImGui::Selectable(modeNames[i], selected)) {
+                component.StartMode = (i == 1) ? FollowCameraViewMode::ThirdPerson
+                                               : FollowCameraViewMode::FirstPerson;
+            }
+            if (selected)
+                ImGui::SetItemDefaultFocus();
+        }
+        ImGui::EndCombo();
+    }
+    ImGui::Checkbox("Toggle Enabled", &component.ToggleEnabled);
+    int toggleKey = static_cast<int>(component.ToggleKey);
+    if (ImGui::InputInt("Toggle Key (GLFW)", &toggleKey)) {
+        component.ToggleKey = static_cast<KeyCode>(toggleKey & 0xFFFF);
+    }
+    ImGui::TextDisabled("默认 V = 86；运行时按此键在第一/第三人称之间切换");
+    if (m_Context && m_Context->IsPlaying()) {
+        const char *currentMode = component.CurrentMode == FollowCameraViewMode::ThirdPerson
+                                      ? "Third Person" : "First Person";
+        ImGui::LabelText("Current Mode (Play)", "%s", currentMode);
+    }
+    ImGui::Separator();
 
-    ImGui::DragFloat("Yaw Speed (deg/px)", &component.YawSpeed, 0.01f, 0.0f, 1.0f);
-    ImGui::DragFloat("Pitch Speed (deg/px)", &component.PitchSpeed, 0.01f, 0.0f, 1.0f);
-    ImGui::DragFloat("Min Pitch (deg)", &component.MinPitch, 1.0f, -89.0f, 0.0f);
-    ImGui::DragFloat("Max Pitch (deg)", &component.MaxPitch, 1.0f, 0.0f, 89.0f);
-    ImGui::Checkbox("Invert Y", &component.InvertY);
-    ImGui::TextDisabled("鼠标控制视角；相机钉在角色视点，角色朝向跟随相机");
+    // ---- 第一人称 ----
+    if (ImGui::CollapsingHeader("First Person", ImGuiTreeNodeFlags_DefaultOpen)) {
+        DrawVec3Control("Eye Offset", component.EyeOffset, 0.05f, 120);
+        ImGui::TextDisabled("相机相对角色的局部偏移（默认 +Y = 角色头顶上方）");
+        ImGui::Separator();
+    }
+
+    // ---- 第三人称 ----
+    if (ImGui::CollapsingHeader("Third Person", ImGuiTreeNodeFlags_DefaultOpen)) {
+        DrawVec3Control("Target Offset", component.TargetOffset, 0.05f, 120);
+        ImGui::TextDisabled("相机看向的角色锚点（默认角色胸口/头高附近）");
+        ImGui::DragFloat("Target Distance", &component.Distance, 0.05f, component.MinDistance, component.MaxDistance);
+        // 改 Min/Max 时同步钳位 Target Distance：否则序列化保存的面板值可能与运行时
+        // clamp 后的实际距离不一致（运行时按 [Min, Max] 生效）。
+        if (ImGui::DragFloat("Min Distance", &component.MinDistance, 0.05f, 0.10f, component.MaxDistance)) {
+            component.Distance = std::clamp(component.Distance, component.MinDistance, component.MaxDistance);
+        }
+        if (ImGui::DragFloat("Max Distance", &component.MaxDistance, 0.05f, component.MinDistance, 100.0f)) {
+            component.Distance = std::clamp(component.Distance, component.MinDistance, component.MaxDistance);
+        }
+        ImGui::DragFloat("Shoulder Offset", &component.ShoulderOffset, 0.05f, -5.0f, 5.0f);
+        ImGui::TextDisabled(">0 右肩、<0 左肩；0 = 正中跟拍");
+        ImGui::Checkbox("Collision Enabled", &component.CollisionEnabled);
+        if (component.CollisionEnabled) {
+            ImGui::DragFloat("Collision Radius", &component.CollisionRadius, 0.01f, 0.01f, 2.0f);
+            ImGui::DragFloat("Collision Margin", &component.CollisionMargin, 0.01f, 0.0f, 2.0f);
+        }
+        ImGui::DragFloat("Smoothing", &component.Smoothing, 0.1f, 0.0f, 50.0f);
+        ImGui::DragFloat("Zoom Speed", &component.ZoomSpeed, 0.05f, 0.0f, 5.0f);
+        ImGui::TextDisabled("M1：滚轮在 [Min, Max] 内缩放；防穿墙（Collision*）在 M2 落地");
+        ImGui::Separator();
+    }
+
+    // ---- 共用鼠标 ----
+    if (ImGui::CollapsingHeader("Shared Mouse", ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::DragFloat("Yaw Speed (deg/px)", &component.YawSpeed, 0.01f, 0.0f, 1.0f);
+        ImGui::DragFloat("Pitch Speed (deg/px)", &component.PitchSpeed, 0.01f, 0.0f, 1.0f);
+        ImGui::DragFloat("Min Pitch (deg)", &component.MinPitch, 1.0f, -89.0f, 0.0f);
+        ImGui::DragFloat("Max Pitch (deg)", &component.MaxPitch, 1.0f, 0.0f, 89.0f);
+        ImGui::Checkbox("Invert Y", &component.InvertY);
+        ImGui::TextDisabled("鼠标控制视角；第一人称相机钉在角色视点，第三人称围绕角色锚点转动");
+    }
 }
 
 // ============================================================

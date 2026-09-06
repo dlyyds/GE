@@ -19,6 +19,8 @@
 
 #include "entt.hpp"
 
+#include "Core/KeyCodes.h"
+
 #include "Render/Camera.h"
 #include "Physics/PhysicsTypes.h"
 #include "Scene/AnimationComponents.h"
@@ -642,6 +644,12 @@ struct CharacterControllerComponent {
 };
 
 
+/** 跟随相机视图模式（运行时 + 可序列化起始模式）。 */
+enum class FollowCameraViewMode : uint8_t {
+    FirstPerson = 0,   ///< 第一人称（默认）
+    ThirdPerson = 1,   ///< 第三人称
+};
+
 /**
  * @brief 跟随相机组件 —— 挂在角色实体上，让主相机跟随角色视点。
  *
@@ -651,22 +659,61 @@ struct CharacterControllerComponent {
  * 回写为角色朝向。实现见 Scene::UpdateFollowCamera。
  *
  * 配置（参与 .scene 序列化）：
- *   Enabled        总开关（关闭则相机不跟随，角色也不被相机驱动朝向）
- *   EyeOffset      视点偏移（角色局部系，绕 up 随朝向旋转；默认 (0,1.65,0) = 纯抬高）
- *   YawSpeed/PitchSpeed  鼠标偏航/俯仰灵敏度（度/像素）
- *   MinPitch/MaxPitch    俯仰上下限（度）
- *   InvertY        俯仰反转（可选，默认 false）
+ *   Enabled          总开关（关闭则相机不跟随，角色也不被相机驱动朝向）
+ *   StartMode        视图起始模式（First/Third）
+ *   ToggleEnabled/ToggleKey  运行时切换开关与按键（默认 V）
+ *   EyeOffset        第一人称视点偏移（角色局部系，绕 up 随朝向旋转）
+ *   YawSpeed/PitchSpeed      鼠标偏航/俯仰灵敏度（度/像素）
+ *   MinPitch/MaxPitch        俯仰上下限（度）
+ *   InvertY                 俯仰反转（可选，默认 false）
+ *   TargetOffset     第三人称看向的角色局部锚点
+ *   Distance/MinDistance/MaxDistance  第三人称目标/钳位距离
+ *   ShoulderOffset   过肩水平偏移
+ *   CollisionEnabled/CollisionRadius/CollisionMargin  防穿墙配置（M2 启用）
+ *   Smoothing        位置平滑阻尼系数
+ *   ZoomSpeed        滚轮一格改变的距离
  *
- * 运行时（不参与序列化）：无——姿态全部存在 CameraComponent 的 Camera 里。
+ * 运行时（不参与序列化）：
+ *   CurrentMode      当前 Play 模式
+ *   CurrentDistance  当前运行时距离（滚轮修改）
+ *   CurrentPos       当前相机位置（平滑跟随用）
+ *   姿态主相机仍存在 CameraComponent 的 Camera 里。
  */
+
 struct FollowCameraComponent {
+    // —— 总开关 ——
     bool  Enabled    = true;      ///< 总开关
-    glm::vec3 EyeOffset = {0.0f, 1.65f, 0.0f}; ///< 视点偏移（角色局部系，绕 up 随朝向旋转；纯第一人称 = +Y 抬高）
+
+    // —— 视图模式（可序列化）——
+    FollowCameraViewMode StartMode = FollowCameraViewMode::FirstPerson; ///< Play 启动时使用的模式
+    bool  ToggleEnabled = true;      ///< 是否允许运行时切换
+    KeyCode ToggleKey = Key::V;      ///< 切换键（默认 V）
+
+    // —— 共用：鼠标视角（沿用现有字段）——
+    glm::vec3 EyeOffset = {0.0f, 1.65f, 0.0f}; ///< 第一人称视点偏移（角色局部系，绕 up 随朝向旋转；纯第一人称 = +Y 抬高）
     float YawSpeed   = 0.10f;     ///< 偏航灵敏度（度/像素）
     float PitchSpeed = 0.10f;     ///< 俯仰灵敏度（度/像素）
     float MinPitch   = -89.0f;    ///< 俯仰下限（度）
     float MaxPitch   = 89.0f;     ///< 俯仰上限（度）
     bool  InvertY    = false;     ///< 俯仰是否反转
+
+    // —— 第三人称 ——
+    glm::vec3 TargetOffset   = {0.0f, 1.60f, 0.0f}; ///< 相机看向的角色局部锚点（脚底起抬高）
+    float Distance           = 3.50f; ///< 目标距离（滚轮会运行时修改 CurrentDistance，不改此基值）
+    float MinDistance        = 1.00f;
+    float MaxDistance        = 12.0f;
+    float ShoulderOffset     = 0.00f; ///< 过肩水平偏移（>0 右肩、<0 左肩；0 = 正中跟拍）
+    bool  CollisionEnabled   = true;  ///< 是否启用相机防穿墙
+    float CollisionRadius    = 0.25f; ///< 相机球体半径（卡碰撞用）
+    float CollisionMargin    = 0.05f; ///< 离障碍物额外余量
+    float Smoothing          = 8.0f;  ///< 位置/距离阻尼系数（越大越跟手）
+    float ZoomSpeed          = 0.40f; ///< 滚轮一格改变的距离
+
+    // —— 运行时（不参与 .scene 序列化）——
+    FollowCameraViewMode CurrentMode = FollowCameraViewMode::FirstPerson; ///< Play 当前模式
+    float CurrentDistance = -1.0f;   ///< 当前平滑距离；首次进入第三人称初始化为 Distance
+    glm::vec3 CurrentPos  = {0,0,0}; ///< 当前相机位置（用于平滑跟随）
+    bool ThirdPersonSnapPending = false; ///< 下一帧第三人称直接钉到目标位置（硬切，无过渡）
 
     FollowCameraComponent() = default;
 

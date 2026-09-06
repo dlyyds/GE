@@ -545,6 +545,7 @@ void DebugDrawLayer::DrawFirstPersonEyes(const Camera &camera, const glm::vec2 &
     const ImU32 eyeColor = ImGui::ColorConvertFloat4ToU32(ImVec4(1.00f, 0.65f, 0.10f, 1.0f));
     const ImU32 footColor = ImGui::ColorConvertFloat4ToU32(ImVec4(1.00f, 0.65f, 0.10f, 0.45f));
 
+    const bool isPlaying = m_Context->Scene->IsPlaying();
     const auto followView = m_Context->Scene->Reg().view<TransformComponent, CharacterControllerComponent,
                                                       FollowCameraComponent>();
     for (auto entity : followView) {
@@ -554,18 +555,41 @@ void DebugDrawLayer::DrawFirstPersonEyes(const Camera &camera, const glm::vec2 &
             continue; // 关闭视点的角色不画
         }
         const glm::vec3 foot = tc.Translation;
-        const glm::vec3 eye = foot + fc.EyeOffset;
-        const glm::vec2 sEye = projectPoint(eye);
-        const glm::vec2 sFoot = projectPoint(foot);
+        const FollowCameraViewMode activeMode = isPlaying ? fc.CurrentMode : fc.StartMode;
+        if (activeMode != FollowCameraViewMode::ThirdPerson) {
+            // ---- 第一人称视点（现有行为不变）----
+            const glm::vec3 eye = foot + fc.EyeOffset;
+            const glm::vec2 sEye = projectPoint(eye);
+            const glm::vec2 sFoot = projectPoint(foot);
 
-        // 到脚底的虚线：先画粗的深色底（压场景高亮），再叠半透明橙色，视觉更清楚
-        dl->AddLine(ImVec2(sFoot.x, sFoot.y), ImVec2(sEye.x, sEye.y), IM_COL32(0, 0, 0, 160), 3.0f);
-        dl->AddLine(ImVec2(sFoot.x, sFoot.y), ImVec2(sEye.x, sEye.y), footColor, 1.5f);
+            // 到脚底的虚线：先画粗的深色底（压场景高亮），再叠半透明橙色，视觉更清楚
+            dl->AddLine(ImVec2(sFoot.x, sFoot.y), ImVec2(sEye.x, sEye.y), IM_COL32(0, 0, 0, 160), 3.0f);
+            dl->AddLine(ImVec2(sFoot.x, sFoot.y), ImVec2(sEye.x, sEye.y), footColor, 1.5f);
 
-        // 视点十字（水平 12px × 垂直 12px），随屏幕朝向、不随角色旋转
-        constexpr float kHalf = 6.0f;
-        dl->AddLine(ImVec2(sEye.x - kHalf, sEye.y), ImVec2(sEye.x + kHalf, sEye.y), eyeColor, 2.0f);
-        dl->AddLine(ImVec2(sEye.x, sEye.y - kHalf), ImVec2(sEye.x, sEye.y + kHalf), eyeColor, 2.0f);
+            // 视点十字（水平 12px × 垂直 12px），随屏幕朝向、不随角色旋转
+            constexpr float kHalf = 6.0f;
+            dl->AddLine(ImVec2(sEye.x - kHalf, sEye.y), ImVec2(sEye.x + kHalf, sEye.y), eyeColor, 2.0f);
+            dl->AddLine(ImVec2(sEye.x, sEye.y - kHalf), ImVec2(sEye.x, sEye.y + kHalf), eyeColor, 2.0f);
+        } else {
+            // ---- 第三人称标记：锚点（绿）----
+            const float yawRad = glm::radians(camera.GetYaw());
+            const glm::vec3 targetOffset(
+                fc.TargetOffset.x * std::cos(yawRad) + fc.TargetOffset.z * std::sin(yawRad),
+                fc.TargetOffset.y,
+                -fc.TargetOffset.x * std::sin(yawRad) + fc.TargetOffset.z * std::cos(yawRad));
+            const glm::vec3 target = foot + targetOffset;
+
+            const glm::vec2 sAnchor = projectPoint(target);
+
+            const ImU32 anchorColor = ImGui::ColorConvertFloat4ToU32(ImVec4(0.20f, 0.90f, 0.35f, 1.0f));
+
+            // 锚点绿色十字
+            constexpr float kAnchorHalf = 6.0f;
+            dl->AddLine(ImVec2(sAnchor.x - kAnchorHalf, sAnchor.y),
+                        ImVec2(sAnchor.x + kAnchorHalf, sAnchor.y), anchorColor, 2.0f);
+            dl->AddLine(ImVec2(sAnchor.x, sAnchor.y - kAnchorHalf),
+                        ImVec2(sAnchor.x, sAnchor.y + kAnchorHalf), anchorColor, 2.0f);
+        }
     }
 }
 

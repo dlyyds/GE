@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "Scene/ScriptEngine.h"
 
+#include <algorithm>
 #include <fstream>
 #include <sstream>
 #include <string_view>
@@ -355,6 +356,84 @@ void RegisterApi(Impl &eng) {
         if (!eng.scene->GetCharacterFacingYaw(view.front(), yaw))
             return 0.0f;
         return yaw;
+    };
+    // 跟随相机运行时控制（三方计划书 §7）：第一台挂 FollowCamera 的实体即为玩家相机。
+    auto activeFollowCamera = [&eng]() -> FollowCameraComponent * {
+        if (!eng.scene)
+            return nullptr;
+        auto view = eng.scene->Reg().view<FollowCameraComponent>();
+        if (view.begin() == view.end())
+            return nullptr;
+        return &view.get<FollowCameraComponent>(view.front());
+    };
+    camT["get_mode"] = [activeFollowCamera]() -> std::string {
+        if (auto *fc = activeFollowCamera())
+            return fc->CurrentMode == FollowCameraViewMode::ThirdPerson ? "third" : "first";
+        return "first";
+    };
+    camT["set_mode"] = [activeFollowCamera](const std::string &mode) -> bool {
+        auto *fc = activeFollowCamera();
+        if (!fc) {
+            GE_CORE_WARN("[Lua] camera.set_mode: 场景无 FollowCamera 组件");
+            return false;
+        }
+        if (mode == "first") {
+            fc->CurrentMode = FollowCameraViewMode::FirstPerson;
+            return true;
+        }
+        if (mode == "third") {
+            if (fc->CurrentMode != FollowCameraViewMode::ThirdPerson) {
+                // 与 V 键切换语义一致：进入第三人称补齐运行距离并硬切到目标位置，
+                // 避免反序列化后 CurrentDistance 尚未初始化导致“配置值相同但运行时距离不对”。
+                if (fc->CurrentDistance < 0.0f)
+                    fc->CurrentDistance = fc->Distance;
+                fc->ThirdPersonSnapPending = true;
+            }
+            fc->CurrentMode = FollowCameraViewMode::ThirdPerson;
+            return true;
+        }
+        GE_CORE_WARN("[Lua] camera.set_mode: 未知模式 '{}'（应为 first/third）", mode);
+        return false;
+    };
+    camT["toggle"] = [activeFollowCamera]() -> bool {
+        auto *fc = activeFollowCamera();
+        if (!fc) {
+            GE_CORE_WARN("[Lua] camera.toggle: 场景无 FollowCamera 组件");
+            return false;
+        }
+        if (fc->CurrentMode == FollowCameraViewMode::FirstPerson) {
+            fc->CurrentMode = FollowCameraViewMode::ThirdPerson;
+            if (fc->CurrentDistance < 0.0f)
+                fc->CurrentDistance = fc->Distance;
+            fc->ThirdPersonSnapPending = true;
+        } else {
+            fc->CurrentMode = FollowCameraViewMode::FirstPerson;
+        }
+        return true;
+    };
+    camT["get_distance"] = [activeFollowCamera]() -> float {
+        auto *fc = activeFollowCamera();
+        if (!fc)
+            return 0.0f;
+        return fc->CurrentDistance >= 0.0f ? fc->CurrentDistance : fc->Distance;
+    };
+    camT["set_distance"] = [activeFollowCamera](float d) -> bool {
+        auto *fc = activeFollowCamera();
+        if (!fc) {
+            GE_CORE_WARN("[Lua] camera.set_distance: 场景无 FollowCamera 组件");
+            return false;
+        }
+        fc->CurrentDistance = std::clamp(d, fc->MinDistance, fc->MaxDistance);
+        return true;
+    };
+    camT["toggle_enabled"] = [activeFollowCamera]() -> bool {
+        auto *fc = activeFollowCamera();
+        if (!fc) {
+            GE_CORE_WARN("[Lua] camera.toggle_enabled: 场景无 FollowCamera 组件");
+            return false;
+        }
+        fc->ToggleEnabled = !fc->ToggleEnabled;
+        return fc->ToggleEnabled;
     };
     lua["camera"] = camT;
 

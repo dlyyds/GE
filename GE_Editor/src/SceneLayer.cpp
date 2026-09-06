@@ -354,7 +354,7 @@ void SceneLayer::RecordScenePasses(RenderTarget &viewportRT, const glm::vec4 &cl
         // Bloom 开启时用一个独立合成缓冲，避免在同一个 pass 内既采样又写入 Scene_HDR。
         ResourceHandle hHDRFinal = hHDR;
         if (bloomEnabled && bloomLevels > 0) {
-            // 半分辨率起步，逐级 1/2；格式与 Scene_HDR 对齐（RGBA16F）。
+            // 全分辨率提取高光，随后从半分辨率开始逐级 1/2；格式与 Scene_HDR 对齐（RGBA16F）。
             RenderGraphResourceDesc bloomDesc;
             bloomDesc.samples = vk::SampleCountFlagBits::e1;
             bloomDesc.format = vk::Format::eR16G16B16A16Sfloat;
@@ -377,6 +377,13 @@ void SceneLayer::RecordScenePasses(RenderTarget &viewportRT, const glm::vec4 &cl
                 }
             }
 
+            // 全分辨率高光缓冲：先在全分辨率按像素阈值提亮，再用 Karis 降采样
+            // 到半分辨率。相比“先降采样再阈值”，这避免了亚像素金属高光被邻域
+            // 平均后压到阈值以下、随相机旋转突然消失引起的闪烁。
+            bloomDesc.extent = extent;
+            ResourceHandle hBloomFull = b.CreateVirtualResource(
+                bloomDesc, "Bloom_Full");
+
             // 合成目标：BloomComposite 读 Scene_HDR + 泛光层，写出 Scene_AfterBloom，
             // 再由 Tonemap 采样；避免同一资源在同一 pass 自读自写。
             bloomDesc.extent = extent;
@@ -384,20 +391,37 @@ void SceneLayer::RecordScenePasses(RenderTarget &viewportRT, const glm::vec4 &cl
                 bloomDesc, "Scene_AfterBloom");
             hHDRFinal = hAfterBloom;
 
-            // Extract：Scene_HDR → Bloom_Down0（半分辨率），天空排除。
+            // Extract：Scene_HDR → Bloom_Full（全分辨率），天空排除。
             RenderPassDesc &bloomExtractPass = b.AddPass("BloomExtract");
-            bloomExtractPass.renderArea = vk::Rect2D{{0, 0}, bloomMipExtent(0)};
+            bloomExtractPass.renderArea = renderArea;
             bloomExtractPass.readImages.push_back(
                 {hHDR, ResourceUsage::ShaderRead, vk::ImageLayout::eShaderReadOnlyOptimal});
             AttachmentDesc bloomExtractColor;
-            bloomExtractColor.resource = hBloomDown[0];
+            bloomExtractColor.resource = hBloomFull;
             bloomExtractColor.usage = ResourceUsage::ColorAttachment;
             bloomExtractColor.loadOp = vk::AttachmentLoadOp::eClear;
             bloomExtractColor.storeOp = vk::AttachmentStoreOp::eStore;
-            bloomExtractColor.clearValue.color = {0.0f, 0.0f, 0.0f, 1.0f};
+            bloomExtractColor.clearValue.color = {0.0f, 0.0f, 0.0f, 0.0f};
             bloomExtractPass.colorAttachments.push_back(bloomExtractColor);
             bloomExtractPass.execute = [](PassExecuteContext &ctx) {
                 Renderer::Get3DRenderer().FlushBloomExtract(ctx);
+            };
+
+            // Downsample：Bloom_Full → Bloom_Down0（半分辨率），Karis 平均。
+            RenderPassDesc &bloomFirstDown = b.AddPass("BloomDownsample0");
+            bloomFirstDown.renderArea = vk::Rect2D{{0, 0}, bloomMipExtent(0)};
+            bloomFirstDown.readImages.push_back(
+                {hBloomFull, ResourceUsage::ShaderRead,
+                 vk::ImageLayout::eShaderReadOnlyOptimal});
+            AttachmentDesc firstDownColor;
+            firstDownColor.resource = hBloomDown[0];
+            firstDownColor.usage = ResourceUsage::ColorAttachment;
+            firstDownColor.loadOp = vk::AttachmentLoadOp::eClear;
+            firstDownColor.storeOp = vk::AttachmentStoreOp::eStore;
+            firstDownColor.clearValue.color = {0.0f, 0.0f, 0.0f, 0.0f};
+            bloomFirstDown.colorAttachments.push_back(firstDownColor);
+            bloomFirstDown.execute = [](PassExecuteContext &ctx) {
+                Renderer::Get3DRenderer().FlushBloomDownsample(ctx, 0);
             };
 
             // Downsample：Bloom_Down[i-1] → Bloom_Down[i]，逐级 1/2。

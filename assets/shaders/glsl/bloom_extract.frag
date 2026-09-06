@@ -1,11 +1,14 @@
 #version 460
 
-// Bloom 阈值提取片元：从 Scene_HDR 中抽取「几何/合成」像素的高光。
-// 天空像素（alpha<0.5）不参与 bloom，直接输出黑，避免环境图被错误放大。
+// Bloom threshold extraction: emit bright pixels from the full-res Scene_HDR,
+// excluding sky. Thresholding happens BEFORE any mip downsample, so a sub-pixel
+// metallic glint is first captured as a full-res bright texel and then smoothed
+// by the Karis-average downsample that follows. This avoids the flicker caused by
+// pre-filter averaging a small glint below the threshold before it ever blooms.
 layout (set = 0, binding = 0, std140) uniform BloomUBO
 {
-    vec4 params;      // x = threshold，y = intensity（合成时用），z = 启用，w 预留
-    vec4 texelSize;   // x,y = 1 / 当前 mip 尺寸，zw 预留
+    vec4 params;      // x = threshold, y = intensity (composite only), z = enabled, w reserved
+    vec4 texelSize;   // reserved (full-res extraction uses the source extent only)
 } bloom;
 
 layout (set = 0, binding = 1) uniform sampler2D samplerHDR;
@@ -17,14 +20,21 @@ void main()
 {
     vec4 hdr = texture(samplerHDR, inUV);
 
-    // 天空 / 未合成区域不参与 bloom
+    // Sky / uncomposited pixels never feed bloom.
     if (hdr.a < 0.5)
     {
         outColor = vec4(0.0);
         return;
     }
 
-    // 保留 HDR 颜色而非亮度，保证有色高光泛光不偏灰。
+    // Keep HDR color rather than luminance so chromatic highlights stay tinted.
     vec3 bright = max(hdr.rgb - bloom.params.x, vec3(0.0));
-    outColor = vec4(bright, 1.0);
+
+    // Soft knee: fade in across [threshold, threshold + kneeWidth]. Combined with
+    // the later Karis downsample this keeps a glint smooth as it crosses nearby
+    // pixels, instead of hard popping at the threshold.
+    vec3 kneeWidth = vec3(max(bloom.params.x * 0.25, 0.05));
+    vec3 knee = smoothstep(vec3(0.0), kneeWidth, bright);
+
+    outColor = vec4(bright * knee, 1.0);
 }

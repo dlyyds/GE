@@ -57,6 +57,7 @@ Thumbs.db
 *.sdf
 *.opensdf
 *.vcxproj.user
+imgui.ini
 
 # ============================================
 # Log files

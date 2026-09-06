@@ -713,6 +713,13 @@ void Scene::OnUpdate3D(Timestep ts,
                        const glm::mat4 &projection,
                        const glm::vec3 &viewPos,
                        const glm::vec4 &clearColor) {
+    // 兼容入口：先仿真、后渲染。实际使用请拆开按 SceneLayer 的时序调用，
+    // 避免跟随相机位置在取渲染相机矩阵之后才更新导致的同帧不同步。
+    OnUpdate3DSimulation(ts);
+    Render3D(view, projection, viewPos, clearColor);
+}
+
+void Scene::OnUpdate3DSimulation(Timestep ts) {
     // ── 输入快照结算：本轮事件累积 → 本帧语义，脚本随后在 OnUpdate 查询 ──
     m_InputState.BeginFrameInput();
 
@@ -740,7 +747,12 @@ void Scene::OnUpdate3D(Timestep ts,
     // ── 蒙皮更新：基于本帧刚算好的关节 world，算 jointMatrix = world × IBM ──
     // 并上传关节 SSBO。必须先于渲染、且紧跟 UpdateWorldTransforms。
     UpdateSkins();
+}
 
+void Scene::Render3D(const glm::mat4 &view,
+                     const glm::mat4 &projection,
+                     const glm::vec3 &viewPos,
+                     const glm::vec4 &clearColor) {
     // ── 光源收集 ──
     UpdateLightParams(view, projection);
 
@@ -752,7 +764,6 @@ void Scene::OnUpdate3D(Timestep ts,
 
     // ── 2D 精灵渲染 ──
     RenderSprites2D(view, projection);
-
 }
 
 void Scene::UpdateScripts(Timestep ts) {

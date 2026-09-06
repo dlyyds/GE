@@ -97,6 +97,24 @@ public:
                     const glm::vec4 &clearColor = {0.1f, 0.1f, 0.1f, 1.0f});
 
     /**
+     * @brief 3D 场景仿真推进（输入快照结算 + 脚本 + 物理 + 跟随相机 + 动画 + 世界矩阵 + 蒙皮）。
+     *
+     * 必须在外层取渲染用游戏相机矩阵【之前】调用，使本帧渲染使用的 view/投影/相机位置
+     * 与仿真步进后的相机状态同帧，避免第三人称相机落后一帧造成的拉近/抖动。
+     */
+    void OnUpdate3DSimulation(Timestep ts);
+
+    /**
+     * @brief 3D 场景渲染采集（光源收集 / 环境 / 网格 / 精灵）。
+     *
+     * 由外层在 OnUpdate3DSimulation 之后、取到渲染相机矩阵后调用。
+     */
+    void Render3D(const glm::mat4 &view,
+                  const glm::mat4 &projection,
+                  const glm::vec3 &viewPos,
+                  const glm::vec4 &clearColor = {0.1f, 0.1f, 0.1f, 1.0f});
+
+    /**
      * @brief 场景事件入口。
      *
      * 处理系统级事件（如窗口大小变化），并将输入事件分发给所有 ScriptComponent。

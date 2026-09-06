@@ -577,6 +577,11 @@ void SceneLayer::OnUpdate(Timestep &ts) {
     // 同步场景视口尺寸
     m_Context->Scene->OnViewportResize(vpWidth, vpHeight);
 
+    // ── 仿真推进（不含渲染）：脚本 / 物理 / 跟随相机 / 动画 / 世界矩阵 / 蒙皮 ──
+    // 必须在取渲染相机矩阵之前调用，保证本帧 view / viewPos 与仿真后的游戏相机同帧，
+    // 避免第三人称相机落后一帧造成的跟随抖动。
+    m_Context->Scene->OnUpdate3DSimulation(ts);
+
     Camera &activeCam = GetRenderingViewCamera(aspect);
     const glm::mat4 view = activeCam.GetView();
     const glm::mat4 projection = activeCam.GetProj();
@@ -587,9 +592,8 @@ void SceneLayer::OnUpdate(Timestep &ts) {
     // 传给 Renderer3D，Deferred 模式的 Tonemap pass 经 TonemapUBO.exposure.x 使用。
     Renderer::Get3DRenderer().SetExposure(activeCam.GetExposure());
 
-    // Scene 只做仿真 + 采集（3D/2D 批次经 EndScene 延迟快照，不录制命令）
-    m_Context->Scene->OnUpdate3D(ts, view, projection, cameraPos, clearColor);
-
+    // 场景只做渲染采集（3D/2D 批次经 EndScene 延迟快照，不录制命令）
+    m_Context->Scene->Render3D(view, projection, cameraPos, clearColor);
     RecordScenePasses(*m_Viewport->GetRenderTarget(), clearColor);
 }
 

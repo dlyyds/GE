@@ -53,6 +53,22 @@ public:
      */
     void SetPresentMode(VsyncMode mode);
 
+    /**
+     * @brief Set the frame-rate limit (锁定帧率上限).
+     *
+     * A limit <= 0 disables frame locking. When enabled, the main loop sleeps
+     * on frame boundaries so the engine runs close to the requested FPS.
+     *
+     * @param fps  Target FPS (>0 enables locking; <=0 disables it).
+     */
+    void SetFrameRateLimit(float fps);
+
+    /// @return Current FPS limit; 0 or negative means frame locking is off.
+    [[nodiscard]] float GetFrameRateLimit() const { return m_FrameRateLimit; }
+
+    /// @return True if frame-rate locking is currently enabled.
+    [[nodiscard]] bool IsFrameRateLimited() const { return m_FrameRateLimit > 0.0f; }
+
     static Application &Get() { return *s_Instance; }
 
 
@@ -85,6 +101,9 @@ private:
     float m_FPS = 0.0f;
     float m_FrameTimeAccumulator = 0.0f;
     int m_FrameCount = 0;
+
+    // -- frame rate lock: <=0 disabled, >0 target FPS --
+    float m_FrameRateLimit = 0.0f;
 
     // -- 渲染器：统一管理所有 Vulkan 资源 --
     std::unique_ptr<Renderer> m_Renderer;

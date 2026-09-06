@@ -19,6 +19,18 @@ void RenderStatsPanel::OnImGuiRender() {
         const auto &stats = Renderer::GetStats();
 
         ImGui::Text("帧率: %.1f FPS", Application::Get().GetFPS());
+        ImGui::Text("帧率上限 (FPS, 0=不限):");
+        ImGui::SameLine();
+        float fpsLimit = Application::Get().GetFrameRateLimit();
+        if (ImGui::InputFloat("##FrameRateLimit", &fpsLimit, 1.0f, 10.0f, "%.1f")) {
+            Application::Get().SetFrameRateLimit(fpsLimit);
+        }
+        ImGui::SameLine();
+        if (Application::Get().IsFrameRateLimited()) {
+            ImGui::TextDisabled("已启用");
+        } else {
+            ImGui::TextDisabled("未启用");
+        }
 
         ImGui::Separator();
         ImGui::Text("2D（精灵批处理）");

@@ -13,8 +13,10 @@
 #include <Events/ApplicationEvent.h>
 
 #include <GLFW/glfw3.h>
+#include <chrono>
 #include <functional>
 #include <memory>
+#include <thread>
 
 namespace GE {
 Application *Application::s_Instance = nullptr;
@@ -62,6 +64,7 @@ void Application::Run() {
 
     while (m_Running) {
         GE_PROFILE_SCOPE("MainLoop");
+        const auto frameStart = std::chrono::steady_clock::now();
         const auto time = static_cast<float>(glfwGetTime());
         Timestep timestep = time - m_LastFrameTime;
 
@@ -102,6 +105,18 @@ void Application::Run() {
         }
         m_Window->OnUpdate();
         GE_PROFILE_FRAME_MARK();
+
+        // Frame rate lock: if this frame finished faster than the target interval,
+        // sleep until the ideal frame boundary so the next timestep includes the sleep.
+        if (m_FrameRateLimit > 0.0f) {
+            GE_PROFILE_SCOPE("FrameRateLimit");
+            const auto targetFrameTime = std::chrono::duration<float>(1.0f / m_FrameRateLimit);
+            const auto targetDuration = std::chrono::duration_cast<std::chrono::steady_clock::duration>(targetFrameTime);
+            const auto elapsed = std::chrono::steady_clock::now() - frameStart;
+            if (elapsed < targetDuration) {
+                std::this_thread::sleep_until(frameStart + targetDuration);
+            }
+        }
     }
 
 }
@@ -120,6 +135,15 @@ void Application::OnEvent(Event &e) {
 }
 
 void Application::Close() { m_Running = false; }
+
+void Application::SetFrameRateLimit(float fps) {
+    m_FrameRateLimit = fps;
+    if (fps > 0.0f) {
+        GE_CORE_INFO("Frame rate locked to {0:.1f} FPS", fps);
+    } else {
+        GE_CORE_INFO("Frame rate limit disabled");
+    }
+}
 
 void Application::SetPresentMode(VsyncMode mode) {
     if (!m_Renderer) {

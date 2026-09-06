@@ -344,11 +344,141 @@ void SceneLayer::RecordScenePasses(RenderTarget &viewportRT, const glm::vec4 &cl
             Renderer::Get3DRenderer().FlushTransparent(ctx);
         };
 
-        // Pass2c "Tonemap"：采样 Scene_HDR，曝光 + ACES 后写入视口颜色。
+        // Pass2b+ "Bloom"：Transparent 之后、Tonemap 之前读/写 Scene_HDR。
+        // 只对几何像素（hdr.a>=0.5）提取高光，做 N 级降采样 → 升采样 → 加回 HDR。
+        // 天空不参与 bloom，避免环境图被错误放大。
+        const uint32_t bloomLevels = std::clamp(
+            Renderer::Get3DRenderer().GetBloomMipLevels(),
+            1u, Renderer3D::kMaxBloomMipLevels);
+        const bool bloomEnabled = Renderer::Get3DRenderer().IsBloomEnabled();
+        // Bloom 开启时用一个独立合成缓冲，避免在同一个 pass 内既采样又写入 Scene_HDR。
+        ResourceHandle hHDRFinal = hHDR;
+        if (bloomEnabled && bloomLevels > 0) {
+            // 半分辨率起步，逐级 1/2；格式与 Scene_HDR 对齐（RGBA16F）。
+            RenderGraphResourceDesc bloomDesc;
+            bloomDesc.samples = vk::SampleCountFlagBits::e1;
+            bloomDesc.format = vk::Format::eR16G16B16A16Sfloat;
+
+            auto bloomMipExtent = [&extent](uint32_t i) {
+                return vk::Extent2D{
+                    std::max(1u, extent.width >> (i + 1)),
+                    std::max(1u, extent.height >> (i + 1))};
+            };
+
+            std::array<ResourceHandle, Renderer3D::kMaxBloomMipLevels> hBloomDown{};
+            std::array<ResourceHandle, Renderer3D::kMaxBloomMipLevels> hBloomUp{};
+            for (uint32_t i = 0; i < bloomLevels; ++i) {
+                bloomDesc.extent = bloomMipExtent(i);
+                hBloomDown[i] = b.CreateVirtualResource(
+                    bloomDesc, "Bloom_Down" + std::to_string(i));
+                if (i + 1 < bloomLevels) {
+                    hBloomUp[i] = b.CreateVirtualResource(
+                        bloomDesc, "Bloom_Up" + std::to_string(i));
+                }
+            }
+
+            // 合成目标：BloomComposite 读 Scene_HDR + 泛光层，写出 Scene_AfterBloom，
+            // 再由 Tonemap 采样；避免同一资源在同一 pass 自读自写。
+            bloomDesc.extent = extent;
+            ResourceHandle hAfterBloom = b.CreateVirtualResource(
+                bloomDesc, "Scene_AfterBloom");
+            hHDRFinal = hAfterBloom;
+
+            // Extract：Scene_HDR → Bloom_Down0（半分辨率），天空排除。
+            RenderPassDesc &bloomExtractPass = b.AddPass("BloomExtract");
+            bloomExtractPass.renderArea = vk::Rect2D{{0, 0}, bloomMipExtent(0)};
+            bloomExtractPass.readImages.push_back(
+                {hHDR, ResourceUsage::ShaderRead, vk::ImageLayout::eShaderReadOnlyOptimal});
+            AttachmentDesc bloomExtractColor;
+            bloomExtractColor.resource = hBloomDown[0];
+            bloomExtractColor.usage = ResourceUsage::ColorAttachment;
+            bloomExtractColor.loadOp = vk::AttachmentLoadOp::eClear;
+            bloomExtractColor.storeOp = vk::AttachmentStoreOp::eStore;
+            bloomExtractColor.clearValue.color = {0.0f, 0.0f, 0.0f, 1.0f};
+            bloomExtractPass.colorAttachments.push_back(bloomExtractColor);
+            bloomExtractPass.execute = [](PassExecuteContext &ctx) {
+                Renderer::Get3DRenderer().FlushBloomExtract(ctx);
+            };
+
+            // Downsample：Bloom_Down[i-1] → Bloom_Down[i]，逐级 1/2。
+            for (uint32_t i = 1; i < bloomLevels; ++i) {
+                RenderPassDesc &pass = b.AddPass("BloomDownsample" + std::to_string(i));
+                pass.renderArea = vk::Rect2D{{0, 0}, bloomMipExtent(i)};
+                pass.readImages.push_back(
+                    {hBloomDown[i - 1], ResourceUsage::ShaderRead,
+                     vk::ImageLayout::eShaderReadOnlyOptimal});
+                AttachmentDesc color;
+                color.resource = hBloomDown[i];
+                color.usage = ResourceUsage::ColorAttachment;
+                color.loadOp = vk::AttachmentLoadOp::eClear;
+                color.storeOp = vk::AttachmentStoreOp::eStore;
+                color.clearValue.color = {0.0f, 0.0f, 0.0f, 1.0f};
+                pass.colorAttachments.push_back(color);
+                pass.execute = [i](PassExecuteContext &ctx) {
+                    Renderer::Get3DRenderer().FlushBloomDownsample(ctx, i);
+                };
+            }
+
+            // Upsample：Bloom_Down[levels-1] 或上一级 Bloom_Up 升回，并与同尺寸粗层相加。
+            // 输出索引从 levels-2 递减到 0；Bloom_Up[0] 为最终泛光层。
+            if (bloomLevels > 1) {
+                uint32_t m = bloomLevels - 1; // m 是输出 Up 的索引，首帧为 levels-2
+                while (true) {
+                    --m; // 首个输出 = levels-2（与 Bloom_Up[levels-2] 尺寸一致）
+                    const ResourceHandle smallRes =
+                        (m + 1 >= bloomLevels - 1) ? hBloomDown[bloomLevels - 1]
+                                                   : hBloomUp[m + 1];
+                    RenderPassDesc &pass = b.AddPass("BloomUpsample" + std::to_string(m));
+                    pass.renderArea = vk::Rect2D{{0, 0}, bloomMipExtent(m)};
+                    pass.readImages.push_back(
+                        {smallRes, ResourceUsage::ShaderRead,
+                         vk::ImageLayout::eShaderReadOnlyOptimal});
+                    pass.readImages.push_back(
+                        {hBloomDown[m], ResourceUsage::ShaderRead,
+                         vk::ImageLayout::eShaderReadOnlyOptimal});
+                    AttachmentDesc color;
+                    color.resource = hBloomUp[m];
+                    color.usage = ResourceUsage::ColorAttachment;
+                    color.loadOp = vk::AttachmentLoadOp::eClear;
+                    color.storeOp = vk::AttachmentStoreOp::eStore;
+                    color.clearValue.color = {0.0f, 0.0f, 0.0f, 1.0f};
+                    pass.colorAttachments.push_back(color);
+                    pass.execute = [m](PassExecuteContext &ctx) {
+                        Renderer::Get3DRenderer().FlushBloomUpsample(ctx, m);
+                    };
+                    if (m == 0) {
+                        break;
+                    }
+                }
+            }
+
+            // Composite：Scene_HDR + 最终泛光 → Scene_AfterBloom（只加几何像素）。
+            const ResourceHandle finalBloom =
+                bloomLevels > 1 ? hBloomUp[0] : hBloomDown[0];
+            RenderPassDesc &bloomCompositePass = b.AddPass("BloomComposite");
+            bloomCompositePass.renderArea = renderArea;
+            bloomCompositePass.readImages.push_back(
+                {hHDR, ResourceUsage::ShaderRead, vk::ImageLayout::eShaderReadOnlyOptimal});
+            bloomCompositePass.readImages.push_back(
+                {finalBloom, ResourceUsage::ShaderRead, vk::ImageLayout::eShaderReadOnlyOptimal});
+            AttachmentDesc bloomCompositeColor;
+            bloomCompositeColor.resource = hHDRFinal;
+            bloomCompositeColor.usage = ResourceUsage::ColorAttachment;
+            bloomCompositeColor.loadOp = vk::AttachmentLoadOp::eClear;
+            bloomCompositeColor.storeOp = vk::AttachmentStoreOp::eStore;
+            bloomCompositeColor.clearValue.color = {0.0f, 0.0f, 0.0f, 0.0f};
+            bloomCompositePass.colorAttachments.push_back(bloomCompositeColor);
+            bloomCompositePass.execute = [](PassExecuteContext &ctx) {
+                Renderer::Get3DRenderer().FlushBloomComposite(ctx);
+            };
+        }
+
+        // Pass2c "Tonemap"：采样 Scene_HDR（开启 Bloom 时为合成后的 Scene_AfterBloom），
+        // 曝光 + ACES 后写入视口颜色。
         RenderPassDesc &tonemapPass = b.AddPass("Tonemap");
         tonemapPass.renderArea = renderArea;
         tonemapPass.readImages.push_back(
-            {hHDR, ResourceUsage::ShaderRead, vk::ImageLayout::eShaderReadOnlyOptimal});
+            {hHDRFinal, ResourceUsage::ShaderRead, vk::ImageLayout::eShaderReadOnlyOptimal});
         AttachmentDesc tonemapColorClear;
         tonemapColorClear.resource = hColor;
         tonemapColorClear.usage = ResourceUsage::ColorAttachment;
@@ -649,6 +779,28 @@ void SceneLayer::OnImGuiRender() {
         }
         if (ImGui::IsItemHovered()) {
             ImGui::SetTooltip("关闭后 Tonemap pass 跳过 ACES，直接透传 Scene_HDR（调试 HDR 原值用）");
+        }
+
+        // Bloom 开关与参数：仅延迟 HDR 链生效（Transparent → Bloom → Tonemap）。
+        bool bloomEnabled = Renderer::Get3DRenderer().IsBloomEnabled();
+        if (ImGui::Checkbox("Bloom", &bloomEnabled)) {
+            Renderer::Get3DRenderer().SetBloomEnabled(bloomEnabled);
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("把超过阈值的高光扩散开，再交给 Tonemap；天空不受影响");
+        }
+        float bloomThreshold = Renderer::Get3DRenderer().GetBloomThreshold();
+        if (ImGui::SliderFloat("Bloom 阈值", &bloomThreshold, 0.1f, 4.0f, "%.2f")) {
+            Renderer::Get3DRenderer().SetBloomThreshold(bloomThreshold);
+        }
+        float bloomIntensity = Renderer::Get3DRenderer().GetBloomIntensity();
+        if (ImGui::SliderFloat("Bloom 强度", &bloomIntensity, 0.0f, 2.0f, "%.2f")) {
+            Renderer::Get3DRenderer().SetBloomIntensity(bloomIntensity);
+        }
+        int bloomMipLevels = static_cast<int>(Renderer::Get3DRenderer().GetBloomMipLevels());
+        if (ImGui::SliderInt("Bloom mip", &bloomMipLevels, 1, 6)) {
+            Renderer::Get3DRenderer().SetBloomMipLevels(
+                static_cast<uint32_t>(bloomMipLevels));
         }
 
         ImGui::Separator();

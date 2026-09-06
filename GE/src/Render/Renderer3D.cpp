@@ -229,6 +229,58 @@ Renderer3D::Renderer3D() {
     m_TonemapLayout = &cache.RequestPipelineLayout({m_TonemapVert, m_TonemapFrag});
     m_TonemapLayout->SetDebugName("Tonemap_PipelineLayout");
 
+    // ── Bloom 全屏三角形着色器 + 管线布局（延迟 HDR 链：Transparent → Bloom → Tonemap）─
+    m_BloomVert = &cache.RequestShaderModule(
+        vk::ShaderStageFlagBits::eVertex,
+        ShaderSource(Renderer::GetAssetManager()
+            .ResolvePath(std::string(AssetPaths::Shaders) + "/bloom.vert.spv")
+            .string()),
+        "main", ShaderVariant{});
+
+    m_BloomExtractFrag = &cache.RequestShaderModule(
+        vk::ShaderStageFlagBits::eFragment,
+        ShaderSource(Renderer::GetAssetManager()
+            .ResolvePath(std::string(AssetPaths::Shaders) + "/bloom_extract.frag.spv")
+            .string()),
+        "main", ShaderVariant{});
+
+    m_BloomDownsampleFrag = &cache.RequestShaderModule(
+        vk::ShaderStageFlagBits::eFragment,
+        ShaderSource(Renderer::GetAssetManager()
+            .ResolvePath(std::string(AssetPaths::Shaders) + "/bloom_downsample.frag.spv")
+            .string()),
+        "main", ShaderVariant{});
+
+    m_BloomUpsampleFrag = &cache.RequestShaderModule(
+        vk::ShaderStageFlagBits::eFragment,
+        ShaderSource(Renderer::GetAssetManager()
+            .ResolvePath(std::string(AssetPaths::Shaders) + "/bloom_upsample.frag.spv")
+            .string()),
+        "main", ShaderVariant{});
+
+    m_BloomCompositeFrag = &cache.RequestShaderModule(
+        vk::ShaderStageFlagBits::eFragment,
+        ShaderSource(Renderer::GetAssetManager()
+            .ResolvePath(std::string(AssetPaths::Shaders) + "/bloom_composite.frag.spv")
+            .string()),
+        "main", ShaderVariant{});
+
+    m_BloomExtractLayout = &cache.RequestPipelineLayout(
+        {m_BloomVert, m_BloomExtractFrag});
+    m_BloomExtractLayout->SetDebugName("Bloom_Extract_PipelineLayout");
+
+    m_BloomDownsampleLayout = &cache.RequestPipelineLayout(
+        {m_BloomVert, m_BloomDownsampleFrag});
+    m_BloomDownsampleLayout->SetDebugName("Bloom_Downsample_PipelineLayout");
+
+    m_BloomUpsampleLayout = &cache.RequestPipelineLayout(
+        {m_BloomVert, m_BloomUpsampleFrag});
+    m_BloomUpsampleLayout->SetDebugName("Bloom_Upsample_PipelineLayout");
+
+    m_BloomCompositeLayout = &cache.RequestPipelineLayout(
+        {m_BloomVert, m_BloomCompositeFrag});
+    m_BloomCompositeLayout->SetDebugName("Bloom_Composite_PipelineLayout");
+
     // ── 2b. 天空盒着色器 + 管线布局 ─────────────────────────────────
     //    等距柱状投影天空盒：全屏三角形 + 反投影重建视线 + 采样全景图。
     //    管线布局由着色器反射自动构建（set 0 binding 0 = SkyboxUBO，binding 1 = sampler2D）。
@@ -956,6 +1008,90 @@ void Renderer3D::FlushTonemap(PassExecuteContext &ctx) {
     cmd.Draw(3, 1, 0, 0);
 }
 
+void Renderer3D::FlushBloomExtract(PassExecuteContext &ctx) {
+    GE_PROFILE_SCOPE("Renderer3D::FlushBloomExtract");
+
+    GE_CORE_ASSERT(ctx.colorAttachmentView, "BloomExtract pass 必须声明颜色附件");
+    const vk::Format colorFormat = ctx.colorAttachmentView->get_format();
+    const BufferAllocation uboAlloc = UploadBloomUBO(*ctx.frame, ctx.renderArea.extent);
+
+    ConfigureBloomFullscreenPipeline(*ctx.cmd, m_BloomExtractLayout, m_BloomVert,
+                                     colorFormat, ctx.renderArea.extent);
+
+    auto &cmd = *ctx.cmd;
+    cmd.BindBuffer(uboAlloc.get_buffer(), uboAlloc.get_offset(), uboAlloc.get_size(), 0, 0);
+    if (m_DefaultWhiteTexture && !ctx.readImageViews.empty()) {
+        cmd.BindImage(*ctx.readImageViews[0], m_DefaultWhiteTexture->GetSampler(), 0, 1);
+    }
+    cmd.Draw(3, 1, 0, 0);
+}
+
+void Renderer3D::FlushBloomDownsample(PassExecuteContext &ctx, uint32_t mip) {
+    GE_PROFILE_SCOPE("Renderer3D::FlushBloomDownsample");
+
+    GE_CORE_ASSERT(ctx.colorAttachmentView, "BloomDownsample pass 必须声明颜色附件");
+    const vk::Format colorFormat = ctx.colorAttachmentView->get_format();
+    const BufferAllocation uboAlloc = UploadBloomUBO(*ctx.frame, ctx.renderArea.extent);
+
+    ConfigureBloomFullscreenPipeline(*ctx.cmd, m_BloomDownsampleLayout, m_BloomVert,
+                                     colorFormat, ctx.renderArea.extent);
+
+    auto &cmd = *ctx.cmd;
+    cmd.BindBuffer(uboAlloc.get_buffer(), uboAlloc.get_offset(), uboAlloc.get_size(), 0, 0);
+    if (m_DefaultWhiteTexture && !ctx.readImageViews.empty()) {
+        cmd.BindImage(*ctx.readImageViews[0], m_DefaultWhiteTexture->GetSampler(), 0, 1);
+    }
+    cmd.Draw(3, 1, 0, 0);
+}
+
+void Renderer3D::FlushBloomUpsample(PassExecuteContext &ctx, uint32_t mip) {
+    GE_PROFILE_SCOPE("Renderer3D::FlushBloomUpsample");
+
+    GE_CORE_ASSERT(ctx.colorAttachmentView, "BloomUpsample pass 必须声明颜色附件");
+    const vk::Format colorFormat = ctx.colorAttachmentView->get_format();
+    const BufferAllocation uboAlloc = UploadBloomUBO(*ctx.frame, ctx.renderArea.extent);
+
+    ConfigureBloomFullscreenPipeline(*ctx.cmd, m_BloomUpsampleLayout, m_BloomVert,
+                                     colorFormat, ctx.renderArea.extent);
+
+    auto &cmd = *ctx.cmd;
+    cmd.BindBuffer(uboAlloc.get_buffer(), uboAlloc.get_offset(), uboAlloc.get_size(), 0, 0);
+    if (m_DefaultWhiteTexture) {
+        // bindings: readImages[0] = 小层（升采样源），readImages[1] = 同尺寸粗层
+        if (!ctx.readImageViews.empty()) {
+            cmd.BindImage(*ctx.readImageViews[0], m_DefaultWhiteTexture->GetSampler(), 0, 1);
+        }
+        if (ctx.readImageViews.size() > 1) {
+            cmd.BindImage(*ctx.readImageViews[1], m_DefaultWhiteTexture->GetSampler(), 0, 2);
+        }
+    }
+    cmd.Draw(3, 1, 0, 0);
+}
+
+void Renderer3D::FlushBloomComposite(PassExecuteContext &ctx) {
+    GE_PROFILE_SCOPE("Renderer3D::FlushBloomComposite");
+
+    GE_CORE_ASSERT(ctx.colorAttachmentView, "BloomComposite pass 必须声明颜色附件");
+    const vk::Format colorFormat = ctx.colorAttachmentView->get_format();
+    const BufferAllocation uboAlloc = UploadBloomUBO(*ctx.frame, ctx.renderArea.extent);
+
+    ConfigureBloomFullscreenPipeline(*ctx.cmd, m_BloomCompositeLayout, m_BloomVert,
+                                     colorFormat, ctx.renderArea.extent);
+
+    auto &cmd = *ctx.cmd;
+    cmd.BindBuffer(uboAlloc.get_buffer(), uboAlloc.get_offset(), uboAlloc.get_size(), 0, 0);
+    if (m_DefaultWhiteTexture) {
+        // bindings: readImages[0] = Scene_HDR，readImages[1] = 最终泛光层 (Bloom_Up0)
+        if (!ctx.readImageViews.empty()) {
+            cmd.BindImage(*ctx.readImageViews[0], m_DefaultWhiteTexture->GetSampler(), 0, 1);
+        }
+        if (ctx.readImageViews.size() > 1) {
+            cmd.BindImage(*ctx.readImageViews[1], m_DefaultWhiteTexture->GetSampler(), 0, 2);
+        }
+    }
+    cmd.Draw(3, 1, 0, 0);
+}
+
 void Renderer3D::FlushTransparent(PassExecuteContext &ctx) {
     GE_PROFILE_SCOPE("Renderer3D::FlushTransparent");
 
@@ -1268,6 +1404,21 @@ BufferAllocation Renderer3D::UploadTonemapUBO(VulkanRenderFrame &frame) {
     return alloc;
 }
 
+BufferAllocation Renderer3D::UploadBloomUBO(VulkanRenderFrame &frame, vk::Extent2D extent) {
+    // Bloom UBO：阈值 / 强度 / 开关 与当前 pass 的 texel 尺寸（由执行上下文 renderArea 传入）。
+    BloomUBO ubo{};
+    ubo.params.x = m_BloomThreshold;
+    ubo.params.y = m_BloomIntensity;
+    ubo.params.z = m_BloomEnabled ? 1.0f : 0.0f;
+    ubo.texelSize.x = 1.0f / static_cast<float>(std::max(1u, extent.width));
+    ubo.texelSize.y = 1.0f / static_cast<float>(std::max(1u, extent.height));
+
+    BufferAllocation alloc = frame.AllocateBuffer(
+        vk::BufferUsageFlagBits::eUniformBuffer, sizeof(BloomUBO));
+    alloc.update(ubo);
+    return alloc;
+}
+
 void Renderer3D::DrawSkybox(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame,
                             vk::Format colorFormat, vk::Format depthFormat,
                             vk::Extent2D extent) {
@@ -1569,6 +1720,53 @@ void Renderer3D::ConfigureTonemapPipeline(VulkanCommandBuffer &cmd,
     ps.setColorBlendAttachments({blendState});
 
     ps.setVertexInputFromShader(*m_TonemapVert);
+    ps.setInputAssembly(vk::PrimitiveTopology::eTriangleList)
+        .setCullMode(vk::CullModeFlagBits::eNone)
+        .setFrontFace(vk::FrontFace::eCounterClockwise)
+        .setDepthTestEnable(VK_FALSE)
+        .setDepthWriteEnable(VK_FALSE);
+
+    ps.enableDynamicState(vk::DynamicState::eViewport)
+        .enableDynamicState(vk::DynamicState::eScissor)
+        .enableDynamicState(vk::DynamicState::eCullMode)
+        .enableDynamicState(vk::DynamicState::eFrontFace)
+        .enableDynamicState(vk::DynamicState::ePrimitiveTopology)
+        .enableDynamicState(vk::DynamicState::eDepthTestEnable)
+        .enableDynamicState(vk::DynamicState::eDepthWriteEnable)
+        .enableDynamicState(vk::DynamicState::eDepthCompareOp);
+
+    vk::Viewport vp;
+    vp.width = static_cast<float>(extent.width);
+    vp.height = static_cast<float>(extent.height);
+    vp.minDepth = 0.0f;
+    vp.maxDepth = 1.0f;
+    cmd.SetViewport(0, {vp});
+
+    vk::Rect2D scissor;
+    scissor.extent.width = extent.width;
+    scissor.extent.height = extent.height;
+    cmd.SetScissor(0, {scissor});
+}
+
+void Renderer3D::ConfigureBloomFullscreenPipeline(VulkanCommandBuffer &cmd,
+                                                 VulkanPipelineLayout *layout,
+                                                 VulkanShaderModule *vert,
+                                                 vk::Format colorFormat,
+                                                 vk::Extent2D extent) {
+    // Bloom 各 pass 不依赖顶点缓冲 / 深度附件；全屏三角形采样一张或多张输入后写出。
+    cmd.BindPipelineLayout(*layout);
+
+    auto &ps = cmd.GetPipelineState();
+    ps.setRenderingFormats({colorFormat});
+
+    vk::PipelineColorBlendAttachmentState blendState{};
+    blendState.colorWriteMask = vk::ColorComponentFlagBits::eR
+                                | vk::ColorComponentFlagBits::eG
+                                | vk::ColorComponentFlagBits::eB
+                                | vk::ColorComponentFlagBits::eA;
+    ps.setColorBlendAttachments({blendState});
+
+    ps.setVertexInputFromShader(*vert);
     ps.setInputAssembly(vk::PrimitiveTopology::eTriangleList)
         .setCullMode(vk::CullModeFlagBits::eNone)
         .setFrontFace(vk::FrontFace::eCounterClockwise)

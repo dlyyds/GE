@@ -37,6 +37,7 @@
 #include <cstdint>
 #include <functional>
 #include <unordered_map>
+#include <algorithm>
 
 namespace GE {
 
@@ -423,6 +424,39 @@ public:
     /// 当前曝光系数。
     float GetExposure() const { return m_Exposure; }
 
+    // ========================================================================
+    // Bloom（延迟 HDR 链：Transparent → Bloom → Tonemap）
+    // ========================================================================
+
+    /// Bloom mip 链可用的最大级数（SceneLayer 按此预留虚拟资源数组）。
+    static constexpr uint32_t kMaxBloomMipLevels = 6;
+
+    /// 开关 Bloom（仅延迟 HDR 链生效）。
+    void SetBloomEnabled(bool enabled) { m_BloomEnabled = enabled; }
+
+    /// 当前 Bloom 是否启用。
+    bool IsBloomEnabled() const { return m_BloomEnabled; }
+
+    /// 设置 Bloom 阈值（高于该 HDR 亮度的像素才被提取泛光）。
+    void SetBloomThreshold(float threshold) { m_BloomThreshold = threshold; }
+
+    /// 当前 Bloom 阈值。
+    float GetBloomThreshold() const { return m_BloomThreshold; }
+
+    /// 设置 Bloom 强度（合成时乘到泛光上，1.0 = 原样）。
+    void SetBloomIntensity(float intensity) { m_BloomIntensity = intensity; }
+
+    /// 当前 Bloom 强度。
+    float GetBloomIntensity() const { return m_BloomIntensity; }
+
+    /// 设置 Bloom mip 级数（1 = 只有半分辨率提取，级数越多光晕越柔）。
+    void SetBloomMipLevels(uint32_t levels) {
+        m_BloomMipLevels = std::clamp(levels, 1u, kMaxBloomMipLevels);
+    }
+
+    /// 当前 Bloom mip 级数。
+    uint32_t GetBloomMipLevels() const { return m_BloomMipLevels; }
+
     /// 录制某级 ShadowMap pass（只画该级体积内的不透明段深度，零颜色附件 + 深度附件）。
     /// cascade 指定级号：画 m_ShadowBatches[cascade] + m_ShadowInstanceBuffer[cascade]，
     /// FrameUBO.view = cascadeViewProj[cascade]；视口 = 该级深度图尺寸（pass renderArea）。
@@ -436,6 +470,18 @@ public:
 
     /// 录制 Tonemap pass（采样 Scene_HDR，曝光 + ACES 后写入视口颜色）。
     void FlushTonemap(PassExecuteContext &ctx);
+
+    /// 录制 Bloom 阈值提取 pass（读 Scene_HDR，写半分辨率 Bloom_Down0）。
+    void FlushBloomExtract(PassExecuteContext &ctx);
+
+    /// 录制 Bloom 降采样 pass（读 Bloom_Down[m-1]，写 Bloom_Down[m]）。
+    void FlushBloomDownsample(PassExecuteContext &ctx, uint32_t mip);
+
+    /// 录制 Bloom 升采样/模糊 pass（读小层 + 同尺寸粗层，写 Bloom_Up[m]）。
+    void FlushBloomUpsample(PassExecuteContext &ctx, uint32_t mip);
+
+    /// 录制 Bloom 合成 pass（读 Scene_HDR + 最终泛光层，写回 Scene_HDR）。
+    void FlushBloomComposite(PassExecuteContext &ctx);
 
     /// 录制 Transparent pass（透明对象仍走前向 alpha 混合）。
     void FlushTransparent(PassExecuteContext &ctx);
@@ -492,6 +538,16 @@ private:
     };
 
     static_assert(sizeof(TonemapUBO) % 16 == 0, "TonemapUBO 必须 16 字节对齐");
+
+    /// HDR Bloom UBO（std140 布局，set 0 binding 0）。
+    /// params.x = threshold，y = intensity，z = 启用(>0.5)，w 预留；
+    /// texelSize.x/y = 当前 pass 使用的源/目标 mip 的 1/尺寸。
+    struct BloomUBO {
+        glm::vec4 params;    ///< x = threshold, y = intensity, z = enabled, w 预留
+        glm::vec4 texelSize; ///< x,y = 1 / mip 尺寸
+    };
+
+    static_assert(sizeof(BloomUBO) % 16 == 0, "BloomUBO 必须 16 字节对齐");
 
     /// per-instance 数据（阶段3，存入 SSBO，std430 布局）
     /// 必须与 GLSL InstanceData 块一致：mat4(64B) + vec4(16B) = 80B。
@@ -595,6 +651,9 @@ private:
     /// 分配并上传 Tonemap UBO（曝光 + 开关旗标）
     BufferAllocation UploadTonemapUBO(VulkanRenderFrame &frame);
 
+    /// 分配并上传 Bloom UBO（阈值 / 强度 / 开关 / mip texel 尺寸）
+    BufferAllocation UploadBloomUBO(VulkanRenderFrame &frame, vk::Extent2D extent);
+
     /**
      * @brief 计算并缓存本帧延迟链批次（幂等）：排序 + 切不透明段 + 上传缓冲。
      *
@@ -655,6 +714,13 @@ private:
     void ConfigureTonemapPipeline(VulkanCommandBuffer &cmd,
                                   vk::Format colorFormat,
                                   vk::Extent2D extent);
+
+    /// 配置 Bloom 任意 pass 的全屏三角形管线状态（layout/顶点着色器由调用方指定）。
+    void ConfigureBloomFullscreenPipeline(VulkanCommandBuffer &cmd,
+                                          VulkanPipelineLayout *layout,
+                                          VulkanShaderModule *vert,
+                                          vk::Format colorFormat,
+                                          vk::Extent2D extent);
 
     /// 绑定网格共享描述符（Frame UBO + 点光源 SSBO，set 0）
     void BindSharedUniforms(VulkanCommandBuffer &cmd,
@@ -855,6 +921,21 @@ private:
     /// Tonemap 管线布局（由全局资源缓存管理，不拥有）
     VulkanPipelineLayout *m_TonemapLayout = nullptr;
 
+    /// Bloom 全屏三角形顶点着色器（由全局资源缓存管理，不拥有）
+    VulkanShaderModule *m_BloomVert = nullptr;
+
+    /// Bloom 各阶段片元着色器（由全局资源缓存管理，不拥有）
+    VulkanShaderModule *m_BloomExtractFrag = nullptr;
+    VulkanShaderModule *m_BloomDownsampleFrag = nullptr;
+    VulkanShaderModule *m_BloomUpsampleFrag = nullptr;
+    VulkanShaderModule *m_BloomCompositeFrag = nullptr;
+
+    /// Bloom 各阶段管线布局（由全局资源缓存管理，不拥有）
+    VulkanPipelineLayout *m_BloomExtractLayout = nullptr;
+    VulkanPipelineLayout *m_BloomDownsampleLayout = nullptr;
+    VulkanPipelineLayout *m_BloomUpsampleLayout = nullptr;
+    VulkanPipelineLayout *m_BloomCompositeLayout = nullptr;
+
     /// 天空盒顶点着色器（由全局资源缓存管理，不拥有）
     VulkanShaderModule *m_SkyboxVert = nullptr;
 
@@ -884,6 +965,18 @@ private:
 
     /// 曝光系数（由场景/编辑器相机每帧接入；经 TonemapUBO.exposure.x 传着色器）
     float m_Exposure = 1.0f;
+
+    /// Bloom 开关（仅延迟 HDR 链生效；经 BloomUBO.params.z 传着色器）
+    bool m_BloomEnabled = true;
+
+    /// Bloom 阈值（高于该 HDR 亮度的像素被提取泛光）
+    float m_BloomThreshold = 1.0f;
+
+    /// Bloom 强度（合成时乘到泛光上）
+    float m_BloomIntensity = 0.7f;
+
+    /// Bloom mip 级数（1 = 只有半分辨率提取；越大光晕越柔顺）
+    uint32_t m_BloomMipLevels = 5;
 
     /// IBL 环境光强度（缩放 IBL 贡献，经 iblParams.y 传给着色器）
     float m_IBLIntensity = 1.0f;

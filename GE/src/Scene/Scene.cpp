@@ -898,6 +898,8 @@ void Scene::StepPhysics(Timestep ts) {
         m_ScriptEngine.AnyInstanceDefinesHook("OnCollisionStay") ||
         m_ScriptEngine.AnyInstanceDefinesHook("OnTriggerStay"));
     m_PhysicsWorld->Step(ts);
+    // 渲染/逻辑 Update：按固定步长剩余 alpha 插值上/当前物理位置 → Transform.Translation
+    m_PhysicsWorld->InterpolateTransforms();
     // 阶段 B3：本帧碰撞事件按实体双侧派发到脚本（到达即派发即弃，不留过帧状态）
     for (const auto &evt : m_PhysicsWorld->TakeCollisionEvents()) {
         DispatchCollisionEvent(evt);

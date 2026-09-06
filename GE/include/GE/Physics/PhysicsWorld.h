@@ -79,17 +79,32 @@ public:
     // ========================================================================
 
     /**
-     * @brief 执行物理步进。内部使用固定步长 + 时间累加器。
+     * @brief 执行物理步进（FixedUpdate）。内部使用固定步长 + 时间累加器。
      *
      * 调用顺序：
      * 1. 处理待创建刚体列表（延迟创建机制）
      * 2. 同步运动学体 Transform → Jolt
      * 3. Jolt PhysicsSystem::Update（固定步长子步）
-     * 4. 同步动态体 Jolt → Transform
+     * 4. 同步动态体 Jolt → m_PhysicsPosition（不直接写 Transform.Translation）
+     * 5. 同步角色 CharacterVirtual → m_PhysicsPosition
+     *
+     * 渲染插值由 InterpolateTransforms() 在每帧普通 Update 阶段单独调用。
      *
      * @param ts 帧时间（秒）
      */
     void Step(Timestep ts);
+
+    /**
+     * @brief 将最近一次 FixedUpdate 的物理位置插值到 TransformComponent::Translation。
+     *
+     * 使用固定步长累加器的剩余时间比例 alpha = m_Accumulator / FIXED_TIMESTEP，
+     * 在 m_PreviousPhysicsPosition 与 m_PhysicsPosition 之间做线性插值，
+     * 使渲染线程看到平滑位置而非 60Hz 阶梯。必须在 Step() 之后调用。
+     */
+    void InterpolateTransforms();
+
+    /// @brief 当前固定步长插值比例 alpha（[0,1)，用于渲染插值）。
+    [[nodiscard]] float GetInterpolationAlpha() const;
 
     // ========================================================================
     // 刚体管理（由 Scene 的 OnComponentAdded 回调触发）

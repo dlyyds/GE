@@ -356,6 +356,11 @@ void PhysicsWorld::Step(Timestep ts) {
         UpdateCharacters(FIXED_TIMESTEP);
         m_Accumulator -= FIXED_TIMESTEP;
         subSteps++;
+
+        // 只在真正执行了 FixedUpdate 子步后捕获物理位置，保留上一/当前物理位置供渲染插值。
+        // 未执行子步的帧不更新插值状态，否则 high-FPS 下插值退化为 60Hz 阶梯抖动。
+        SyncBodiesToTransforms();
+        SyncCharacterTransformsToComponents();
     }
 
     // 如果累积器溢出，重置为 0
@@ -364,13 +369,8 @@ void PhysicsWorld::Step(Timestep ts) {
     }
 
     // 步进后：把接触缓冲（BodyID 对）翻译成本帧实体级事件（主线程可碰 ECS）
+    // （物理位置捕获已在上面每个 FixedUpdate 子步内完成，这里不再重复）
     CollectCollisionEvents();
-
-    // Step 4: 同步动态体 Jolt → Transform
-    SyncBodiesToTransforms();
-
-    // Step 5: 同步角色 CharacterVirtual 位置 → TransformComponent（渲染读它）
-    SyncCharacterTransformsToComponents();
 }
 
 // ============================================================
@@ -597,6 +597,11 @@ void PhysicsWorld::ProcessPendingCharacters() {
             cc->FacingInit = true;
         }
         m_Characters[entity] = std::move(cv);
+
+        // 新角色以 Transform 当前姿态对齐物理插值状态
+        tc->m_PreviousPhysicsPosition = tc->Translation;
+        tc->m_PhysicsPosition = tc->Translation;
+
         completed.push_back(entity);
     }
 
@@ -714,9 +719,44 @@ void PhysicsWorld::SyncCharacterTransformsToComponents() {
         auto *tc = reg.try_get<TransformComponent>(entity);
         if (!tc || !cv)
             continue;
-        // 渲染读 TransformComponent，取最末子步位置（与 SyncBodiesToTransforms 同风格）
-        tc->Translation = ToGlmVec3(cv->GetPosition());
+        // FixedUpdate 只更新物理位置状态，渲染位置由 InterpolateTransforms 输出。
+        tc->m_PreviousPhysicsPosition = tc->m_PhysicsPosition;
+        tc->m_PhysicsPosition = ToGlmVec3(cv->GetPosition());
         tc->Rotation = ToGlmQuat(cv->GetRotation());
+    }
+}
+
+float PhysicsWorld::GetInterpolationAlpha() const {
+    return m_Accumulator / FIXED_TIMESTEP;
+}
+
+void PhysicsWorld::InterpolateTransforms() {
+    if (!m_Scene)
+        return;
+
+    const float alpha = std::clamp(GetInterpolationAlpha(), 0.0f, 1.0f);
+    auto &reg = m_Scene->Reg();
+
+    // 动态刚体：FixedUpdate 只更新物理位置，这里把插值结果写给渲染读的 Transform.Translation
+    auto rbView = reg.view<TransformComponent, RigidBodyComponent>();
+    for (auto entity : rbView) {
+        auto &rbc = rbView.get<RigidBodyComponent>(entity);
+        if (!rbc.IsInitialized || rbc.Type != RigidBodyType::Dynamic)
+            continue;
+
+        auto &tc = rbView.get<TransformComponent>(entity);
+        tc.Translation = glm::mix(tc.m_PreviousPhysicsPosition, tc.m_PhysicsPosition, alpha);
+    }
+
+    // 角色控制器：同上
+    auto ccView = reg.view<TransformComponent, CharacterControllerComponent>();
+    for (auto entity : ccView) {
+        auto &cc = ccView.get<CharacterControllerComponent>(entity);
+        if (!cc.IsInitialized)
+            continue;
+
+        auto &tc = ccView.get<TransformComponent>(entity);
+        tc.Translation = glm::mix(tc.m_PreviousPhysicsPosition, tc.m_PhysicsPosition, alpha);
     }
 }
 
@@ -815,6 +855,10 @@ void PhysicsWorld::ProcessPendingBodies() {
         // 写回组件
         rbc->RuntimeBodyID = bodyID;
         rbc->IsInitialized = true;
+
+        // 新 body 以 Transform 当前姿态对齐物理插值状态
+        tc->m_PreviousPhysicsPosition = tc->Translation;
+        tc->m_PhysicsPosition = tc->Translation;
 
         completed.push_back(entity);
     }
@@ -979,7 +1023,9 @@ void PhysicsWorld::SyncBodiesToTransforms() {
         JPH::Quat rot = bodyInterface.GetRotation(rbc.RuntimeBodyID);
 
         auto &tc = view.get<TransformComponent>(entity);
-        tc.Translation = ToGlmVec3(pos);
+        // FixedUpdate 只更新物理位置状态，渲染位置由 InterpolateTransforms 输出。
+        tc.m_PreviousPhysicsPosition = tc.m_PhysicsPosition;
+        tc.m_PhysicsPosition = ToGlmVec3(pos);
         // 直接回写四元数，避免 eulerAngles 往返在近万向锁区域引入抖动/跳变
         tc.Rotation = ToGlmQuat(rot);
     }

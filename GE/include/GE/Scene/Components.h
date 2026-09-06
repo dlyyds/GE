@@ -58,6 +58,10 @@ struct TransformComponent {
     // 平凡可拷贝，不破坏 EnTT 对组件的 POD 要求。
     glm::mat4 worldMatrix = glm::mat4(1.0f);
 
+    // 物理插值运行时状态（由 PhysicsWorld 的 FixedUpdate 写入；不序列化）。
+    glm::vec3 m_PreviousPhysicsPosition = {0.0f, 0.0f, 0.0f};
+    glm::vec3 m_PhysicsPosition        = {0.0f, 0.0f, 0.0f};
+
     // 父实体句柄（entt::null = 根）。唯一真相在组件指针，Scene 侧的反向索引是派生缓存。
     // EnTT 句柄带版本位，实体销毁后再复用不会产生悬垂引用。
     entt::entity parent = entt::null;
@@ -68,6 +72,8 @@ struct TransformComponent {
 
     explicit TransformComponent(const glm::vec3 &translation)
         : Translation(translation),
+          m_PreviousPhysicsPosition(translation),
+          m_PhysicsPosition(translation),
           worldMatrix(glm::translate(glm::mat4(1.0f), translation)) {
     }
 

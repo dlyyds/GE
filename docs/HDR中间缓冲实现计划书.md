@@ -270,8 +270,8 @@ ACES。要在 Tonemap 前合成，透明 PBR 输出必须保持线性 HDR：
 
 ## 7. 曝光与后续 Bloom 的预留
 
-- `TonemapUBO.exposure.x` 是曝光乘数；当前固定 1.0，后续可由相机/场景组件或编辑器
-  控制；
+- `TonemapUBO.exposure.x` 是曝光乘数；已由视口相机（编辑器相机 / 游戏主相机）
+  每帧接入（默认 1.0），后续可按需拓展到场景组件/自动曝光；
 - `TonemapUBO.flags` 预留 tonemap 开关、天空旗标开关；调试时可通过编辑器临时关掉
   tonemap 看 HDR 原始值；
 - future Bloom 插入点：`Transparent → Tonemap`。Bloom Pass 读 `Scene_HDR`，把阈值

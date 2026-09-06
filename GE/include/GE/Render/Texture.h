@@ -73,11 +73,16 @@ public:
     // ========================================================================
 
     /**
-     * @brief 从文件加载纹理（自动使用 stb_image 解码为 RGBA）。
+     * @brief 从文件加载纹理（PNG/JPG 等走 stb_image；KTX/KTX2 走 libktx）。
+     *
+     * 加载前会自动查找同目录同名的 `.ktx2` 文件：存在则优先加载该 KTX2，
+     * 不存在才按调用方给出的原始文件路径加载。
+     * KTX/KTX2 使用其内嵌格式与自带 mip 链；KTX2 Basis/UASTC 超压缩数据会按设备
+     * 能力自动转码（BC7 优先，否则 RGBA32）。
      *
      * @param device      Vulkan 设备
      * @param cache       全局资源缓存（用于 Sampler 去重）
-     * @param filepath    纹理文件路径（支持 PNG / JPG 等 stb_image 格式）
+     * @param filepath    纹理文件路径（支持 PNG/JPG 等 stb_image 格式，以及 .ktx/.ktx2）
      * @param format      纹理格式（默认 eR8G8B8A8Unorm）
      * @param mag_filter  放大过滤器（默认 eLinear）
      * @param min_filter  缩小过滤器（默认 eLinear）
@@ -145,12 +150,17 @@ public:
     /// 异步任务 finalize 会安全跳过注入，不会 use-after-free。
 
     /**
-     * @brief 异步从文件加载纹理（stb_image 解码 + GPU 上传全后台）。
+     * @brief 异步从文件加载纹理（stb_image / libktx 解码 + GPU 上传全后台）。
+     *
+     * 加载前会自动查找同目录同名的 `.ktx2` 文件：存在则优先加载该 KTX2，
+     * 不存在才按调用方给出的原始文件路径加载。
+     * KTX/KTX2 走 libktx，使用内嵌格式与自带 mip 链；KTX2 Basis/UASTC 会按设备
+     * 能力自动转码（BC7 优先，否则 RGBA32）。
      *
      * @param device       Vulkan 设备
      * @param cache        全局资源缓存（Sampler 去重）
      * @param upload       异步上传管理器（提交 UploadTask）
-     * @param filepath     纹理文件路径
+     * @param filepath     纹理文件路径（支持 PNG/JPG 等 stb_image 格式，以及 .ktx/.ktx2）
      * @param format       纹理格式（默认 eR8G8B8A8Unorm）
      * @param mag_filter   放大过滤器（默认 eLinear）
      * @param min_filter   缩小过滤器（默认 eLinear）
@@ -260,6 +270,20 @@ private:
      * 后台加载完成时经 InstallAsyncImage 注入图像并置就绪。
      */
     Texture();
+
+    /**
+     * @brief 同步加载 2D KTX/KTX2 纹理（libktx 专用路径）。
+     *
+     * LoadFromFile 按扩展名分派到本方法：读取 KTX1/KTX2、按需转码 Basis、
+     * 上传文件自带 mip 链（base-only 且要求 mip 时补生成），建立 e2D 视图。
+     */
+    static std::unique_ptr<Texture> LoadFromFileKtx2D(
+        VulkanDevice &device,
+        VulkanResourceCache &cache,
+        const std::string &filepath,
+        vk::Filter mag_filter,
+        vk::Filter min_filter,
+        bool generate_mipmaps);
 
     /**
      * @brief 异步加载注入槽位。

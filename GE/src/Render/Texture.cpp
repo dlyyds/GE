@@ -16,6 +16,7 @@
 
 #include <vulkan/vulkan.hpp>
 #include <algorithm>  // std::max
+#include <filesystem>
 
 namespace GE {
 
@@ -46,6 +47,159 @@ void DestroyKtxTexture(ktxTexture *tex) {
 }
 
 /**
+ * @brief 判断路径是否为 KTX/KTX2 文件（按扩展名，大小写不敏感）。
+ */
+bool IsKtxPath(const std::string &filepath) {
+    std::string ext = std::filesystem::path(filepath).extension().string();
+    for (char &c : ext) {
+        if (c >= 'A' && c <= 'Z') {
+            c += static_cast<char>('a' - 'A');
+        }
+    }
+    return ext == ".ktx" || ext == ".ktx2";
+}
+
+/**
+ * @brief 返回加载 2D 纹理时应使用的磁盘路径：优先同目录同名 .ktx2，否则原样返回。
+ *
+ * 规则：
+ * - 本身已是 .ktx/.ktx2 → 原样返回，不重复寻找
+ * - 存在 <原文件名>.ktx2 → 返回 ktx2 路径（忽略原扩展名大小写差异）
+ * - 否则原路径返回
+ */
+std::string PreferKtx2(const std::string &filepath) {
+    if (filepath.empty()) {
+        return filepath;
+    }
+    std::string ext = std::filesystem::path(filepath).extension().string();
+    for (char &c : ext) {
+        if (c >= 'A' && c <= 'Z') {
+            c += static_cast<char>('a' - 'A');
+        }
+    }
+    if (ext == ".ktx" || ext == ".ktx2") {
+        return filepath;
+    }
+
+    const std::filesystem::path p(filepath);
+    const std::filesystem::path ktx2 = p.parent_path() / (p.stem().string() + ".ktx2");
+    std::error_code ec;
+    if (std::filesystem::exists(ktx2, ec) && !ec) {
+        return ktx2.lexically_normal().string();
+    }
+    return filepath;
+}
+
+/**
+ * @brief 准备 KTX/KTX2 用于上传：KTX2 Basis/UASTC 超压缩数据先转码，返回 Vulkan 格式。
+ *
+ * - 普通 KTX1 / 非超压缩 KTX2：直接返回 ktxTexture_GetVkFormat。
+ * - KTX2 需要转码（BasisLZ/UASTC）：设备支持 BC7 时转 BC7，否则回退 RGBA32。
+ *
+ * @param ktex   已加载（LOAD_IMAGE_DATA_BIT）的 ktx 对象
+ * @param device 用于查询格式支持
+ * @return Vulkan 格式；转码失败 / 取不到格式返回 eUndefined
+ */
+vk::Format PrepareKtxForUpload(ktxTexture *ktex, VulkanDevice &device) {
+    if (ktex->classId == ktxTexture2_c) {
+        auto *k2 = reinterpret_cast<ktxTexture2 *>(ktex);
+        const bool isSrgb = (ktxTexture2_GetTransferFunction_e(k2) == KHR_DF_TRANSFER_SRGB);
+        if (ktxTexture2_NeedsTranscoding(k2)) {
+            const vk::Format bc7 = vk::Format::eBc7UnormBlock;
+            const auto props = device.GetGpu().GetFormatProperties(bc7);
+            const bool bc7Supported =
+                (props.optimalTilingFeatures & vk::FormatFeatureFlagBits::eSampledImage) != vk::FormatFeatureFlags{};
+            const ktx_transcode_fmt_e target = bc7Supported ? KTX_TTF_BC7_RGBA : KTX_TTF_RGBA32;
+            const KTX_error_code kErr = ktxTexture2_TranscodeBasis(k2, target, 0);
+            if (kErr != KTX_SUCCESS) {
+                GE_CORE_ERROR("KTX2 Basis 转码失败: {}", ktxErrorString(kErr));
+                return vk::Format::eUndefined;
+            }
+            GE_CORE_INFO("KTX2 已转码（{}，{}）", bc7Supported ? "BC7" : "RGBA32",
+                         isSrgb ? "sRGB" : "linear");
+            // sRGB 数据用对应的 sRGB 视图：BC7_SRGB / R8G8B8A8_SRGB，
+            // 线性数据（法线/金属度等）用 unorm 视图。
+            if (bc7Supported) {
+                return isSrgb ? vk::Format::eBc7SrgbBlock : vk::Format::eBc7UnormBlock;
+            }
+            return isSrgb ? vk::Format::eR8G8B8A8Srgb : vk::Format::eR8G8B8A8Unorm;
+        }
+    }
+
+    const vk::Format fmt = static_cast<vk::Format>(ktxTexture_GetVkFormat(ktex));
+    if (fmt == vk::Format::eUndefined) {
+        GE_CORE_ERROR("无法获取 KTX 的 Vulkan 格式（classId={}）",
+                      static_cast<uint32_t>(ktex->classId));
+    }
+    return fmt;
+}
+
+// 前向声明：GenerateMipmapsInCmd 定义在本文件下方，供 UploadKtxTexture2D 使用
+void GenerateMipmapsInCmd(VulkanCommandBuffer &cmd, VulkanImage &image, vk::Extent3D extent);
+
+/**
+ * @brief 把一个已解码的 2D KTX/KTX2 的 mip 数据上传到目标图像（同步/异步共用）。
+ *
+ * 上传文件自带 mip 链；若文件只有 base level 且 generateMipmaps=true，则按文件
+ * 数据进行 blit 生成完整 mip 链。调用前 image 必须已按 ktex 的 base 尺寸 +
+ * 所需 mip 级数创建，且为 TransferDst|Sampled（需要生成 mip 时另含 TransferSrc）。
+ *
+ * 后置条件：全部 mip level 布局为 ShaderReadOnlyOptimal。
+ */
+void UploadKtxTexture2D(VulkanCommandBuffer &cmd, VulkanDevice &device,
+                        VulkanImage &image, ktxTexture *ktex, bool generateMipmaps,
+                        std::unique_ptr<VulkanBuffer> &stagingOut) {
+    const uint32_t width  = ktex->baseWidth;
+    const uint32_t height = ktex->baseHeight;
+    const uint32_t levels = image.get_mip_level_count();
+    const uint32_t fileLevels = std::max(1u, static_cast<uint32_t>(ktex->numLevels));
+
+    stagingOut = std::make_unique<VulkanBuffer>(std::move(
+        VulkanBuffer::create_staging_buffer(
+            device, static_cast<vk::DeviceSize>(ktex->dataSize), ktex->pData)));
+
+    // 全 mip 先统一切到 TransferDst
+    image_utils::TransitionLayout(cmd.GetHandle(), image.GetHandle(),
+                                  vk::ImageLayout::eUndefined,
+                                  vk::ImageLayout::eTransferDstOptimal,
+                                  0, levels, 0, 1);
+
+    // 逐 mip 拷贝文件数据（2D 非数组非 cubemap：level-major、每 level 连续）
+    for (uint32_t l = 0; l < fileLevels; ++l) {
+        ktx_size_t levelOffset = 0;
+        if (ktxTexture_GetImageOffset(ktex, l, 0, 0, &levelOffset) != KTX_SUCCESS) {
+            GE_CORE_ERROR("无法获取 KTX mip 偏移（level {0}）", l);
+            return;
+        }
+        const uint32_t lvlW = std::max(1u, width >> l);
+        const uint32_t lvlH = std::max(1u, height >> l);
+
+        vk::BufferImageCopy copyRegion{};
+        copyRegion.bufferOffset = static_cast<vk::DeviceSize>(levelOffset);
+        copyRegion.bufferRowLength = 0;
+        copyRegion.bufferImageHeight = 0;
+        copyRegion.imageSubresource.aspectMask = vk::ImageAspectFlagBits::eColor;
+        copyRegion.imageSubresource.mipLevel = l;
+        copyRegion.imageSubresource.baseArrayLayer = 0;
+        copyRegion.imageSubresource.layerCount = 1;
+        copyRegion.imageOffset = vk::Offset3D{0, 0, 0};
+        copyRegion.imageExtent = vk::Extent3D{lvlW, lvlH, 1};
+        cmd.GetHandle().copyBufferToImage(
+            stagingOut->GetHandle(), image.GetHandle(),
+            vk::ImageLayout::eTransferDstOptimal, copyRegion);
+    }
+
+    if (generateMipmaps && fileLevels == 1 && levels > 1) {
+        GenerateMipmapsInCmd(cmd, image, vk::Extent3D{width, height, 1});
+    } else {
+        image_utils::TransitionLayout(cmd.GetHandle(), image.GetHandle(),
+                                      vk::ImageLayout::eTransferDstOptimal,
+                                      vk::ImageLayout::eShaderReadOnlyOptimal,
+                                      0, levels, 0, 1);
+    }
+}
+
+/**
  * @brief 异步加载共享数据容器（decode / upload / finalize 三阶段间传递）。
  *
  * 由主线程组装参数，后台线程写入 decode / upload 结果，最终主线程 finalize
@@ -63,7 +217,8 @@ struct AsyncLoadData {
     int                  width  = 0;                ///< 2D 宽度
     int                  height = 0;                ///< 2D 高度
     std::unique_ptr<ktxTexture, decltype(&DestroyKtxTexture)>
-        ktex{nullptr, &DestroyKtxTexture};          ///< cubemap：KTX 对象（保底像素数据）
+        ktex{nullptr, &DestroyKtxTexture};          ///< KTX1/KTX2 对象（cubemap 或 2D 用）
+    vk::Format ktxFormat = vk::Format::eUndefined; ///< KTX 路径解码出的 Vulkan 格式
 
     // upload 输出（后台线程写入，主线程 finalize 消费）
     std::unique_ptr<VulkanImage>  image;            ///< 后台创建的本地图像
@@ -143,6 +298,63 @@ void GenerateMipmapsInCmd(VulkanCommandBuffer &cmd, VulkanImage &image, vk::Exte
 } // namespace
 
 // ============================================================================
+// 工厂方法：LoadFromFileKtx2D（KTX/KTX2 2D 纹理同步加载）
+// ============================================================================
+
+std::unique_ptr<Texture> Texture::LoadFromFileKtx2D(
+    VulkanDevice &device, VulkanResourceCache &cache, const std::string &filepath,
+    vk::Filter mag_filter, vk::Filter min_filter, bool generate_mipmaps) {
+    // 1. libktx 读取 KTX1/KTX2（含像素与文件自带 mip 链）
+    ktxTexture *ktex = nullptr;
+    KTX_error_code kErr = ktxTexture_CreateFromNamedFile(
+        filepath.c_str(), KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT, &ktex);
+    if (kErr != KTX_SUCCESS) {
+        GE_CORE_ERROR("2D KTX 加载失败: {0} ({1})", filepath, ktxErrorString(kErr));
+        return nullptr;
+    }
+    std::unique_ptr<ktxTexture, decltype(&DestroyKtxTexture)> guard(ktex, &DestroyKtxTexture);
+
+    // 2. 只接受单张 2D 纹理（非 cubemap；layerCount 允许多数工具写出的 1）
+    if (ktex->numDimensions != 2 || ktex->numFaces != 1 || ktex->numLayers > 1) {
+        GE_CORE_ERROR("2D KTX 仅支持单张 2D 纹理（dim={0} faces={1} layers={2}）: {3}",
+                      ktex->numDimensions, ktex->numFaces, ktex->numLayers, filepath);
+        return nullptr;
+    }
+
+    // 3. KTX2 Basis 超压缩按设备能力转码，取 Vulkan 格式
+    const vk::Format format = PrepareKtxForUpload(ktex, device);
+    if (format == vk::Format::eUndefined) {
+        GE_CORE_ERROR("2D KTX 无法取得可用格式: {0}", filepath);
+        return nullptr;
+    }
+
+    const uint32_t width  = ktex->baseWidth;
+    const uint32_t height = ktex->baseHeight;
+    const uint32_t fileLevels = std::max(1u, static_cast<uint32_t>(ktex->numLevels));
+    const uint32_t mipLevels = (generate_mipmaps && fileLevels == 1)
+                                   ? CalculateMipLevels(width, height)
+                                   : fileLevels;
+
+    // 4. 创建 2D 图像并上传文件自带 mip 数据（必要时补生成 mip 链）
+    auto texture = std::unique_ptr<Texture>(new Texture(
+        device, vk::Extent3D{width, height, 1}, format, {}, mipLevels));
+
+    auto &graphicsQueue = device.GetQueueByFlags(vk::QueueFlagBits::eGraphics, 0);
+    const VulkanQueue &gfxQueue = graphicsQueue;
+    auto &uploadCmd = device.RequestCommandBuffer(vk::CommandBufferLevel::ePrimary, true);
+    std::unique_ptr<VulkanBuffer> ktxStaging;
+    UploadKtxTexture2D(uploadCmd, device, *texture->m_Image, ktex, generate_mipmaps, ktxStaging);
+    uploadCmd.End();
+    device.FlushCommandBuffer(uploadCmd, gfxQueue);
+
+    // 5. e2D 视图 + 请求采样器（与 stb 路径一致的采样参数）
+    texture->CreateViewAndSampler(device, cache, mag_filter, min_filter);
+    texture->m_FilePath = filepath;
+
+    return texture;
+}
+
+// ============================================================================
 // 工厂方法：LoadFromFile
 // ============================================================================
 
@@ -154,9 +366,23 @@ std::unique_ptr<Texture> Texture::LoadFromFile(
     vk::Filter mag_filter,
     vk::Filter min_filter,
     bool generate_mipmaps) {
+    // 优先使用同目录同名 .ktx2（存在则用其替代源纹理；否则走原路径）
+    const std::string loadPath = PreferKtx2(filepath);
+
+    // KTX/KTX2（内嵌 mip / BC 压缩 / Basis 超压缩）走 libktx 专用路径
+    if (IsKtxPath(loadPath)) {
+        auto tex = LoadFromFileKtx2D(device, cache, loadPath, mag_filter, min_filter,
+                                     generate_mipmaps);
+        if (tex) {
+            // 外部仍以调用方给出的引用路径为准（缓存键 / 场景序列化保持原引用）
+            tex->m_FilePath = filepath;
+        }
+        return tex;
+    }
+
     // 使用 stb_image 加载文件（强制 RGBA 4 通道）
     int texWidth = 0, texHeight = 0, texChannels = 0;
-    unsigned char *pixels = stbi_load(filepath.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+    unsigned char *pixels = stbi_load(loadPath.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
 
     if (!pixels) {
         GE_CORE_ERROR("无法加载纹理：{}", filepath);
@@ -318,7 +544,7 @@ std::unique_ptr<Texture> Texture::LoadFromFileAsync(
     texture->m_AsyncSlot->target = texture.get();
 
     auto bucket = std::make_shared<AsyncLoadData>();
-    bucket->filepath         = filepath;
+    bucket->filepath         = PreferKtx2(filepath); // 优先同目录同名 .ktx2，不存在则原路径
     bucket->format           = format;
     bucket->generate_mipmaps = generate_mipmaps;
 
@@ -326,7 +552,38 @@ std::unique_ptr<Texture> Texture::LoadFromFileAsync(
     auto slot = texture->m_AsyncSlot;
 
     AsyncUploadManager::UploadTask task;
-    task.decode = [bucket] {
+    task.decode = [bucket, &device] {
+        // 后台：KTX/KTX2 走 libktx（内嵌 mip / BC 压缩 / Basis 超压缩）
+        if (IsKtxPath(bucket->filepath)) {
+            ktxTexture *ktex = nullptr;
+            KTX_error_code kErr = ktxTexture_CreateFromNamedFile(
+                bucket->filepath.c_str(), KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT, &ktex);
+            if (kErr != KTX_SUCCESS) {
+                GE_CORE_ERROR("2D KTX 异步解码失败: {0} ({1})",
+                              bucket->filepath, ktxErrorString(kErr));
+                return;
+            }
+            bucket->ktex.reset(ktex);
+            const bool valid2D =
+                (ktex->numDimensions == 2 && ktex->numFaces == 1 && ktex->numLayers <= 1);
+            if (!valid2D) {
+                GE_CORE_ERROR("2D KTX 异步解码仅支持单张 2D 纹理（dim={0} faces={1} layers={2}）: {3}",
+                              ktex->numDimensions, ktex->numFaces, ktex->numLayers,
+                              bucket->filepath);
+                bucket->ktex.reset();
+                return;
+            }
+            bucket->ktxFormat = PrepareKtxForUpload(ktex, device);
+            if (bucket->ktxFormat == vk::Format::eUndefined) {
+                GE_CORE_ERROR("2D KTX 异步解码无法取得可用格式: {0}", bucket->filepath);
+                bucket->ktex.reset();
+                return;
+            }
+            GE_CORE_TRACE("2D KTX 异步解码完成: {0} ({1}x{2} mip={3})",
+                          bucket->filepath, ktex->baseWidth, ktex->baseHeight, ktex->numLevels);
+            return;
+        }
+
         // 后台：stb_image 解码为 RGBA8
         int channels = 0;
         unsigned char *pixels = stbi_load(bucket->filepath.c_str(),
@@ -343,6 +600,38 @@ std::unique_ptr<Texture> Texture::LoadFromFileAsync(
 
     task.upload = [&device, bucket](VulkanCommandBuffer &cmd) {
         // 后台：创建 local image + staging，录 copy + 布局转换 + mip blit
+
+        // KTX/KTX2 2D：用文件内嵌格式与自带 mip 链（base-only 且要求 mip 时补生成）
+        if (bucket->ktex) {
+            ktxTexture *ktex = bucket->ktex.get();
+            if (bucket->ktxFormat == vk::Format::eUndefined) {
+                return; // 解码失败，不创建图像；finalize 见到空 image 会跳过注入
+            }
+            const uint32_t width  = ktex->baseWidth;
+            const uint32_t height = ktex->baseHeight;
+            const uint32_t fileLevels = std::max(1u, static_cast<uint32_t>(ktex->numLevels));
+            const uint32_t mipLevels = (bucket->generate_mipmaps && fileLevels == 1)
+                                           ? CalculateMipLevels(width, height)
+                                           : fileLevels;
+
+            vk::ImageUsageFlags usage = vk::ImageUsageFlagBits::eTransferDst
+                                        | vk::ImageUsageFlagBits::eSampled;
+            if (mipLevels > 1) {
+                usage |= vk::ImageUsageFlagBits::eTransferSrc;
+            }
+
+            VulkanImageBuilder builder(vk::Extent3D{width, height, 1});
+            builder.with_format(bucket->ktxFormat)
+                .with_usage(usage)
+                .with_mip_levels(mipLevels);
+            bucket->image = builder.build_unique(device);
+
+            UploadKtxTexture2D(cmd, device, *bucket->image, ktex, bucket->generate_mipmaps,
+                               bucket->staging);
+            return;
+        }
+
+        // stb 路径：RGBA8 像素上传 + 生成 mip 链
         if (bucket->pixels.empty()) {
             return; // 解码失败，不创建图像；finalize 见到空 image 会跳过注入
         }

@@ -114,7 +114,7 @@ Scene:
         FaceMovement: true
         TurnSpeed: 540
         InvertFront: true
-      FirstPersonCamera:
+      FollowCamera:
         Enabled: true
         EyeOffset: [0, 26.15, 22.3]
         YawSpeed: 0.1

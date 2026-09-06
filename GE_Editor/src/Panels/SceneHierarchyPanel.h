@@ -105,8 +105,8 @@ private:
     /// 绘制 CharacterController（角色控制器）组件属性
     void DrawCharacterControllerComponent(Entity entity, CharacterControllerComponent &component);
 
-    /// 绘制 FirstPersonCamera（第一人称跟随相机）组件属性
-    void DrawFirstPersonCameraComponent(FirstPersonCameraComponent &component);
+    /// 绘制 FollowCamera（跟随相机）组件属性
+    void DrawFollowCameraComponent(FollowCameraComponent &component);
 
     /// 绘制 BoxCollider 组件属性
     void DrawBoxColliderComponent(Entity entity, BoxColliderComponent &component);

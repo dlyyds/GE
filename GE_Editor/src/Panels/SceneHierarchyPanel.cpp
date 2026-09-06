@@ -916,8 +916,8 @@ void SceneHierarchyPanel::DrawComponents(Entity entity) {
     DrawComponent<CharacterControllerComponent>("Character Controller", entity,
         [&](auto &c) { DrawCharacterControllerComponent(entity, c); });
 
-    DrawComponent<FirstPersonCameraComponent>("First Person Camera", entity,
-        [&](auto &c) { DrawFirstPersonCameraComponent(c); });
+    DrawComponent<FollowCameraComponent>("Follow Camera", entity,
+        [&](auto &c) { DrawFollowCameraComponent(c); });
 
     DrawComponent<BoxColliderComponent>("Box Collider", entity,
         [&](auto &c) { DrawBoxColliderComponent(entity, c); });
@@ -959,7 +959,7 @@ void SceneHierarchyPanel::DrawAddComponentPopup() {
     TryAddComponent<EnvironmentComponent>("Environment");
     TryAddComponent<RigidBodyComponent>("Rigid Body");
     TryAddComponent<CharacterControllerComponent>("Character Controller");
-    TryAddComponent<FirstPersonCameraComponent>("First Person Camera");
+    TryAddComponent<FollowCameraComponent>("Follow Camera");
     TryAddComponent<BoxColliderComponent>("Box Collider");
     TryAddComponent<SphereColliderComponent>("Sphere Collider");
     TryAddComponent<CapsuleColliderComponent>("Capsule Collider");
@@ -1796,9 +1796,9 @@ void SceneHierarchyPanel::DrawCharacterControllerComponent(
 }
 
 // ============================================================
-// First Person Camera 组件（纯配置，无物理重建需求）
+// Follow Camera 组件（纯配置，无物理重建需求）
 // ============================================================
-void SceneHierarchyPanel::DrawFirstPersonCameraComponent(FirstPersonCameraComponent &component) {
+void SceneHierarchyPanel::DrawFollowCameraComponent(FollowCameraComponent &component) {
     ImGui::Checkbox("Enabled", &component.Enabled);
     ImGui::Separator();
 

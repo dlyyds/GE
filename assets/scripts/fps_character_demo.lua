@@ -1,15 +1,15 @@
 -- fps_character_demo.lua —— 第一人称跟随角色示例：鼠标视角 + 相机相对 WASD 移动 + ASM 动画
 -- 前置：
 --   角色实体：TransformComponent + CharacterControllerComponent +
---             FirstPersonCameraComponent + AnimStateMachineComponent +
+--             FollowCameraComponent + AnimStateMachineComponent +
 --             AnimationComponent（不挂 RigidBodyComponent）
---   相机实体：CameraComponent（Primary = true）；由引擎 UpdateFirstPersonCamera
+--   相机实体：CameraComponent（Primary = true）；由引擎 UpdateFollowCamera
 --             每帧把相机钉到角色视点、把相机朝向写回角色朝向（FacingYaw 通道）。
 -- 分工：
 --   camera.*  → 主相机只读查询（视角由引擎每帧从鼠标增量更新，脚本只读 yaw 旋转输入）
 --   character.* → 角色控制器：水平期望速度 set_move + 起跳 jump / 回读 get_*
 --   anim.*    → ASM 参数表：floats(速度)、bools(贴地)、triggers(跳跃脉冲)
---   引擎侧 UpdateFirstPersonCamera 负责"脸朝相机 + 位置跟随"，脚本只管移动方向。
+--   引擎侧 UpdateFollowCamera 负责"脸朝相机 + 位置跟随"，脚本只管移动方向。
 local M = {}
 
 -- public 字段：speed 为水平移动速度（m/s），编辑面板可调、随场景落盘

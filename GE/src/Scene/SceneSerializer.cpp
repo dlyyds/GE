@@ -878,18 +878,18 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
             ccNode["InvertFront"] = ccc.InvertFront;
         }
 
-        // ---- FirstPersonCameraComponent ----
+        // ---- FollowCameraComponent ----
         // 纯配置字段，无运行时数据（姿态存在 CameraComponent 的 Camera 里，不落盘）
-        if (entity.HasComponent<FirstPersonCameraComponent>()) {
-            const auto &fpc = entity.GetComponent<FirstPersonCameraComponent>();
-            YAML::Node fpNode = entityNode["FirstPersonCamera"];
-            fpNode["Enabled"] = fpc.Enabled;
-            fpNode["EyeOffset"] = SerializeVec3(fpc.EyeOffset);
-            fpNode["YawSpeed"] = fpc.YawSpeed;
-            fpNode["PitchSpeed"] = fpc.PitchSpeed;
-            fpNode["MinPitch"] = fpc.MinPitch;
-            fpNode["MaxPitch"] = fpc.MaxPitch;
-            fpNode["InvertY"] = fpc.InvertY;
+        if (entity.HasComponent<FollowCameraComponent>()) {
+            const auto &fcc = entity.GetComponent<FollowCameraComponent>();
+            YAML::Node fcNode = entityNode["FollowCamera"];
+            fcNode["Enabled"] = fcc.Enabled;
+            fcNode["EyeOffset"] = SerializeVec3(fcc.EyeOffset);
+            fcNode["YawSpeed"] = fcc.YawSpeed;
+            fcNode["PitchSpeed"] = fcc.PitchSpeed;
+            fcNode["MinPitch"] = fcc.MinPitch;
+            fcNode["MaxPitch"] = fcc.MaxPitch;
+            fcNode["InvertY"] = fcc.InvertY;
         }
 
         // ---- BoxColliderComponent ----
@@ -1429,19 +1429,19 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
             ccc.InvertFront = ccNode["InvertFront"] ? ccNode["InvertFront"].as<bool>(false) : false;
         }
 
-        // ---- FirstPersonCameraComponent ----
+        // ---- FollowCameraComponent ----
         // AddComponent 触发 OnComponentAdded（纯配置，无物理重建）
-        if (entityNode["FirstPersonCamera"]) {
-            YAML::Node fpNode = entityNode["FirstPersonCamera"];
-            auto &fpc = entity.AddComponent<FirstPersonCameraComponent>();
+        YAML::Node fcNode = entityNode["FollowCamera"] ? entityNode["FollowCamera"] : entityNode["FirstPersonCamera"];
+        if (fcNode) {
+            auto &fcc = entity.AddComponent<FollowCameraComponent>();
 
-            fpc.Enabled = fpNode["Enabled"] ? fpNode["Enabled"].as<bool>(true) : true;
-            fpc.EyeOffset = DeserializeVec3(fpNode["EyeOffset"], {0.0f, 1.65f, 0.0f});
-            fpc.YawSpeed = fpNode["YawSpeed"] ? fpNode["YawSpeed"].as<float>(0.10f) : 0.10f;
-            fpc.PitchSpeed = fpNode["PitchSpeed"] ? fpNode["PitchSpeed"].as<float>(0.10f) : 0.10f;
-            fpc.MinPitch = fpNode["MinPitch"] ? fpNode["MinPitch"].as<float>(-89.0f) : -89.0f;
-            fpc.MaxPitch = fpNode["MaxPitch"] ? fpNode["MaxPitch"].as<float>(89.0f) : 89.0f;
-            fpc.InvertY = fpNode["InvertY"] ? fpNode["InvertY"].as<bool>(false) : false;
+            fcc.Enabled = fcNode["Enabled"] ? fcNode["Enabled"].as<bool>(true) : true;
+            fcc.EyeOffset = DeserializeVec3(fcNode["EyeOffset"], {0.0f, 1.65f, 0.0f});
+            fcc.YawSpeed = fcNode["YawSpeed"] ? fcNode["YawSpeed"].as<float>(0.10f) : 0.10f;
+            fcc.PitchSpeed = fcNode["PitchSpeed"] ? fcNode["PitchSpeed"].as<float>(0.10f) : 0.10f;
+            fcc.MinPitch = fcNode["MinPitch"] ? fcNode["MinPitch"].as<float>(-89.0f) : -89.0f;
+            fcc.MaxPitch = fcNode["MaxPitch"] ? fcNode["MaxPitch"].as<float>(89.0f) : 89.0f;
+            fcc.InvertY = fcNode["InvertY"] ? fcNode["InvertY"].as<bool>(false) : false;
         }
 
         // ---- BoxColliderComponent ----

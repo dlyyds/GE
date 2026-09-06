@@ -312,9 +312,9 @@ void RegisterApi(Impl &eng) {
     };
     lua["character"] = charT;
 
-    // ---- camera → 场景主相机只读查询（第一人称脚本组合移动方向用）----
+    // ---- camera → 场景主相机只读查询（跟随相机脚本组合移动方向用）----
     // 只读、无副作用；取 Primary 优先的主相机（无主相机则第一个相机实体）。
-    // 视角本身由引擎侧 UpdateFirstPersonCamera 每帧更新，脚本只需读 yaw 来
+    // 视角本身由引擎侧 UpdateFollowCamera 每帧更新，脚本只需读 yaw 来
     // 把 WASD 输入旋转到相机朝向系。
     auto activeCamera = [&eng]() -> Camera * {
         if (!eng.scene)
@@ -348,7 +348,7 @@ void RegisterApi(Impl &eng) {
         if (!eng.scene)
             return 0.0f;
         auto view = eng.scene->Reg().view<TransformComponent, CharacterControllerComponent,
-                                           FirstPersonCameraComponent>();
+                                           FollowCameraComponent>();
         if (view.begin() == view.end())
             return 0.0f;
         float yaw = 0.0f;

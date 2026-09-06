@@ -532,7 +532,7 @@ void DebugDrawLayer::DrawFirstPersonEyes(const Camera &camera, const glm::vec2 &
     const glm::vec2 size{viewportSize.x, viewportSize.y};
     ImDrawList *dl = ImGui::GetWindowDrawList();
 
-    // 视点世界坐标投影到屏幕。坐标 = 角色脚底 + EyeOffset（与 Scene::UpdateFirstPersonCamera
+    // 视点世界坐标投影到屏幕。坐标 = 角色脚底 + EyeOffset（与 Scene::UpdateFollowCamera
     // 一致：角色 yaw 每帧与相机同步后，绕 up 旋转 EyeOffset 恒等于原向量）。
     // 单个投影点不裁剪（点若在相机背面，投影后屏幕坐标越界、AddLine 自然不画）。
     const auto projectPoint = [&](const glm::vec3 &world) -> glm::vec2 {
@@ -545,16 +545,16 @@ void DebugDrawLayer::DrawFirstPersonEyes(const Camera &camera, const glm::vec2 &
     const ImU32 eyeColor = ImGui::ColorConvertFloat4ToU32(ImVec4(1.00f, 0.65f, 0.10f, 1.0f));
     const ImU32 footColor = ImGui::ColorConvertFloat4ToU32(ImVec4(1.00f, 0.65f, 0.10f, 0.45f));
 
-    const auto fpsView = m_Context->Scene->Reg().view<TransformComponent, CharacterControllerComponent,
-                                                      FirstPersonCameraComponent>();
-    for (auto entity : fpsView) {
-        const auto &tc = fpsView.get<TransformComponent>(entity);
-        const auto &fp = fpsView.get<FirstPersonCameraComponent>(entity);
-        if (!fp.Enabled) {
+    const auto followView = m_Context->Scene->Reg().view<TransformComponent, CharacterControllerComponent,
+                                                      FollowCameraComponent>();
+    for (auto entity : followView) {
+        const auto &tc = followView.get<TransformComponent>(entity);
+        const auto &fc = followView.get<FollowCameraComponent>(entity);
+        if (!fc.Enabled) {
             continue; // 关闭视点的角色不画
         }
         const glm::vec3 foot = tc.Translation;
-        const glm::vec3 eye = foot + fp.EyeOffset;
+        const glm::vec3 eye = foot + fc.EyeOffset;
         const glm::vec2 sEye = projectPoint(eye);
         const glm::vec2 sFoot = projectPoint(foot);
 

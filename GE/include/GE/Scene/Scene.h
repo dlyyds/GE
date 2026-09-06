@@ -208,10 +208,10 @@ private:
     /// 必须在 UpdateWorldTransforms（DFS 据此重算 world）之前调用。
     void UpdateAnimations(Timestep ts);
 
-    /// 每帧第一人称跟随相机同步：鼠标视角 → 相机 yaw/pitch，相机朝向 →
+    /// 每帧跟随相机同步：鼠标视角 → 相机 yaw/pitch，相机朝向 →
     /// 角色朝向（FacingYaw 通道），角色位置 → 相机位置（EyeOffset）。
     /// 必须在 StepPhysics（物理子步消费 FacingYaw）之后、UpdateWorldTransforms 之前调用。
-    void UpdateFirstPersonCamera();
+    void UpdateFollowCamera();
 
 
     /// 将输入事件路由给主相机（控制相机视角）

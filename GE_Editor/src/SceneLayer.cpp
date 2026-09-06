@@ -113,20 +113,20 @@ void SceneLayer::UpdateMouseCapture() {
         return;
     }
 
-    // Play 态且场景存在挂 FirstPersonCameraComponent 的角色才锁定
+    // Play 态且场景存在挂 FollowCameraComponent 的角色才锁定
     const bool playing = m_Context->Scene->IsPlaying();
-    auto fpView = m_Context->Scene->Reg().view<TransformComponent, CharacterControllerComponent,
-                                               FirstPersonCameraComponent>();
-    const bool hasFps = playing && (fpView.begin() != fpView.end());
+    auto followView = m_Context->Scene->Reg().view<TransformComponent, CharacterControllerComponent,
+                                               FollowCameraComponent>();
+    const bool hasFollowCam = playing && (followView.begin() != followView.end());
 
-    if (hasFps && !m_MouseCaptured) {
+    if (hasFollowCam && !m_MouseCaptured) {
         // 锁定瞬间：光标被锁到窗口中心、位置跳变 → 重置 InputState 增量基准，防首帧 delta 爆值
         double cx = 0.0, cy = 0.0;
         glfwGetCursorPos(window, &cx, &cy);
         m_Context->Scene->GetMutableInputState().ResetMouseBaseline({(float)cx, (float)cy});
         glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
         m_MouseCaptured = true;
-    } else if (!hasFps && m_MouseCaptured) {
+    } else if (!hasFollowCam && m_MouseCaptured) {
         // 解锁瞬间：同样重置基准，避免恢复光标位置跳变造成 delta 爆值
         double cx = 0.0, cy = 0.0;
         glfwGetCursorPos(window, &cx, &cy);
@@ -564,7 +564,7 @@ void SceneLayer::RecordScenePasses(RenderTarget &viewportRT, const glm::vec4 &cl
 }
 
 void SceneLayer::OnUpdate(Timestep &ts) {
-    // Play 态第一人称相机：锁定鼠标（否则无法持续转向）
+    // Play 态跟随相机：锁定鼠标（否则无法持续转向）
     UpdateMouseCapture();
 
     uint32_t vpWidth = 0, vpHeight = 0;
@@ -601,7 +601,7 @@ void SceneLayer::OnEvent(Event &event) {
     const bool playing = m_Context->Scene->IsPlaying();
 
     // Play 态按 ESC 退出运行：编辑器快捷键，不落入游戏脚本/相机输入。
-    // Stop() 回滚到摆放姿态，随后 UpdateMouseCapture 因 hasFps 变 false 自动解锁鼠标。
+    // Stop() 回滚到摆放姿态，随后 UpdateMouseCapture 因 hasFollowCam 变 false 自动解锁鼠标。
     if (playing) {
         EventDispatcher escDisp(event);
         bool escPressed = false;
@@ -649,7 +649,7 @@ void SceneLayer::OnEvent(Event &event) {
 
     // 输入路由：Scene 只记脚本输入快照（相机是否消费由 SetProcessCameraInput 门控）；
     // 编辑器相机的导航输入在场景之外直接喂给 EditorCamera。
-    const bool mouseCaptured = m_MouseCaptured; // Play 态第一人称已锁鼠标
+    const bool mouseCaptured = m_MouseCaptured; // Play 态跟随相机已锁鼠标
     const auto routeInput = [&](bool feedCamera) {
         if (playing) {
             m_Context->Scene->SetProcessCameraInput(feedCamera);
@@ -664,7 +664,7 @@ void SceneLayer::OnEvent(Event &event) {
 
     // 未悬停时直接不转发输入事件给场景。
     // 例外 1：松开的是视口内按下的按键时，仍回传释放事件，让相机按键状态复位。
-    // 例外 2：第一人称鼠标已锁定（GLFW_CURSOR_DISABLED）——ImGui 悬停判定失效，
+    // 例外 2：跟随相机鼠标已锁定（GLFW_CURSOR_DISABLED）——ImGui 悬停判定失效，
     //         但光标被锁在窗口内、位置相对移动仍上报，必须无条件转发否则无法转向。
     if (!inViewport && event.IsInCategory(EventCategoryInput) && !mouseCaptured) {
         // 例外：松开的是视口内按下的按键时，仍回传释放事件，让相机按键状态复位。
@@ -722,7 +722,7 @@ void SceneLayer::OnImGuiRender() {
                 m_Gizmo->Render(GetActiveViewCamera(), glm::vec2(imagePos.x, imagePos.y), m_ViewportSize);
             }
 
-            // 调试线框叠加（包围盒/碰撞体/第一人称视点）已拆到 DebugDrawLayer
+            // 调试线框叠加（包围盒/碰撞体/跟随相机视点）已拆到 DebugDrawLayer
             if (m_DebugDrawLayer) {
                 m_DebugDrawLayer->RenderSceneOverlay(
                     GetActiveViewCamera(), glm::vec2(imagePos.x, imagePos.y), m_ViewportSize);

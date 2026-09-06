@@ -49,7 +49,7 @@ private:
     /// 视口是否叠加物理碰撞体线框（青绿色：盒子/球体）
     bool m_ShowColliders = false;
 
-    /// 是否叠加第一人称视点标记（依赖 FirstPersonCameraComponent 实体存在）
+    /// 是否叠加跟随相机视点标记（依赖 FollowCameraComponent 实体存在）
     bool m_ShowFPSEyes = true;
 
     /// 是否叠加方向光调试图标（太阳盘 + 光线束，颜色取灯光色）

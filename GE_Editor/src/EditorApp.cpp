@@ -30,7 +30,7 @@ public:
         dock_space->SetSceneLayer(scene_layer.get());
         // 在场景视口上叠加 ImGuizmo 变换 gizmo（由 SceneLayer 在 Scene 窗口内回调）
         scene_layer->SetGizmoController(std::make_unique<GizmoController>(scene_ctx, hierarchy_layer.get()));
-        // 在场景视口上叠加包围盒/碰撞体/第一人称视点调试线框
+        // 在场景视口上叠加包围盒/碰撞体/跟随相机视点调试线框
         scene_layer->SetDebugDrawLayer(debug_draw_layer.get());
         PushLayer(dock_space);
         PushLayer(scene_layer);

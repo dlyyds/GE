@@ -184,7 +184,7 @@ Camera &SceneLayer::GetRenderingViewCamera(float aspect) {
 
 void SceneLayer::RecordScenePasses(RenderTarget &viewportRT, const glm::vec4 &clearColor) {
     // ── 向本帧渲染图注册场景 pass：Scene3D → Scene2D，或延迟链
-    //    GBuffer → Lighting → Transparent → Scene2D ──
+    //    GBuffer → Lighting → Tonemap → Transparent → Scene2D ──
     // 图对象与 Builder 由 Renderer 托管（GetFrameGraphBuilder），每帧 BeginFrame
     // 末尾已 Reset；这里只 Import 视口颜色/深度并声明 pass 读写，命令录制与
     // Execute 统一在 Renderer::EndFrame（ImGui 上屏前）完成。故此处不复位
@@ -211,6 +211,14 @@ void SceneLayer::RecordScenePasses(RenderTarget &viewportRT, const glm::vec4 &cl
         ResourceHandle hG1 = b.CreateVirtualResource(gdesc, "GBuffer_Normal");
         ResourceHandle hG2 = b.CreateVirtualResource(gdesc, "GBuffer_WorldPos");
         ResourceHandle hG3 = b.CreateVirtualResource(gdesc, "GBuffer_Emissive");
+
+        // HDR 中间缓冲：Lighting 写入线性 RGBA16F，Tonemap 采样后写回视口颜色。
+        // alpha 通道作为天空/几何元数据：天空=0，几何/透明合成=1（HDR 计划书 §5.3）。
+        RenderGraphResourceDesc hdrDesc;
+        hdrDesc.extent = extent;
+        hdrDesc.samples = vk::SampleCountFlagBits::e1;
+        hdrDesc.format = vk::Format::eR16G16B16A16Sfloat;
+        ResourceHandle hHDR = b.CreateVirtualResource(hdrDesc, "Scene_HDR");
 
         // 方向光阴影（CSM C2）：逐级声明 ShadowMap_C0..C{N-1}，每级一张独立深度图
         // （虚拟资源，格式 D32F，尺寸 = GetCascadeShadowSize(c)：级 0 保持现状 4096²、
@@ -283,7 +291,7 @@ void SceneLayer::RecordScenePasses(RenderTarget &viewportRT, const glm::vec4 &cl
             Renderer::Get3DRenderer().FlushGBuffer(ctx);
         };
 
-        // Pass2 "Lighting"：读 G0~G3，写视口颜色 eClear；天空盒并入此 pass。
+        // Pass2 "Lighting"：读 G0~G3，写 Scene_HDR（RGBA16F）；天空盒并入此 pass。
         RenderPassDesc &lightingPass = b.AddPass("Lighting");
         lightingPass.renderArea = renderArea;
         lightingPass.readImages.push_back(
@@ -303,7 +311,7 @@ void SceneLayer::RecordScenePasses(RenderTarget &viewportRT, const glm::vec4 &cl
                 {hShadow[c], ResourceUsage::ShaderRead, vk::ImageLayout::eShaderReadOnlyOptimal});
         }
         AttachmentDesc lightingColorClear;
-        lightingColorClear.resource = hColor;
+        lightingColorClear.resource = hHDR;
         lightingColorClear.usage = ResourceUsage::ColorAttachment;
         lightingColorClear.loadOp = vk::AttachmentLoadOp::eClear;
         lightingColorClear.storeOp = vk::AttachmentStoreOp::eStore;
@@ -311,6 +319,22 @@ void SceneLayer::RecordScenePasses(RenderTarget &viewportRT, const glm::vec4 &cl
         lightingPass.colorAttachments.push_back(lightingColorClear);
         lightingPass.execute = [](PassExecuteContext &ctx) {
             Renderer::Get3DRenderer().FlushLighting(ctx);
+        };
+
+        // Pass2b "Tonemap"：采样 Scene_HDR，曝光 + ACES 后写入视口颜色。
+        RenderPassDesc &tonemapPass = b.AddPass("Tonemap");
+        tonemapPass.renderArea = renderArea;
+        tonemapPass.readImages.push_back(
+            {hHDR, ResourceUsage::ShaderRead, vk::ImageLayout::eShaderReadOnlyOptimal});
+        AttachmentDesc tonemapColorClear;
+        tonemapColorClear.resource = hColor;
+        tonemapColorClear.usage = ResourceUsage::ColorAttachment;
+        tonemapColorClear.loadOp = vk::AttachmentLoadOp::eClear;
+        tonemapColorClear.storeOp = vk::AttachmentStoreOp::eStore;
+        tonemapColorClear.clearValue.color = {0.0f, 0.0f, 0.0f, 0.0f};
+        tonemapPass.colorAttachments.push_back(tonemapColorClear);
+        tonemapPass.execute = [](PassExecuteContext &ctx) {
+            Renderer::Get3DRenderer().FlushTonemap(ctx);
         };
 
         // Pass3 "Transparent"：颜色/深度 eLoad，叠在前向透明混合管线上。
@@ -602,8 +626,8 @@ void SceneLayer::OnImGuiRender() {
             m_Context->Scene->SetCullingMode(static_cast<Scene::CullingMode>(cull));
         }
 
-        // 延迟渲染开关：切换 SceneLayer 的 Scene3D 单 pass 与 GBuffer → Lighting
-        // → Transparent 三 pass 链，便于 RenderDoc / 视觉 A-B 对比。
+        // 延迟渲染开关：切换 SceneLayer 的 Scene3D 单 pass 与 GBuffer → Lighting → Tonemap
+        // → Transparent 四 pass 链，便于 RenderDoc / 视觉 A-B 对比。
         ImGui::Separator();
         bool deferred = Renderer::Get3DRenderer().IsDeferred();
         if (ImGui::Checkbox("延迟渲染", &deferred)) {

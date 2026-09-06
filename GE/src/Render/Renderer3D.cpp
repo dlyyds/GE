@@ -179,6 +179,24 @@ Renderer3D::Renderer3D() {
     m_LightingLayout = &cache.RequestPipelineLayout({m_LightingVert, m_LightingFrag});
     m_LightingLayout->SetDebugName("DeferredLighting_PipelineLayout");
 
+    // ── 延迟渲染：Tonemap 全屏三角形着色器 + 管线布局 ──────────────
+    m_TonemapVert = &cache.RequestShaderModule(
+        vk::ShaderStageFlagBits::eVertex,
+        ShaderSource(Renderer::GetAssetManager()
+            .ResolvePath(std::string(AssetPaths::Shaders) + "/tonemap.vert.spv")
+            .string()),
+        "main", ShaderVariant{});
+
+    m_TonemapFrag = &cache.RequestShaderModule(
+        vk::ShaderStageFlagBits::eFragment,
+        ShaderSource(Renderer::GetAssetManager()
+            .ResolvePath(std::string(AssetPaths::Shaders) + "/tonemap.frag.spv")
+            .string()),
+        "main", ShaderVariant{});
+
+    m_TonemapLayout = &cache.RequestPipelineLayout({m_TonemapVert, m_TonemapFrag});
+    m_TonemapLayout->SetDebugName("Tonemap_PipelineLayout");
+
     // ── 2b. 天空盒着色器 + 管线布局 ─────────────────────────────────
     //    等距柱状投影天空盒：全屏三角形 + 反投影重建视线 + 采样全景图。
     //    管线布局由着色器反射自动构建（set 0 binding 0 = SkyboxUBO，binding 1 = sampler2D）。
@@ -883,6 +901,29 @@ void Renderer3D::FlushLighting(PassExecuteContext &ctx) {
     cmd.Draw(3, 1, 0, 0);
 }
 
+
+void Renderer3D::FlushTonemap(PassExecuteContext &ctx) {
+    GE_PROFILE_SCOPE("Renderer3D::FlushTonemap");
+
+    GE_CORE_ASSERT(ctx.colorAttachmentView, "Tonemap pass 必须声明颜色附件");
+
+    const vk::Format colorFormat = ctx.colorAttachmentView->get_format();
+    const BufferAllocation tonemapUboAlloc = UploadTonemapUBO(*ctx.frame);
+
+    ConfigureTonemapPipeline(*ctx.cmd, colorFormat, ctx.renderArea.extent);
+
+    // 绑定 Tonemap UBO（set 0 binding 0）并采样 HDR 缓冲（set 0 binding 1）。
+    // 首张 readImageView 即 Scene_HDR；采样器复用默认白色纹理的线性 2D 采样器。
+    auto &cmd = *ctx.cmd;
+    cmd.BindBuffer(tonemapUboAlloc.get_buffer(), tonemapUboAlloc.get_offset(),
+                   tonemapUboAlloc.get_size(), 0, 0);
+    if (m_DefaultWhiteTexture && !ctx.readImageViews.empty()) {
+        cmd.BindImage(*ctx.readImageViews[0], m_DefaultWhiteTexture->GetSampler(), 0, 1);
+    }
+
+    cmd.Draw(3, 1, 0, 0);
+}
+
 void Renderer3D::FlushTransparent(PassExecuteContext &ctx) {
     GE_PROFILE_SCOPE("Renderer3D::FlushTransparent");
 
@@ -1178,6 +1219,21 @@ BufferAllocation Renderer3D::UploadLightingUBO(VulkanRenderFrame &frame) {
     return alloc;
 }
 
+
+BufferAllocation Renderer3D::UploadTonemapUBO(VulkanRenderFrame &frame) {
+    // Tonemap UBO：当前曝光 = 1.0，保留开关供调试/后续接入相机曝光。
+    // flags.x = tonemap 开关，flags.y = 天空 alpha 旗标开关（保持天空不 tonemap 语义）。
+    TonemapUBO ubo{};
+    ubo.exposure.x = 1.0f;
+    ubo.flags.x = 1.0f;
+    ubo.flags.y = 1.0f;
+
+    BufferAllocation alloc = frame.AllocateBuffer(
+        vk::BufferUsageFlagBits::eUniformBuffer, sizeof(TonemapUBO));
+    alloc.update(ubo);
+    return alloc;
+}
+
 void Renderer3D::DrawSkybox(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame,
                             vk::Format colorFormat, vk::Format depthFormat,
                             vk::Extent2D extent) {
@@ -1426,6 +1482,52 @@ void Renderer3D::ConfigureLightingPipeline(VulkanCommandBuffer &cmd,
     ps.setColorBlendAttachments({blendState});
 
     ps.setVertexInputFromShader(*m_LightingVert);
+    ps.setInputAssembly(vk::PrimitiveTopology::eTriangleList)
+        .setCullMode(vk::CullModeFlagBits::eNone)
+        .setFrontFace(vk::FrontFace::eCounterClockwise)
+        .setDepthTestEnable(VK_FALSE)
+        .setDepthWriteEnable(VK_FALSE);
+
+    ps.enableDynamicState(vk::DynamicState::eViewport)
+        .enableDynamicState(vk::DynamicState::eScissor)
+        .enableDynamicState(vk::DynamicState::eCullMode)
+        .enableDynamicState(vk::DynamicState::eFrontFace)
+        .enableDynamicState(vk::DynamicState::ePrimitiveTopology)
+        .enableDynamicState(vk::DynamicState::eDepthTestEnable)
+        .enableDynamicState(vk::DynamicState::eDepthWriteEnable)
+        .enableDynamicState(vk::DynamicState::eDepthCompareOp);
+
+    vk::Viewport vp;
+    vp.width = static_cast<float>(extent.width);
+    vp.height = static_cast<float>(extent.height);
+    vp.minDepth = 0.0f;
+    vp.maxDepth = 1.0f;
+    cmd.SetViewport(0, {vp});
+
+    vk::Rect2D scissor;
+    scissor.extent.width = extent.width;
+    scissor.extent.height = extent.height;
+    cmd.SetScissor(0, {scissor});
+}
+
+
+void Renderer3D::ConfigureTonemapPipeline(VulkanCommandBuffer &cmd,
+                                          vk::Format colorFormat,
+                                          vk::Extent2D extent) {
+    // Tonemap pass 不依赖顶点缓冲，也不需要深度附件；全屏三角形采样 HDR 后写出 LDR。
+    cmd.BindPipelineLayout(*m_TonemapLayout);
+
+    auto &ps = cmd.GetPipelineState();
+    ps.setRenderingFormats({colorFormat});
+
+    vk::PipelineColorBlendAttachmentState blendState{};
+    blendState.colorWriteMask = vk::ColorComponentFlagBits::eR
+                                | vk::ColorComponentFlagBits::eG
+                                | vk::ColorComponentFlagBits::eB
+                                | vk::ColorComponentFlagBits::eA;
+    ps.setColorBlendAttachments({blendState});
+
+    ps.setVertexInputFromShader(*m_TonemapVert);
     ps.setInputAssembly(vk::PrimitiveTopology::eTriangleList)
         .setCullMode(vk::CullModeFlagBits::eNone)
         .setFrontFace(vk::FrontFace::eCounterClockwise)

@@ -239,7 +239,7 @@ void main()
         if (lighting.flags.x > 0.5) {
             color = texture(samplerSkybox, worldDir).rgb;
         }
-        outColor = vec4(color, 1.0);
+        outColor = vec4(color, 0.0); // 天空：保持不 tonemap（HDR alpha 元数据 = 0）
         return;
     }
 
@@ -287,5 +287,5 @@ void main()
     }
 
     result += emissive;
-    outColor = vec4(acesToneMap(result), 1.0);
+    outColor = vec4(result, 1.0); // 几何：线性 HDR，alpha 元数据 = 1（ACES 移到 Tonemap）
 }

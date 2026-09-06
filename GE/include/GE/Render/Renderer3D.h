@@ -419,8 +419,11 @@ public:
     /// 录制 GBuffer pass（MRT 输出 + 写入深度）。
     void FlushGBuffer(PassExecuteContext &ctx);
 
-    /// 录制 Lighting pass（采样 GBuffer，输出最终颜色）。
+    /// 录制 Lighting pass（采样 GBuffer，输出线性 HDR 到 Scene_HDR）。
     void FlushLighting(PassExecuteContext &ctx);
+
+    /// 录制 Tonemap pass（采样 Scene_HDR，曝光 + ACES 后写入视口颜色）。
+    void FlushTonemap(PassExecuteContext &ctx);
 
     /// 录制 Transparent pass（透明对象仍走前向 alpha 混合）。
     void FlushTransparent(PassExecuteContext &ctx);
@@ -467,6 +470,16 @@ private:
     };
 
     static_assert(sizeof(LightingUBO) % 16 == 0, "LightingUBO 必须 16 字节对齐");
+
+    /// HDR Tonemap UBO（std140 布局，set 0 binding 0）。
+    /// exposure.x = 曝光系数（当前固定 1.0，后续接入相机/场景曝光）；
+    /// flags.x = tonemap 开关，flags.y = 天空 alpha 旗标开关。
+    struct TonemapUBO {
+        glm::vec4 exposure; ///< x = 曝光系数，yzw 预留
+        glm::vec4 flags;    ///< x = tonemap 开关，y = 天空旗标开关，zw 预留
+    };
+
+    static_assert(sizeof(TonemapUBO) % 16 == 0, "TonemapUBO 必须 16 字节对齐");
 
     /// per-instance 数据（阶段3，存入 SSBO，std430 布局）
     /// 必须与 GLSL InstanceData 块一致：mat4(64B) + vec4(16B) = 80B。
@@ -567,6 +580,9 @@ private:
     /// 分配并上传延迟 Lighting UBO（反投影矩阵 + 光照参数 + 背景色）
     BufferAllocation UploadLightingUBO(VulkanRenderFrame &frame);
 
+    /// 分配并上传 Tonemap UBO（曝光 + 开关旗标）
+    BufferAllocation UploadTonemapUBO(VulkanRenderFrame &frame);
+
     /**
      * @brief 计算并缓存本帧延迟链批次（幂等）：排序 + 切不透明段 + 上传缓冲。
      *
@@ -621,6 +637,11 @@ private:
     void ConfigureLightingPipeline(VulkanCommandBuffer &cmd,
                                    vk::Format colorFormat,
                                    vk::Extent2D extent);
+
+    /// 配置 Tonemap 管线状态（全屏三角形 / 单个颜色附件）
+    void ConfigureTonemapPipeline(VulkanCommandBuffer &cmd,
+                                  vk::Format colorFormat,
+                                  vk::Extent2D extent);
 
     /// 绑定网格共享描述符（Frame UBO + 点光源 SSBO，set 0）
     void BindSharedUniforms(VulkanCommandBuffer &cmd,
@@ -797,6 +818,13 @@ private:
 
     /// 延迟 Lighting 管线布局（由全局资源缓存管理，不拥有）
     VulkanPipelineLayout *m_LightingLayout = nullptr;
+
+    /// Tonemap 全屏三角形顶点/片元着色器（由全局资源缓存管理，不拥有）
+    VulkanShaderModule *m_TonemapVert = nullptr;
+    VulkanShaderModule *m_TonemapFrag = nullptr;
+
+    /// Tonemap 管线布局（由全局资源缓存管理，不拥有）
+    VulkanPipelineLayout *m_TonemapLayout = nullptr;
 
     /// 天空盒顶点着色器（由全局资源缓存管理，不拥有）
     VulkanShaderModule *m_SkyboxVert = nullptr;

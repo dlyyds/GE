@@ -499,12 +499,23 @@ void VulkanCommandBuffer::FlushDescriptorState(vk::PipelineBindPoint pipeline_bi
             // 跳过当前 pipeline layout 不存在的 stale binding。多个 pass 共用
             // 同一个 command buffer 时，上一组资源绑定可能带进不同描述符布局，
             // 不清除就会在 VulkanDescriptorSet 校验阶段报 layout 不匹配。
-            if (!descriptor_set_layout.GetLayoutBinding(binding_index)) {
+            const vk::DescriptorSetLayoutBinding *layout_binding =
+                descriptor_set_layout.GetLayoutBinding(binding_index);
+            if (!layout_binding) {
                 continue;
             }
 
             for (auto &element_it : binding_it.second) {
                 uint32_t array_element = element_it.first;
+
+                // 同一 binding 号在不同 pass 里描述符数组大小可能不同
+                // （例如 Lighting binding 7 = shadow 数组[4]，透明 IBL binding 7 = BRDF
+                // LUT 单图）。上一 pass 残留的越界数组元素必须跳过，否则会触发
+                // VUID-VkWriteDescriptorSet-dstArrayElement-0032 并在校验层被上报。
+                if (array_element >= layout_binding->descriptorCount) {
+                    continue;
+                }
+
                 auto const &resource_info = element_it.second;
 
                 if (resource_info.buffer != nullptr) {

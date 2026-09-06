@@ -411,6 +411,18 @@ public:
     /// 当前是否走延迟渲染路径。
     bool IsDeferred() const { return m_Deferred; }
 
+    /// 切换 Tonemap 开关（仅延迟 HDR 链生效；false 时 Tonemap pass 直接透传 HDR，不做 ACES）。
+    void SetTonemapEnabled(bool enabled) { m_TonemapEnabled = enabled; }
+
+    /// 当前 Tonemap 是否启用。
+    bool IsTonemapEnabled() const { return m_TonemapEnabled; }
+
+    /// 设置曝光系数（仅延迟 HDR 链的 Tonemap 生效；1.0 = 不改亮度）。
+    void SetExposure(float exposure) { m_Exposure = exposure; }
+
+    /// 当前曝光系数。
+    float GetExposure() const { return m_Exposure; }
+
     /// 录制某级 ShadowMap pass（只画该级体积内的不透明段深度，零颜色附件 + 深度附件）。
     /// cascade 指定级号：画 m_ShadowBatches[cascade] + m_ShadowInstanceBuffer[cascade]，
     /// FrameUBO.view = cascadeViewProj[cascade]；视口 = 该级深度图尺寸（pass renderArea）。
@@ -620,7 +632,8 @@ private:
     void ConfigureMeshPipeline(VulkanCommandBuffer &cmd,
                                vk::Format colorFormat, vk::Format depthFormat,
                                vk::Extent2D extent,
-                               bool transparent = false);
+                               bool transparent = false,
+                               bool hdrTransparent = false);
 
     /// 配置 GBuffer MRT 管线状态（四个颜色附件 / 深度 / 视口剪刀）
     void ConfigureGBufferPipeline(VulkanCommandBuffer &cmd,
@@ -660,7 +673,8 @@ private:
                            const std::vector<RenderBatch> &batches,
                            const BufferAllocation &instanceBuffer,
                            bool gbuffer = false,
-                           bool shadow = false);
+                           bool shadow = false,
+                           bool hdrTransparent = false);
 
     /**
      * @brief 按 pass 模式与材质路由网格管线布局。
@@ -673,10 +687,11 @@ private:
      * @param pbr     材质是否为 PBR
      * @param useIbl  IBL 是否启用（仅前向 PBR 相关）
      * @param skinned 是否为蒙皮批次
+     * @param hdrTransparent 是否 HDR 透明合成（延迟 Transparent 在 Tonemap 前输出到 Scene_HDR）
      */
     VulkanPipelineLayout *ResolveMeshLayout(bool shadow, bool gbuffer,
-                                            bool pbr, bool useIbl, bool skinned);
-
+                                            bool pbr, bool useIbl, bool skinned,
+                                            bool hdrTransparent = false);
     /// 统计 draw call 与三角形数量（draw call = 批次数量）
     void RecordStats(uint32_t drawCallCount);
 
@@ -776,6 +791,12 @@ private:
     /// PBR-IBL 片元着色器（HAS_IBL 变体，由全局资源缓存管理，不拥有）
     VulkanShaderModule *m_FragShaderPBR_IBL = nullptr;
 
+    /// PBR HDR 透明片元着色器（mesh_pbr_hdr.frag：线性 HDR 输出，不做 ACES）
+    VulkanShaderModule *m_FragShaderPBR_HDR = nullptr;
+
+    /// PBR-IBL HDR 透明片元着色器（mesh_pbr_ibl_hdr.frag：线性 HDR 输出，不做 ACES）
+    VulkanShaderModule *m_FragShaderPBR_IBL_HDR = nullptr;
+
     /// Blinn-Phong 管线布局（由全局资源缓存管理，不拥有）
     VulkanPipelineLayout *m_PipelineLayout = nullptr;
 
@@ -784,6 +805,14 @@ private:
 
     /// PBR-IBL 管线布局（set 1 含 binding 5/6/7 的 IBL 采样器，由全局资源缓存管理，不拥有）
     VulkanPipelineLayout *m_PipelineLayoutPBR_IBL = nullptr;
+
+    /// PBR HDR 透明管线布局（静态 + 蒙皮）
+    VulkanPipelineLayout *m_PipelineLayoutPBR_HDR = nullptr;
+    VulkanPipelineLayout *m_PipelineLayoutSkinnedPBR_HDR = nullptr;
+
+    /// PBR-IBL HDR 透明管线布局（静态 + 蒙皮）
+    VulkanPipelineLayout *m_PipelineLayoutPBR_IBL_HDR = nullptr;
+    VulkanPipelineLayout *m_PipelineLayoutSkinnedPBR_IBL_HDR = nullptr;
 
     /// 蒙皮顶点着色器（mesh_skinned.vert，声明 location 4/5 + set2 binding1 关节矩阵，
     /// 由全局资源缓存管理，不拥有）
@@ -849,6 +878,12 @@ private:
 
     /// IBL 光照开关（与 m_EnvironmentMap 非空共同决定是否走 IBL 变体）
     bool m_IBLEnabled = false;
+
+    /// Tonemap 开关（仅延迟 HDR 链生效；经 TonemapUBO.flags.x 传着色器）
+    bool m_TonemapEnabled = true;
+
+    /// 曝光系数（由场景/编辑器相机每帧接入；经 TonemapUBO.exposure.x 传着色器）
+    float m_Exposure = 1.0f;
 
     /// IBL 环境光强度（缩放 IBL 贡献，经 iblParams.y 传给着色器）
     float m_IBLIntensity = 1.0f;

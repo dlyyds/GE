@@ -95,6 +95,22 @@ Renderer3D::Renderer3D() {
         {m_VertShader, m_FragShaderPBR_IBL});
     m_PipelineLayoutPBR_IBL->SetDebugName("Mesh3D_PipelineLayout_PBR_IBL");
 
+    // ── 延迟 HDR 透明合成：PBR/PBR-IBL 无 ACES 片元（mesh_pbr_hdr.frag）────────
+    // 透明段在 Tonemap 前写入 Scene_HDR，必须保留线性 HDR；PBR-IBL 变体供 IBL 启用时使用。
+    m_FragShaderPBR_HDR = &cache.RequestShaderModule(
+        vk::ShaderStageFlagBits::eFragment,
+        ShaderSource(Renderer::GetAssetManager()
+            .ResolvePath(std::string(AssetPaths::Shaders) + "/mesh_pbr_hdr.frag.spv")
+            .string()),
+        "main", ShaderVariant{});
+
+    m_FragShaderPBR_IBL_HDR = &cache.RequestShaderModule(
+        vk::ShaderStageFlagBits::eFragment,
+        ShaderSource(Renderer::GetAssetManager()
+            .ResolvePath(std::string(AssetPaths::Shaders) + "/mesh_pbr_ibl_hdr.frag.spv")
+            .string()),
+        "main", ShaderVariant{});
+
     // ── 3a. 蒙皮肤管线（阶段 C）：mesh_skinned.vert + 三种片元 ─────────
     //    蒙皮顶点着色器声明 location 4/5（关节索引/权重）与 set2 binding1
     //    （关节矩阵 SSBO），反射自动生成 80B 顶点输入与扩展描述符布局。
@@ -117,6 +133,22 @@ Renderer3D::Renderer3D() {
     m_PipelineLayoutSkinnedPBR_IBL = &cache.RequestPipelineLayout(
         {m_VertShaderSkinned, m_FragShaderPBR_IBL});
     m_PipelineLayoutSkinnedPBR_IBL->SetDebugName("Mesh3D_PipelineLayout_Skinned_PBR_IBL");
+
+    m_PipelineLayoutPBR_HDR = &cache.RequestPipelineLayout(
+        {m_VertShader, m_FragShaderPBR_HDR});
+    m_PipelineLayoutPBR_HDR->SetDebugName("Mesh3D_PipelineLayout_PBR_HDR");
+
+    m_PipelineLayoutSkinnedPBR_HDR = &cache.RequestPipelineLayout(
+        {m_VertShaderSkinned, m_FragShaderPBR_HDR});
+    m_PipelineLayoutSkinnedPBR_HDR->SetDebugName("Mesh3D_PipelineLayout_Skinned_PBR_HDR");
+
+    m_PipelineLayoutPBR_IBL_HDR = &cache.RequestPipelineLayout(
+        {m_VertShader, m_FragShaderPBR_IBL_HDR});
+    m_PipelineLayoutPBR_IBL_HDR->SetDebugName("Mesh3D_PipelineLayout_PBR_IBL_HDR");
+
+    m_PipelineLayoutSkinnedPBR_IBL_HDR = &cache.RequestPipelineLayout(
+        {m_VertShaderSkinned, m_FragShaderPBR_IBL_HDR});
+    m_PipelineLayoutSkinnedPBR_IBL_HDR->SetDebugName("Mesh3D_PipelineLayout_Skinned_PBR_IBL_HDR");
 
     // ── 延迟渲染：GBuffer 片元着色器 + 静态/蒙皮两份管线布局 ─────────
     // GBuffer 只输出 G-Buffer 属性，光照后置到 Lighting pass。静态路径复用
@@ -936,12 +968,13 @@ void Renderer3D::FlushTransparent(PassExecuteContext &ctx) {
                                            : vk::Format::eUndefined;
 
         ConfigureMeshPipeline(*ctx.cmd, colorFormat, depthFormat,
-                              ctx.renderArea.extent, /*transparent=*/true);
+                              ctx.renderArea.extent, /*transparent=*/true, /*hdrTransparent=*/true);
         BindSharedUniforms(*ctx.cmd, m_CachedFrameUBO, m_CachedLightBuffer,
                            /*bindLights=*/true);
         if (!m_TransparentBatches.empty()) {
             DrawMeshInstances(*ctx.cmd, *ctx.frame, m_TransparentBatches,
-                              m_CachedInstanceBuffer, /*gbuffer=*/false);
+                              m_CachedInstanceBuffer, /*gbuffer=*/false, /*shadow=*/false,
+                              /*hdrTransparent=*/true);
         }
 
         m_OpaqueBatches.clear();
@@ -1221,11 +1254,12 @@ BufferAllocation Renderer3D::UploadLightingUBO(VulkanRenderFrame &frame) {
 
 
 BufferAllocation Renderer3D::UploadTonemapUBO(VulkanRenderFrame &frame) {
-    // Tonemap UBO：当前曝光 = 1.0，保留开关供调试/后续接入相机曝光。
-    // flags.x = tonemap 开关，flags.y = 天空 alpha 旗标开关（保持天空不 tonemap 语义）。
+    // Tonemap UBO：曝光来自场景/编辑器相机（m_Exposure，默认 1.0）。
+    // flags.x = tonemap 开关（编辑器可关，关闭时透传线性 HDR），flags.y = 天空
+    // alpha 旗标开关（保持天空不 tonemap 语义）。
     TonemapUBO ubo{};
-    ubo.exposure.x = 1.0f;
-    ubo.flags.x = 1.0f;
+    ubo.exposure.x = m_Exposure;
+    ubo.flags.x = m_TonemapEnabled ? 1.0f : 0.0f;
     ubo.flags.y = 1.0f;
 
     BufferAllocation alloc = frame.AllocateBuffer(
@@ -1321,7 +1355,8 @@ void Renderer3D::DrawSkybox(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame,
 void Renderer3D::ConfigureMeshPipeline(VulkanCommandBuffer &cmd,
                                        vk::Format colorFormat, vk::Format depthFormat,
                                        vk::Extent2D extent,
-                                       bool transparent) {
+                                       bool transparent,
+                                       bool hdrTransparent) {
     // ====================================================================
     // 4. 配置管线状态
     // ====================================================================
@@ -1364,7 +1399,13 @@ void Renderer3D::ConfigureMeshPipeline(VulkanCommandBuffer &cmd,
         blendState.srcColorBlendFactor = vk::BlendFactor::eSrcAlpha;
         blendState.dstColorBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha;
         blendState.srcAlphaBlendFactor = vk::BlendFactor::eOne;
-        blendState.dstAlphaBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha;
+        if (hdrTransparent) {
+            // HDR 透明：alpha 通道作为 Scene_HDR 的天空/几何元数据，强制收敛到 1，
+            // 否则透明覆盖天空的像素会被 Tonemap 误判为天空而跳过 tonemap。
+            blendState.dstAlphaBlendFactor = vk::BlendFactor::eZero;
+        } else {
+            blendState.dstAlphaBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha;
+        }
     }
     ps.setColorBlendAttachments({blendState});
 
@@ -1574,14 +1615,22 @@ void Renderer3D::BindSharedUniforms(VulkanCommandBuffer &cmd,
 
 VulkanPipelineLayout *Renderer3D::ResolveMeshLayout(bool shadow, bool gbuffer,
                                                     bool pbr, bool useIbl,
-                                                    bool skinned) {
-    // 优先级：阴影 > GBuffer > 前向。前向按 PBR → IBL 逐级展开；
+                                                    bool skinned,
+                                                    bool hdrTransparent) {
+    // 优先级：阴影 > GBuffer > HDR 透明 > 前向。HDR 透明在 Tonemap 前输出到
+    // Scene_HDR，必须用无 ACES 的片元变体（mesh_pbr_hdr / mesh_pbr_ibl_hdr）；
     // 每个分支取「蒙皮 / 静态」对应布局。顺序判定代替嵌套三元，直读。
     if (shadow) {
         return skinned ? m_PipelineLayoutSkinnedShadow : m_PipelineLayoutShadow;
     }
     if (gbuffer) {
         return skinned ? m_PipelineLayoutSkinnedGBuffer : m_PipelineLayoutGBuffer;
+    }
+    if (hdrTransparent && pbr && useIbl) {
+        return skinned ? m_PipelineLayoutSkinnedPBR_IBL_HDR : m_PipelineLayoutPBR_IBL_HDR;
+    }
+    if (hdrTransparent && pbr) {
+        return skinned ? m_PipelineLayoutSkinnedPBR_HDR : m_PipelineLayoutPBR_HDR;
     }
     if (pbr && useIbl) {
         return skinned ? m_PipelineLayoutSkinnedPBR_IBL : m_PipelineLayoutPBR_IBL;
@@ -1596,7 +1645,8 @@ void Renderer3D::DrawMeshInstances(VulkanCommandBuffer &cmd, VulkanRenderFrame &
                                    const std::vector<RenderBatch> &batches,
                                    const BufferAllocation &instanceBuffer,
                                    bool gbuffer,
-                                   bool shadow) {
+                                   bool shadow,
+                                   bool hdrTransparent) {
     // ── 6. 逐批次 instanced 绘制 ─────────────────────────────────────
     vk::DeviceSize vertexOffset = 0;
 
@@ -1624,7 +1674,8 @@ void Renderer3D::DrawMeshInstances(VulkanCommandBuffer &cmd, VulkanRenderFrame &
 
         if (pipelineId != currentPipelineId) {
             VulkanPipelineLayout *targetLayout =
-                ResolveMeshLayout(shadow, gbuffer, pbr, useIbl, skinned);
+                ResolveMeshLayout(shadow, gbuffer, pbr, useIbl, skinned,
+                                  hdrTransparent);
 
             auto &ps = cmd.GetPipelineState();
             if (skinned) {

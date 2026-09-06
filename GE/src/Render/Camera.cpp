@@ -121,6 +121,13 @@ void Camera::SetOrbit(float theta_degrees, float phi_degrees, float distance) {
     m_Distance = std::clamp(distance, MinDistance, MaxDistance);
 }
 
+// ---- Exposure ----
+
+void Camera::SetExposure(float exposure) {
+    // 曝光必须为正；允许 0 表示黑但交互上无意义，底部给一个极小值避免除零。
+    m_Exposure = std::clamp(exposure, 0.01f, 64.0f);
+}
+
 // ---- Mouse input ----
 
 void Camera::OnMouseMove(float dx, float dy, bool left_down, bool right_down) {

@@ -184,7 +184,7 @@ Camera &SceneLayer::GetRenderingViewCamera(float aspect) {
 
 void SceneLayer::RecordScenePasses(RenderTarget &viewportRT, const glm::vec4 &clearColor) {
     // ── 向本帧渲染图注册场景 pass：Scene3D → Scene2D，或延迟链
-    //    GBuffer → Lighting → Tonemap → Transparent → Scene2D ──
+    //    GBuffer → Lighting → Transparent(HDR) → Tonemap → Scene2D ──
     // 图对象与 Builder 由 Renderer 托管（GetFrameGraphBuilder），每帧 BeginFrame
     // 末尾已 Reset；这里只 Import 视口颜色/深度并声明 pass 读写，命令录制与
     // Execute 统一在 Renderer::EndFrame（ImGui 上屏前）完成。故此处不复位
@@ -321,27 +321,14 @@ void SceneLayer::RecordScenePasses(RenderTarget &viewportRT, const glm::vec4 &cl
             Renderer::Get3DRenderer().FlushLighting(ctx);
         };
 
-        // Pass2b "Tonemap"：采样 Scene_HDR，曝光 + ACES 后写入视口颜色。
-        RenderPassDesc &tonemapPass = b.AddPass("Tonemap");
-        tonemapPass.renderArea = renderArea;
-        tonemapPass.readImages.push_back(
-            {hHDR, ResourceUsage::ShaderRead, vk::ImageLayout::eShaderReadOnlyOptimal});
-        AttachmentDesc tonemapColorClear;
-        tonemapColorClear.resource = hColor;
-        tonemapColorClear.usage = ResourceUsage::ColorAttachment;
-        tonemapColorClear.loadOp = vk::AttachmentLoadOp::eClear;
-        tonemapColorClear.storeOp = vk::AttachmentStoreOp::eStore;
-        tonemapColorClear.clearValue.color = {0.0f, 0.0f, 0.0f, 0.0f};
-        tonemapPass.colorAttachments.push_back(tonemapColorClear);
-        tonemapPass.execute = [](PassExecuteContext &ctx) {
-            Renderer::Get3DRenderer().FlushTonemap(ctx);
-        };
-
-        // Pass3 "Transparent"：颜色/深度 eLoad，叠在前向透明混合管线上。
+        // Pass2b "Transparent"：在 Tonemap 前写回 Scene_HDR，在线性 HDR 空间
+        // 合成。颜色 eLoad（Lighting 已清/写 HDR）、深度 eLoad，叠在前向透明
+        // 混合管线上；FlushTransparent 以 hdrTransparent=true 配置混合，强制
+        // alpha 通道收敛到 1，避免透明覆盖天空后被 Tonemap 误判为天空。
         RenderPassDesc &transparentPass = b.AddPass("Transparent");
         transparentPass.renderArea = renderArea;
         AttachmentDesc transparentColorLoad;
-        transparentColorLoad.resource = hColor;
+        transparentColorLoad.resource = hHDR;
         transparentColorLoad.usage = ResourceUsage::ColorAttachment;
         transparentColorLoad.loadOp = vk::AttachmentLoadOp::eLoad;
         transparentColorLoad.storeOp = vk::AttachmentStoreOp::eStore;
@@ -355,6 +342,22 @@ void SceneLayer::RecordScenePasses(RenderTarget &viewportRT, const glm::vec4 &cl
         transparentPass.depthAttachment = transparentDepthLoad;
         transparentPass.execute = [](PassExecuteContext &ctx) {
             Renderer::Get3DRenderer().FlushTransparent(ctx);
+        };
+
+        // Pass2c "Tonemap"：采样 Scene_HDR，曝光 + ACES 后写入视口颜色。
+        RenderPassDesc &tonemapPass = b.AddPass("Tonemap");
+        tonemapPass.renderArea = renderArea;
+        tonemapPass.readImages.push_back(
+            {hHDR, ResourceUsage::ShaderRead, vk::ImageLayout::eShaderReadOnlyOptimal});
+        AttachmentDesc tonemapColorClear;
+        tonemapColorClear.resource = hColor;
+        tonemapColorClear.usage = ResourceUsage::ColorAttachment;
+        tonemapColorClear.loadOp = vk::AttachmentLoadOp::eClear;
+        tonemapColorClear.storeOp = vk::AttachmentStoreOp::eStore;
+        tonemapColorClear.clearValue.color = {0.0f, 0.0f, 0.0f, 0.0f};
+        tonemapPass.colorAttachments.push_back(tonemapColorClear);
+        tonemapPass.execute = [](PassExecuteContext &ctx) {
+            Renderer::Get3DRenderer().FlushTonemap(ctx);
         };
     } else {
         // Pass0 "Scene3D"：清屏 + 深度 eClear；颜色/深度 eStore（深度须保留给 Scene2D 读）
@@ -425,6 +428,10 @@ void SceneLayer::OnUpdate(Timestep &ts) {
     const glm::mat4 projection = activeCam.GetProj();
     const glm::vec3 cameraPos = activeCam.GetPosition();
     const glm::vec4 clearColor{0.1f, 0.1f, 0.15f, 1.0f};
+
+    // 场景曝光接线：把本帧视口相机（编辑器相机 / 游戏主相机）的曝光系数
+    // 传给 Renderer3D，Deferred 模式的 Tonemap pass 经 TonemapUBO.exposure.x 使用。
+    Renderer::Get3DRenderer().SetExposure(activeCam.GetExposure());
 
     // Scene 只做仿真 + 采集（3D/2D 批次经 EndScene 延迟快照，不录制命令）
     m_Context->Scene->OnUpdate3D(ts, view, projection, cameraPos, clearColor);
@@ -626,12 +633,22 @@ void SceneLayer::OnImGuiRender() {
             m_Context->Scene->SetCullingMode(static_cast<Scene::CullingMode>(cull));
         }
 
-        // 延迟渲染开关：切换 SceneLayer 的 Scene3D 单 pass 与 GBuffer → Lighting → Tonemap
-        // → Transparent 四 pass 链，便于 RenderDoc / 视觉 A-B 对比。
+        // 延迟渲染开关：切换 SceneLayer 的 Scene3D 单 pass 与 GBuffer → Lighting
+        // → Transparent(HDR) → Tonemap 四 pass 链，便于 RenderDoc / 视觉 A-B 对比。
         ImGui::Separator();
         bool deferred = Renderer::Get3DRenderer().IsDeferred();
         if (ImGui::Checkbox("延迟渲染", &deferred)) {
             Renderer::Get3DRenderer().SetDeferred(deferred);
+        }
+        ImGui::SameLine();
+        // Tonemap 开关：仅延迟 HDR 链生效。关闭时 Tonemap pass 跳过 ACES，直接
+        // 输出线性 HDR，便于在编辑器里看 HDR 原值（高光/自发光 > 1.0）。
+        bool tonemap = Renderer::Get3DRenderer().IsTonemapEnabled();
+        if (ImGui::Checkbox("Tonemap", &tonemap)) {
+            Renderer::Get3DRenderer().SetTonemapEnabled(tonemap);
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("关闭后 Tonemap pass 跳过 ACES，直接透传 Scene_HDR（调试 HDR 原值用）");
         }
 
         ImGui::Separator();
@@ -672,6 +689,16 @@ void SceneLayer::OnImGuiRender() {
                 || ImGui::DragFloat("近裁剪面", &nearP, 0.01f, 0.001f, 100.0f, "%.3f")
                 || ImGui::DragFloat("远裁剪面", &farP, 1.0f, 1.0f, 5000.0f)) {
                 cam.SetPerspective(fov, cam.GetAspect(), nearP, farP);
+            }
+
+            ImGui::Separator();
+            ImGui::TextDisabled("曝光（HDR Tonemap，仅延迟渲染生效）");
+            float exposure = cam.GetExposure();
+            if (ImGui::SliderFloat("曝光", &exposure, 0.01f, 8.0f, "%.2f")) {
+                cam.SetExposure(exposure);
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("乘在 HDR 线性颜色上，ACES 之前；1.0 = 不改亮度");
             }
 
             ImGui::Separator();

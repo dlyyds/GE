@@ -77,6 +77,11 @@ public:
 
     void MoveUp(float amount);
 
+    // ---- Exposure ----
+    /// 曝光系数（仅延迟 HDR 链的 Tonemap 使用；1.0 = 不改亮度）
+    void SetExposure(float exposure);
+    [[nodiscard]] float GetExposure() const { return m_Exposure; }
+
     // ---- Sensitivity ----
     float MouseSensitivity = 0.3f;
     float ScrollSensitivity = 1.0f;
@@ -111,6 +116,9 @@ private:
     float m_Theta = 0.0f;
     float m_Phi = 0.0f;
     float m_Distance = 2.0f;
+
+    // Exposure
+    float m_Exposure = 1.0f;
 
     // Mouse state (used by OnEvent)
     float m_LastMouseX = 0.0f;

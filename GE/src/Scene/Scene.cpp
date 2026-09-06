@@ -30,6 +30,12 @@
 namespace GE {
 
 namespace {
+/// 由 Light Space AABB 构造正交 view-proj（ZO 深度约定）。CSM 在扩展近光侧遮挡范围后
+/// 需要按新的 minP/maxP 重建矩阵，与 BuildLightVolumeCorners 内部保持同一套公式。
+glm::mat4 BuildLightOrthoMatrix(const glm::vec3 &minP, const glm::vec3 &maxP) {
+    return glm::orthoRH_ZO(minP.x, maxP.x, minP.y, maxP.y, -maxP.z, -minP.z);
+}
+
 /// 方向光光体积公共核心（CSM 计划书 §4.2 step 1）：输入 8 个世界空间角点 + 光传播方向，
 /// 输出光 view、Light Space AABB（outMinP/outMaxP，含 5% z 余量）与 ortho*lightView。
 /// 现有全视锥路径（ComputeLightViewProj）与 CSM 每级切片（SliceCorners）共用此核心，
@@ -82,7 +88,7 @@ glm::mat4 BuildLightVolumeCorners(const glm::vec3 worldCorners[8],
         *outMaxP = maxP;
     if (outLightView)
         *outLightView = lightView;
-    return glm::orthoRH_ZO(minP.x, maxP.x, minP.y, maxP.y, -maxP.z, -minP.z) * lightView;
+    return BuildLightOrthoMatrix(minP, maxP) * lightView;
 }
 
 /// 方向光阴影：由光传播方向与相机视锥计算光空间 view-proj（阴影贴图计划 §6.1/§6.3）。
@@ -907,6 +913,12 @@ void Scene::UpdateLightParams(const glm::mat4 &view, const glm::mat4 &projection
                         lightParams.cascadeViewProj[c] = BuildLightVolumeCorners(
                             sliceCorners, lightParams.dirLightDirection,
                             &cMinP, &cMaxP, &cLightView);
+                        // 近靠光源一侧需要把遮挡范围放宽到整个相机视锥，否则近档只看
+                        // 自己这一薄片，上方/近光侧的阴影投射物会被该档光正交 near 裁剪
+                        // （RenderDoc 里表现为阴影贴图内容被裁，CSM=1 全视锥时不会出现）。
+                        cMaxP.z = std::max(cMaxP.z, maxP.z);
+                        lightParams.cascadeViewProj[c] =
+                            BuildLightOrthoMatrix(cMinP, cMaxP) * cLightView;
                         m_ShadowVolume[c] = BuildShadowVolume(cMinP, cMaxP, cLightView);
                     }
                 } else {

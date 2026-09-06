@@ -782,7 +782,7 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
             cameraNode["FixedAspectRatio"] = cc.FixedAspectRatio;
 
             // 模式
-            cameraNode["Mode"] = (cam.GetMode() == Camera::Mode::Orbit) ? "Orbit" : "FPS";
+            cameraNode["Mode"] = (cam.GetMode() == Camera::Mode::Orbit) ? "Orbit" : "FreeLook";
 
             // 投影参数
             cameraNode["Fov"] = cam.GetFov();
@@ -797,7 +797,7 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
             cameraNode["Phi"] = cam.GetPhi();
             cameraNode["Distance"] = cam.GetDistance();
 
-            // FPS 模式参数
+            // FreeLook 模式参数
             cameraNode["Position"] = SerializeVec3(cam.GetPosition());
             cameraNode["Yaw"] = cam.GetYaw();
             cameraNode["Pitch"] = cam.GetPitch();
@@ -1330,7 +1330,7 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
 
             // 模式
             std::string modeStr = cameraNode["Mode"] ? cameraNode["Mode"].as<std::string>("Orbit") : "Orbit";
-            Camera::Mode mode = (modeStr == "FPS") ? Camera::Mode::FPS : Camera::Mode::Orbit;
+            Camera::Mode mode = (modeStr == "FPS" || modeStr == "FreeLook") ? Camera::Mode::FreeLook : Camera::Mode::Orbit;
             cam.SetMode(mode);
 
             // Orbit 模式参数
@@ -1342,7 +1342,7 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
             float distance = cameraNode["Distance"] ? cameraNode["Distance"].as<float>(2.0f) : 2.0f;
             cam.SetOrbit(theta, phi, distance);
 
-            // FPS 模式参数
+            // FreeLook 模式参数
             if (cameraNode["Position"]) {
                 cam.SetPosition(DeserializeVec3(cameraNode["Position"], {0.0f, 0.0f, 2.0f}));
             }

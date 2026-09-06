@@ -2,7 +2,7 @@
 
 > 状态：**计划中（未开工）**
 > 目标：在现有 `FollowCameraComponent` 上增加**完整第三人称跟随相机**，并支持**第一人称 ↔ 第三人称运行时切换**。
-> 前置：`FollowCameraComponent` 已提供 `EyeOffset/YawSpeed/PitchSpeed/InvertY` 等字段；`Scene::UpdateFollowCamera` 已每帧把主相机钉到角色；`Camera` 已具备 `FPS/Orbit` 两套姿态与 `GetYaw/GetPitch/GetForward`；`InputState` 已有 `justPressed/GetScrollDelta`；Jolt `PhysicsSystem` 已封装在 `Physics::PhysicsWorld` 内。
+> 前置：`FollowCameraComponent` 已提供 `EyeOffset/YawSpeed/PitchSpeed/InvertY` 等字段；`Scene::UpdateFollowCamera` 已每帧把主相机钉到角色；`Camera` 已具备 `FreeLook/Orbit` 两套姿态与 `GetYaw/GetPitch/GetForward`；`InputState` 已有 `justPressed/GetScrollDelta`；Jolt `PhysicsSystem` 已封装在 `Physics::PhysicsWorld` 内。
 > 关联：`docs/第一人称跟随角色相机计划书.md`（第一人称基线）、`GE/include/GE/Scene/Components.h`、`GE/src/Scene/Scene.cpp`、`GE/src/Scene/SceneSerializer.cpp`、`GE_Editor/src/Panels/SceneHierarchyPanel.cpp`。
 
 ---
@@ -10,7 +10,7 @@
 ## 0. 一句话架构
 
 ```
-鼠标增量 → yaw/pitch（与现有 FPS 逻辑共用同一套更新）
+鼠标增量 → yaw/pitch（与现有 FreeLook 逻辑共用同一套更新）
 滚轮     → 第三人称当前距离（Distance）
 按键 V   → 第一人称 / 第三人称切换
 
@@ -107,7 +107,7 @@ struct FollowCameraComponent {
 
 ### 设计说明
 
-- **不新增 `Camera::Mode`**：FollowCamera 继续把主相机放在 `Camera::Mode::FPS`，引擎侧手动算位置。这样 `GetYaw/GetPitch/GetForward` 语义与第一人称一致，脚本 `camera.get_yaw()`、`fps_character_demo.lua` 的 WASD 移动逻辑无需改动。
+- **不新增 `Camera::Mode`**：FollowCamera 继续把主相机放在 `Camera::Mode::FreeLook`，引擎侧手动算位置。这样 `GetYaw/GetPitch/GetForward` 语义与第一人称一致，脚本 `camera.get_yaw()`、`fps_character_demo.lua` 的 WASD 移动逻辑无需改动。
 - `EyeOffset` 继续用于第一人称；`TargetOffset` 只用于第三人称，两者可独立配置。
 - `CurrentMode/CurrentDistance/CurrentPos` 是运行时态，**不落盘**；每次 `Play()` 用 `StartMode/Distance` 初始化，避免运行时切换/缩放污染存档。
 

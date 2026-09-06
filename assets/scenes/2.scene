@@ -90,7 +90,7 @@ Scene:
       Camera:
         Primary: true
         FixedAspectRatio: false
-        Mode: FPS
+        Mode: FreeLook
         Fov: 45
         Aspect: 1.6557378
         Near: 0.1
@@ -808,7 +808,7 @@ Scene:
       Camera:
         Primary: true
         FixedAspectRatio: false
-        Mode: FPS
+        Mode: FreeLook
         Fov: 60
         Aspect: 1.2479407
         Near: 0.1

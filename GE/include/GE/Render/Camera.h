@@ -8,7 +8,7 @@ class Event; // forward decl — only needed for OnEvent
 
 class Camera {
 public:
-    enum class Mode { Orbit = 0, FPS = 1 };
+    enum class Mode { Orbit = 0, FreeLook = 1 };
 
     Camera();
 
@@ -40,7 +40,7 @@ public:
     [[nodiscard]] float GetNear() const { return m_Near; }
     [[nodiscard]] float GetFar() const { return m_Far; }
 
-    // ---- FPS ----
+    // ---- FreeLook ----
     void SetPosition(const glm::vec3 &pos);
 
     void SetYawPitch(float yaw_degrees, float pitch_degrees);
@@ -70,7 +70,7 @@ public:
     // dy: positive = scroll up, negative = scroll down (e.g. io.MouseWheel)
     void OnScroll(float dy);
 
-    // ---- Keyboard input for FPS mode ----
+    // ---- Keyboard input for FreeLook mode ----
     void MoveForward(float amount);
 
     void MoveRight(float amount);
@@ -106,7 +106,7 @@ private:
     float m_Near = 0.1f;
     float m_Far = 100.0f;
 
-    // FPS
+    // FreeLook
     glm::vec3 m_Position{0.0f, 0.0f, 2.0f};
     float m_Yaw = 0.0f;
     float m_Pitch = 0.0f;

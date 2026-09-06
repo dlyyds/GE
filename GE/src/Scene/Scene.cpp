@@ -440,7 +440,7 @@ void Scene::Play() {
     //    无需再在 UI 线程补同步（SyncBodiesToTransforms 此刻无已初始化体，重复调用无副作用）。
     m_PhysicsWorld->ResetAccumulator();
 
-    // 4. 跟随相机初始化：切 FPS 姿态模式、用角色当前朝向初始化 yaw/pitch、
+    // 4. 跟随相机初始化：切 FreeLook 姿态模式、用角色当前朝向初始化 yaw/pitch、
     //    位置钉到角色视点，避免相机从默认姿态"跳"到角色朝向。
     auto followView = m_Registry.view<TransformComponent, CharacterControllerComponent,
                                   FollowCameraComponent>();
@@ -454,7 +454,7 @@ void Scene::Play() {
             auto &camComp = fcCamEnt.GetComponent<CameraComponent>();
             Camera &cam = camComp.CameraInstance;
 
-            cam.SetMode(Camera::Mode::FPS);
+            cam.SetMode(Camera::Mode::FreeLook);
             cam.MinPitch = fc.MinPitch;
             cam.MaxPitch = fc.MaxPitch;
             // 相机 yaw 初始化为角色朝向：FacingYaw 是相对 BaseRotation 的累计偏航，
@@ -751,9 +751,9 @@ void Scene::UpdateFollowCamera() {
         return;
     }
 
-    // 3. 相机切到 FPS 姿态模式（若尚未）；俯仰钳位跟随组件字段
-    if (cam.GetMode() != Camera::Mode::FPS) {
-        cam.SetMode(Camera::Mode::FPS);
+    // 3. 相机切到 FreeLook 姿态模式（若尚未）；俯仰钳位跟随组件字段
+    if (cam.GetMode() != Camera::Mode::FreeLook) {
+        cam.SetMode(Camera::Mode::FreeLook);
     }
     cam.MinPitch = fc.MinPitch;
     cam.MaxPitch = fc.MaxPitch;

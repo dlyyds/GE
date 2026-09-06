@@ -20,8 +20,8 @@ void Camera::SetMode(Mode mode) {
     }
 
     // 切换模式时同步视角，保持画面一致
-    if (mode == Mode::FPS) {
-        // Orbit → FPS：用轨道参数计算 FPS 的位置和朝向
+    if (mode == Mode::FreeLook) {
+        // Orbit → FreeLook：用轨道参数计算 FreeLook 的位置和朝向
         m_Position = GetPosition();  // 当前轨道相机位置
         // forward 方向已经由 GetForward() 正确计算（朝向 -Z 为 0 度）
         glm::vec3 forward = GetForward();
@@ -29,7 +29,7 @@ void Camera::SetMode(Mode mode) {
         // yaw = atan2(-x, -z)，因为 forward 的 x,z 分量是 -cos(pitch)*sin(yaw) 和 -cos(pitch)*cos(yaw)
         m_Yaw = glm::degrees(std::atan2(-forward.x, -forward.z));
     } else {
-        // FPS → Orbit：用 FPS 位置和朝向计算轨道参数
+        // FreeLook → Orbit：用 FreeLook 位置和朝向计算轨道参数
         // 设 target 在相机前方一定距离处（默认 distance=3）
         m_Distance = 3.0f;
         glm::vec3 forward = GetForward();
@@ -47,7 +47,7 @@ void Camera::SetMode(Mode mode) {
 // ---- Matrices ----
 
 glm::mat4 Camera::GetView() const {
-    if (m_Mode == Mode::FPS) {
+    if (m_Mode == Mode::FreeLook) {
         return glm::lookAt(m_Position, m_Position + GetForward(), glm::vec3(0.0f, 1.0f, 0.0f));
     } else {
         float theta_rad = glm::radians(m_Theta);
@@ -84,7 +84,7 @@ void Camera::SetAspect(float aspect) {
     m_Aspect = aspect;
 }
 
-// ---- FPS ----
+// ---- FreeLook ----
 
 void Camera::SetPosition(const glm::vec3 &pos) {
     m_Position = pos;
@@ -96,7 +96,7 @@ void Camera::SetYawPitch(float yaw_degrees, float pitch_degrees) {
 }
 
 glm::vec3 Camera::GetPosition() const {
-    if (m_Mode == Mode::FPS) {
+    if (m_Mode == Mode::FreeLook) {
         return m_Position;
     } else {
         float theta_rad = glm::radians(m_Theta);
@@ -138,7 +138,7 @@ void Camera::OnMouseMove(float dx, float dy, bool left_down, bool right_down) {
         glm::vec3 up = glm::normalize(glm::cross(right, forward));
         float pan_speed = 0.002f * (m_Mode == Mode::Orbit ? m_Distance : 1.0f);
 
-        if (m_Mode == Mode::FPS) {
+        if (m_Mode == Mode::FreeLook) {
             m_Position += right * (-dx * pan_speed) + up * (dy * pan_speed);
         } else {
             m_Target += right * (-dx * pan_speed) + up * (dy * pan_speed);
@@ -148,7 +148,7 @@ void Camera::OnMouseMove(float dx, float dy, bool left_down, bool right_down) {
 
     if (!left_down) return;
 
-    if (m_Mode == Mode::FPS) {
+    if (m_Mode == Mode::FreeLook) {
         m_Yaw -= dx * MouseSensitivity * 0.1f;
         m_Pitch -= dy * MouseSensitivity * 0.1f;
         m_Pitch = std::clamp(m_Pitch, MinPitch, MaxPitch);
@@ -160,7 +160,7 @@ void Camera::OnMouseMove(float dx, float dy, bool left_down, bool right_down) {
 }
 
 void Camera::OnScroll(float dy) {
-    if (m_Mode == Mode::FPS) {
+    if (m_Mode == Mode::FreeLook) {
         m_Position += GetForward() * (-dy * ScrollSensitivity);
     } else {
         m_Distance -= dy * ScrollSensitivity;
@@ -215,7 +215,7 @@ void Camera::MoveUp(float amount) {
 // ---- Internal helpers ----
 
 glm::vec3 Camera::GetForward() const {
-    if (m_Mode == Mode::FPS) {
+    if (m_Mode == Mode::FreeLook) {
         float yaw = glm::radians(m_Yaw);
         float pitch = glm::radians(m_Pitch);
         // yaw=0 时朝向 -Z（与 Orbit 模式一致，符合 OpenGL 相机惯例）

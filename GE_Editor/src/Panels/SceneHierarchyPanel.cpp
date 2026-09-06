@@ -1014,7 +1014,7 @@ void SceneHierarchyPanel::DrawCameraComponent(CameraComponent &component) {
     ImGui::Checkbox("Fixed Aspect Ratio", &component.FixedAspectRatio);
 
     // 相机模式
-    const char *modeStrings[] = {"Orbit", "FPS"};
+    const char *modeStrings[] = {"Orbit", "FreeLook"};
     int currentMode = static_cast<int>(camera.GetMode());
     if (ImGui::BeginCombo("Mode", modeStrings[currentMode])) {
         for (int i = 0; i < 2; i++) {
@@ -1071,7 +1071,7 @@ void SceneHierarchyPanel::DrawCameraComponent(CameraComponent &component) {
             camera.SetOrbit(theta, phi, dist);
         }
     } else {
-        // FPS 相机参数（Yaw/Pitch 内部均为度数）
+        // FreeLook 相机参数（Yaw/Pitch 内部均为度数）
         glm::vec3 pos = camera.GetPosition();
         if (ImGui::DragFloat3("Position", &pos.x, 0.1f))
             camera.SetPosition(pos);

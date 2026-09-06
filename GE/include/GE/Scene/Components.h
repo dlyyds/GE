@@ -311,7 +311,7 @@ struct MeshRendererComponent {
 /**
  * @brief 相机组件 —— 挂载到实体上的相机，用于 3D 场景渲染。
  *
- * 包含一个完整的 Camera 实例，支持 Orbit（轨道）和 FPS（第一人称）两种模式。
+ * 包含一个完整的 Camera 实例，支持 Orbit（轨道）和 FreeLook（自由视角）两种模式。
  * Primary 标志用于标记场景中的主相机，渲染器会使用主相机的视图投影矩阵进行渲染。
  * FixedAspectRatio 控制是否随窗口大小自动调整宽高比。
  *

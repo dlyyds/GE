@@ -876,6 +876,10 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
             ccNode["FaceMovement"] = ccc.FaceMovement;
             ccNode["TurnSpeed"] = ccc.TurnSpeed;
             ccNode["InvertFront"] = ccc.InvertFront;
+            ccNode["UseRootMotion"] = ccc.UseRootMotion;
+            ccNode["RootBoneNodeIndex"] = ccc.RootBoneNodeIndex;
+            ccNode["ZeroRootBoneLocal"] = ccc.ZeroRootBoneLocal;
+            ccNode["RootDirMode"] = static_cast<int>(ccc.RootDirMode);
         }
 
         // ---- FollowCameraComponent ----
@@ -1441,6 +1445,11 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
             ccc.FaceMovement = ccNode["FaceMovement"] ? ccNode["FaceMovement"].as<bool>(true) : true;
             ccc.TurnSpeed = ccNode["TurnSpeed"] ? ccNode["TurnSpeed"].as<float>(540.0f) : 540.0f;
             ccc.InvertFront = ccNode["InvertFront"] ? ccNode["InvertFront"].as<bool>(false) : false;
+            ccc.UseRootMotion = ccNode["UseRootMotion"] ? ccNode["UseRootMotion"].as<bool>(false) : false;
+            ccc.RootBoneNodeIndex = ccNode["RootBoneNodeIndex"] ? ccNode["RootBoneNodeIndex"].as<int>(-1) : -1;
+            ccc.ZeroRootBoneLocal = ccNode["ZeroRootBoneLocal"] ? ccNode["ZeroRootBoneLocal"].as<bool>(true) : true;
+            ccc.RootDirMode = static_cast<CharacterControllerComponent::RootMotionDir>(
+                ccNode["RootDirMode"] ? ccNode["RootDirMode"].as<int>(0) : 0);
         }
 
         // ---- FollowCameraComponent ----

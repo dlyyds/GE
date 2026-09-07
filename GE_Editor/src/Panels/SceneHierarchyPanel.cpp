@@ -1793,6 +1793,79 @@ void SceneHierarchyPanel::DrawCharacterControllerComponent(
     if (component.FaceMovement) {
         ImGui::DragFloat("Turn Speed (deg/s)", &component.TurnSpeed, 10.0f, 1.0f, 1080.0f);
     }
+
+    // ---- 根位移（纯配置，影响 Scene::UpdateRootMotion 功能开关，不触发 RebuildCharacter）----
+    ImGui::Separator();
+    ImGui::TextDisabled("Root Motion");
+    ImGui::Checkbox("Use Root Motion", &component.UseRootMotion);
+    if (component.UseRootMotion) {
+        ImGui::InputInt("Root Bone Node Index", &component.RootBoneNodeIndex, 1, 1);
+        ImGui::TextDisabled("填模型根骨骼的 glTF nodeIndex（-1 = 未配置）");
+
+        // 方便填写：从角色实体的 active clip 里列出带 Translation 通道的骨骼。
+        // 根位移通常就在这些骨骼当中；选中后直接写回 RootBoneNodeIndex，不再需要手动查 nodeIndex。
+        if (entity.HasComponent<AnimationComponent>()) {
+            auto &ac = entity.GetComponent<AnimationComponent>();
+            struct BoneCandidate { int nodeIndex = -1; std::string label; };
+            std::vector<BoneCandidate> candidates;
+            std::unordered_set<int> seen;
+            if (!ac.clips.empty() && ac.active < ac.clips.size()) {
+                const auto &inst = ac.clips[ac.active];
+                const auto *clip = inst.clip.get();
+                if (clip) {
+                    auto &reg = m_Context->Reg();
+                    for (size_t ci = 0; ci < clip->channels.size(); ++ci) {
+                        const auto &ch = clip->channels[ci];
+                        if (ch.nodeIndex < 0 || ch.path != AnimationChannel::Path::Translation)
+                            continue;
+                        if (!seen.insert(ch.nodeIndex).second)
+                            continue;
+                        std::string boneName;
+                        if (ci < inst.channelTargets.size()) {
+                            if (auto *tag = reg.try_get<TagComponent>(inst.channelTargets[ci]))
+                                boneName = tag->Tag;
+                        }
+                        candidates.push_back({ch.nodeIndex,
+                                              std::to_string(ch.nodeIndex) + " - " + boneName});
+                    }
+                }
+            }
+
+            if (!candidates.empty()) {
+                const int current = component.RootBoneNodeIndex;
+                auto curIt = std::find_if(candidates.begin(), candidates.end(),
+                                          [current](const BoneCandidate &c) { return c.nodeIndex == current; });
+                const char *preview = (curIt != candidates.end()) ? curIt->label.c_str() : "选择根骨骼...（或手填上方数字）";
+                if (ImGui::BeginCombo("Root Bone (从动画选择)", preview)) {
+                    for (const auto &c : candidates) {
+                        const bool selected = (c.nodeIndex == current);
+                        if (ImGui::Selectable(c.label.c_str(), selected))
+                            component.RootBoneNodeIndex = c.nodeIndex;
+                        if (selected)
+                            ImGui::SetItemDefaultFocus();
+                    }
+                    ImGui::EndCombo();
+                }
+            } else {
+                ImGui::TextDisabled("角色实体没有可选的根骨骼 Translation 通道，请手填 glTF nodeIndex");
+            }
+        }
+        ImGui::Checkbox("Zero Root Bone Local", &component.ZeroRootBoneLocal);
+        ImGui::TextDisabled("就地化：提取后把根骨骼局部 Translation 归 base，烘焙动画防双倍移动");
+        const char *dirStrings[] = {"Anim (Full)", "Input (Half)"};
+        const int currentDir = static_cast<int>(component.RootDirMode);
+        if (ImGui::BeginCombo("Root Dir Mode", dirStrings[currentDir])) {
+            for (int i = 0; i < 2; i++) {
+                const bool isSelected = currentDir == i;
+                if (ImGui::Selectable(dirStrings[i], isSelected))
+                    component.RootDirMode = static_cast<CharacterControllerComponent::RootMotionDir>(i);
+                if (isSelected)
+                    ImGui::SetItemDefaultFocus();
+            }
+            ImGui::EndCombo();
+        }
+        ImGui::TextDisabled("Anim = 全根位移（方向/速率都来自动画）；Input = 半根位移（方向来自输入）");
+    }
 }
 
 // ============================================================

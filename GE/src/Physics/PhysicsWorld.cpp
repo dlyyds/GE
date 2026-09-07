@@ -650,7 +650,34 @@ void PhysicsWorld::UpdateCharacters(float dt) {
             vel = vert;
         }
         vel += ToJoltVec3(m_Gravity) * cc->GravityScale * dt;   // 重力（每子步，×组件重力缩放）
-        vel += ToJoltVec3(cc->WishVelocity); // 脚本水平输入
+
+        // 根位移消费端（M1）：把动画信箱换算成期望速度喂进控制器。
+        // v = Δ / FIXED_TIMESTEP，ExtendedUpdate 用 dt = FIXED_TIMESTEP 积分后
+        // 实际位移 = (Δ / FIXED_TIMESTEP) × FIXED_TIMESTEP = Δ，方向决定看 RootDirMode。
+        if (cc->UseRootMotion) {
+            const glm::vec2 rm(cc->RootMotionDelta.x, cc->RootMotionDelta.z);
+            const float rmLen = glm::length(rm);
+            if (cc->RootDirMode == CharacterControllerComponent::RootMotionDir::Input) {
+                // 半根位移：速率给动画、方向给输入（FaceMovement 顺带脸朝输入方向）
+                const float wishX = cc->WishVelocity.x, wishZ = cc->WishVelocity.z;
+                const float wishLen = std::sqrt(wishX * wishX + wishZ * wishZ);
+                if (wishLen > 0.01f && rmLen > 1e-6f) {
+                    vel += JPH::Vec3((wishX / wishLen) * (rmLen / FIXED_TIMESTEP),
+                                     0.0f,
+                                     (wishZ / wishLen) * (rmLen / FIXED_TIMESTEP));
+                }
+                // 无输入 → 不叠加（停下；要"无输入仍被动画推着走"用全根位移兜底，§11.6）
+            } else {
+                // 全根位移：方向 + 速率都来自动画
+                vel += JPH::Vec3(cc->RootMotionDelta.x / FIXED_TIMESTEP,
+                                 0.0f,
+                                 cc->RootMotionDelta.z / FIXED_TIMESTEP);
+            }
+            cc->RootMotionDelta = {0.0f, 0.0f, 0.0f}; // 消费即清零
+        } else {
+            vel += ToJoltVec3(cc->WishVelocity); // 原有：键盘水平输入
+            cc->RootMotionDelta = {0.0f, 0.0f, 0.0f}; // 关闭根位移时不留下信箱，避免重开后消费粘带
+        }
         cv->SetLinearVelocity(vel);
         cv->ExtendedUpdate(dt, ToJoltVec3(m_Gravity), extSettings,
                            broadPhaseFilter, objFilter, bodyFilter, shapeFilter,
@@ -666,7 +693,10 @@ void PhysicsWorld::UpdateCharacters(float dt) {
         // 用「基准姿态 × 累计偏航」重建完整旋转：基准姿态（含转正倾斜）在创建时捕获、
         // 不随之累加，因此模型不会因转向而躺倒；累计偏航每子步朝移动方向角逼近。
         // 目标取 WishVelocity 水平向而非合成速度（避免站移动平台被回带/贴墙朝向归零）。
-        if (cc->FaceMovement) {
+        // 全根位移下 WishVelocity 被忽略，不应再用键盘输入驱动朝向（行为与计划书§7 一致；半根位移 / 关闭根位移照常）。
+        const bool halfRootUsesInput = cc->UseRootMotion
+            && cc->RootDirMode == CharacterControllerComponent::RootMotionDir::Input;
+        if (cc->FaceMovement && (!cc->UseRootMotion || halfRootUsesInput)) {
             constexpr float kPi = 3.14159265358979f;
             const float wx = cc->WishVelocity.x, wz = cc->WishVelocity.z;
             if (std::sqrt(wx * wx + wz * wz) > 0.1f) {
@@ -1096,6 +1126,15 @@ void PhysicsWorld::ClearPendingCharacters() {
 
 void PhysicsWorld::ResetAccumulator() {
     m_Accumulator = 0.0f;
+    // 根位移信箱在编辑态会累积但不消费（停态不步进）；Play 起始清空，防上次 Play 残留。
+    if (m_Scene) {
+        auto &reg = m_Scene->Reg();
+        for (const auto &entry : m_Characters) {
+            const entt::entity entity = entry.first;
+            if (auto *cc = reg.try_get<CharacterControllerComponent>(entity); cc)
+                cc->RootMotionDelta = {0.0f, 0.0f, 0.0f};
+        }
+    }
 }
 
 void PhysicsWorld::CollectCollisionEvents() {

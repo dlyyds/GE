@@ -879,7 +879,6 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
             ccNode["UseRootMotion"] = ccc.UseRootMotion;
             ccNode["RootBoneNodeIndex"] = ccc.RootBoneNodeIndex;
             ccNode["ZeroRootBoneLocal"] = ccc.ZeroRootBoneLocal;
-            ccNode["RootDirMode"] = static_cast<int>(ccc.RootDirMode);
         }
 
         // ---- FollowCameraComponent ----
@@ -1448,8 +1447,6 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
             ccc.UseRootMotion = ccNode["UseRootMotion"] ? ccNode["UseRootMotion"].as<bool>(false) : false;
             ccc.RootBoneNodeIndex = ccNode["RootBoneNodeIndex"] ? ccNode["RootBoneNodeIndex"].as<int>(-1) : -1;
             ccc.ZeroRootBoneLocal = ccNode["ZeroRootBoneLocal"] ? ccNode["ZeroRootBoneLocal"].as<bool>(true) : true;
-            ccc.RootDirMode = static_cast<CharacterControllerComponent::RootMotionDir>(
-                ccNode["RootDirMode"] ? ccNode["RootDirMode"].as<int>(0) : 0);
         }
 
         // ---- FollowCameraComponent ----

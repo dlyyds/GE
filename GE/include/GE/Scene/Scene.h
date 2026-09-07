@@ -226,7 +226,7 @@ private:
     /// 必须在 UpdateWorldTransforms（DFS 据此重算 world）之前调用。
     void UpdateAnimations(Timestep ts);
 
-    /// 每帧动画更新后、UpdateWorldTransforms 前：提取根位移增量累入 RootMotionDelta 并就地化根骨骼局部（M1）。
+    /// 每帧动画更新后、UpdateWorldTransforms 前：把根骨骼局部 Translation 归 base（烘焙根位移钉在角色原点）。
     void UpdateRootMotion();
 
     /// 每帧跟随相机同步：鼠标视角 → 相机 yaw/pitch，相机朝向 →

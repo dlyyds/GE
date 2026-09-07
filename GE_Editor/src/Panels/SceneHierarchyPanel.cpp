@@ -363,13 +363,32 @@ void SceneHierarchyPanel::DrawSkinComponent(SkinComponent &component) {
 void SceneHierarchyPanel::DrawAnimationComponent(Entity entity, AnimationComponent &component, Scene *scene) {
     const AnimationClip *clip = component.activeClip();
 
+    // 新增动画片段：从外部 glTF 文件只提取动画加入列表（不导入网格/场景图）。
+    // 通道目标按 glTF node 名匹配宿主子树（Tag），未匹配节点洞掉为绑定姿态。
+    ImGui::Text("片段源: %s", clip ? clip->source.c_str() : "(空)");
+    if (ImGui::Button("新增动画片段...")) {
+        std::string absPath = FileDialogs::OpenFile(
+            "glTF 文件 (*.gltf;*.glb)\0*.gltf;*.glb\0All Files (*.*)\0*.*\0", "assets");
+        if (!absPath.empty()) {
+            GE_CORE_INFO("[Anim][Editor] 新增动画片段源: '{}'", absPath);
+            const size_t added = AnimationSystem::AddClipsFromGLTF(
+                scene->Reg(), static_cast<entt::entity>(entity), absPath);
+            if (added > 0) {
+                GE_CORE_INFO("[Anim][Editor] 新增 {} 条动画片段", added);
+            } else {
+                GE_CORE_WARN("[Anim][Editor] '{}' 无新增片段（无动画 / 加载失败 / 已在列表）", absPath);
+            }
+            clip = component.activeClip(); // 刷新本地指针供本帧后续 UI 使用
+        }
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("从 glTF 只提取动画加入列表");
+
     // 无动画片段（手动 Add Component / 空组件）：占位说明
     if (component.clips.empty() || !clip) {
         ImGui::TextWrapped("无动画片段（导入带骨骼动画的 glTF 角色会自动挂载）");
         return;
     }
-
-    ImGui::Text("片段源: %s", clip->source.c_str());
     // 重载片段源：源 glTF 在磁盘更新后，按源键强制重建键帧并同步场景内同源实体。
     // 不改变 clip 数量与名字，仅刷新数据，故 ASM 运行中也可安全执行。
     if (ImGui::Button("重载片段源")) {
@@ -1851,20 +1870,8 @@ void SceneHierarchyPanel::DrawCharacterControllerComponent(
             }
         }
         ImGui::Checkbox("Zero Root Bone Local", &component.ZeroRootBoneLocal);
-        ImGui::TextDisabled("就地化：提取后把根骨骼局部 Translation 归 base，烘焙动画防双倍移动");
-        const char *dirStrings[] = {"Anim (Full)", "Input (Half)"};
-        const int currentDir = static_cast<int>(component.RootDirMode);
-        if (ImGui::BeginCombo("Root Dir Mode", dirStrings[currentDir])) {
-            for (int i = 0; i < 2; i++) {
-                const bool isSelected = currentDir == i;
-                if (ImGui::Selectable(dirStrings[i], isSelected))
-                    component.RootDirMode = static_cast<CharacterControllerComponent::RootMotionDir>(i);
-                if (isSelected)
-                    ImGui::SetItemDefaultFocus();
-            }
-            ImGui::EndCombo();
-        }
-        ImGui::TextDisabled("Anim = 全根位移（方向/速率都来自动画）；Input = 半根位移（方向来自输入）");
+        ImGui::TextDisabled("就地化：把根骨骼局部 Translation 归 base，烘焙动画防双倍移动");
+        ImGui::TextDisabled("根骨骼局部每帧归 base；角色位移仍由原来的键盘输入驱动（不再提取动画根位移）");
     }
 }
 

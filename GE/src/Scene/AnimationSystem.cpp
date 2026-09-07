@@ -439,7 +439,7 @@ void UpdateAnimations(entt::registry &registry, ScriptEngine &scriptEngine, Time
                         for (const auto &tn : asmc->triggers) {
                             pending += tn + " ";
                         }
-                        GE_CORE_INFO("[ASM] 帧末残留未消费 trigger: {}", pending);
+                        //     GE_CORE_INFO("[ASM] 帧末残留未消费 trigger: {}", pending);
                     }
                 }
             }
@@ -646,6 +646,102 @@ bool ReloadClipSource(entt::registry &registry, entt::entity entity) {
         }
     }
     return reloaded;
+}
+
+
+size_t AddClipsFromGLTF(entt::registry &registry, entt::entity entity,
+                        const std::string &filepath) {
+    auto *ac = registry.try_get<AnimationComponent>(entity);
+    if (!ac) {
+        return 0;
+    }
+
+    tinygltf::Model model;
+    std::string loadErr;
+    if (!GLTF::LoadModel(filepath, model, &loadErr)) {
+        GE_CORE_ERROR("[Anim] 新增片段源 '{}' 加载失败: {}", filepath, loadErr);
+        return 0;
+    }
+    if (model.animations.empty()) {
+        GE_CORE_WARN("[Anim] 新增片段源 '{}' 不包含动画", filepath);
+        return 0;
+    }
+
+    // 实体子树 Tag → 实体映射（含宿主自身），供把新 glTF 的 node 解析为通道目标。
+    // 新增源与已挂源未必同文件，nodeIndex 只在各自文件内有意义，故按 node 名匹配
+    // 骨架（重载片段源走同文件 nodeIndex 映射；此处是新文件导入，只能靠名字匹配）。
+    std::unordered_map<std::string, entt::entity> nodeNameMap;
+    {
+        std::unordered_map<entt::entity, std::vector<entt::entity>> children;
+        const auto view = registry.view<TransformComponent>();
+        for (const auto e : view) {
+            const auto &tc = view.get<TransformComponent>(e);
+            if (tc.parent != entt::null && registry.valid(tc.parent)) {
+                children[tc.parent].push_back(e);
+            }
+        }
+        std::vector<entt::entity> stack{ entity };
+        while (!stack.empty()) {
+            const entt::entity e = stack.back();
+            stack.pop_back();
+            if (const auto *tag = registry.try_get<TagComponent>(e);
+                tag && !tag->Tag.empty()) {
+                nodeNameMap[tag->Tag] = e; // 重复名后访问者覆盖；骨架节点名应唯一
+            }
+            const auto it = children.find(e);
+            if (it != children.end()) {
+                for (const entt::entity c : it->second) {
+                    stack.push_back(c);
+                }
+            }
+        }
+    }
+    if (nodeNameMap.empty()) {
+        GE_CORE_WARN("[Anim] 新增片段源 '{}' 匹配不到目标实体（宿主子树无带名实体）", filepath);
+    }
+
+    size_t added = 0;
+    for (size_t ai = 0; ai < model.animations.size(); ++ai) {
+        const std::string key = AnimationClipManager::MakeKey(filepath, ai);
+        const bool exists = std::any_of(ac->clips.begin(), ac->clips.end(),
+                                        [&key](const ClipInstance &inst) {
+                                            return inst.clip && inst.clip->source == key;
+                                        });
+        if (exists) {
+            continue; // 源键已在组件中：跳过避免重复
+        }
+
+        std::shared_ptr<AnimationClip> fresh =
+            AnimationClipManager::Get().Load(filepath, ai, model); // 复用已解析 model
+        if (!fresh) {
+            continue; // 无合法 channel / 构建失败
+        }
+
+        ClipInstance inst;
+        inst.clip = fresh;
+        inst.channelTargets.reserve(fresh->channels.size());
+        size_t validTargets = 0;
+        for (const auto &ch : fresh->channels) {
+            entt::entity target = entt::null;
+            if (ch.nodeIndex >= 0 && ch.nodeIndex < static_cast<int>(model.nodes.size())) {
+                const tinygltf::Node &node = model.nodes[static_cast<size_t>(ch.nodeIndex)];
+                const std::string name = node.name.empty()
+                    ? ("glTFNode_" + std::to_string(ch.nodeIndex)) : node.name;
+                const auto it = nodeNameMap.find(name);
+                if (it != nodeNameMap.end()) {
+                    target = it->second;
+                    ++validTargets;
+                }
+            }
+            inst.channelTargets.push_back(target); // 未匹配：洞掉（退化为绑定姿态）
+        }
+        inst.keyHints.assign(fresh->channels.size(), 0u);
+        ac->clips.push_back(std::move(inst));
+        ++added;
+        GE_CORE_INFO("[Anim] 新增动画片段 '{}' 自 '{}'（{} channel, 有效目标 {} 个）",
+                     fresh->name, key, fresh->channels.size(), validTargets);
+    }
+    return added;
 }
 
 } // namespace AnimationSystem

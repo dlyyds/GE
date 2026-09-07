@@ -569,8 +569,7 @@ void Scene::Stop() {
         ccc.BaseRotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
         ccc.WishVelocity = {0.0f, 0.0f, 0.0f};
         ccc.JumpRequested = false;
-        // 根位移运行时状态重置：信箱退场清零，下次 Play 重新捕获 base（防 Edit 修改 nodeIndex/clip 后使用旧 base）
-        ccc.RootMotionDelta = {0.0f, 0.0f, 0.0f};
+        // 根骨骼归位运行时状态重置：下次 Play 重新捕获 base（防 Edit 修改 nodeIndex/clip 后使用旧 base）
         ccc.RootBoneBaseLocal = {0.0f, 0.0f, 0.0f};
         ccc.RootBoneBaseCaptured = false;
     }
@@ -721,8 +720,8 @@ void Scene::UpdateAnimations(Timestep ts) {
 }
 
 void Scene::UpdateRootMotion() {
-    // 生产端（M1/M2）：在动画写好局部 TRS 后、DFS 重算 world 前，提取根骨骼局部增量并累入信箱。
-    // 就地化在 DFS 前，本帧即生效，无残帧。
+    // 只做烘焙根骨骼归位，不再提取根位移驱动物理：
+    // 在动画写好局部 TRS 后、DFS 重算 world 前，把根骨骼局部 Translation 归 base，骨架钉在角色原点，角色位移仍由原来的 WishVelocity 驱动。
     auto view = m_Registry.view<TransformComponent, CharacterControllerComponent>();
     for (auto entity : view) {
         auto &cc = view.get<CharacterControllerComponent>(entity);
@@ -734,7 +733,7 @@ void Scene::UpdateRootMotion() {
         if (rootTC == nullptr)
             continue; // 未配置/未解析：跳过
 
-        // ⓪ base 捕获（M2）：优先用根通道 t=0 采样刷新；无 Translation 通道时把当前局部位置当基准（免静态偏移被误当根位移）。
+        // base 捕获：优先用根通道 t=0 采样刷新；无 Translation 通道时把当前局部位置当基准（免静态偏移被误用）。
         if (!cc.RootBoneBaseCaptured) {
             glm::vec3 sampled{0.0f};
             if (SampleRootBoneBaseLocal(m_Registry, entity, cc.RootBoneNodeIndex, sampled))
@@ -744,18 +743,7 @@ void Scene::UpdateRootMotion() {
             cc.RootBoneBaseCaptured = true;
         }
 
-        // ① 提取：动画刚写入的局部 Translation 相对 base 的差 = 纯动画根位移（局部系）
-        const glm::vec3 localDelta = rootTC->Translation - cc.RootBoneBaseLocal;
-
-        // ② 转世界：按角色当前朝向旋转（M1 假设根骨骼局部 XZ ≈ 角色水平，见 §11.4）
-        const glm::vec3 up(0.0f, 1.0f, 0.0f);
-        const glm::vec3 worldDelta = glm::angleAxis(cc.FacingYaw, up) * localDelta;
-
-        // ③ 累加进信箱（只取水平； y 交给引擎重力）
-        cc.RootMotionDelta.x += worldDelta.x;
-        cc.RootMotionDelta.z += worldDelta.z;
-
-        // ④ 就地化：根骨骼局部归 base → 骨架钉在角色原点，位移只由角色实体走
+        // 就地化：根骨骼局部归 base → 骨架钉在角色原点
         if (cc.ZeroRootBoneLocal)
             rootTC->Translation = cc.RootBoneBaseLocal;
     }
@@ -820,7 +808,7 @@ void Scene::OnUpdate3DSimulation(Timestep ts) {
     // 放在物理之后、UpdateWorldTransforms 之前：动画写的是局部 TRS，稍后 DFS
     // 重算 world，蒙皮随之拿到最新关节矩阵（时序见计划书 §10）。
     UpdateAnimations(ts);
-    UpdateRootMotion(); // 新增：提取根位移增量 + 就地化（DFS 前，本帧即生效）
+    UpdateRootMotion(); // 根骨骼局部归 base（DFS 前，本帧即生效）
 
     // ── 世界矩阵缓存重建（每帧一次 DFS）───────────────────────────────
     // 放在物理步进之后、光源收集/渲染之前：物理刚回写完局部 TRS，

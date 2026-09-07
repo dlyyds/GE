@@ -126,7 +126,7 @@ struct RawContactEvent {
     JPH::BodyID body1;
     JPH::BodyID body2;
     float nx = 0.0f, ny = 0.0f, nz = 0.0f; ///< 世界空间法线（向 body1；Stay/Exit 无效）
-    float impulse = 0.0f;                  ///< 法向冲量近似（仅 Enter 有效，kg·m/s）
+    float impulse = 0.0f; ///< 法向冲量近似（仅 Enter 有效，kg·m/s）
     CollisionPhase phase = CollisionPhase::Enter;
 };
 
@@ -139,8 +139,10 @@ public:
 
     void OnContactAdded(const JPH::Body &inBody1, const JPH::Body &inBody2,
                         const JPH::ContactManifold &inManifold, JPH::ContactSettings &ioSettings) override;
+
     void OnContactPersisted(const JPH::Body &inBody1, const JPH::Body &inBody2,
                             const JPH::ContactManifold &inManifold, JPH::ContactSettings &ioSettings) override;
+
     void OnContactRemoved(const JPH::SubShapeIDPair &inPair) override;
 
 private:
@@ -204,8 +206,8 @@ void EngineContactListener::OnContactAdded(const JPH::Body &inBody1, const JPH::
     for (float contactImpulse : est.mContactImpulse)
         impulse += contactImpulse;
     const JPH::Vec3 &n = inManifold.mWorldSpaceNormal;
-    m_Buffer.Append({ inBody1.GetID(), inBody2.GetID(),
-                      n.GetX(), n.GetY(), n.GetZ(), impulse, CollisionPhase::Enter });
+    m_Buffer.Append({inBody1.GetID(), inBody2.GetID(),
+                     n.GetX(), n.GetY(), n.GetZ(), impulse, CollisionPhase::Enter});
 }
 
 void EngineContactListener::OnContactPersisted(const JPH::Body &inBody1, const JPH::Body &inBody2,
@@ -213,14 +215,14 @@ void EngineContactListener::OnContactPersisted(const JPH::Body &inBody1, const J
                                                JPH::ContactSettings &) {
     if (!m_Buffer.StayEnabled())
         return; // 无脚本订阅 Stay → 不收集（计划书 B4 零开销）
-    m_Buffer.Append({ inBody1.GetID(), inBody2.GetID(),
-                      0.0f, 0.0f, 0.0f, 0.0f, CollisionPhase::Stay });
+    m_Buffer.Append({inBody1.GetID(), inBody2.GetID(),
+                     0.0f, 0.0f, 0.0f, 0.0f, CollisionPhase::Stay});
 }
 
 void EngineContactListener::OnContactRemoved(const JPH::SubShapeIDPair &inPair) {
     // Removed 回调禁止访问 body（ContactListener.h:127），只能取 ID
-    m_Buffer.Append({ inPair.GetBody1ID(), inPair.GetBody2ID(),
-                      0.0f, 0.0f, 0.0f, 0.0f, CollisionPhase::Exit });
+    m_Buffer.Append({inPair.GetBody1ID(), inPair.GetBody2ID(),
+                     0.0f, 0.0f, 0.0f, 0.0f, CollisionPhase::Exit});
 }
 
 // ============================================================
@@ -546,12 +548,10 @@ void PhysicsWorld::ProcessPendingCharacters() {
         glm::vec3 shift(0.0f);
         constexpr float kSqrtHalf = 0.707106781f;
         switch (cc->Axis) {
-        case CapsuleAxis::X:
-            axisRot = glm::quat(kSqrtHalf, 0.0f, 0.0f, -kSqrtHalf);
+        case CapsuleAxis::X: axisRot = glm::quat(kSqrtHalf, 0.0f, 0.0f, -kSqrtHalf);
             shift = {cc->Height * 0.5f, 0.0f, 0.0f};
             break;
-        case CapsuleAxis::Z:
-            axisRot = glm::quat(kSqrtHalf, kSqrtHalf, 0.0f, 0.0f);
+        case CapsuleAxis::Z: axisRot = glm::quat(kSqrtHalf, kSqrtHalf, 0.0f, 0.0f);
             shift = {0.0f, 0.0f, cc->Height * 0.5f};
             break;
         default: // Y（默认）：胶囊主轴沿局部 Y，沿 Y 抬升 H/2
@@ -649,35 +649,9 @@ void PhysicsWorld::UpdateCharacters(float dt) {
         } else {
             vel = vert;
         }
-        vel += ToJoltVec3(m_Gravity) * cc->GravityScale * dt;   // 重力（每子步，×组件重力缩放）
+        vel += ToJoltVec3(m_Gravity) * cc->GravityScale * dt; // 重力（每子步，×组件重力缩放）
 
-        // 根位移消费端（M1）：把动画信箱换算成期望速度喂进控制器。
-        // v = Δ / FIXED_TIMESTEP，ExtendedUpdate 用 dt = FIXED_TIMESTEP 积分后
-        // 实际位移 = (Δ / FIXED_TIMESTEP) × FIXED_TIMESTEP = Δ，方向决定看 RootDirMode。
-        if (cc->UseRootMotion) {
-            const glm::vec2 rm(cc->RootMotionDelta.x, cc->RootMotionDelta.z);
-            const float rmLen = glm::length(rm);
-            if (cc->RootDirMode == CharacterControllerComponent::RootMotionDir::Input) {
-                // 半根位移：速率给动画、方向给输入（FaceMovement 顺带脸朝输入方向）
-                const float wishX = cc->WishVelocity.x, wishZ = cc->WishVelocity.z;
-                const float wishLen = std::sqrt(wishX * wishX + wishZ * wishZ);
-                if (wishLen > 0.01f && rmLen > 1e-6f) {
-                    vel += JPH::Vec3((wishX / wishLen) * (rmLen / FIXED_TIMESTEP),
-                                     0.0f,
-                                     (wishZ / wishLen) * (rmLen / FIXED_TIMESTEP));
-                }
-                // 无输入 → 不叠加（停下；要"无输入仍被动画推着走"用全根位移兜底，§11.6）
-            } else {
-                // 全根位移：方向 + 速率都来自动画
-                vel += JPH::Vec3(cc->RootMotionDelta.x / FIXED_TIMESTEP,
-                                 0.0f,
-                                 cc->RootMotionDelta.z / FIXED_TIMESTEP);
-            }
-            cc->RootMotionDelta = {0.0f, 0.0f, 0.0f}; // 消费即清零
-        } else {
-            vel += ToJoltVec3(cc->WishVelocity); // 原有：键盘水平输入
-            cc->RootMotionDelta = {0.0f, 0.0f, 0.0f}; // 关闭根位移时不留下信箱，避免重开后消费粘带
-        }
+        vel += ToJoltVec3(cc->WishVelocity); // 脚本水平输入
         cv->SetLinearVelocity(vel);
         cv->ExtendedUpdate(dt, ToJoltVec3(m_Gravity), extSettings,
                            broadPhaseFilter, objFilter, bodyFilter, shapeFilter,
@@ -693,10 +667,7 @@ void PhysicsWorld::UpdateCharacters(float dt) {
         // 用「基准姿态 × 累计偏航」重建完整旋转：基准姿态（含转正倾斜）在创建时捕获、
         // 不随之累加，因此模型不会因转向而躺倒；累计偏航每子步朝移动方向角逼近。
         // 目标取 WishVelocity 水平向而非合成速度（避免站移动平台被回带/贴墙朝向归零）。
-        // 全根位移下 WishVelocity 被忽略，不应再用键盘输入驱动朝向（行为与计划书§7 一致；半根位移 / 关闭根位移照常）。
-        const bool halfRootUsesInput = cc->UseRootMotion
-            && cc->RootDirMode == CharacterControllerComponent::RootMotionDir::Input;
-        if (cc->FaceMovement && (!cc->UseRootMotion || halfRootUsesInput)) {
+        if (cc->FaceMovement) {
             constexpr float kPi = 3.14159265358979f;
             const float wx = cc->WishVelocity.x, wz = cc->WishVelocity.z;
             if (std::sqrt(wx * wx + wz * wz) > 0.1f) {
@@ -706,9 +677,12 @@ void PhysicsWorld::UpdateCharacters(float dt) {
                 glm::vec3 home(0.0f);
                 glm::vec3 configured(0.0f, 0.0f, 1.0f);
                 switch (cc->FrontAxis) {
-                case CapsuleAxis::X: configured = {1.0f, 0.0f, 0.0f}; break;
-                case CapsuleAxis::Y: configured = {0.0f, 1.0f, 0.0f}; break;
-                default: configured = {0.0f, 0.0f, 1.0f}; break;
+                case CapsuleAxis::X: configured = {1.0f, 0.0f, 0.0f};
+                    break;
+                case CapsuleAxis::Y: configured = {0.0f, 1.0f, 0.0f};
+                    break;
+                default: configured = {0.0f, 0.0f, 1.0f};
+                    break;
                 }
                 if (cc->InvertFront) {
                     configured = -configured; // 与 Scene 侧 modelYaw 的 InvertFront 语义一致
@@ -728,8 +702,10 @@ void PhysicsWorld::UpdateCharacters(float dt) {
                     float target = std::atan2(wx, wz) - globalFrontYaw;
                     // 累计偏航之差收进 [-π, π]，按 TurnSpeed 限速逼近（不瞬转）
                     float diff = target - cc->FacingYaw;
-                    while (diff > kPi) diff -= 2.0f * kPi;
-                    while (diff < -kPi) diff += 2.0f * kPi;
+                    while (diff > kPi)
+                        diff -= 2.0f * kPi;
+                    while (diff < -kPi)
+                        diff += 2.0f * kPi;
                     const float maxStep = JPH::DegreesToRadians(cc->TurnSpeed) * dt;
                     cc->FacingYaw += std::clamp(diff, -maxStep, maxStep);
                     cv->SetRotation(JPH::Quat::sRotation(JPH::Vec3::sAxisY(), cc->FacingYaw)
@@ -986,8 +962,10 @@ JPH::ShapeRefC PhysicsWorld::BuildShapeForEntity(entt::entity entity) {
         glm::quat axisRot(1.0f, 0.0f, 0.0f, 0.0f);
         constexpr float kSqrtHalf = 0.707106781f;
         switch (capsuleColliders->Axis) {
-        case CapsuleAxis::X: axisRot = glm::quat(kSqrtHalf, 0.0f, 0.0f, -kSqrtHalf); break;
-        case CapsuleAxis::Z: axisRot = glm::quat(kSqrtHalf, kSqrtHalf, 0.0f, 0.0f); break;
+        case CapsuleAxis::X: axisRot = glm::quat(kSqrtHalf, 0.0f, 0.0f, -kSqrtHalf);
+            break;
+        case CapsuleAxis::Z: axisRot = glm::quat(kSqrtHalf, kSqrtHalf, 0.0f, 0.0f);
+            break;
         default: break; // Y 轴无需旋转
         }
 
@@ -1126,15 +1104,6 @@ void PhysicsWorld::ClearPendingCharacters() {
 
 void PhysicsWorld::ResetAccumulator() {
     m_Accumulator = 0.0f;
-    // 根位移信箱在编辑态会累积但不消费（停态不步进）；Play 起始清空，防上次 Play 残留。
-    if (m_Scene) {
-        auto &reg = m_Scene->Reg();
-        for (const auto &entry : m_Characters) {
-            const entt::entity entity = entry.first;
-            if (auto *cc = reg.try_get<CharacterControllerComponent>(entity); cc)
-                cc->RootMotionDelta = {0.0f, 0.0f, 0.0f};
-        }
-    }
 }
 
 void PhysicsWorld::CollectCollisionEvents() {
@@ -1150,7 +1119,7 @@ void PhysicsWorld::CollectCollisionEvents() {
     // 本线程掩码 < PerBody 才能取 BodyLockRead；Update 内部已对全体 body 加过锁，返回前释放）。
     // BodyLockRead::Succeeded() 仍借 TryGetBody 做"body 是否有效"校验。
     auto &lockInterface = m_PhysicsSystem->GetBodyLockInterfaceNoLock();
-    std::vector<std::pair<entt::entity, entt::entity>> staySeen; // Stay 按实体对去重
+    std::vector<std::pair<entt::entity, entt::entity> > staySeen; // Stay 按实体对去重
     for (uint32_t i = 0; i < n; ++i) {
         const RawContactEvent &raw = (*m_ContactBuffer)[i];
         JPH::BodyLockRead lockA(lockInterface, raw.body1);

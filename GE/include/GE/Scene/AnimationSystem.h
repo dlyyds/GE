@@ -52,6 +52,12 @@ void UpdateAnimations(entt::registry &registry, ScriptEngine &scriptEngine, Time
 /// 单文件加载失败时该文件全部 clip 保留旧数据并告警。返回是否至少成功一条。
 bool ReloadClipSource(entt::registry &registry, entt::entity entity);
 
+/// 从指定 glTF 文件只提取动画片段，追加到实体动画组件（编辑器「新增动画片段」）。
+/// 通道目标按 glTF node 名匹配宿主实体子树（TagComponent）；未匹配节点洞掉为绑定姿态。
+/// 已在组件中存在的源键（"path#N"）跳过避免重复。返回新增 clip 数量（0 = 无新增）。
+size_t AddClipsFromGLTF(entt::registry &registry, entt::entity entity,
+                        const std::string &filepath);
+
 } // namespace AnimationSystem
 
 } // namespace GE

@@ -629,15 +629,10 @@ struct CharacterControllerComponent {
     float TurnSpeed     = 540.0f; ///< 转向速率（度/秒，FaceMovement 生效时的最大偏航角速度）
     CapsuleAxis FrontAxis = CapsuleAxis::Z; ///< 模型前向基准轴（决定面朝方向对齐哪个局部轴）
     bool InvertFront = false;               ///< 前向轴取反：模型"脸"在 FrontAxis 的反方向时置 true
-    // ---- 新增：根位移（配置，参与 .scene 序列化）----
-    bool  UseRootMotion     = false;  ///< 总开关：开着则水平位移改由动画根位移驱动（方向模式见 §2.5）
-    int   RootBoneNodeIndex = -1;     ///< 承载根位移的骨骼 glTF nodeIndex（与 AnimationChannel.nodeIndex 同系；-1=未配置）
-    bool  ZeroRootBoneLocal = true;   ///< 就地化：提取后把根骨骼局部 Translation 归 base（烘焙动画防双倍移动）
-
-    /// 根位移水平方向模式（§2.5）：Anim=全根位移（方向也来自动画）；Input=半根位移（方向来自 WishVelocity）。
-    /// M4 起可被 ASM 状态覆盖。
-    enum class RootMotionDir : uint8_t { Anim = 0, Input = 1 };
-    RootMotionDir RootDirMode = RootMotionDir::Anim;
+    // ---- 根骨骼归位（配置，参与 .scene 序列化）----
+    bool  UseRootMotion     = false;  ///< 总开关：开着才执行根骨骼局部归 base（就地把烘焙根位移钉在角色原点，不再驱动物理位移）
+    int   RootBoneNodeIndex = -1;     ///< 要归位的骨骼 glTF nodeIndex（与 AnimationChannel.nodeIndex 同系；-1=未配置）
+    bool  ZeroRootBoneLocal = true;   ///< 就地化：每帧把根骨骼局部 Translation 归 base（烘焙动画防双倍移动）
 
     // 运行时（不参与序列化）
     bool      IsInitialized = false;              ///< CharacterVirtual 已创建
@@ -650,10 +645,9 @@ struct CharacterControllerComponent {
     float     FacingYaw     = 0.0f;               ///< 累计偏航角（弧度，绕世界 up；面朝逻辑每子步驱动）
     bool      FacingInit    = false;              ///< BaseRotation/FacingYaw 已初始化（重建不重捕获）
 
-    // ---- 新增：根位移（运行时，不参与序列化）----
-    glm::vec3 RootMotionDelta      = {0.0f, 0.0f, 0.0f}; ///< 信箱：动画生产端每帧累加，物理子步消费并清零
-    glm::vec3 RootBoneBaseLocal    = {0.0f, 0.0f, 0.0f}; ///< 根骨骼无根位移的绑定局部位置（就地化归位用；默认原点）
-    bool      RootBoneBaseCaptured = false;             ///< RootBoneBaseLocal 是否已由根通道 t=0 采样兜底（M2 base 捕获）
+    // ---- 根骨骼归位（运行时，不参与序列化）----
+    glm::vec3 RootBoneBaseLocal    = {0.0f, 0.0f, 0.0f}; ///< 根骨骼无烘焙偏移的绑定局部位置（就地化归位用；默认原点）
+    bool      RootBoneBaseCaptured = false;             ///< RootBoneBaseLocal 是否已由根通道 t=0 采样兜底（base 捕获）
 
     CharacterControllerComponent() = default;
 

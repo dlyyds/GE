@@ -1,6 +1,7 @@
 /**
  * @file GLTFSceneImporter.cpp
- * @brief glTF 场景图导入器实现 —— 遍历 node 树建实体、填变换、建父子、挂网格。
+ * @brief glTF 场景图导入器实现 —— 先建导入根实体，再遍历 node 树建实体、
+ *        填变换、建父子、挂网格，整棵树统一挂在根实体下。
  */
 
 #include "pch.h"
@@ -21,6 +22,7 @@
 #include <glm/gtx/matrix_decompose.hpp>
 
 #include <cstring>
+#include <filesystem>
 #include <unordered_map>
 #include <cmath>
 
@@ -155,7 +157,16 @@ bool GLTFSceneImporter::Import(Scene &scene, MeshManager &meshManager,
         }
     }
 
-    // DFS：递归建实体树（parent 为空 = 根）
+    // ── 导入根实体：整棵 glTF 场景图统一挂到一个根实体下 ──
+    // 根实体以文件名（去扩展名）命名，自身为普通空实体（单位变换、无网格/皮肤），
+    // 所有 glTF 顶层 node 都作为其子实体。好处：层级面板可整体选中/拖动/删除整份
+    // 导入结果；多顶层 node（多 root 的 glTF）不再散落场景顶层；动画宿主上溯到此根
+    // 即停（§9.3 挂载点不影响动画，见第三遍注释）。根实体单位变换不影响世界矩阵，
+    // 后续世界尺度归一化对每网格实体局部 Scale 的补偿也天然不受影响。
+    const std::string rootName = std::filesystem::path(filepath).stem().string();
+    Entity gltfRoot = scene.CreateEntity(rootName.empty() ? "glTF Root" : rootName);
+
+    // DFS：递归建实体树（parent 为空 = 根，本导入统一传 gltfRoot）
     // 先声明后赋值的 std::function，规避 MSVC 对「自引用 lambda 与声明同处一行」的解析问题
     // nodeEntities：node 索引 → 实体，供第二遍把 skin.joints 的 node 解析成关节实体句柄
     // skinNodes：带 skin 的 node（node 索引, skin 索引），供第二遍回填 SkinComponent
@@ -211,7 +222,7 @@ bool GLTFSceneImporter::Import(Scene &scene, MeshManager &meshManager,
         if (r < 0 || r >= static_cast<int>(model.nodes.size())) {
             continue;
         }
-        if (buildNode(r, Entity{})) {
+        if (buildNode(r, gltfRoot)) {
             anyCreated = true;
         }
     }
@@ -318,9 +329,9 @@ bool GLTFSceneImporter::Import(Scene &scene, MeshManager &meshManager,
 
     // ── 第三遍：动画接入（实体树建成 + 层级接好后才能解析目标节点句柄） ──
     //   规则（计划书 §4 阶段 B1）：v1 仅支持有皮肤的角色动画——宿主取本导入首个
-    //   带 SkinComponent 的实体，再沿 parent 链上溯到角色子树根（顶层祖先），把
-    //   AnimationComponent 挂在根上（层级面板更好找）；驱动仍经 channelTargets 打
-    //   目标节点局部 TRS，经 DFS 传播到子树全部关节，挂载点不影响动画（§9.3）。
+    //   带 SkinComponent 的实体，再沿 parent 链上溯到本导入根实体（gltfRoot）为止，
+    //   把 AnimationComponent 挂在根实体上（层级面板更好找）；驱动仍经 channelTargets
+    //   打目标节点局部 TRS，经 DFS 传播到子树全部关节，挂载点不影响动画（§9.3）。
     //   无皮肤的对象动画列阶段 D。
     if (!model.animations.empty()) {
         if (firstSkinHost == entt::null) {
@@ -373,6 +384,7 @@ bool GLTFSceneImporter::Import(Scene &scene, MeshManager &meshManager,
 
     if (!anyCreated) {
         GE_CORE_WARN("[GLTF] 未创建任何实体: {}", filepath);
+        scene.DestroyEntity(gltfRoot); // 一个 node 都没建出来，一并回收导入根实体
         return false;
     }
     GE_CORE_INFO("[GLTF] 场景导入完成: {}（{} node）", filepath, model.nodes.size());

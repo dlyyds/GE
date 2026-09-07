@@ -914,7 +914,7 @@ void SceneLayer::SaveScene() {
         return;
     }
 
-    std::string filepath = FileDialogs::SaveFile("GE Scene (*.scene)\0*.scene\0All Files (*.*)\0*.*\0");
+    std::string filepath = FileDialogs::SaveFile("GE Scene (*.scene)\0*.scene\0All Files (*.*)\0*.*\0", "assets/scenes");
     if (filepath.empty()) {
         return;
     }
@@ -947,7 +947,7 @@ bool SceneLayer::LoadSceneFromFile(std::string_view filepath) {
 }
 
 void SceneLayer::LoadScene() {
-    std::string filepath = FileDialogs::OpenFile("GE Scene (*.scene)\0*.scene\0All Files (*.*)\0*.*\0");
+    std::string filepath = FileDialogs::OpenFile("GE Scene (*.scene)\0*.scene\0All Files (*.*)\0*.*\0", "assets/scenes");
     if (filepath.empty()) {
         return;
     }

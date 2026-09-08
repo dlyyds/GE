@@ -1930,25 +1930,25 @@ static std::string SoundPathFromDialog(const std::string &absPath) {
 // Audio Source / Audio Listener 组件
 // ============================================================
 void SceneHierarchyPanel::DrawAudioSourceComponent(AudioSourceComponent &component) {
-    ImGui::Checkbox("Enabled", &component.Enabled);
-    ImGui::Checkbox("Spatial (3D)", &component.Spatial);
+    ImGui::Checkbox("Enabled (启用)", &component.Enabled);
+    ImGui::Checkbox("Spatial (3D 空间化)", &component.Spatial);
     ImGui::Separator();
 
-    if (ImGui::Button("Add Sound"))
+    if (ImGui::Button("Add Sound (添加声音)"))
         component.Sounds.emplace_back();
 
     int removeIndex = -1;
     for (int i = 0; i < static_cast<int>(component.Sounds.size()); ++i) {
         AudioSound &s = component.Sounds[i];
         ImGui::PushID(i);
-        ImGui::Text("Slot %d", i);
+        ImGui::Text("Slot %d (音槽)", i);
 
         char nameBuf[256] = {};
         strncpy_s(nameBuf, sizeof(nameBuf), s.Name.c_str(), _TRUNCATE);
-        if (ImGui::InputText("Name##slot", nameBuf, sizeof(nameBuf)))
+        if (ImGui::InputText("Name (名称)##slot", nameBuf, sizeof(nameBuf)))
             s.Name = nameBuf;
 
-        ImGui::Text("Sound Path: %s", s.SoundPath.empty() ? "(未选择)" : s.SoundPath.c_str());
+        ImGui::Text("Sound Path (声音路径): %s", s.SoundPath.empty() ? "(未选择)" : s.SoundPath.c_str());
         if (ImGui::Button("浏览声音...##slot")) {
             std::string absPath = FileDialogs::OpenFile(
                 "音频文件 (*.wav;*.ogg;*.flac;*.mp3)\0*.wav;*.ogg;*.flac;*.mp3\0"
@@ -1963,16 +1963,16 @@ void SceneHierarchyPanel::DrawAudioSourceComponent(AudioSourceComponent &compone
                 s.SoundPath.clear();
         }
 
-        ImGui::Checkbox("Play On Awake", &s.PlayOnAwake);
-        ImGui::Checkbox("Loop", &s.Loop);
-        ImGui::DragFloat("Volume", &s.Volume, 0.01f, 0.0f, 4.0f);
-        ImGui::DragFloat("Pitch", &s.Pitch, 0.01f, 0.1f, 4.0f);
+        ImGui::Checkbox("Play On Awake (播放时开始)", &s.PlayOnAwake);
+        ImGui::Checkbox("Loop (循环)", &s.Loop);
+        ImGui::DragFloat("Volume (音量)", &s.Volume, 0.01f, 0.0f, 4.0f);
+        ImGui::DragFloat("Pitch (音高)", &s.Pitch, 0.01f, 0.1f, 4.0f);
 
-        ImGui::DragFloat("MinDistance", &s.MinDistance, 0.1f, 0.0f, 1000.0f);
-        ImGui::DragFloat("MaxDistance", &s.MaxDistance, 0.1f, 0.0f, 1000.0f);
-        ImGui::DragFloat("Rolloff", &s.Rolloff, 0.05f, 0.0f, 10.0f);
+        ImGui::DragFloat("Min Distance (最小距离)", &s.MinDistance, 0.1f, 0.0f, 1000.0f);
+        ImGui::DragFloat("Max Distance (最大距离)", &s.MaxDistance, 0.1f, 0.0f, 1000.0f);
+        ImGui::DragFloat("Rolloff (衰减率)", &s.Rolloff, 0.05f, 0.0f, 10.0f);
 
-        const char *attItems[] = { "Inverse", "Linear", "Exponential", "None" };
+        const char *attItems[] = { "Inverse (反比)", "Linear (线性)", "Exponential (指数)", "None (无)" };
         int attIdx = 0;
         switch (s.Attenuation) {
         case Audio::AttenuationModel::Linear:      attIdx = 1; break;
@@ -1980,18 +1980,18 @@ void SceneHierarchyPanel::DrawAudioSourceComponent(AudioSourceComponent &compone
         case Audio::AttenuationModel::None:        attIdx = 3; break;
         default:                                   attIdx = 0; break;
         }
-        if (ImGui::Combo("Attenuation##slot", &attIdx, attItems, 4)) {
+        if (ImGui::Combo("Attenuation (衰减模型)##slot", &attIdx, attItems, 4)) {
             if (attIdx == 1)      s.Attenuation = Audio::AttenuationModel::Linear;
             else if (attIdx == 2) s.Attenuation = Audio::AttenuationModel::Exponential;
             else if (attIdx == 3) s.Attenuation = Audio::AttenuationModel::None;
             else                  s.Attenuation = Audio::AttenuationModel::Inverse;
         }
 
-        if (!s.SoundPath.empty() && ImGui::Button("Preview##slot"))
+        if (!s.SoundPath.empty() && ImGui::Button("Preview (试听)##slot"))
             Renderer::GetAssetManager().PlayOneShot(s.SoundPath, 1.0f);
 
         ImGui::SameLine();
-        if (ImGui::Button("Remove##slot"))
+        if (ImGui::Button("Remove (移除)##slot"))
             removeIndex = i;
 
         ImGui::Separator();
@@ -2003,7 +2003,7 @@ void SceneHierarchyPanel::DrawAudioSourceComponent(AudioSourceComponent &compone
 }
 
 void SceneHierarchyPanel::DrawAudioListenerComponent(AudioListenerComponent &component) {
-    ImGui::Checkbox("Enabled", &component.Enabled);
+    ImGui::Checkbox("Enabled (启用)", &component.Enabled);
     ImGui::TextWrapped("Listener 位置来自实体 Transform；无 Listener 时回退主相机。");
 }
 

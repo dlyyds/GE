@@ -129,7 +129,17 @@ void SceneHierarchyPanel::DrawEntityNode(Entity entity) {
     // 叶子节点（无子实体）使用 Bullet 样式，避免展开箭头
     flags |= (hasChildren ? 0 : ImGuiTreeNodeFlags_Leaf);
 
+    // 选中行：用蓝色调高亮整行，替代默认灰色，与 Properties 中的选中态呼应
+    const bool isSelected = (m_SelectionContext == entity);
+    if (isSelected) {
+        ImGui::PushStyleColor(ImGuiCol_Header,        ImVec4{0.28f, 0.45f, 0.80f, 0.35f});
+        ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ImVec4{0.32f, 0.50f, 0.88f, 0.45f});
+        ImGui::PushStyleColor(ImGuiCol_HeaderActive,  ImVec4{0.25f, 0.40f, 0.75f, 0.40f});
+    }
     const bool opened = ImGui::TreeNodeEx((void *)(uint64_t)(uint32_t)entity, flags, "%s", tag.c_str());
+    if (isSelected) {
+        ImGui::PopStyleColor(3);
+    }
     if (ImGui::IsItemClicked()) {
         m_SelectionContext = entity;
     }
@@ -216,7 +226,12 @@ static bool DrawVec3Control(const std::string &label, glm::vec3 &values, float r
     ImGui::PopFont();
 
     ImGui::SameLine();
+    // 输入框底色带 X 轴淡红，让「轴按钮 → 数值框」一眼对应（悬停/拖动时加深）
+    ImGui::PushStyleColor(ImGuiCol_FrameBg,        ImVec4{0.8f, 0.1f, 0.15f, 0.08f});
+    ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4{0.8f, 0.1f, 0.15f, 0.16f});
+    ImGui::PushStyleColor(ImGuiCol_FrameBgActive,  ImVec4{0.8f, 0.1f, 0.15f, 0.22f});
     changed |= ImGui::DragFloat("##X", &values.x, 0.1f, 0.0f, 0.0f, "%.2f");
+    ImGui::PopStyleColor(3);
     ImGui::PopItemWidth();
     ImGui::SameLine();
 
@@ -233,7 +248,12 @@ static bool DrawVec3Control(const std::string &label, glm::vec3 &values, float r
     ImGui::PopFont();
 
     ImGui::SameLine();
+    // 输入框底色带 Y 轴淡绿
+    ImGui::PushStyleColor(ImGuiCol_FrameBg,        ImVec4{0.2f, 0.7f, 0.2f, 0.08f});
+    ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4{0.2f, 0.7f, 0.2f, 0.16f});
+    ImGui::PushStyleColor(ImGuiCol_FrameBgActive,  ImVec4{0.2f, 0.7f, 0.2f, 0.22f});
     changed |= ImGui::DragFloat("##Y", &values.y, 0.1f, 0.0f, 0.0f, "%.2f");
+    ImGui::PopStyleColor(3);
     ImGui::PopItemWidth();
     ImGui::SameLine();
 
@@ -250,7 +270,12 @@ static bool DrawVec3Control(const std::string &label, glm::vec3 &values, float r
     ImGui::PopFont();
 
     ImGui::SameLine();
+    // 输入框底色带 Z 轴淡蓝
+    ImGui::PushStyleColor(ImGuiCol_FrameBg,        ImVec4{0.1f, 0.25f, 0.8f, 0.08f});
+    ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4{0.1f, 0.25f, 0.8f, 0.16f});
+    ImGui::PushStyleColor(ImGuiCol_FrameBgActive,  ImVec4{0.1f, 0.25f, 0.8f, 0.22f});
     changed |= ImGui::DragFloat("##Z", &values.z, 0.1f, 0.0f, 0.0f, "%.2f");
+    ImGui::PopStyleColor(3);
     ImGui::PopItemWidth();
 
     ImGui::PopStyleVar();
@@ -260,6 +285,45 @@ static bool DrawVec3Control(const std::string &label, glm::vec3 &values, float r
     ImGui::PopID();
 
     return changed;
+}
+
+// ============================================================
+// 辅助：组件类别主题色（按组件名前缀归类，用于标题栏配色）
+// ============================================================
+static ImVec4 ComponentCategoryColor(const char *name) {
+    if (!name) {
+        return ImVec4{0.55f, 0.58f, 0.65f, 1.0f};
+    }
+    static const struct { const char *prefix; ImVec4 color; } kCategoryColors[] = {
+        {"Transform",            {0.93f, 0.62f, 0.26f, 1.0f}}, // 橙：变换
+        {"Camera",               {0.35f, 0.62f, 0.90f, 1.0f}}, // 天蓝：相机
+        {"Follow Camera",        {0.35f, 0.62f, 0.90f, 1.0f}},
+        {"Mesh Renderer",        {0.45f, 0.70f, 0.95f, 1.0f}}, // 钢蓝：网格/精灵渲染
+        {"Sprite Renderer",      {0.45f, 0.70f, 0.95f, 1.0f}},
+        {"Joint",                {0.82f, 0.45f, 0.75f, 1.0f}}, // 粉紫：骨骼/蒙皮
+        {"Skin",                 {0.82f, 0.45f, 0.75f, 1.0f}},
+        {"Animation",            {0.92f, 0.45f, 0.58f, 1.0f}}, // 玫红：动画
+        {"Anim State Machine",   {0.92f, 0.45f, 0.58f, 1.0f}},
+        {"Point Light",          {0.95f, 0.85f, 0.35f, 1.0f}}, // 金黄：光照
+        {"Directional Light",    {0.95f, 0.85f, 0.35f, 1.0f}},
+        {"Ambient Light",        {0.95f, 0.85f, 0.35f, 1.0f}},
+        {"Environment",          {0.45f, 0.78f, 0.55f, 1.0f}}, // 草绿：环境
+        {"Audio Source",         {0.72f, 0.55f, 0.92f, 1.0f}}, // 紫罗兰：音频
+        {"Audio Listener",       {0.72f, 0.55f, 0.92f, 1.0f}},
+        {"Rigid Body",           {0.38f, 0.82f, 0.48f, 1.0f}}, // 绿：物理
+        {"Character Controller", {0.38f, 0.82f, 0.48f, 1.0f}},
+        {"Box Collider",         {0.38f, 0.82f, 0.48f, 1.0f}},
+        {"Sphere Collider",      {0.38f, 0.82f, 0.48f, 1.0f}},
+        {"Capsule Collider",     {0.38f, 0.82f, 0.48f, 1.0f}},
+        {"Bounding Box",         {0.38f, 0.82f, 0.48f, 1.0f}},
+        {"Script",               {0.35f, 0.75f, 0.75f, 1.0f}}, // 青：脚本
+    };
+    for (const auto &entry : kCategoryColors) {
+        if (strncmp(name, entry.prefix, strlen(entry.prefix)) == 0) {
+            return entry.color;
+        }
+    }
+    return ImVec4{0.55f, 0.58f, 0.65f, 1.0f}; // 默认灰蓝
 }
 
 // ============================================================
@@ -278,13 +342,29 @@ static void DrawComponent(const char *name, Entity entity, UIFunction uiFunction
 
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2{4, 4});
         float lineHeight = GImGui->FontSize + GImGui->Style.FramePadding.y * 2.0f;
+        const ImVec4 accent = ComponentCategoryColor(name);
+
+        // 组件标题栏：类别主题色分隔线 + 淡色底折叠头 + 主题色标题文字
+        ImGui::PushStyleColor(ImGuiCol_Separator, ImVec4{accent.x, accent.y, accent.z, 0.30f});
         ImGui::Separator();
+        ImGui::PopStyleColor();
+
+        ImGui::PushStyleColor(ImGuiCol_Header,        ImVec4{accent.x, accent.y, accent.z, 0.16f});
+        ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ImVec4{accent.x, accent.y, accent.z, 0.28f});
+        ImGui::PushStyleColor(ImGuiCol_HeaderActive,  ImVec4{accent.x, accent.y, accent.z, 0.24f});
+        ImGui::PushStyleColor(ImGuiCol_Text,          accent);
         bool open = ImGui::TreeNodeEx((void *)typeid(T).hash_code(), treeNodeFlags, "%s", name);
+        ImGui::PopStyleColor(4);
         ImGui::PopStyleVar();
         ImGui::SameLine(contentRegionAvailable.x - lineHeight * 0.5f - 5);
-        if (ImGui::Button("+", ImVec2{lineHeight, lineHeight})) {
+        // 右上角「…」设置按钮：同主题色淡底、悬停加深（点开 Remove component 菜单）
+        ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4{accent.x, accent.y, accent.z, 0.22f});
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4{accent.x, accent.y, accent.z, 0.42f});
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive,  ImVec4{accent.x, accent.y, accent.z, 0.55f});
+        if (ImGui::Button("…", ImVec2{lineHeight, lineHeight})) {
             ImGui::OpenPopup("ComponentSettings");
         }
+        ImGui::PopStyleColor(3);
 
         bool removeComponent = false;
         if (ImGui::BeginPopup("ComponentSettings")) {
@@ -886,8 +966,13 @@ void SceneHierarchyPanel::DrawComponents(Entity entity) {
     ImGui::SameLine();
     ImGui::PushItemWidth(-1);
 
-    if (ImGui::Button("添加组件"))
+    // 主操作按钮：高亮蓝底，一眼识别「为实体添加组件」入口
+    ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4{0.25f, 0.40f, 0.75f, 1.0f});
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4{0.32f, 0.48f, 0.85f, 1.0f});
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive,  ImVec4{0.20f, 0.34f, 0.65f, 1.0f});
+    if (ImGui::Button("＋ 添加组件"))
         ImGui::OpenPopup("AddComponent");
+    ImGui::PopStyleColor(3);
 
     DrawAddComponentPopup();
     ImGui::PopItemWidth();
@@ -1036,11 +1121,16 @@ void SceneHierarchyPanel::DrawAddComponentPopup() {
         ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_BordersInnerV;
     if (ImGui::BeginTable("AddComponentTable", columnCount, kTableFlags)) {
         // 表头行：类别名。标签带 ## 后缀与组件项隔离 ID（相机/动画/脚本同名）。
+        // 表头着淡蓝底 + 亮文字，与下方组件项拉开层级。
+        ImGui::PushStyleColor(ImGuiCol_Header,        ImVec4{0.25f, 0.35f, 0.55f, 0.35f});
+        ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ImVec4{0.30f, 0.42f, 0.65f, 0.45f});
+        ImGui::PushStyleColor(ImGuiCol_Text,          ImVec4{0.75f, 0.85f, 1.0f, 1.0f});
         for (const auto &cat : categories) {
             const std::string headerLabel = std::string(cat.name) + "##hdr";
             ImGui::TableSetupColumn(headerLabel.c_str());
         }
         ImGui::TableHeadersRow();
+        ImGui::PopStyleColor(3);
 
         // 逐行放置组件项：行号超过某列条目数则该列留空，各列高度以最长列为准
         size_t maxRows = 0;

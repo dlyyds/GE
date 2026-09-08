@@ -45,14 +45,20 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 namespace {
-// 编辑器相机状态文件：放在工作目录（与 imgui.ini 同级）。
+// 编辑器状态文件：放在工作目录（与 imgui.ini 同级）。
 // 这是个人编辑器偏好而非场景内容，不入版本库（见 .gitignore）。
-constexpr const char *kEditorCameraStateFile = "editor_camera.cfg";
+constexpr const char *kEditorSettingsFile = "editor_settings.cfg";
+// 旧文件名（仅相机参数），仅作向后兼容读取，保存一律写新文件
+constexpr const char *kEditorSettingsFileLegacy = "editor_camera.cfg";
 
 // 读取整个状态文件为 key→value 表（空行与 '#' 注释行跳过；坏键忽略）
-std::map<std::string, float> LoadCameraStateFile() {
+std::map<std::string, float> LoadEditorSettingsFile() {
     std::map<std::string, float> kv;
-    std::ifstream in(kEditorCameraStateFile);
+    std::ifstream in(kEditorSettingsFile);
+    if (!in.is_open()) {
+        // 旧版本只存过 editor_camera.cfg：新文件尚不存在时读它，避免丢上次相机视角
+        in.open(kEditorSettingsFileLegacy);
+    }
     std::string line;
     while (std::getline(in, line)) {
         std::istringstream ss(line);
@@ -72,7 +78,7 @@ std::map<std::string, float> LoadCameraStateFile() {
 }
 
 // 从状态表取键值，缺失（首次运行/格式升级缺字段）时回退默认
-float CameraStateValue(const std::map<std::string, float> &kv, const char *key, float fallback) {
+float EditorSettingsValue(const std::map<std::string, float> &kv, const char *key, float fallback) {
     auto it = kv.find(key);
     return it != kv.end() ? it->second : fallback;
 }
@@ -93,9 +99,6 @@ void SceneLayer::OnAttach() {
     m_Context->EditorCamera.SetTarget(glm::vec3(0.0f, 0.5f, 0.0f));
     m_Context->EditorCamera.SetOrbit(0.0f, 25.0f, 8.0f);
 
-    // 上次关闭保存的相机状态覆盖默认值（无状态文件时保持上面的默认视角）
-    RestoreEditorCameraState();
-
 #if GE_EDITOR_BUILD_SCENE_FROM_CODE
     // 从代码程序化构建默认场景（网格/纹理/材质由全局管理器持有）
     BuildDefaultSceneFromCode();
@@ -109,6 +112,11 @@ void SceneLayer::OnAttach() {
         GE_CORE_WARN("SceneLayer: 启动加载默认场景失败: {0}", defaultScenePath);
     }
 #endif
+
+    // 上次关闭保存的编辑器状态覆盖默认值：相机视角（覆盖上方默认）与场景渲染设置
+    // （剔除/延迟/Tonemap/Bloom，作用在已加载的默认场景与 Renderer3D 上）。
+    // 无状态文件时全部保持默认。
+    RestoreEditorSettings();
 }
 
 // 从代码程序化构建一个用于测试 OBJ+MTL 加载的默认场景：方向光 + 环境光 +
@@ -149,8 +157,8 @@ void SceneLayer::BuildDefaultSceneFromCode() {
 }
 
 void SceneLayer::OnDetach() {
-    // 关闭前保存编辑器相机状态（此后 Scene 与视口会被释放）
-    SaveEditorCameraState();
+    // 关闭前保存编辑器相机与场景渲染设置（此后 Scene 与视口会被释放）
+    SaveEditorSettings();
 
     m_Viewport.reset(); // 释放离屏渲染目标（GPU 资源）
     m_Context->Scene.reset();
@@ -1010,16 +1018,17 @@ bool SceneLayer::LoadSceneFromFile(std::string_view filepath) {
     return true;
 }
 
-void SceneLayer::SaveEditorCameraState() {
-    const Camera &cam = m_Context->EditorCamera;
-
-    std::ofstream out(kEditorCameraStateFile);
+void SceneLayer::SaveEditorSettings() {
+    std::ofstream out(kEditorSettingsFile);
     if (!out) {
-        GE_CORE_WARN("SaveEditorCameraState: 无法写入编辑器相机状态文件 {0}", kEditorCameraStateFile);
+        GE_CORE_WARN("SaveEditorSettings: 无法写入编辑器状态文件 {0}", kEditorSettingsFile);
         return;
     }
     out.precision(9); // float 有效位写全，恢复时不致视角漂移
+    out << "# GE 编辑器自动保存状态（勿手改；缺失字段恢复时回退默认）\n";
 
+    // ---- 编辑器导航相机（Orbit：目标 + 角度 + 距离 + 投影 + 曝光 + 灵敏度）----
+    const Camera &cam = m_Context->EditorCamera;
     const glm::vec3 target = cam.GetTarget();
     out << "mode " << static_cast<int>(cam.GetMode()) << '\n';
     out << "target_x " << target.x << '\n';
@@ -1035,31 +1044,66 @@ void SceneLayer::SaveEditorCameraState() {
     out << "mouse_sensitivity " << cam.MouseSensitivity << '\n';
     out << "scroll_sensitivity " << cam.ScrollSensitivity << '\n';
     out << "move_speed " << cam.MoveSpeed << '\n';
+
+    // ---- 场景/渲染设置（SceneLayer 面板里的可调项）----
+    if (m_Context->Scene) {
+        out << "culling_mode "
+            << static_cast<int>(m_Context->Scene->GetCullingMode()) << '\n';
+    }
+    const Renderer3D &r3d = Renderer::Get3DRenderer();
+    out << "deferred " << (r3d.IsDeferred() ? 1 : 0) << '\n';
+    out << "tonemap " << (r3d.IsTonemapEnabled() ? 1 : 0) << '\n';
+    out << "bloom_enabled " << (r3d.IsBloomEnabled() ? 1 : 0) << '\n';
+    out << "bloom_threshold " << r3d.GetBloomThreshold() << '\n';
+    out << "bloom_intensity " << r3d.GetBloomIntensity() << '\n';
+    out << "bloom_mip_levels " << r3d.GetBloomMipLevels() << '\n';
 }
 
-void SceneLayer::RestoreEditorCameraState() {
-    const auto kv = LoadCameraStateFile();
+void SceneLayer::RestoreEditorSettings() {
+    const auto kv = LoadEditorSettingsFile();
     if (kv.empty()) {
-        return; // 无状态文件：保持 OnAttach 设置的默认视角
+        return; // 无状态文件：全部保持 OnAttach/引擎默认值
     }
 
+    // 状态文件中缺失的键回退当前值，保证老格式/手改坏文件也能恢复
+    const auto get = [&kv](const char *key, float fallback) {
+        return EditorSettingsValue(kv, key, fallback);
+    };
+    const auto getBool = [&kv](const char *key, bool fallback) {
+        return EditorSettingsValue(kv, key, fallback ? 1.0f : 0.0f) > 0.5f;
+    };
+
+    // ---- 编辑器导航相机 ----
     Camera &cam = m_Context->EditorCamera;
-    // 状态文件中缺失的键用当前（默认）值回退，保证老格式/手改坏文件也能恢复
-    cam.SetMode(static_cast<Camera::Mode>(static_cast<int>(CameraStateValue(kv, "mode", 0.0f))));
-    cam.SetTarget(glm::vec3(CameraStateValue(kv, "target_x", cam.GetTarget().x),
-                            CameraStateValue(kv, "target_y", cam.GetTarget().y),
-                            CameraStateValue(kv, "target_z", cam.GetTarget().z)));
-    cam.SetOrbit(CameraStateValue(kv, "theta", cam.GetTheta()),
-                 CameraStateValue(kv, "phi", cam.GetPhi()),
-                 CameraStateValue(kv, "distance", cam.GetDistance()));
-    cam.SetPerspective(CameraStateValue(kv, "fov", cam.GetFov()),
+    cam.SetMode(static_cast<Camera::Mode>(static_cast<int>(get("mode", 0.0f))));
+    cam.SetTarget(glm::vec3(get("target_x", cam.GetTarget().x),
+                            get("target_y", cam.GetTarget().y),
+                            get("target_z", cam.GetTarget().z)));
+    cam.SetOrbit(get("theta", cam.GetTheta()),
+                 get("phi", cam.GetPhi()),
+                 get("distance", cam.GetDistance()));
+    cam.SetPerspective(get("fov", cam.GetFov()),
                        cam.GetAspect(), // 宽高比每帧随视口更新，不入文件
-                       CameraStateValue(kv, "near", cam.GetNear()),
-                       CameraStateValue(kv, "far", cam.GetFar()));
-    cam.SetExposure(CameraStateValue(kv, "exposure", cam.GetExposure()));
-    cam.MouseSensitivity = CameraStateValue(kv, "mouse_sensitivity", cam.MouseSensitivity);
-    cam.ScrollSensitivity = CameraStateValue(kv, "scroll_sensitivity", cam.ScrollSensitivity);
-    cam.MoveSpeed = CameraStateValue(kv, "move_speed", cam.MoveSpeed);
+                       get("near", cam.GetNear()),
+                       get("far", cam.GetFar()));
+    cam.SetExposure(get("exposure", cam.GetExposure()));
+    cam.MouseSensitivity = get("mouse_sensitivity", cam.MouseSensitivity);
+    cam.ScrollSensitivity = get("scroll_sensitivity", cam.ScrollSensitivity);
+    cam.MoveSpeed = get("move_speed", cam.MoveSpeed);
+
+    // ---- 场景/渲染设置 ----
+    if (m_Context->Scene) {
+        m_Context->Scene->SetCullingMode(
+            static_cast<Scene::CullingMode>(static_cast<int>(get("culling_mode", 0.0f))));
+    }
+    Renderer3D &r3d = Renderer::Get3DRenderer();
+    r3d.SetDeferred(getBool("deferred", r3d.IsDeferred()));
+    r3d.SetTonemapEnabled(getBool("tonemap", r3d.IsTonemapEnabled()));
+    r3d.SetBloomEnabled(getBool("bloom_enabled", r3d.IsBloomEnabled()));
+    r3d.SetBloomThreshold(get("bloom_threshold", r3d.GetBloomThreshold()));
+    r3d.SetBloomIntensity(get("bloom_intensity", r3d.GetBloomIntensity()));
+    r3d.SetBloomMipLevels(
+        static_cast<uint32_t>(get("bloom_mip_levels", static_cast<float>(r3d.GetBloomMipLevels()))));
 }
 
 void SceneLayer::LoadScene() {

@@ -58,7 +58,8 @@ Thumbs.db
 *.opensdf
 *.vcxproj.user
 imgui.ini
-# 编辑器个人偏好（相机视角等），不入版本库
+# 编辑器个人偏好（相机视角、渲染开关等），不入版本库
+editor_settings.cfg
 editor_camera.cfg
 
 # ============================================

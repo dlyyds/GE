@@ -13,6 +13,7 @@
 #include "Scene/Components.h"
 #include "Scene/Entity.h"
 #include "Scene/Scene.h"
+#include "Audio/AudioWorld.h"
 #include "Core/KeyCodes.h"
 #include "Core/Log.h"
 #include "Core/MouseCodes.h"
@@ -121,8 +122,59 @@ std::string ReadFileContents(const std::string &path) {
     return ss.str();
 }
 
-// 注入脚本 API：log / input / transform / anim / character / camera / entity / public / Key / Mouse。
+// 注入脚本 API：log / input / transform / anim / character / camera / entity / public / Key / Mouse / audio。
 // 每个命名空间一个独立注册函数，RegisterApi 汇总调用。
+
+// audio.* 辅助（Stage C）
+int AudioResolveSlot(Impl &eng, entt::entity e, const sol::object &obj) {
+    if (!eng.scene || !eng.scene->Reg().valid(e))
+        return -1;
+    auto *src = eng.scene->Reg().try_get<AudioSourceComponent>(e);
+    if (!src)
+        return -1;
+    if (obj.get_type() == sol::type::number) {
+        const int idx = static_cast<int>(obj.as<double>());
+        if (idx >= 0 && idx < static_cast<int>(src->Sounds.size()))
+            return idx;
+        GE_CORE_WARN("[Lua] audio.* slot index out of range: {}", idx);
+        return -1;
+    }
+    if (obj.get_type() == sol::type::string) {
+        const std::string name = obj.as<std::string>();
+        for (int i = 0; i < static_cast<int>(src->Sounds.size()); ++i) {
+            if (src->Sounds[i].Name == name)
+                return i;
+        }
+        GE_CORE_WARN("[Lua] audio.* slot name not found: {}", name);
+        return -1;
+    }
+    return -1;
+}
+
+bool AudioValidTarget(Impl &eng, entt::entity e) {
+    return eng.scene && eng.scene->Reg().valid(e)
+        && eng.scene->Reg().any_of<AudioSourceComponent>(e);
+}
+
+Audio::AudioWorld *AudioWorldOf(Impl &eng) {
+    return eng.scene ? eng.scene->GetAudioWorld() : nullptr;
+}
+
+bool AudioParseCommandTarget(Impl &eng, sol::variadic_args &va,
+                             entt::entity &outEntity, int &outSlot) {
+    outEntity = eng.activeEntity;
+    outSlot = -1;
+    if (va.size() == 0)
+        return AudioValidTarget(eng, outEntity);
+    if (va.size() >= 2 && va[0].get_type() == sol::type::number) {
+        outEntity = static_cast<entt::entity>(static_cast<int>(va[0].as<double>()));
+        outSlot = AudioResolveSlot(eng, outEntity, va[1]);
+    } else {
+        outSlot = AudioResolveSlot(eng, outEntity, va[0]);
+    }
+    return AudioValidTarget(eng, outEntity) && outSlot >= 0;
+}
+
 void RegisterLogApi(Impl &eng) {
     sol::state &lua = eng.lua;
 
@@ -544,6 +596,138 @@ void RegisterKeyMouseApi(Impl &eng) {
 }
 
 // 汇总注册全部脚本 API：按命名空间拆分后的各注册函数逐一调用
+
+
+// audio.* (Stage C): operate on AudioSourceComponent of the script entity.
+// slot is a numeric index or the slot Name; omitted = all slots.
+// Optional target entity form audio.play(entity, slot) etc.
+void RegisterAudioApi(Impl &eng) {
+    sol::state &lua = eng.lua;
+    sol::table audioT = lua.create_table();
+
+    audioT["play"] = [&eng](sol::variadic_args va) -> bool {
+        entt::entity e; int slot;
+        if (!AudioParseCommandTarget(eng, va, e, slot)) {
+            GE_CORE_WARN("[Lua] audio.play: AudioSource missing or slot invalid");
+            return false;
+        }
+        Audio::AudioWorld *aw = AudioWorldOf(eng);
+        if (!aw)
+            return false;
+        aw->RequestPlay(e, slot, true);
+        return true;
+    };
+
+    audioT["stop"] = [&eng](sol::variadic_args va) -> bool {
+        entt::entity e; int slot;
+        if (!AudioParseCommandTarget(eng, va, e, slot)) {
+            GE_CORE_WARN("[Lua] audio.stop: AudioSource missing or slot invalid");
+            return false;
+        }
+        Audio::AudioWorld *aw = AudioWorldOf(eng);
+        if (!aw)
+            return false;
+        if (slot < 0)
+            aw->StopAll(e);
+        else
+            aw->RequestStop(e, slot);
+        return true;
+    };
+
+    audioT["is_playing"] = [&eng](sol::variadic_args va) -> bool {
+        entt::entity e = eng.activeEntity;
+        int slot = -1;
+        if (va.size() >= 2 && va[0].get_type() == sol::type::number) {
+            e = static_cast<entt::entity>(static_cast<int>(va[0].as<double>()));
+            slot = AudioResolveSlot(eng, e, va[1]);
+        } else if (va.size() >= 1) {
+            slot = AudioResolveSlot(eng, e, va[0]);
+        }
+        if (!AudioValidTarget(eng, e) || (va.size() > 0 && slot < 0))
+            return false;
+        Audio::AudioWorld *aw = AudioWorldOf(eng);
+        return aw ? aw->IsPlaying(e, slot) : false;
+    };
+
+    audioT["set_volume"] = [&eng](sol::variadic_args va) -> bool {
+        entt::entity e; int slot; float v;
+        if (va.size() == 2) {
+            e = eng.activeEntity;
+            slot = AudioResolveSlot(eng, e, va[0]);
+            v = static_cast<float>(va[1].as<double>());
+        } else if (va.size() == 3 && va[0].get_type() == sol::type::number) {
+            e = static_cast<entt::entity>(static_cast<int>(va[0].as<double>()));
+            slot = AudioResolveSlot(eng, e, va[1]);
+            v = static_cast<float>(va[2].as<double>());
+        } else {
+            GE_CORE_WARN("[Lua] audio.set_volume expected (slot, v) or (entity, slot, v)");
+            return false;
+        }
+        if (!AudioValidTarget(eng, e) || slot < 0) {
+            GE_CORE_WARN("[Lua] audio.set_volume: AudioSource missing or slot invalid");
+            return false;
+        }
+        Audio::AudioWorld *aw = AudioWorldOf(eng);
+        if (!aw)
+            return false;
+        aw->SetVolume(e, slot, v);
+        return true;
+    };
+
+    audioT["set_pitch"] = [&eng](sol::variadic_args va) -> bool {
+        entt::entity e; int slot; float p;
+        if (va.size() == 2) {
+            e = eng.activeEntity;
+            slot = AudioResolveSlot(eng, e, va[0]);
+            p = static_cast<float>(va[1].as<double>());
+        } else if (va.size() == 3 && va[0].get_type() == sol::type::number) {
+            e = static_cast<entt::entity>(static_cast<int>(va[0].as<double>()));
+            slot = AudioResolveSlot(eng, e, va[1]);
+            p = static_cast<float>(va[2].as<double>());
+        } else {
+            GE_CORE_WARN("[Lua] audio.set_pitch expected (slot, p) or (entity, slot, p)");
+            return false;
+        }
+        if (!AudioValidTarget(eng, e) || slot < 0) {
+            GE_CORE_WARN("[Lua] audio.set_pitch: AudioSource missing or slot invalid");
+            return false;
+        }
+        Audio::AudioWorld *aw = AudioWorldOf(eng);
+        if (!aw)
+            return false;
+        aw->SetPitch(e, slot, p);
+        return true;
+    };
+
+    audioT["set_loop"] = [&eng](sol::variadic_args va) -> bool {
+        entt::entity e; int slot; bool on;
+        if (va.size() == 2) {
+            e = eng.activeEntity;
+            slot = AudioResolveSlot(eng, e, va[0]);
+            on = va[1].as<bool>();
+        } else if (va.size() == 3 && va[0].get_type() == sol::type::number) {
+            e = static_cast<entt::entity>(static_cast<int>(va[0].as<double>()));
+            slot = AudioResolveSlot(eng, e, va[1]);
+            on = va[2].as<bool>();
+        } else {
+            GE_CORE_WARN("[Lua] audio.set_loop expected (slot, on) or (entity, slot, on)");
+            return false;
+        }
+        if (!AudioValidTarget(eng, e) || slot < 0) {
+            GE_CORE_WARN("[Lua] audio.set_loop: AudioSource missing or slot invalid");
+            return false;
+        }
+        Audio::AudioWorld *aw = AudioWorldOf(eng);
+        if (!aw)
+            return false;
+        aw->SetLoop(e, slot, on);
+        return true;
+    };
+
+    lua["audio"] = audioT;
+}
+
+
 void RegisterApi(Impl &eng) {
     RegisterLogApi(eng);
     RegisterInputApi(eng);
@@ -554,6 +738,7 @@ void RegisterApi(Impl &eng) {
     RegisterEntityApi(eng);
     RegisterPublicApi(eng);
     RegisterKeyMouseApi(eng);
+    RegisterAudioApi(eng);
 }
 
 // 加载并缓存行为表；失败返回 false（调用方决定告警/禁用）

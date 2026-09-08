@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "Core/Timestep.h"
 
@@ -32,6 +32,9 @@ public:
     void SetVolume(entt::entity entity, int slot, float v);
     void SetPitch(entt::entity entity, int slot, float p);
     void SetLoop(entt::entity entity, int slot, bool on);
+
+    /// Query whether an audio slot is currently playing (-1 = any/all slots).
+    bool IsPlaying(entt::entity entity, int slot = -1) const;
 
     /// Play 态每帧调用（Scene::UpdateAudio）。
     void Update(Timestep ts);

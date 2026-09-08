@@ -116,6 +116,27 @@ void AudioWorld::SetPitch(entt::entity entity, int slot, float p) {
         m_Impl->commands.push_back({Impl::CommandType::SetPitch, entity, slot, false, p, false});
 }
 
+
+bool AudioWorld::IsPlaying(entt::entity entity, int slot) const {
+    if (!m_Impl)
+        return false;
+    AudioContext *ctx = Application::Get().GetAudioContext();
+    if (!ctx)
+        return false;
+
+    const auto outer = m_Impl->voices.find(entity);
+    if (outer == m_Impl->voices.end())
+        return false;
+
+    for (const auto &[s, handle] : outer->second) {
+        if (slot != -1 && s != slot)
+            continue;
+        if (ctx->IsPlaying(handle))
+            return true;
+    }
+    return false;
+}
+
 void AudioWorld::SetLoop(entt::entity entity, int slot, bool on) {
     if (m_Impl)
         m_Impl->commands.push_back({Impl::CommandType::SetLoop, entity, slot, false, 0.0f, on});

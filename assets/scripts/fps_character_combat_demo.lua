@@ -71,14 +71,22 @@ function M.OnUpdate(self, ts)
     anim.set("speed", hspd)
     anim.set_bool("on_ground", character.get_grounded())
 
-    -- 移动脚步音频：贴地且水平合速度超过阈值才播 walk（脚步语义），停住即停播。
+    -- 移动脚步音频：贴地且水平合速度超过阈值才播 walk（脚步语义），停住即停播；
+    -- 冲刺时提高播放音高（步频加快），切回走路恢复 1.0。pitch 只在变化时才下发，避免每帧冗余调用。
     -- audio.* 作用于本实体 AudioSource 组件的 slot（按名字解析到 "walk" 槽位）。
     local walking = character.get_grounded() and hspd > 0.5
+    local walk_pitch = sprinting and 1.3 or 1.0
     if walking and not audio.is_playing("walk") then
         audio.play("walk")
         audio.set_loop("walk", true)
+        audio.set_pitch("walk", walk_pitch)
+        self._walk_pitch = walk_pitch
+    elseif walking and audio.is_playing("walk") and self._walk_pitch ~= walk_pitch then
+        audio.set_pitch("walk", walk_pitch) -- 走路/跑步切换时实时更新音高
+        self._walk_pitch = walk_pitch
     elseif not walking and audio.is_playing("walk") then
         audio.stop("walk")
+        self._walk_pitch = nil
     end
 
     -- 空格起跳：仅贴地时生效（character.jump 已做贴地判定，空中按压不缓冲）

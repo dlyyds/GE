@@ -66,8 +66,8 @@ private:
     /// 绘制 Camera 组件属性
     static void DrawCameraComponent(CameraComponent &component);
 
-    /// 绘制 Mesh Renderer 组件属性（scene 供「导入 glTF 场景」落实体树，静态函数无法访问 m_Context）
-    static void DrawMeshRendererComponent(MeshRendererComponent &component, Scene *scene);
+    /// 绘制 Mesh Renderer 组件属性
+    static void DrawMeshRendererComponent(MeshRendererComponent &component);
 
     /// 绘制 Joint（骨骼关节）组件属性
     static void DrawJointComponent(JointComponent &component);

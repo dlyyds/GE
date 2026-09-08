@@ -21,7 +21,6 @@
 #include "GE/Render/Renderer3D.h"
 #include "GE/Render/Mesh.h"
 #include "GE/Render/MeshManager.h"
-#include "GE/Scene/GLTFSceneImporter.h"
 #include "GE/Utils/PlatformUtils.h"
 
 #include <glm/gtc/type_ptr.hpp>
@@ -988,7 +987,7 @@ void SceneHierarchyPanel::DrawComponents(Entity entity) {
     if (entity.HasComponent<CameraComponent>())
         entries.push_back({"Camera", [&] { DrawComponent<CameraComponent>("Camera", entity, [](auto &c) { DrawCameraComponent(c); }); }});
     if (entity.HasComponent<MeshRendererComponent>())
-        entries.push_back({"Mesh Renderer", [&] { DrawComponent<MeshRendererComponent>("Mesh Renderer", entity, [this](auto &c) { DrawMeshRendererComponent(c, m_Context); }); }});
+        entries.push_back({"Mesh Renderer", [&] { DrawComponent<MeshRendererComponent>("Mesh Renderer", entity, [](auto &c) { DrawMeshRendererComponent(c); }); }});
     if (entity.HasComponent<JointComponent>())
         entries.push_back({"Joint", [&] { DrawComponent<JointComponent>("Joint", entity, [](auto &c) { DrawJointComponent(c); }); }});
     if (entity.HasComponent<SkinComponent>())
@@ -1535,8 +1534,7 @@ static void DrawSubMeshMaterialEditor(MeshRendererComponent &comp, size_t index,
     }
 }
 
-void SceneHierarchyPanel::DrawMeshRendererComponent(MeshRendererComponent &component,
-                                                    Scene *scene) {
+void SceneHierarchyPanel::DrawMeshRendererComponent(MeshRendererComponent &component) {
     ImGui::ColorEdit4("Color", glm::value_ptr(component.Color));
 
     // ---- 网格选择下拉框 ----
@@ -1613,27 +1611,6 @@ void SceneHierarchyPanel::DrawMeshRendererComponent(MeshRendererComponent &compo
     // 加载失败提示
     if (ImGui::BeginPopup("MeshLoadFailed")) {
         ImGui::Text("网格加载失败（请确认是合法的 .obj / .gemesh / .gltf / .glb 文件）");
-        if (ImGui::Button("OK")) {
-            ImGui::CloseCurrentPopup();
-        }
-        ImGui::EndPopup();
-    }
-
-    // ---- 导入 glTF 场景（保留 node 层级与变换，挂到当前选中实体下）----
-    ImGui::Separator();
-    if (ImGui::Button("导入 glTF 场景...")) {
-        std::string path = FileDialogs::OpenFile(
-            "glTF 场景 (*.gltf;*.glb)\0*.gltf;*.glb\0"
-            "All Files (*.*)\0*.*\0");
-        if (!path.empty()) {
-            if (scene && !GLTFSceneImporter::Import(*scene, meshMgr, path)) {
-                GE_CORE_WARN("SceneHierarchyPanel: glTF 场景导入失败: {0}", path);
-                ImGui::OpenPopup("GLTFImportFailed");
-            }
-        }
-    }
-    if (ImGui::BeginPopup("GLTFImportFailed")) {
-        ImGui::Text("glTF 场景导入失败（请确认是合法的 .gltf / .glb 文件）");
         if (ImGui::Button("OK")) {
             ImGui::CloseCurrentPopup();
         }

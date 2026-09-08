@@ -53,6 +53,9 @@ public:
     /// 新建空场景（清空当前场景内容），供顶部菜单调用
     void NewScene();
 
+    /// 从文件导入 glTF 场景（保留 node 层级与变换，导入到场景根），供顶部菜单调用
+    void ImportGLTFScene();
+
     /// 重载当前场景内所有 Lua 脚本（Ctrl+R / 顶部菜单）
     void ReloadAllScripts();
 
@@ -75,6 +78,9 @@ private:
 
     /// 离屏目标重建限流计时器（避免拖拽视口时每帧重建 GPU 资源）
     float m_ResizeCooldown = 0.0f;
+
+    /// 最近一次 glTF 导入是否失败（在 OnImGuiRender 弹窗提示，一次性消费）
+    bool m_GLTFImportFailed = false;
 
     /// 停靠目标 DockSpace ID（根上下文取 "MainDockspace"）
     ImGuiID m_DockSpaceID = 0;

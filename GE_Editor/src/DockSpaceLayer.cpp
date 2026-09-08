@@ -108,6 +108,11 @@ void DockSpaceLayer::OnImGuiRender() {
                     m_SceneLayer->SaveScene();
                 }
             }
+            if (ImGui::MenuItem("导入 glTF 场景...")) {
+                if (m_SceneLayer) {
+                    m_SceneLayer->ImportGLTFScene();
+                }
+            }
             ImGui::Separator();
             if (ImGui::MenuItem("重载所有脚本", "Ctrl+R")) {
                 if (m_SceneLayer) {

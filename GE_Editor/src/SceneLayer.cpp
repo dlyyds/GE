@@ -19,6 +19,7 @@
 #include "GE/Scene/Components.h"
 #include "GE/Scene/Entity.h"
 #include "GE/Scene/SceneSerializer.h"
+#include "GE/Scene/GLTFSceneImporter.h"
 #include "GE/Utils/PlatformUtils.h"
 
 #include <GLFW/glfw3.h>
@@ -898,6 +899,20 @@ void SceneLayer::OnImGuiRender() {
         ImGui::TextDisabled("提示：先在左侧 Hierarchy/Properties 中调整实体，再保存/加载验证");
     }
 
+    // ---- glTF 导入失败提示（由顶部菜单「导入 glTF 场景...」触发，一次性弹窗）----
+    // OpenPopup 与 BeginPopupModal 都位于本窗口作用域内，ID 一致才能匹配到同一弹窗
+    if (m_GLTFImportFailed) {
+        m_GLTFImportFailed = false;
+        ImGui::OpenPopup("GLTFImportFailed");
+    }
+    if (ImGui::BeginPopupModal("GLTFImportFailed", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::Text("glTF 场景导入失败（请确认是合法的 .gltf / .glb 文件）");
+        if (ImGui::Button("OK")) {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+
     ImGui::End();
 }
 
@@ -960,6 +975,27 @@ void SceneLayer::LoadScene() {
 void SceneLayer::NewScene() {
     // 创建新场景（序列化器无状态，仅在保存/加载时按需创建局部变量）
     m_Context->Scene = std::make_unique<Scene>();
+}
+
+void SceneLayer::ImportGLTFScene() {
+    if (!m_Context->Scene) {
+        GE_CORE_WARN("SceneLayer: 无活动场景，无法导入 glTF");
+        return;
+    }
+
+    // 从文件对话框选 glTF 场景文件，导入到当前场景根（保留 node 层级与变换）。
+    // 网格/纹理/材质由全局管理器持有，导入器只向场景落实体树。
+    std::string filepath = FileDialogs::OpenFile(
+        "glTF 场景 (*.gltf;*.glb)\0*.gltf;*.glb\0All Files (*.*)\0*.*\0");
+    if (filepath.empty()) {
+        return;
+    }
+
+    auto &meshMgr = Renderer::GetMeshManager();
+    if (!GLTFSceneImporter::Import(*m_Context->Scene, meshMgr, filepath)) {
+        GE_CORE_WARN("SceneLayer: glTF 场景导入失败: {0}", filepath);
+        m_GLTFImportFailed = true;
+    }
 }
 
 void SceneLayer::ReloadAllScripts() {

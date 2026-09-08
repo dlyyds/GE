@@ -105,6 +105,18 @@ void SceneHierarchyPanel::DrawCameraComponent(CameraComponent &component) {
 
     ImGui::Separator();
 
+    // 曝光（HDR Tonemap，仅延迟渲染生效）：乘在 HDR 线性颜色上、ACES 之前。
+    // Play 态主玩法相机会把该值经 SceneLayer::OnUpdate 传给 Renderer3D 的 Tonemap UBO。
+    float exposure = camera.GetExposure();
+    if (ImGui::SliderFloat("Exposure", &exposure, 0.01f, 8.0f, "%.2f")) {
+        camera.SetExposure(exposure);
+    }
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("乘在 HDR 线性颜色上、ACES 之前；1.0 = 不改亮度（仅延迟渲染生效）");
+    }
+
+    ImGui::Separator();
+
     if (camera.GetMode() == Camera::Mode::Orbit) {
         // 轨道相机参数（Theta/Phi/Distance 内部均为度数）
         glm::vec3 target = camera.GetTarget();

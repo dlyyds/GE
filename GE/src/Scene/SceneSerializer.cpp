@@ -807,6 +807,7 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
 
             cameraNode["Near"] = cam.GetNear();
             cameraNode["Far"] = cam.GetFar();
+            cameraNode["Exposure"] = cam.GetExposure();
 
             // Orbit 模式参数
             cameraNode["Target"] = SerializeVec3(cam.GetTarget());
@@ -1425,6 +1426,10 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
             float nearPlane = cameraNode["Near"] ? cameraNode["Near"].as<float>(0.1f) : 0.1f;
             float farPlane = cameraNode["Far"] ? cameraNode["Far"].as<float>(100.0f) : 100.0f;
             cam.SetPerspective(fov, aspect, nearPlane, farPlane);
+
+            // 曝光系数（缺省 1.0 = 不改亮度，旧场景文件照常）
+            float exposure = cameraNode["Exposure"] ? cameraNode["Exposure"].as<float>(1.0f) : 1.0f;
+            cam.SetExposure(exposure);
 
             // 模式
             std::string modeStr = cameraNode["Mode"] ? cameraNode["Mode"].as<std::string>("Orbit") : "Orbit";

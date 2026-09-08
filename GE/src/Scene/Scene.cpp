@@ -1413,7 +1413,7 @@ void Scene::RenderMeshes3D(const glm::mat4 &view, const glm::mat4 &projection,
         for (auto entity : waterView) {
             auto &tc = waterView.get<TransformComponent>(entity);
             auto &wc = waterView.get<WaterComponent>(entity);
-            Mesh *waterMesh = meshMgr.CreateWaterGrid(wc.Resolution, wc.Size);
+            Mesh *waterMesh = meshMgr.CreateWaterGrid(wc.Resolution);
             if (waterMesh) {
                 r3d.DrawWater(tc.GetWorldMatrix(), waterMesh, wc);
             }

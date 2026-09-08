@@ -513,10 +513,11 @@ Mesh *MeshManager::GetBuiltin(const std::string &type) {
     return Load("builtin:" + type);
 }
 
-Mesh *MeshManager::CreateWaterGrid(uint32_t resolution, const glm::vec2 &size) {
+Mesh *MeshManager::CreateWaterGrid(uint32_t resolution) {
     const uint32_t n = std::max<uint32_t>(1u, resolution);
-    const std::string key = "watergrid:" + std::to_string(n) + ":"
-                            + std::to_string(size.x) + ":" + std::to_string(size.y);
+    // 统一生成 1×1 单位水格；实际尺寸由 Renderer3D_Record 在 water.model 中按 batch.size 缩放，
+    // 避免每个连续尺寸取值都生成新网格 / 新材质（旧的 size 进 key 会导致材质爆炸）。
+    const std::string key = "watergrid:" + std::to_string(n);
 
     if (Mesh *existing = Get(key)) {
         return existing;
@@ -535,10 +536,10 @@ Mesh *MeshManager::CreateWaterGrid(uint32_t resolution, const glm::vec2 &size) {
     vertices.reserve(static_cast<size_t>(n + 1) * (n + 1));
     for (uint32_t row = 0; row <= n; ++row) {
         const float v = static_cast<float>(row) / static_cast<float>(n);
-        const float z = (v - 0.5f) * size.y;
+        const float z = (v - 0.5f) * 1.0f;
         for (uint32_t col = 0; col <= n; ++col) {
             const float u = static_cast<float>(col) / static_cast<float>(n);
-            const float x = (u - 0.5f) * size.x;
+            const float x = (u - 0.5f) * 1.0f;
 
             Vertex vert;
             vert.Position = {x, 0.0f, z};

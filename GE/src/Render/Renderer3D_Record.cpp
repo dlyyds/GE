@@ -13,6 +13,7 @@
 #include <filesystem>
 
 #include <glm/gtc/matrix_inverse.hpp> // glm::inverse（矩阵求逆）
+#include <glm/gtc/matrix_transform.hpp> // glm::scale（水面单位网格按 Size 缩放）
 
 #include "Scene/Components.h"
 #include "Core/Log.h"
@@ -501,7 +502,7 @@ void Renderer3D::DrawWaterBatches(VulkanCommandBuffer &cmd, VulkanRenderFrame &f
 
         // 填充水面 UBO（std140）。waveSpeeds 只用到 x，其余补 0。
         WaterUBO ubo{};
-        ubo.model = batch.transform;
+        ubo.model = glm::scale(batch.transform, glm::vec3(batch.size.x, 1.0f, batch.size.y));
         ubo.timeParams = glm::vec4(m_WaterTime * batch.timeScale,
                                    batch.normalStrength,
                                    batch.roughness,

@@ -135,15 +135,15 @@ public:
     /**
      * @brief 获取（或创建并缓存）一个细分水面网格。
      *
-     * 生成一个半径 (size.x/2, size.z/2) 的 XZ 平面网格，顶点密度由 resolution
-     * 控制（(resolution+1)^2 顶点）。供 WaterComponent 使用；按 (resolution, size)
-     * 缓存，重复请求返回同一网格指针。
+     * 生成一个 1×1 单位 XZ 平面网格，顶点密度由 resolution
+     * 控制（(resolution+1)^2 顶点）。供 WaterComponent 使用；实际 XZ 尺寸由
+     * Renderer3D 绘制时按 WaterComponent.Size 缩放（water.model），因此只按分辨率
+     * 缓存，重复请求返回同一网格指针，尺寸调整不会堆积新网格/材质。
      *
      * @param resolution 细分分辨率（N，生成 (N+1)^2 顶点；<1 时自动取 1）
-     * @param size       XZ 范围（世界坐标）
      * @return 网格指针（就绪），创建失败返回 nullptr
      */
-    Mesh *CreateWaterGrid(uint32_t resolution, const glm::vec2 &size);
+    Mesh *CreateWaterGrid(uint32_t resolution);
 
     /**
      * @brief 手动注册一个网格到管理器中。

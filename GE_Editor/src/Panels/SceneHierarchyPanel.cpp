@@ -967,31 +967,83 @@ void SceneHierarchyPanel::DrawComponents(Entity entity) {
 // Add Component 弹窗
 // ============================================================
 void SceneHierarchyPanel::DrawAddComponentPopup() {
+    // 弹窗关闭时直接返回，避免每帧重复构建类别数据
+    if (!ImGui::IsPopupOpen("AddComponent"))
+        return;
+
+    // 按类别分列展示：每个类别占一竖列，不同类别并排（表头即类别名）。
+    // 组件项存「中文名 + 添加动作」，动作捕获 this 复用 TryAddComponent<T> 判重逻辑。
+    struct AddEntry { const char *name; std::function<void()> add; };
+    struct AddCategory { const char *name; std::vector<AddEntry> items; };
+
+    const std::vector<AddCategory> categories = {
+        { "渲染", {
+            { "网格渲染器", [this] { TryAddComponent<MeshRendererComponent>("网格渲染器"); } },
+            { "精灵渲染器", [this] { TryAddComponent<SpriteRendererComponent>("精灵渲染器"); } },
+            { "环境",       [this] { TryAddComponent<EnvironmentComponent>("环境"); } },
+            { "点光源",     [this] { TryAddComponent<PointLightComponent>("点光源"); } },
+            { "平行光",     [this] { TryAddComponent<DirectionalLightComponent>("平行光"); } },
+            { "环境光",     [this] { TryAddComponent<AmbientLightComponent>("环境光"); } },
+            { "包围盒",     [this] { TryAddComponent<BoundingBoxComponent>("包围盒"); } },
+        } },
+        { "相机", {
+            { "相机",       [this] { TryAddComponent<CameraComponent>("相机"); } },
+            { "跟随相机",   [this] { TryAddComponent<FollowCameraComponent>("跟随相机"); } },
+        } },
+        { "动画", {
+            { "动画",       [this] { TryAddComponent<AnimationComponent>("动画"); } },
+            { "动画状态机", [this] { TryAddComponent<AnimStateMachineComponent>("动画状态机"); } },
+            { "关节",       [this] { TryAddComponent<JointComponent>("关节"); } },
+            { "蒙皮",       [this] { TryAddComponent<SkinComponent>("蒙皮"); } },
+        } },
+        { "物理", {
+            { "刚体",       [this] { TryAddComponent<RigidBodyComponent>("刚体"); } },
+            { "角色控制器", [this] { TryAddComponent<CharacterControllerComponent>("角色控制器"); } },
+            { "盒碰撞体",   [this] { TryAddComponent<BoxColliderComponent>("盒碰撞体"); } },
+            { "球碰撞体",   [this] { TryAddComponent<SphereColliderComponent>("球碰撞体"); } },
+            { "胶囊碰撞体", [this] { TryAddComponent<CapsuleColliderComponent>("胶囊碰撞体"); } },
+        } },
+        { "音频", {
+            { "音频源",     [this] { TryAddComponent<AudioSourceComponent>("音频源"); } },
+            { "音频监听器", [this] { TryAddComponent<AudioListenerComponent>("音频监听器"); } },
+        } },
+        { "脚本", {
+            { "脚本",       [this] { TryAddComponent<ScriptComponent>("脚本"); } },
+        } },
+    };
+
     if (!ImGui::BeginPopup("AddComponent"))
         return;
 
-    // 每种组件一行：重复的 "判重 + 添加 + 警告 + 关闭弹窗" 模板收敛到 TryAddComponent
-    TryAddComponent<CameraComponent>("相机");
-    TryAddComponent<MeshRendererComponent>("网格渲染器");
-    TryAddComponent<JointComponent>("关节");
-    TryAddComponent<SkinComponent>("蒙皮");
-    TryAddComponent<AnimationComponent>("动画");
-    TryAddComponent<AnimStateMachineComponent>("动画状态机");
-    TryAddComponent<SpriteRendererComponent>("精灵渲染器");
-    TryAddComponent<PointLightComponent>("点光源");
-    TryAddComponent<DirectionalLightComponent>("平行光");
-    TryAddComponent<AmbientLightComponent>("环境光");
-    TryAddComponent<EnvironmentComponent>("环境");
-    TryAddComponent<AudioSourceComponent>("音频源");
-    TryAddComponent<AudioListenerComponent>("音频监听器");
-    TryAddComponent<RigidBodyComponent>("刚体");
-    TryAddComponent<CharacterControllerComponent>("角色控制器");
-    TryAddComponent<FollowCameraComponent>("跟随相机");
-    TryAddComponent<BoxColliderComponent>("盒碰撞体");
-    TryAddComponent<SphereColliderComponent>("球碰撞体");
-    TryAddComponent<CapsuleColliderComponent>("胶囊碰撞体");
-    TryAddComponent<BoundingBoxComponent>("包围盒");
-    TryAddComponent<ScriptComponent>("脚本");
+    // SizingFixedFit：每列按内容自适应宽度；NoHostExtendX：表格不横向拉伸，
+    // 弹窗宽度随表格收拢（EndTable 会把表格宽度反馈给弹窗自动尺寸）。
+    const int columnCount = static_cast<int>(categories.size());
+    constexpr ImGuiTableFlags kTableFlags =
+        ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_NoHostExtendX |
+        ImGuiTableFlags_BordersInnerV;
+    if (ImGui::BeginTable("AddComponentTable", columnCount, kTableFlags)) {
+        // 表头行：类别名
+        for (const auto &cat : categories)
+            ImGui::TableSetupColumn(cat.name);
+        ImGui::TableHeadersRow();
+
+        // 逐行放置组件项：行号超过某列条目数则该列留空，各列高度以最长列为准
+        size_t maxRows = 0;
+        for (const auto &cat : categories)
+            maxRows = std::max(maxRows, cat.items.size());
+        for (size_t row = 0; row < maxRows; ++row) {
+            ImGui::TableNextRow();
+            for (int col = 0; col < columnCount; ++col) {
+                ImGui::TableSetColumnIndex(col);
+                if (row < categories[col].items.size()) {
+                    const auto &entry = categories[col].items[row];
+                    if (ImGui::Selectable(entry.name))
+                        entry.add();
+                }
+            }
+        }
+        ImGui::EndTable();
+    }
 
     ImGui::EndPopup();
 }
@@ -1004,7 +1056,8 @@ void SceneHierarchyPanel::DrawAddComponentPopup() {
 ///       而非 DrawComponents 的参数 entity——两者在正常流程下是同一个实体。
 template <typename T>
 bool SceneHierarchyPanel::TryAddComponent(const char *name) {
-    if (!ImGui::MenuItem(name))
+    // 表格单元格内用 Selectable：撑满整格形成点击行，悬停高亮范围更直观
+    if (!ImGui::Selectable(name))
         return false;
 
     if (!m_SelectionContext.HasComponent<T>()) {

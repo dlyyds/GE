@@ -775,7 +775,10 @@ void Scene::OnUpdate(Timestep ts,
                      const glm::vec4 &clearColor) {
     // ── 输入快照结算 + 脚本更新（2D 场景路径）────────────────────────────
     m_InputState.BeginFrameInput();
-    m_ScriptEngine.OnUpdate(ts);
+    // 编辑态不更新脚本：OnUpdate 只服务 Play 模拟（编辑视角由编辑器/Gizmo 驱动）
+    if (IsPlaying()) {
+        m_ScriptEngine.OnUpdate(ts);
+    }
 
     // ── 世界矩阵缓存重建（每帧一次 DFS：先于渲染，保证本帧矩阵最新） ──
     UpdateWorldTransforms();
@@ -862,8 +865,12 @@ void Scene::Render3D(const glm::mat4 &view,
 }
 
 void Scene::UpdateScripts(Timestep ts) {
-    // Lua 脚本每帧推进（输入查询由引擎注入的 input.* 在脚本 OnUpdate 内完成）
-    m_ScriptEngine.OnUpdate(ts);
+    // Lua 脚本每帧推进（输入查询由引擎注入的 input.* 在脚本 OnUpdate 内完成）。
+    // 编辑态不更新脚本：OnUpdate 只服务 Play 模拟（与物理决策 5.3 同款门控，
+    // 脚本不再在编辑视角每帧空转）。
+    if (IsPlaying()) {
+        m_ScriptEngine.OnUpdate(ts);
+    }
 }
 
 void Scene::UpdateFollowCamera(Timestep ts) {

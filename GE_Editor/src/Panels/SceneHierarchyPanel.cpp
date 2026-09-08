@@ -950,7 +950,7 @@ void SceneHierarchyPanel::DrawAnimStateMachine(Entity entity, AnimStateMachineCo
 }
 
 // ============================================================
-// 绘制选中实体的所有组件（顶层编排函数）
+// 绘制选中实体的组件（顶层编排函数：下拉框单选一个组件展示）
 // ============================================================
 void SceneHierarchyPanel::DrawComponents(Entity entity) {
 
@@ -977,75 +977,91 @@ void SceneHierarchyPanel::DrawComponents(Entity entity) {
     DrawAddComponentPopup();
     ImGui::PopItemWidth();
 
-    // ---- 各组件按类别编排 ----
-    DrawComponent<TransformComponent>("Transform", entity,
-        [](auto &c) { DrawTransformComponent(c); });
+    // ---- 组件下拉框：一次只显示一个组件，不再堆叠全部 ----
+    // 收集实体上实际存在的组件（名字 + 绘制回调），选中项经下拉框切换；
+    // 绘制仍复用 DrawComponent 模板，保留类别着色的标题栏与「…」移除菜单。
+    struct ComponentEntry { const char *name; std::function<void()> draw; };
+    std::vector<ComponentEntry> entries;
 
-    DrawComponent<CameraComponent>("Camera", entity,
-        [](auto &c) { DrawCameraComponent(c); });
+    if (entity.HasComponent<TransformComponent>())
+        entries.push_back({"Transform", [&] { DrawComponent<TransformComponent>("Transform", entity, [](auto &c) { DrawTransformComponent(c); }); }});
+    if (entity.HasComponent<CameraComponent>())
+        entries.push_back({"Camera", [&] { DrawComponent<CameraComponent>("Camera", entity, [](auto &c) { DrawCameraComponent(c); }); }});
+    if (entity.HasComponent<MeshRendererComponent>())
+        entries.push_back({"Mesh Renderer", [&] { DrawComponent<MeshRendererComponent>("Mesh Renderer", entity, [this](auto &c) { DrawMeshRendererComponent(c, m_Context); }); }});
+    if (entity.HasComponent<JointComponent>())
+        entries.push_back({"Joint", [&] { DrawComponent<JointComponent>("Joint", entity, [](auto &c) { DrawJointComponent(c); }); }});
+    if (entity.HasComponent<SkinComponent>())
+        entries.push_back({"Skin", [&] { DrawComponent<SkinComponent>("Skin", entity, [this](auto &c) { DrawSkinComponent(c); }); }});
+    if (entity.HasComponent<AnimationComponent>())
+        entries.push_back({"Animation", [&] { DrawComponent<AnimationComponent>("Animation", entity, [&](auto &c) { DrawAnimationComponent(entity, c, m_Context); }); }});
+    if (entity.HasComponent<AnimStateMachineComponent>())
+        entries.push_back({"Anim State Machine", [&] { DrawComponent<AnimStateMachineComponent>("Anim State Machine", entity, [this, entity](auto &c) { DrawAnimStateMachine(entity, c); }); }});
+    if (entity.HasComponent<SpriteRendererComponent>())
+        entries.push_back({"Sprite Renderer", [&] { DrawComponent<SpriteRendererComponent>("Sprite Renderer", entity, [](auto &c) { DrawSpriteRendererComponent(c); }); }});
+    if (entity.HasComponent<PointLightComponent>())
+        entries.push_back({"Point Light", [&] { DrawComponent<PointLightComponent>("Point Light", entity, [](auto &c) { DrawPointLightComponent(c); }); }});
+    if (entity.HasComponent<DirectionalLightComponent>())
+        entries.push_back({"Directional Light", [&] { DrawComponent<DirectionalLightComponent>("Directional Light", entity, [](auto &c) { DrawDirectionalLightComponent(c); }); }});
+    if (entity.HasComponent<AmbientLightComponent>())
+        entries.push_back({"Ambient Light", [&] { DrawComponent<AmbientLightComponent>("Ambient Light", entity, [](auto &c) { DrawAmbientLightComponent(c); }); }});
+    if (entity.HasComponent<EnvironmentComponent>())
+        entries.push_back({"Environment", [&] { DrawComponent<EnvironmentComponent>("Environment", entity, [this](auto &c) { DrawEnvironmentComponent(c); }); }});
+    if (entity.HasComponent<AudioSourceComponent>())
+        entries.push_back({"Audio Source", [&] { DrawComponent<AudioSourceComponent>("Audio Source", entity, [this](auto &c) { DrawAudioSourceComponent(c); }); }});
+    if (entity.HasComponent<AudioListenerComponent>())
+        entries.push_back({"Audio Listener", [&] { DrawComponent<AudioListenerComponent>("Audio Listener", entity, [](auto &c) { DrawAudioListenerComponent(c); }); }});
+    if (entity.HasComponent<RigidBodyComponent>())
+        entries.push_back({"Rigid Body", [&] { DrawComponent<RigidBodyComponent>("Rigid Body", entity, [&](auto &c) { DrawRigidBodyComponent(entity, c); }); }});
+    if (entity.HasComponent<CharacterControllerComponent>())
+        entries.push_back({"Character Controller", [&] { DrawComponent<CharacterControllerComponent>("Character Controller", entity, [&](auto &c) { DrawCharacterControllerComponent(entity, c); }); }});
+    if (entity.HasComponent<FollowCameraComponent>())
+        entries.push_back({"Follow Camera", [&] { DrawComponent<FollowCameraComponent>("Follow Camera", entity, [&](auto &c) { DrawFollowCameraComponent(c); }); }});
+    if (entity.HasComponent<BoxColliderComponent>())
+        entries.push_back({"Box Collider", [&] { DrawComponent<BoxColliderComponent>("Box Collider", entity, [&](auto &c) { DrawBoxColliderComponent(entity, c); }); }});
+    if (entity.HasComponent<SphereColliderComponent>())
+        entries.push_back({"Sphere Collider", [&] { DrawComponent<SphereColliderComponent>("Sphere Collider", entity, [&](auto &c) { DrawSphereColliderComponent(entity, c); }); }});
+    if (entity.HasComponent<CapsuleColliderComponent>())
+        entries.push_back({"Capsule Collider", [&] { DrawComponent<CapsuleColliderComponent>("Capsule Collider", entity, [&](auto &c) { DrawCapsuleColliderComponent(entity, c); }); }});
+    if (entity.HasComponent<BoundingBoxComponent>())
+        entries.push_back({"Bounding Box", [&] { DrawComponent<BoundingBoxComponent>("Bounding Box", entity, [this, entity](auto &c) { DrawBoundingBoxComponent(entity, c, m_Context); }); }});
+    if (entity.HasComponent<ScriptComponent>())
+        entries.push_back({"Script", [&] { DrawComponent<ScriptComponent>("Script", entity, [&](auto &c) { DrawScriptComponent(c, entity); }); }});
 
-    DrawComponent<MeshRendererComponent>("Mesh Renderer", entity,
-        [this](auto &c) { DrawMeshRendererComponent(c, m_Context); });
-
-    DrawComponent<JointComponent>("Joint", entity,
-        [](auto &c) { DrawJointComponent(c); });
-
-    DrawComponent<SkinComponent>("Skin", entity,
-        [this](auto &c) { DrawSkinComponent(c); });
-
-    DrawComponent<AnimationComponent>("Animation", entity,
-        [&](auto &c) { DrawAnimationComponent(entity, c, m_Context); });
-
-    DrawComponent<AnimStateMachineComponent>("Anim State Machine", entity,
-        [this, entity](auto &c) { DrawAnimStateMachine(entity, c); });
-
-    DrawComponent<SpriteRendererComponent>("Sprite Renderer", entity,
-        [](auto &c) { DrawSpriteRendererComponent(c); });
-
-    DrawComponent<PointLightComponent>("Point Light", entity,
-        [](auto &c) { DrawPointLightComponent(c); });
-
-    DrawComponent<DirectionalLightComponent>("Directional Light", entity,
-        [](auto &c) { DrawDirectionalLightComponent(c); });
-
-    DrawComponent<AmbientLightComponent>("Ambient Light", entity,
-        [](auto &c) { DrawAmbientLightComponent(c); });
-
-    DrawComponent<EnvironmentComponent>("Environment", entity,
-        [this](auto &c) { DrawEnvironmentComponent(c); });
-
-    DrawComponent<AudioSourceComponent>("Audio Source", entity,
-        [this](auto &c) { DrawAudioSourceComponent(c); });
-
-    DrawComponent<AudioListenerComponent>("Audio Listener", entity,
-        [](auto &c) { DrawAudioListenerComponent(c); });
-
-    DrawComponent<RigidBodyComponent>("Rigid Body", entity,
-        [&](auto &c) { DrawRigidBodyComponent(entity, c); });
-
-    DrawComponent<CharacterControllerComponent>("Character Controller", entity,
-        [&](auto &c) { DrawCharacterControllerComponent(entity, c); });
-
-    DrawComponent<FollowCameraComponent>("Follow Camera", entity,
-        [&](auto &c) { DrawFollowCameraComponent(c); });
-
-    DrawComponent<BoxColliderComponent>("Box Collider", entity,
-        [&](auto &c) { DrawBoxColliderComponent(entity, c); });
-
-    DrawComponent<SphereColliderComponent>("Sphere Collider", entity,
-        [&](auto &c) { DrawSphereColliderComponent(entity, c); });
-
-    DrawComponent<CapsuleColliderComponent>("Capsule Collider", entity,
-        [&](auto &c) { DrawCapsuleColliderComponent(entity, c); });
-
-    DrawComponent<BoundingBoxComponent>("Bounding Box", entity,
-        [this, entity](auto &c) { DrawBoundingBoxComponent(entity, c, m_Context); });
-
-    // ---- Script 组件（无模板外的特殊条件，这里仅保留特殊标记） ----
-    if (entity.HasComponent<ScriptComponent>()) {
-        DrawComponent<ScriptComponent>("Script", entity,
-            [&](auto &c) { DrawScriptComponent(c, entity); });
+    if (entries.empty()) {
+        ImGui::TextDisabled("该实体没有可编辑组件（仅 Tag）");
+        return;
     }
+
+    // 每个实体独立记住上次查看的组件：按实体句柄作为 ImGui 状态键，切换实体不串台
+    ImGuiID selKey = ImGui::GetID((void *)(uintptr_t)(uint32_t)entity);
+    int selected = ImGui::GetStateStorage()->GetInt(selKey, 0);
+    // 越界钳位：删除当前查看的组件后，停留在末尾（而非跳回首项）
+    if (selected < 0) {
+        selected = 0;
+    } else if (selected >= static_cast<int>(entries.size())) {
+        selected = static_cast<int>(entries.size()) - 1;
+    }
+
+    ImGui::Separator();
+    const char *preview = entries[selected].name;
+    if (ImGui::BeginCombo("组件", preview)) {
+        for (int i = 0; i < static_cast<int>(entries.size()); ++i) {
+            const bool isSel = (i == selected);
+            if (ImGui::Selectable(entries[i].name, isSel)) {
+                selected = i;
+                ImGui::GetStateStorage()->SetInt(selKey, selected);
+            }
+            if (isSel) {
+                ImGui::SetItemDefaultFocus();
+            }
+        }
+        ImGui::EndCombo();
+    }
+    ImGui::Separator();
+
+    // 只绘制下拉框选中的那个组件
+    entries[selected].draw();
 }
 
 // ============================================================

@@ -51,6 +51,11 @@ layout(location = 0) out vec4 outFragColor;
 
 const float PI = 3.14159265359;
 
+// 反射增益系数：整体放大 IBL 反射的最终强度（调试/美术需要时调大，1.0 = 原样）。
+// 影响反射清晰观感的还有：视角掠射角（Fresnel）、Roughness（越低反射越锐）、
+// 环境组件 IBL 强度。反射总亮度 = 预滤波 × IBL强度 × 反射强度 × 本系数。
+const float kReflectionGain = 1.6;
+
 float distributionGGX(vec3 N, vec3 H, float roughness)
 {
     float a = roughness * roughness;
@@ -95,7 +100,7 @@ void main()
         vec3 R = reflect(-V, N);
         float roughLod = water.timeParams.z * frame.iblParams.x;
         reflCol = textureLod(samplerPrefilter, R, roughLod).rgb
-                * frame.iblParams.y * water.sizeParams.w;
+                * frame.iblParams.y * water.sizeParams.w * kReflectionGain;
     }
 
     // 底色：深水色与色彩贴图按强度 mix（未贴图时强度 0 → 纯深水色，行为不变）。

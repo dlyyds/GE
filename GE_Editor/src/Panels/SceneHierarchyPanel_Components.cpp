@@ -436,7 +436,51 @@ void SceneHierarchyPanel::DrawWaterComponent(WaterComponent &component) {
     }
 
     if (ImGui::CollapsingHeader("Gerstner 波", ImGuiTreeNodeFlags_DefaultOpen)) {
-        ImGui::TextDisabled("目前支持最多 4 层，波长 <= 0 视为关闭");
+        // 一键预设：选风格 → 自动设置 覆盖下方 4 层波。跨帧记忆风格（static）。
+        static int sAutoWaveStyle = 0;
+        const char *kAutoWaveStyles[] = { "平静湖泊", "轻风细浪", "海上风浪" };
+        ImGui::TextDisabled("一键预设：");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(140.0f);
+        ImGui::Combo("##autowavestyle", &sAutoWaveStyle, kAutoWaveStyles,
+                     IM_ARRAYSIZE(kAutoWaveStyles));
+        ImGui::SameLine();
+        ImGui::PushID("AutoSetGerstner");
+        if (ImGui::Button("自动设置")) {
+            // 每档 4 层：(方向x, 方向y, 振幅[m], 波长[m], 速度[m/s])。方向无需归一化，
+            // 渲染端 DrawWater 会 normalize。速度取 √波长 量级，长波快、短波慢。
+            // 世界单位预设面向角色尺度水面；超大平面可自行把首层波长拉大。
+            static const float kPresets[3][4][5] = {
+                { // 平静湖泊：大涌浪铺底 + 斜向次级打断单调 + 细碎涟漪补高光
+                    {0.85f, -0.08f, 0.20f, 14.0f, 2.8f},
+                    {0.35f,  1.30f, 0.12f,  8.5f, 2.2f},
+                    {-0.60f, 0.50f, 0.06f,  4.5f, 1.5f},
+                    {1.00f,  1.20f, 0.03f,  2.4f, 1.0f},
+                },
+                { // 轻风细浪
+                    {0.80f, -0.30f, 0.28f, 11.0f, 2.6f},
+                    {0.30f,  1.10f, 0.20f,  7.0f, 2.0f},
+                    {-0.50f, 0.90f, 0.12f,  4.0f, 1.4f},
+                    {1.20f, -0.40f, 0.07f,  2.6f, 1.0f},
+                },
+                { // 海上风浪
+                    {0.90f, -0.15f, 0.45f, 16.0f, 3.4f},
+                    {0.40f,  1.00f, 0.30f,  9.5f, 2.6f},
+                    {-0.35f, 0.95f, 0.15f,  5.0f, 1.9f},
+                    {1.10f,  0.60f, 0.08f,  3.0f, 1.4f},
+                },
+            };
+            for (int i = 0; i < 4; ++i) {
+                const auto &p = kPresets[sAutoWaveStyle][i];
+                auto &w = component.Waves[i];
+                w.Direction = {p[0], p[1]};
+                w.Amplitude = p[2];
+                w.Wavelength = p[3];
+                w.Speed = p[4];
+            }
+        }
+        ImGui::PopID();
+        ImGui::TextDisabled("振幅/波长=米，速度=米/秒；波长 ≤ 0 视为关闭");
         for (int i = 0; i < 4; ++i) {
             auto &w = component.Waves[i];
             ImGui::PushID(i);

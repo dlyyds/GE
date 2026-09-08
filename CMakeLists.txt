@@ -104,7 +104,7 @@ add_subdirectory(GE/third_party/KTX-Software-4.4.2 KTX-Software EXCLUDE_FROM_ALL
 
 #GE lib
 # ==============================================
-file(GLOB GE_SRC
+file(GLOB GE_SRC CONFIGURE_DEPENDS
         ${CMAKE_SOURCE_DIR}/GE/src/*.cpp
         ${CMAKE_SOURCE_DIR}/GE/src/Platform/Windows/*.cpp
         ${CMAKE_SOURCE_DIR}/GE/src/Core/*.cpp
@@ -236,6 +236,11 @@ set(Editor_SRC
         ${CMAKE_SOURCE_DIR}/GE_Editor/src/ASMGraphLayer.cpp
         ${CMAKE_SOURCE_DIR}/GE_Editor/src/StatsLayer.cpp
         ${CMAKE_SOURCE_DIR}/GE_Editor/src/Panels/SceneHierarchyPanel.cpp
+        ${CMAKE_SOURCE_DIR}/GE_Editor/src/Panels/SceneHierarchyPanel_Components.cpp
+        ${CMAKE_SOURCE_DIR}/GE_Editor/src/Panels/SceneHierarchyPanel_Mesh.cpp
+        ${CMAKE_SOURCE_DIR}/GE_Editor/src/Panels/SceneHierarchyPanel_Animation.cpp
+        ${CMAKE_SOURCE_DIR}/GE_Editor/src/Panels/SceneHierarchyPanel_Physics.cpp
+        ${CMAKE_SOURCE_DIR}/GE_Editor/src/Panels/SceneHierarchyPanel_AudioScript.cpp
         ${CMAKE_SOURCE_DIR}/GE_Editor/src/Panels/ResourcePanel.cpp
         ${CMAKE_SOURCE_DIR}/GE_Editor/src/Panels/ASMGraphPanel.cpp
         ${CMAKE_SOURCE_DIR}/GE_Editor/src/Panels/RenderStatsPanel.cpp

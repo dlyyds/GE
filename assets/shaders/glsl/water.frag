@@ -142,9 +142,11 @@ void main()
     // 反射按 Fresnel 混入
     result += reflCol * fresnel;
 
-    // 水面透明：按 Fresnel 决定 alpha，垂直看较透、掠射角较实。
-    // water.deepColor.a 是整体不透明度（编辑器「不透明度」），与之相乘后再钳制。
-    float alpha = clamp((fresnel + 0.1) * water.deepColor.a, 0.0, 1.0);
+    // 水面透明：Fresnel 提供视角轮廓（垂直较透、掠射较实），不透明度做主控。
+    // 轮廓钳到 [0.12,1] 后抬升为 0.25+0.75×轮廓，让垂直视角也有基础实度，
+    // 再乘整体不透明度（编辑器「不透明度」）——滑条 0→1 全角度线性响应。
+    float fresnelProfile = clamp(fresnel + 0.1, 0.0, 1.0);
+    float alpha = clamp(water.deepColor.a * (0.25 + 0.75 * fresnelProfile), 0.0, 1.0);
 
     // 前向路径：ACES 色调映射后再输出（由 sRGB swapchain 硬件编码）
     outFragColor = vec4(acesToneMap(result), alpha);

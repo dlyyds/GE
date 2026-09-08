@@ -107,11 +107,23 @@ void AudioWorld::StopAll(entt::entity entity) {
 }
 
 void AudioWorld::SetVolume(entt::entity entity, int slot, float v) {
+    // 写回组件槽位，避免 Update 里的 SyncSource 每帧用回旧的 s.Volume 覆盖脚本运行时设置。
+    if (m_Scene && slot >= 0) {
+        if (auto *src = m_Scene->Reg().try_get<AudioSourceComponent>(entity);
+            src && slot < static_cast<int>(src->Sounds.size()))
+            src->Sounds[slot].Volume = v;
+    }
     if (m_Impl)
         m_Impl->commands.push_back({Impl::CommandType::SetVolume, entity, slot, false, v, false});
 }
 
 void AudioWorld::SetPitch(entt::entity entity, int slot, float p) {
+    // 写回组件槽位，避免 SyncSource 每帧用回旧的 s.Pitch 覆盖脚本运行时 pitch。
+    if (m_Scene && slot >= 0) {
+        if (auto *src = m_Scene->Reg().try_get<AudioSourceComponent>(entity);
+            src && slot < static_cast<int>(src->Sounds.size()))
+            src->Sounds[slot].Pitch = p;
+    }
     if (m_Impl)
         m_Impl->commands.push_back({Impl::CommandType::SetPitch, entity, slot, false, p, false});
 }
@@ -138,6 +150,12 @@ bool AudioWorld::IsPlaying(entt::entity entity, int slot) const {
 }
 
 void AudioWorld::SetLoop(entt::entity entity, int slot, bool on) {
+    // 写回组件槽位，避免 SyncSource 每帧用回旧的 s.Loop 覆盖脚本运行时设置。
+    if (m_Scene && slot >= 0) {
+        if (auto *src = m_Scene->Reg().try_get<AudioSourceComponent>(entity);
+            src && slot < static_cast<int>(src->Sounds.size()))
+            src->Sounds[slot].Loop = on;
+    }
     if (m_Impl)
         m_Impl->commands.push_back({Impl::CommandType::SetLoop, entity, slot, false, 0.0f, on});
 }

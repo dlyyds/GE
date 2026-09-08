@@ -4,6 +4,7 @@
 #include "Core/MouseCodes.h"
 
 #include <bitset>
+#include <cstddef>
 #include <glm/glm.hpp>
 
 namespace GE {
@@ -20,18 +21,22 @@ namespace GE {
  * 设计见 docs/脚本输入系统计划书.md。
  */
 struct InputState {
+    // == 位集容量（KeyCode 枚举到 348，MouseCode 0~7）==
+    static constexpr std::size_t kKeyCapacity   = 512; ///< 键位集容量
+    static constexpr std::size_t kMouseCapacity = 16;  ///< 鼠标位集容量
+
     // == 脚本查询（本帧语义，BeginFrameInput 后有效）==
-    std::bitset<512> justPressed;       ///< 本帧刚按下（repeat>0 不入）
-    std::bitset<512> justReleased;      ///< 本帧刚释放
-    std::bitset<16>  justMousePressed;  ///< 本帧鼠标刚按下
-    std::bitset<16>  justMouseReleased; ///< 本帧鼠标刚释放
+    std::bitset<kKeyCapacity>   justPressed;       ///< 本帧刚按下（repeat>0 不入）
+    std::bitset<kKeyCapacity>   justReleased;      ///< 本帧刚释放
+    std::bitset<kMouseCapacity> justMousePressed;  ///< 本帧鼠标刚按下
+    std::bitset<kMouseCapacity> justMouseReleased; ///< 本帧鼠标刚释放
     glm::vec2        mousePos   = {0.0f, 0.0f}; ///< 本帧鼠标位置
     glm::vec2        mouseDelta = {0.0f, 0.0f}; ///< 本帧鼠标增量（相对上一帧）
     float            frameScroll = 0.0f;        ///< 本帧滚轮累计（垂直滚动量）
 
     // == 跨帧状态 ==
-    std::bitset<512> held;        ///< 当前按住（持续到释放或 FlushAll）
-    std::bitset<16>  mouseHeld;   ///< 鼠标按住
+    std::bitset<kKeyCapacity>   held;        ///< 当前按住（持续到释放或 FlushAll）
+    std::bitset<kMouseCapacity> mouseHeld;   ///< 鼠标按住
 
     // == 事件轮询期写入（Scene::OnEvent 调）==
     void RecordKeyPressed(KeyCode key, int repeatCount);
@@ -63,10 +68,15 @@ struct InputState {
     float     GetScrollDelta() const;
 
 private:
-    std::bitset<512> m_PendingPress;        ///< 本轮按键按下累积
-    std::bitset<512> m_PendingRelease;      ///< 本轮按键释放累积
-    std::bitset<16>  m_PendingMousePress;   ///< 本轮鼠标按下累积
-    std::bitset<16>  m_PendingMouseRelease; ///< 本轮鼠标释放累积
+    /// 越界保护：key/btn 非枚举非法值（如反序列化脏数据）时，bitset::set/test 会抛
+    /// std::out_of_range。写入函数越界直接丢弃事件，查询函数返回 false，保证不崩溃。
+    static bool IsKeyIndexValid(KeyCode key)       { return key < kKeyCapacity; }
+    static bool IsMouseIndexValid(MouseCode btn)   { return btn < kMouseCapacity; }
+
+    std::bitset<kKeyCapacity>   m_PendingPress;        ///< 本轮按键按下累积
+    std::bitset<kKeyCapacity>   m_PendingRelease;      ///< 本轮按键释放累积
+    std::bitset<kMouseCapacity> m_PendingMousePress;   ///< 本轮鼠标按下累积
+    std::bitset<kMouseCapacity> m_PendingMouseRelease; ///< 本轮鼠标释放累积
     glm::vec2        m_PrevMousePos = {0.0f, 0.0f}; ///< 上一帧鼠标位置（增量基准）
     float            m_AccumScroll  = 0.0f;         ///< 本轮滚轮累积
 };
@@ -74,22 +84,30 @@ private:
 // 实现（头文件内联，InputState 自包含、无 .cpp）
 
 inline void InputState::RecordKeyPressed(KeyCode key, const int repeatCount) {
+    if (!IsKeyIndexValid(key))
+        return; // 非法 key 丢弃，防止 bitset 越界抛异常
     held.set(key);
     if (repeatCount == 0)
         m_PendingPress.set(key);
 }
 
 inline void InputState::RecordKeyReleased(const KeyCode key) {
+    if (!IsKeyIndexValid(key))
+        return;
     held.reset(key);
     m_PendingRelease.set(key);
 }
 
 inline void InputState::RecordMouseButtonPressed(const MouseCode btn) {
+    if (!IsMouseIndexValid(btn))
+        return;
     mouseHeld.set(btn);
     m_PendingMousePress.set(btn);
 }
 
 inline void InputState::RecordMouseButtonReleased(const MouseCode btn) {
+    if (!IsMouseIndexValid(btn))
+        return;
     mouseHeld.reset(btn);
     m_PendingMouseRelease.set(btn);
 }
@@ -143,27 +161,27 @@ inline void InputState::ResetMouseBaseline(const glm::vec2 &pos) {
 }
 
 inline bool InputState::IsHeld(KeyCode key) const {
-    return held.test(key);
+    return IsKeyIndexValid(key) && held.test(key);
 }
 
 inline bool InputState::JustPressed(KeyCode key) const {
-    return justPressed.test(key);
+    return IsKeyIndexValid(key) && justPressed.test(key);
 }
 
 inline bool InputState::JustReleased(KeyCode key) const {
-    return justReleased.test(key);
+    return IsKeyIndexValid(key) && justReleased.test(key);
 }
 
 inline bool InputState::IsMouseHeld(MouseCode btn) const {
-    return mouseHeld.test(btn);
+    return IsMouseIndexValid(btn) && mouseHeld.test(btn);
 }
 
 inline bool InputState::JustMousePressed(MouseCode btn) const {
-    return justMousePressed.test(btn);
+    return IsMouseIndexValid(btn) && justMousePressed.test(btn);
 }
 
 inline bool InputState::JustMouseReleased(MouseCode btn) const {
-    return justMouseReleased.test(btn);
+    return IsMouseIndexValid(btn) && justMouseReleased.test(btn);
 }
 
 inline glm::vec2 InputState::GetMousePos() const {

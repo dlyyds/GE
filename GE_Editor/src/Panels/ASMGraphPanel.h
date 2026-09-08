@@ -31,7 +31,9 @@ class HierarchyLayer; // 前向声明，避免循环包含（ASMGraphLayer 需 H
 ///   - 多实体共享同一 ed::EditorContext：NodeId = (实体id << 32) | (命名空间 << 16) |
 ///     状态下标；PinId 用独立命名空间区分方向（输出 / 输入），与 NodeId 区间不重叠；
 ///     ANY 节点单独一个命名空间。LinkId = 转换下标
-///   - 节点位置由库 SettingsFile 持久化（"asm_graph.json"），跨启动保持
+///   - 节点位置由库 SettingsFile 持久化（"asm_graph.json"），跨启动保持；
+///     实体 id 段使用实体持久化 UUID 派生的稳定值（不用 entt::entity 句柄，
+///     句柄在每次场景加载时重建，会让 asm_graph.json 的布局 key 匹配不上）
 class ASMGraphPanel {
 public:
     ASMGraphPanel() = default;
@@ -108,10 +110,12 @@ private:
     /// 节点图编辑器上下文（CreateEditor 创建，DestroyEditor 销毁）
     ax::NodeEditor::EditorContext *m_EditorCtx = nullptr;
 
-    /// 当前实体 id（NodeId 高位编码；首帧 / 实体切换时刷新）
+    /// 当前实体 id（NodeId 高位编码）：由实体持久化 UUID 派生，跨启动不变。
+    /// 首帧 / 实体切换时刷新。不要用 entt::entity 句柄——每次场景加载都会重建，
+    /// 会导致 asm_graph.json 保存的布局 key 匹配不上而恢复默认布局。
     uintptr_t m_EntityId = 0;
 
-    /// 上一帧所属实体 id + 状态数（实体切换 / 状态增删时复位「首次布局」标记）
+    /// 上一帧所属实体的稳定 id + 状态数（实体切换 / 状态增删时复位「首次布局」标记）
     uintptr_t m_LastEntityId = static_cast<uintptr_t>(-1);
     size_t m_LastStateCount = static_cast<size_t>(-1);
 

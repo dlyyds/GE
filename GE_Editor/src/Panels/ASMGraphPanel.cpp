@@ -23,6 +23,7 @@
 #include "HierarchyLayer.h"
 #include "GE/Scene/AnimationComponents.h"
 #include "GE/Scene/Scene.h" // Scene::Reg：读同实体 AnimationComponent 的 clips（clip 下拉数据源）
+#include "GE/Scene/Components.h" // IDComponent：用持久化 UUID 派生稳定 NodeId 以跨启动保持布局
 #include "NodeEditorUtils/builders.h" // ax::NodeEditor::Utilities::BlueprintNodeBuilder（阶段 4 节点骨架）
 
 #include "imgui.h"
@@ -31,6 +32,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio> // snprintf：连线标签格式化
+#include <cstdint> // uint32_t（StableEntityIdFromUuid）
 #include <cstring> // strncpy_s：条件/状态名输入缓冲
 #include <vector>
 
@@ -85,10 +87,14 @@ void DrawPinGlyph() {
 // NodeId / PinId 都是 uintptr_t。为避免多实体共享同一编辑器上下文时撞 ID，统一编码为
 // (实体 id << 32) | (命名空间 << 16) | 状态下标；命名空间按类型分开，NodeId / PinId /
 // ANY 节点三区间互不相交，绝对不冲突。LinkId 用转换下标（每帧按 transitions 重建）。
-// 实体 id 限 32 bit、状态下标限 16 bit，单实体状态数上限 65536，足够。
+// 实体 id 段限 32 bit：由实体的持久化 UUID 派生（StableEntityIdFromUuid，FNV-1a），
+// 不使用 entt::entity 句柄 —— 句柄在场景加载时由 m_Registry.create() 重建、跨启动不固定，
+// 若写成 asm_graph.json 的 NodeId 会让上次保存的布局永远匹配不上，每次启动都恢复默认布局。
+// 状态下标限 16 bit，单实体状态数上限 65536，足够。
 namespace {
 /// ID 位布局（64bit，绝对不冲突）：
-///   NodeId = (实体id << 32) | (命名空间 << 16) | 状态下标
+///   NodeId = (稳定实体id << 32) | (命名空间 << 16) | 状态下标
+/// 稳定实体 id 由实体持久化 UUID 哈希得到（StableEntityIdFromUuid），跨启动不变
 ///   PinId  = NodeId | 引脚方向标记
 /// 命名空间按类型分开（kNsAny=0 / kNsState=1 / kNsPinOutput=2 / kNsPinInput=3），
 /// 三种 ID 区间互不相交；状态下标 16 bit，单实体状态数上限 65536。
@@ -118,6 +124,20 @@ uintptr_t IdNamespace(uintptr_t encoded) {
 /// ANY 输出引脚的下标段存 kStateIndexMask 哨兵）
 size_t IdIndex(uintptr_t encoded) {
     return static_cast<size_t>(encoded & kStateIndexMask);
+}
+
+/// 由实体持久化 UUID 派生 NodeId 高 32 位的稳定「实体 id」。
+/// 不要直接用 entt::entity 句柄：句柄是当前场景注册表内部索引，每次启动加载 .scene
+/// 都会由 CreateEntity → m_Registry.create() 重新分配，写进 asm_graph.json 后下一次的
+/// NodeId 全部对不上，节点找不到保存位置 → 一律回原点触发 LayoutNode 默认重排。
+/// 实体的 IDComponent.UUID 随场景序列化落盘，跨启动稳定，用它派生的 id 才能让布局持久。
+uintptr_t StableEntityIdFromUuid(const std::string &uuid) {
+    uint32_t h = 2166136261u; // FNV-1a 32 offset basis
+    for (unsigned char c : uuid) {
+        h ^= c;
+        h *= 16777619u;          // FNV-1a 32 prime
+    }
+    return h;
 }
 } // namespace
 
@@ -358,8 +378,12 @@ void ASMGraphPanel::DrawASMGraph(AnimStateMachineComponent &asmc) {
     ed::Begin("ASM Graph", ImVec2(0.0f, 0.0f));
 
     // ---- 实体 id（NodeId 高位，跨实体隔离）----
-    const entt::entity handle = static_cast<entt::entity>(m_Hierarchy->GetSelectedEntity());
-    const uintptr_t entityId = static_cast<uintptr_t>(entt::to_integral(handle));
+    // 用实体的持久化 UUID 派生稳定 id，而不是 entt::entity 句柄：句柄在场景加载时
+    // 由 m_Registry.create() 重建，跨启动不固定；若用作 NodeId 高位，asm_graph.json 里
+    // 上次保存的坐标会永远匹配不上，导致每次启动节点都回原点并恢复默认网格布局。
+    Entity selectedEntity = m_Hierarchy->GetSelectedEntity();
+    const uintptr_t entityId =
+        StableEntityIdFromUuid(selectedEntity.GetComponent<IDComponent>().UUID);
     m_EntityId = entityId;
 
     // 首次布局标记：实体切换 / 状态增删时复位，下帧对坐标仍在原点的节点补一次网格布局。

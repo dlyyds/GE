@@ -1071,17 +1071,16 @@ void SceneHierarchyPanel::DrawAddComponentPopup() {
 ///       而非 DrawComponents 的参数 entity——两者在正常流程下是同一个实体。
 template <typename T>
 bool SceneHierarchyPanel::TryAddComponent(const char *name) {
-    // 表格单元格内用 Selectable：撑满整格形成点击行，悬停高亮范围更直观
-    if (!ImGui::Selectable(name))
-        return false;
-
-    if (!m_SelectionContext.HasComponent<T>()) {
+    // 点击已由弹窗表格中的 Selectable 负责；这里只执行添加/判重，不能再调用
+    // ImGui::Selectable，否则会在同一弹窗内生成重复控件 ID，导致点击被吞掉。
+    const bool added = !m_SelectionContext.HasComponent<T>();
+    if (added) {
         m_SelectionContext.AddComponent<T>();
     } else {
         GE_CORE_WARN("This entity already has {0}!", name);
     }
     ImGui::CloseCurrentPopup();
-    return true;
+    return added;
 }
 
 // ============================================================
@@ -1739,6 +1738,18 @@ ImTextureID SceneHierarchyPanel::GetEnvironmentThumbnail(const std::string &envN
     return id;
 }
 
+// 把文件对话框返回的绝对路径转成资产根相对路径（AudioSource 保存相对路径）
+static std::string SoundPathFromDialog(const std::string &absPath) {
+    std::string p = std::filesystem::absolute(absPath).lexically_normal().generic_string();
+    std::string root = std::filesystem::absolute(Renderer::GetAssetManager().GetAssetRoot())
+                                  .lexically_normal().generic_string();
+    if (!root.empty() && root.back() != '/')
+        root += '/';
+    if (p.size() >= root.size() && p.compare(0, root.size(), root) == 0)
+        return p.substr(root.size());
+    return p;
+}
+
 // ============================================================
 // Audio Source / Audio Listener 组件
 // ============================================================
@@ -1761,10 +1772,20 @@ void SceneHierarchyPanel::DrawAudioSourceComponent(AudioSourceComponent &compone
         if (ImGui::InputText("Name##slot", nameBuf, sizeof(nameBuf)))
             s.Name = nameBuf;
 
-        char pathBuf[512] = {};
-        strncpy_s(pathBuf, sizeof(pathBuf), s.SoundPath.c_str(), _TRUNCATE);
-        if (ImGui::InputText("Sound Path##slot", pathBuf, sizeof(pathBuf)))
-            s.SoundPath = pathBuf;
+        ImGui::Text("Sound Path: %s", s.SoundPath.empty() ? "(未选择)" : s.SoundPath.c_str());
+        if (ImGui::Button("浏览声音...##slot")) {
+            std::string absPath = FileDialogs::OpenFile(
+                "音频文件 (*.wav;*.ogg;*.flac;*.mp3)\0*.wav;*.ogg;*.flac;*.mp3\0"
+                "All Files (*.*)\0*.*\0",
+                "assets/audio");
+            if (!absPath.empty())
+                s.SoundPath = SoundPathFromDialog(absPath);
+        }
+        if (!s.SoundPath.empty()) {
+            ImGui::SameLine();
+            if (ImGui::Button("清除##slot"))
+                s.SoundPath.clear();
+        }
 
         ImGui::Checkbox("Play On Awake", &s.PlayOnAwake);
         ImGui::Checkbox("Loop", &s.Loop);

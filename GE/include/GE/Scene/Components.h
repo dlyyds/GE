@@ -349,6 +349,8 @@ struct WaterComponent {
     float NormalStrength = 0.55f;                   ///< 法线强度
     float Roughness      = 0.12f;                   ///< 粗糙度（影响高光/反射模糊）
 
+    float Opacity          = 1.0f;                   ///< 整体不透明度 0~1（1=与旧行为一致；前向/HDR 均按 Fresnel 逐像素生效）
+
     // —— 反射 / 折射 ——
     float ReflectionStrength = 0.85f;               ///< IBL 反射叠加强度
     float RefractionStrength = 0.25f;               ///< UV 扰动强度（阶段 2 使用）

@@ -1737,24 +1737,25 @@ void SceneHierarchyPanel::DrawAmbientLightComponent(AmbientLightComponent &compo
 // ============================================================
 void SceneHierarchyPanel::DrawWaterComponent(WaterComponent &component) {
     if (ImGui::CollapsingHeader("几何", ImGuiTreeNodeFlags_DefaultOpen)) {
-        ImGui::DragFloat2("Size (XZ)", glm::value_ptr(component.Size), 0.5f, 1.0f, 2000.0f, "%.1f");
-        ImGui::DragFloat("Height Offset", &component.Height, 0.05f, -50.0f, 50.0f, "%.2f");
+        ImGui::DragFloat2("尺寸（XZ）", glm::value_ptr(component.Size), 0.5f, 1.0f, 2000.0f, "%.1f");
+        ImGui::DragFloat("高度偏移", &component.Height, 0.05f, -50.0f, 50.0f, "%.2f");
         int resolution = static_cast<int>(component.Resolution);
-        if (ImGui::SliderInt("Resolution (N)", &resolution, 1, 256)) {
+        if (ImGui::SliderInt("分辨率（N）", &resolution, 1, 256)) {
             component.Resolution = static_cast<uint32_t>(resolution);
         }
-        ImGui::DragFloat("Time Scale", &component.TimeScale, 0.01f, 0.0f, 10.0f, "%.2f");
+        ImGui::DragFloat("时间缩放", &component.TimeScale, 0.01f, 0.0f, 10.0f, "%.2f");
     }
 
     if (ImGui::CollapsingHeader("色彩 / 材质", ImGuiTreeNodeFlags_DefaultOpen)) {
-        ImGui::ColorEdit3("Deep Color", glm::value_ptr(component.DeepColor));
-        ImGui::ColorEdit3("Shallow Color", glm::value_ptr(component.ShallowColor));
-        ImGui::DragFloat("Roughness", &component.Roughness, 0.01f, 0.0f, 1.0f, "%.3f");
-        ImGui::DragFloat("Normal Tiling", &component.NormalTiling, 0.1f, 0.5f, 32.0f, "%.2f");
-        ImGui::DragFloat("Normal Strength", &component.NormalStrength, 0.01f, 0.0f, 2.0f, "%.2f");
-        ImGui::DragFloat("Reflection Strength", &component.ReflectionStrength, 0.01f, 0.0f, 1.0f, "%.2f");
-        ImGui::DragFloat("Refraction Strength", &component.RefractionStrength, 0.01f, 0.0f, 1.0f, "%.2f");
-        ImGui::DragFloat("Absorption Depth", &component.AbsorptionDepth, 0.05f, 0.0f, 20.0f, "%.2f");
+        ImGui::ColorEdit3("深水色", glm::value_ptr(component.DeepColor));
+        ImGui::DragFloat("不透明度", &component.Opacity, 0.01f, 0.0f, 1.0f, "%.2f"); // 前向/HDR 统一按 Fresnel 逐像素生效（deepColor.a 传入 shader）
+        ImGui::ColorEdit3("浅水色", glm::value_ptr(component.ShallowColor));
+        ImGui::DragFloat("粗糙度", &component.Roughness, 0.01f, 0.0f, 1.0f, "%.3f");
+        ImGui::DragFloat("法线平铺", &component.NormalTiling, 0.1f, 0.5f, 32.0f, "%.2f");
+        ImGui::DragFloat("法线强度", &component.NormalStrength, 0.01f, 0.0f, 2.0f, "%.2f");
+        ImGui::DragFloat("反射强度", &component.ReflectionStrength, 0.01f, 0.0f, 1.0f, "%.2f");
+        ImGui::DragFloat("折射强度", &component.RefractionStrength, 0.01f, 0.0f, 1.0f, "%.2f");
+        ImGui::DragFloat("吸收深度", &component.AbsorptionDepth, 0.05f, 0.0f, 20.0f, "%.2f");
     }
 
     if (ImGui::CollapsingHeader("法线贴图", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -1763,7 +1764,7 @@ void SceneHierarchyPanel::DrawWaterComponent(WaterComponent &component) {
             const std::string &path = component.NormalMap->GetFilePath();
             strncpy_s(texBuf, sizeof(texBuf), path.c_str(), _TRUNCATE);
         }
-        ImGui::InputText("Normal Map Path", texBuf, sizeof(texBuf));
+        ImGui::InputText("法线贴图路径", texBuf, sizeof(texBuf));
         if (ImGui::BeginDragDropTarget()) {
             if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("TEXTURE_ASSET")) {
                 const size_t keyLen = payload->DataSize > 0
@@ -1790,7 +1791,7 @@ void SceneHierarchyPanel::DrawWaterComponent(WaterComponent &component) {
         if (component.NormalMap) {
             ImGui::TextUnformatted(component.NormalMap->GetFilePath().c_str());
         } else {
-            ImGui::TextDisabled("(无法线贴图)，默认始平泛法线");
+            ImGui::TextDisabled("(无法线贴图)，默认平坦法线");
         }
     }
 
@@ -1800,20 +1801,20 @@ void SceneHierarchyPanel::DrawWaterComponent(WaterComponent &component) {
             auto &w = component.Waves[i];
             ImGui::PushID(i);
             ImGui::PushStyleColor(ImGuiCol_Header, ImGui::GetStyleColorVec4(ImGuiCol_HeaderHovered));
-            if (ImGui::CollapsingHeader(("Wave " + std::to_string(i + 1)).c_str())) {
-                ImGui::DragFloat2("Direction", glm::value_ptr(w.Direction), 0.01f);
-                ImGui::DragFloat("Amplitude", &w.Amplitude, 0.01f, 0.0f, 5.0f, "%.3f");
-                ImGui::DragFloat("Wavelength", &w.Wavelength, 0.1f, 0.0f, 100.0f, "%.1f");
-                ImGui::DragFloat("Speed", &w.Speed, 0.01f, 0.0f, 20.0f, "%.2f");
+            if (ImGui::CollapsingHeader(("波 " + std::to_string(i + 1)).c_str())) {
+                ImGui::DragFloat2("方向", glm::value_ptr(w.Direction), 0.01f);
+                ImGui::DragFloat("振幅", &w.Amplitude, 0.01f, 0.0f, 5.0f, "%.3f");
+                ImGui::DragFloat("波长", &w.Wavelength, 0.1f, 0.0f, 100.0f, "%.1f");
+                ImGui::DragFloat("速度", &w.Speed, 0.01f, 0.0f, 20.0f, "%.2f");
             }
             ImGui::PopStyleColor();
             ImGui::PopID();
         }
     }
 
-    if (ImGui::CollapsingHeader("岸线（阶段 2预留）")) {
-        ImGui::DragFloat("Foam Distance", &component.FoamDistance, 0.05f, 0.0f, 20.0f, "%.2f");
-        ImGui::DragFloat("Foam Intensity", &component.FoamIntensity, 0.01f, 0.0f, 2.0f, "%.2f");
+    if (ImGui::CollapsingHeader("岸线（阶段 2 预留）")) {
+        ImGui::DragFloat("泡沫距离", &component.FoamDistance, 0.05f, 0.0f, 20.0f, "%.2f");
+        ImGui::DragFloat("泡沫强度", &component.FoamIntensity, 0.01f, 0.0f, 2.0f, "%.2f");
         ImGui::TextDisabled("需要阶段 2 场景深度后才生效");
     }
 }

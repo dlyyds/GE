@@ -600,6 +600,7 @@ void Renderer3D::DrawWater(const glm::mat4 &transform,
     batch.normalTiling = water.NormalTiling;
     batch.normalStrength = water.NormalStrength;
     batch.roughness = water.Roughness;
+    batch.opacity = water.Opacity;
     batch.reflectionStrength = water.ReflectionStrength;
     batch.refractionStrength = water.RefractionStrength;
     batch.absorptionDepth = water.AbsorptionDepth;
@@ -1712,13 +1713,16 @@ void Renderer3D::ConfigureWaterPipeline(VulkanCommandBuffer &cmd,
                                 | vk::ColorComponentFlagBits::eG
                                 | vk::ColorComponentFlagBits::eB
                                 | vk::ColorComponentFlagBits::eA;
+    // 前向与 HDR 变体统一走 straight alpha 混合：混合因子来自片元 alpha
+    // （water.frag / water_hdr.frag 按 Fresnel 逐像素输出，垂直透、掠射实）。
+    // alpha 通道 dstAlpha=eOneMinusSrcAlpha 让 Scene_HDR 的天空/几何元数据
+    // 自适应：底下是不透明几何 → 收敛到 1（Tonemap 当几何、正常曝光），底下是
+    // 天空 → 保留片元 alpha（透到只剩天空时被 Tonemap 当天空直出）。
     blendState.blendEnable = VK_TRUE;
     blendState.srcColorBlendFactor = vk::BlendFactor::eSrcAlpha;
     blendState.dstColorBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha;
     blendState.srcAlphaBlendFactor = vk::BlendFactor::eOne;
-    blendState.dstAlphaBlendFactor = hdrTransparent
-                                         ? vk::BlendFactor::eZero   // Scene_HDR alpha 是天空/几何元数据
-                                         : vk::BlendFactor::eOneMinusSrcAlpha;
+    blendState.dstAlphaBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha;
     ps.setColorBlendAttachments({blendState});
 
     // 顶点输入：与通用网格一致，stride 以 C++ Vertex（80B）为权威
@@ -2235,7 +2239,7 @@ void Renderer3D::DrawWaterBatches(VulkanCommandBuffer &cmd, VulkanRenderFrame &f
                                    batch.normalStrength,
                                    batch.roughness,
                                    batch.refractionStrength);
-        ubo.deepColor = glm::vec4(batch.deepColor, 1.0f);
+        ubo.deepColor = glm::vec4(batch.deepColor, batch.opacity); // a 通道承载整体不透明度
         ubo.shallowColor = glm::vec4(batch.shallowColor, 1.0f);
         ubo.sizeParams = glm::vec4(batch.size.x, batch.size.y,
                                    batch.normalTiling, batch.reflectionStrength);

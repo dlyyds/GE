@@ -674,6 +674,7 @@ private:
         float normalTiling = 4.0f;
         float normalStrength = 0.55f;
         float roughness = 0.12f;
+        float opacity = 1.0f;          ///< 整体不透明度（写 deepColor.a 传给 shader）
         float reflectionStrength = 0.85f;
         float refractionStrength = 0.25f;
         float absorptionDepth = 2.0f;

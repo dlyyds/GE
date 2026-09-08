@@ -131,7 +131,11 @@ void main()
     result += reflCol * fresnel;
 
     // HDR 透明：保留线性 HDR 输出，ACES 由最后 Tonemap pass 统一执行。
-    // alpha 恒为 1（几何元数据），避免近垂直视角下 fresnel+0.1<0.5 被
-    // Tonemap 误判为天空而跳过色调映射。
-    outFragColor = vec4(result, 1.0);
+    // 透明度与 water.frag 一致——按 Fresnel 逐像素决定（垂直看较透、掠射角较实），
+    // 管线以 SRC_ALPHA / ONE_MINUS_SRC_ALPHA 混合；alpha 通道同时承担
+    // Scene_HDR 的「天空/几何元数据」：dstAlpha=eOneMinusSrcAlpha 使其自适应，
+    // 底下是不透明几何 → 收敛到 1（Tonemap 当几何、正常曝光），底下是天空 →
+    // 保留片元 alpha，透到只剩天空时被 Tonemap 当天空直出（语义一致）。
+    float alpha = clamp((fresnel + 0.1) * water.deepColor.a, 0.0, 1.0);
+    outFragColor = vec4(result, alpha);
 }

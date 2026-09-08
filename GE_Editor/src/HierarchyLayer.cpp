@@ -1,5 +1,5 @@
 //
-// 场景层级面板层实现 —— 独立承载 "Scene Hierarchy" + "Properties" 两个 ImGui 窗口。
+// 场景层级面板层实现 —— 独立承载"场景层级" + "属性"两个 ImGui 窗口。
 //
 
 #include "HierarchyLayer.h"

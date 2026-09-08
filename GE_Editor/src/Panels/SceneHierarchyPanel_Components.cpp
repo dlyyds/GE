@@ -45,14 +45,14 @@ namespace GE {
 // Transform 组件
 // ============================================================
 void SceneHierarchyPanel::DrawTransformComponent(TransformComponent &component) {
-    DrawVec3Control("Translation", component.Translation, 0.0f, 120);
+    DrawVec3Control("平移", component.Translation, 0.0f, 120);
 
     // 旋转用角度显示，内部存四元数；仅在编辑器边界转成欧拉角
     glm::vec3 rotationDeg = glm::degrees(component.GetRotationEuler());
-    DrawVec3Control("Rotation", rotationDeg, 0.0f, 120);
+    DrawVec3Control("旋转", rotationDeg, 0.0f, 120);
     component.SetRotationEuler(glm::radians(rotationDeg));
 
-    DrawVec3Control("Scale", component.Scale, 1.0f, 120);
+    DrawVec3Control("缩放", component.Scale, 1.0f, 120);
 }
 
 // ============================================================
@@ -61,14 +61,14 @@ void SceneHierarchyPanel::DrawTransformComponent(TransformComponent &component) 
 void SceneHierarchyPanel::DrawCameraComponent(CameraComponent &component) {
     auto &camera = component.CameraInstance;
 
-    ImGui::Checkbox("Primary", &component.Primary);
+    ImGui::Checkbox("主相机", &component.Primary);
     ImGui::SameLine();
-    ImGui::Checkbox("Fixed Aspect Ratio", &component.FixedAspectRatio);
+    ImGui::Checkbox("固定宽高比", &component.FixedAspectRatio);
 
     // 相机模式
-    const char *modeStrings[] = {"Orbit", "FreeLook"};
+    const char *modeStrings[] = {"轨道", "自由视角"};
     int currentMode = static_cast<int>(camera.GetMode());
-    if (ImGui::BeginCombo("Mode", modeStrings[currentMode])) {
+    if (ImGui::BeginCombo("模式", modeStrings[currentMode])) {
         for (int i = 0; i < 2; i++) {
             const bool isSelected = currentMode == i;
             if (ImGui::Selectable(modeStrings[i], isSelected)) {
@@ -82,24 +82,24 @@ void SceneHierarchyPanel::DrawCameraComponent(CameraComponent &component) {
 
     // FOV（Camera 内部使用度数）
     float fov = camera.GetFov();
-    if (ImGui::SliderFloat("FOV (deg)", &fov, 10.0f, 120.0f)) {
+    if (ImGui::SliderFloat("FOV（度）", &fov, 10.0f, 120.0f)) {
         camera.SetPerspective(fov, camera.GetAspect(), camera.GetNear(), camera.GetFar());
     }
 
     // 近远裁剪面
     float nearPlane = camera.GetNear();
-    if (ImGui::DragFloat("Near Plane", &nearPlane, 0.01f, 0.001f, camera.GetFar())) {
+    if (ImGui::DragFloat("近裁剪面", &nearPlane, 0.01f, 0.001f, camera.GetFar())) {
         camera.SetPerspective(camera.GetFov(), camera.GetAspect(), nearPlane, camera.GetFar());
     }
 
     float farPlane = camera.GetFar();
-    if (ImGui::DragFloat("Far Plane", &farPlane, 0.5f, camera.GetNear(), 100000.0f)) {
+    if (ImGui::DragFloat("远裁剪面", &farPlane, 0.5f, camera.GetNear(), 100000.0f)) {
         camera.SetPerspective(camera.GetFov(), camera.GetAspect(), camera.GetNear(), farPlane);
     }
 
     // 宽高比
     float aspect = camera.GetAspect();
-    if (ImGui::DragFloat("Aspect Ratio", &aspect, 0.01f, 0.1f, 10.0f)) {
+    if (ImGui::DragFloat("宽高比", &aspect, 0.01f, 0.1f, 10.0f)) {
         camera.SetAspect(aspect);
     }
 
@@ -108,7 +108,7 @@ void SceneHierarchyPanel::DrawCameraComponent(CameraComponent &component) {
     // 曝光（HDR Tonemap，仅延迟渲染生效）：乘在 HDR 线性颜色上、ACES 之前。
     // Play 态主玩法相机会把该值经 SceneLayer::OnUpdate 传给 Renderer3D 的 Tonemap UBO。
     float exposure = camera.GetExposure();
-    if (ImGui::SliderFloat("Exposure", &exposure, 0.01f, 8.0f, "%.2f")) {
+    if (ImGui::SliderFloat("曝光", &exposure, 0.01f, 8.0f, "%.2f")) {
         camera.SetExposure(exposure);
     }
     if (ImGui::IsItemHovered()) {
@@ -120,7 +120,7 @@ void SceneHierarchyPanel::DrawCameraComponent(CameraComponent &component) {
     if (camera.GetMode() == Camera::Mode::Orbit) {
         // 轨道相机参数（Theta/Phi/Distance 内部均为度数）
         glm::vec3 target = camera.GetTarget();
-        if (ImGui::DragFloat3("Target", &target.x, 0.1f))
+        if (ImGui::DragFloat3("目标点", &target.x, 0.1f))
             camera.SetTarget(target);
 
         float theta = camera.GetTheta();
@@ -128,45 +128,45 @@ void SceneHierarchyPanel::DrawCameraComponent(CameraComponent &component) {
         float dist  = camera.GetDistance();
 
         bool orbitChanged = false;
-        orbitChanged |= ImGui::SliderFloat("Theta (deg)", &theta, -180.0f, 180.0f);
-        orbitChanged |= ImGui::SliderFloat("Phi (deg)", &phi, -89.0f, 89.0f);
-        orbitChanged |= ImGui::DragFloat("Distance", &dist, 0.1f, 0.5f, 50.0f);
+        orbitChanged |= ImGui::SliderFloat("方位角 θ", &theta, -180.0f, 180.0f);
+        orbitChanged |= ImGui::SliderFloat("俯仰角 φ", &phi, -89.0f, 89.0f);
+        orbitChanged |= ImGui::DragFloat("距离", &dist, 0.1f, 0.5f, 50.0f);
         if (orbitChanged) {
             camera.SetOrbit(theta, phi, dist);
         }
     } else {
         // FreeLook 相机参数（Yaw/Pitch 内部均为度数）
         glm::vec3 pos = camera.GetPosition();
-        if (ImGui::DragFloat3("Position", &pos.x, 0.1f))
+        if (ImGui::DragFloat3("位置", &pos.x, 0.1f))
             camera.SetPosition(pos);
 
         float yaw   = camera.GetYaw();
         float pitch = camera.GetPitch();
         bool fpChanged = false;
-        fpChanged |= ImGui::SliderFloat("Yaw (deg)", &yaw, -180.0f, 180.0f);
-        fpChanged |= ImGui::SliderFloat("Pitch (deg)", &pitch, -89.0f, 89.0f);
+        fpChanged |= ImGui::SliderFloat("偏航角（度）", &yaw, -180.0f, 180.0f);
+        fpChanged |= ImGui::SliderFloat("俯仰角（度）", &pitch, -89.0f, 89.0f);
         if (fpChanged) {
             camera.SetYawPitch(yaw, pitch);
         }
     }
 
     ImGui::Separator();
-    ImGui::DragFloat("Mouse Sensitivity", &camera.MouseSensitivity, 0.01f, 0.01f, 5.0f);
-    ImGui::DragFloat("Scroll Sensitivity", &camera.ScrollSensitivity, 0.05f, 0.1f, 10.0f);
-    ImGui::DragFloat("Move Speed", &camera.MoveSpeed, 0.1f, 0.1f, 20.0f);
+    ImGui::DragFloat("鼠标灵敏度", &camera.MouseSensitivity, 0.01f, 0.01f, 5.0f);
+    ImGui::DragFloat("滚轮灵敏度", &camera.ScrollSensitivity, 0.05f, 0.1f, 10.0f);
+    ImGui::DragFloat("移动速度", &camera.MoveSpeed, 0.1f, 0.1f, 20.0f);
 }
 
 // ============================================================
 // Follow Camera 组件（纯配置，无物理重建需求）
 // ============================================================
 void SceneHierarchyPanel::DrawFollowCameraComponent(FollowCameraComponent &component) {
-    ImGui::Checkbox("Enabled", &component.Enabled);
+    ImGui::Checkbox("启用", &component.Enabled);
     ImGui::Separator();
 
     // ---- 模式 ----
-    const char *modeNames[] = {"First Person", "Third Person"};
+    const char *modeNames[] = {"第一人称", "第三人称"};
     const int startModeIndex = component.StartMode == FollowCameraViewMode::ThirdPerson ? 1 : 0;
-    if (ImGui::BeginCombo("Start Mode", modeNames[startModeIndex])) {
+    if (ImGui::BeginCombo("初始模式", modeNames[startModeIndex])) {
         for (int i = 0; i < 2; ++i) {
             const bool selected = startModeIndex == i;
             if (ImGui::Selectable(modeNames[i], selected)) {
@@ -178,59 +178,59 @@ void SceneHierarchyPanel::DrawFollowCameraComponent(FollowCameraComponent &compo
         }
         ImGui::EndCombo();
     }
-    ImGui::Checkbox("Toggle Enabled", &component.ToggleEnabled);
+    ImGui::Checkbox("允许切换", &component.ToggleEnabled);
     int toggleKey = static_cast<int>(component.ToggleKey);
-    if (ImGui::InputInt("Toggle Key (GLFW)", &toggleKey)) {
+    if (ImGui::InputInt("切换键（GLFW）", &toggleKey)) {
         component.ToggleKey = static_cast<KeyCode>(toggleKey & 0xFFFF);
     }
     ImGui::TextDisabled("默认 V = 86；运行时按此键在第一/第三人称之间切换");
     if (m_Context && m_Context->IsPlaying()) {
         const char *currentMode = component.CurrentMode == FollowCameraViewMode::ThirdPerson
                                       ? "Third Person" : "First Person";
-        ImGui::LabelText("Current Mode (Play)", "%s", currentMode);
+        ImGui::LabelText("当前模式（运行中）", "%s", currentMode);
     }
     ImGui::Separator();
 
     // ---- 第一人称 ----
-    if (ImGui::CollapsingHeader("First Person", ImGuiTreeNodeFlags_DefaultOpen)) {
-        DrawVec3Control("Eye Offset", component.EyeOffset, 0.05f, 120);
+    if (ImGui::CollapsingHeader("第一人称", ImGuiTreeNodeFlags_DefaultOpen)) {
+        DrawVec3Control("视点偏移", component.EyeOffset, 0.05f, 120);
         ImGui::TextDisabled("相机相对角色的局部偏移（默认 +Y = 角色头顶上方）");
         ImGui::Separator();
     }
 
     // ---- 第三人称 ----
-    if (ImGui::CollapsingHeader("Third Person", ImGuiTreeNodeFlags_DefaultOpen)) {
-        DrawVec3Control("Target Offset", component.TargetOffset, 0.05f, 120);
+    if (ImGui::CollapsingHeader("第三人称", ImGuiTreeNodeFlags_DefaultOpen)) {
+        DrawVec3Control("锚点偏移", component.TargetOffset, 0.05f, 120);
         ImGui::TextDisabled("相机看向的角色锚点（默认角色胸口/头高附近）");
-        ImGui::DragFloat("Target Distance", &component.Distance, 0.05f, component.MinDistance, component.MaxDistance);
+        ImGui::DragFloat("目标距离", &component.Distance, 0.05f, component.MinDistance, component.MaxDistance);
         // 改 Min/Max 时同步钳位 Target Distance：否则序列化保存的面板值可能与运行时
         // clamp 后的实际距离不一致（运行时按 [Min, Max] 生效）。
-        if (ImGui::DragFloat("Min Distance", &component.MinDistance, 0.05f, 0.10f, component.MaxDistance)) {
+        if (ImGui::DragFloat("最小距离", &component.MinDistance, 0.05f, 0.10f, component.MaxDistance)) {
             component.Distance = std::clamp(component.Distance, component.MinDistance, component.MaxDistance);
         }
-        if (ImGui::DragFloat("Max Distance", &component.MaxDistance, 0.05f, component.MinDistance, 100.0f)) {
+        if (ImGui::DragFloat("最大距离", &component.MaxDistance, 0.05f, component.MinDistance, 100.0f)) {
             component.Distance = std::clamp(component.Distance, component.MinDistance, component.MaxDistance);
         }
-        ImGui::DragFloat("Shoulder Offset", &component.ShoulderOffset, 0.05f, -5.0f, 5.0f);
+        ImGui::DragFloat("肩位偏移", &component.ShoulderOffset, 0.05f, -5.0f, 5.0f);
         ImGui::TextDisabled(">0 右肩、<0 左肩；0 = 正中跟拍");
-        ImGui::Checkbox("Collision Enabled", &component.CollisionEnabled);
+        ImGui::Checkbox("启用碰撞", &component.CollisionEnabled);
         if (component.CollisionEnabled) {
-            ImGui::DragFloat("Collision Radius", &component.CollisionRadius, 0.01f, 0.01f, 2.0f);
-            ImGui::DragFloat("Collision Margin", &component.CollisionMargin, 0.01f, 0.0f, 2.0f);
+            ImGui::DragFloat("碰撞半径", &component.CollisionRadius, 0.01f, 0.01f, 2.0f);
+            ImGui::DragFloat("碰撞余量", &component.CollisionMargin, 0.01f, 0.0f, 2.0f);
         }
-        ImGui::DragFloat("Smoothing", &component.Smoothing, 0.1f, 0.0f, 50.0f);
-        ImGui::DragFloat("Zoom Speed", &component.ZoomSpeed, 0.05f, 0.0f, 5.0f);
-        ImGui::TextDisabled("M1：滚轮在 [Min, Max] 内缩放；防穿墙（Collision*）在 M2 落地");
+        ImGui::DragFloat("平滑", &component.Smoothing, 0.1f, 0.0f, 50.0f);
+        ImGui::DragFloat("缩放速度", &component.ZoomSpeed, 0.05f, 0.0f, 5.0f);
+        ImGui::TextDisabled("M1：滚轮在 [最小, 最大] 内缩放；防穿墙（碰撞*）在 M2 落地");
         ImGui::Separator();
     }
 
     // ---- 共用鼠标 ----
-    if (ImGui::CollapsingHeader("Shared Mouse", ImGuiTreeNodeFlags_DefaultOpen)) {
-        ImGui::DragFloat("Yaw Speed (deg/px)", &component.YawSpeed, 0.01f, 0.0f, 1.0f);
-        ImGui::DragFloat("Pitch Speed (deg/px)", &component.PitchSpeed, 0.01f, 0.0f, 1.0f);
-        ImGui::DragFloat("Min Pitch (deg)", &component.MinPitch, 1.0f, -89.0f, 0.0f);
-        ImGui::DragFloat("Max Pitch (deg)", &component.MaxPitch, 1.0f, 0.0f, 89.0f);
-        ImGui::Checkbox("Invert Y", &component.InvertY);
+    if (ImGui::CollapsingHeader("共用鼠标", ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::DragFloat("水平转速（度/像素）", &component.YawSpeed, 0.01f, 0.0f, 1.0f);
+        ImGui::DragFloat("俯仰转速（度/像素）", &component.PitchSpeed, 0.01f, 0.0f, 1.0f);
+        ImGui::DragFloat("最小俯仰角（度）", &component.MinPitch, 1.0f, -89.0f, 0.0f);
+        ImGui::DragFloat("最大俯仰角（度）", &component.MaxPitch, 1.0f, 0.0f, 89.0f);
+        ImGui::Checkbox("反转 Y", &component.InvertY);
         ImGui::TextDisabled("鼠标控制视角；第一人称相机钉在角色视点，第三人称围绕角色锚点转动");
     }
 }
@@ -240,10 +240,10 @@ void SceneHierarchyPanel::DrawFollowCameraComponent(FollowCameraComponent &compo
 // ============================================================
 void SceneHierarchyPanel::DrawPointLightComponent(PointLightComponent &component) {
     // 颜色 + 强度（alpha 通道作为强度）
-    ImGui::ColorEdit4("Color + Intensity", glm::value_ptr(component.Color));
+    ImGui::ColorEdit4("颜色 + 强度", glm::value_ptr(component.Color));
 
     // 半径倒数（衰减系数）
-    ImGui::DragFloat("Radius Inv (attenuation)", &component.RadiusInv, 0.01f, 0.01f, 5.0f);
+    ImGui::DragFloat("半径倒数（衰减系数）", &component.RadiusInv, 0.01f, 0.01f, 5.0f);
     ImGui::Text("影响半径 ≈ %.2f", 1.0f / component.RadiusInv);
 }
 
@@ -252,8 +252,8 @@ void SceneHierarchyPanel::DrawPointLightComponent(PointLightComponent &component
 // ============================================================
 void SceneHierarchyPanel::DrawDirectionalLightComponent(DirectionalLightComponent &component) {
     // 颜色 + 强度（alpha 通道作为强度）
-    ImGui::ColorEdit4("Color + Intensity", glm::value_ptr(component.Color));
-    ImGui::Checkbox("Cast Shadow", &component.CastShadow);
+    ImGui::ColorEdit4("颜色 + 强度", glm::value_ptr(component.Color));
+    ImGui::Checkbox("投射阴影", &component.CastShadow);
 
     // CSM 调参（Renderer3D 全局设置，非组件字段）：级数 / practical split 混合系数 /
     // 每级尺寸 / 偏差 / PCF 半径。改动下帧随 UpdateLightParams（重算各级切分矩阵）与
@@ -263,29 +263,29 @@ void SceneHierarchyPanel::DrawDirectionalLightComponent(DirectionalLightComponen
         auto &r3d = Renderer::Get3DRenderer();
 
         int cascadeCount = static_cast<int>(r3d.GetCascadeCount());
-        if (ImGui::SliderInt("Cascade Count", &cascadeCount, 1,
+        if (ImGui::SliderInt("级联级数", &cascadeCount, 1,
                              static_cast<int>(kMaxCascades), "%d")) {
             r3d.SetCascadeCount(static_cast<uint32_t>(cascadeCount));
         }
         float lambda = r3d.GetCascadeSplitLambda();
-        if (ImGui::SliderFloat("Split Lambda", &lambda, 0.0f, 1.0f, "%.2f")) {
+        if (ImGui::SliderFloat("切分混合系数", &lambda, 0.0f, 1.0f, "%.2f")) {
             r3d.SetCascadeSplitLambda(lambda);
         }
         for (uint32_t c = 0; c < r3d.GetCascadeCount(); ++c) {
             const uint32_t csize = r3d.GetCascadeShadowSize(c);
             int cexp = std::max(9, static_cast<int>(std::log2(static_cast<double>(csize))));
-            if (ImGui::SliderInt(("级 " + std::to_string(c) + " Size (log2)").c_str(),
+            if (ImGui::SliderInt(("级 " + std::to_string(c) + " 尺寸 (log2)").c_str(),
                                  &cexp, 9, 13, "%d")) {
                 r3d.SetCascadeShadowSize(c, 1u << static_cast<uint32_t>(cexp));
             }
         }
         // 偏差 / PCF 半径各级共享（每级独立值列 CSM 计划书 §7）
         float bias = r3d.GetShadowBias();
-        if (ImGui::DragFloat("Shadow Bias", &bias, 0.0001f, 0.0f, 0.01f, "%.4f")) {
+        if (ImGui::DragFloat("阴影偏移", &bias, 0.0001f, 0.0f, 0.01f, "%.4f")) {
             r3d.SetShadowBias(bias);
         }
         float pcfRadius = r3d.GetShadowPcfRadius();
-        if (ImGui::DragFloat("PCF Radius", &pcfRadius, 0.1f, 0.0f, 4.0f, "%.1f")) {
+        if (ImGui::DragFloat("PCF 半径", &pcfRadius, 0.1f, 0.0f, 4.0f, "%.1f")) {
             r3d.SetShadowPcfRadius(pcfRadius);
         }
     }
@@ -298,7 +298,7 @@ void SceneHierarchyPanel::DrawDirectionalLightComponent(DirectionalLightComponen
 // ============================================================
 void SceneHierarchyPanel::DrawAmbientLightComponent(AmbientLightComponent &component) {
     // 颜色 + 强度（alpha 通道作为强度）
-    ImGui::ColorEdit4("Color + Intensity", glm::value_ptr(component.Color));
+    ImGui::ColorEdit4("颜色 + 强度", glm::value_ptr(component.Color));
     ImGui::TextDisabled("全局环境光，不依赖 Transform");
 }
 
@@ -463,10 +463,10 @@ void SceneHierarchyPanel::DrawEnvironmentComponent(EnvironmentComponent &compone
     }
 
     // 环境名下拉框：从扫到的子文件夹中选择，选即切换环境
-    std::string currentPreview = component.Name.empty() ? "(none)" : component.Name;
-    if (ImGui::BeginCombo("Name", currentPreview.c_str())) {
+    std::string currentPreview = component.Name.empty() ? "(无)" : component.Name;
+    if (ImGui::BeginCombo("环境名", currentPreview.c_str())) {
         // None 选项（环境名为空）
-        if (ImGui::Selectable("(none)", component.Name.empty())) {
+        if (ImGui::Selectable("(无)", component.Name.empty())) {
             component.Name.clear();
         }
         if (component.Name.empty()) {
@@ -494,13 +494,13 @@ void SceneHierarchyPanel::DrawEnvironmentComponent(EnvironmentComponent &compone
     }
 
     // 环境总开关（关则天空盒 + IBL 一并关闭）
-    ImGui::Checkbox("Enabled", &component.Enabled);
+    ImGui::Checkbox("启用", &component.Enabled);
     // 天空盒背景开关
-    ImGui::Checkbox("Skybox", &component.SkyboxEnabled);
+    ImGui::Checkbox("天空盒", &component.SkyboxEnabled);
     // IBL 环境光开关
     ImGui::Checkbox("IBL", &component.IBLEnabled);
     // IBL 环境光强度（整体缩放 diffuse + specular 的 IBL 贡献）
-    ImGui::SliderFloat("IBL Intensity", &component.IBLIntensity, 0.0f, 4.0f, "%.2f");
+    ImGui::SliderFloat("IBL 强度", &component.IBLIntensity, 0.0f, 4.0f, "%.2f");
     ImGui::TextDisabled("环境（天空盒 + IBL）来自 environments/<Name>/，不依赖 Transform");
 }
 

@@ -55,7 +55,7 @@ void SceneHierarchyPanel::OnImGuiRender() {
     }
 
     ImGui::SetNextWindowDockID(m_DockSpaceID, ImGuiCond_FirstUseEver);
-    ImGui::Begin("Scene Hierarchy");
+    ImGui::Begin("场景层级");
 
     // 遍历所有根实体（parent 为空的实体），逐层递归绘制子树。
     // 注意一：view<TransformComponent> 的 each() 会对单参 lambda 传组件而非实体句柄，
@@ -88,8 +88,8 @@ void SceneHierarchyPanel::OnImGuiRender() {
 
     // 窗口空白处右键菜单：创建空实体
     if (ImGui::BeginPopupContextWindow(nullptr, ImGuiPopupFlags_NoOpenOverItems | ImGuiPopupFlags_MouseButtonRight)) {
-        if (ImGui::MenuItem("Create Empty Entity"))
-            m_Context->CreateEntity("Empty Entity");
+        if (ImGui::MenuItem("创建空实体"))
+            m_Context->CreateEntity("空实体");
         ImGui::EndPopup();
     }
 
@@ -97,7 +97,7 @@ void SceneHierarchyPanel::OnImGuiRender() {
 
     // 属性面板
     ImGui::SetNextWindowDockID(m_DockSpaceID, ImGuiCond_FirstUseEver);
-    ImGui::Begin("Properties");
+    ImGui::Begin("属性");
     if (m_SelectionContext) {
         DrawComponents(m_SelectionContext);
     }
@@ -138,9 +138,9 @@ void SceneHierarchyPanel::DrawEntityNode(Entity entity) {
     bool entityDeleted = false;
     bool detachRequested = false;
     if (ImGui::BeginPopupContextItem()) {
-        if (ImGui::MenuItem("Delete Entity"))
+        if (ImGui::MenuItem("删除实体"))
             entityDeleted = true;
-        if (ImGui::MenuItem("Detach from Parent"))
+        if (ImGui::MenuItem("脱离父级"))
             detachRequested = true;
         ImGui::EndPopup();
     }
@@ -264,7 +264,7 @@ static void DrawComponent(const char *name, Entity entity, UIFunction uiFunction
 
         bool removeComponent = false;
         if (ImGui::BeginPopup("ComponentSettings")) {
-            if (ImGui::MenuItem("Remove component"))
+            if (ImGui::MenuItem("移除组件"))
                 removeComponent = true;
             ImGui::EndPopup();
         }

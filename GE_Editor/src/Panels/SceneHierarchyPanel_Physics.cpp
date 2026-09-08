@@ -51,9 +51,9 @@ void SceneHierarchyPanel::DrawRigidBodyComponent(Entity entity, RigidBodyCompone
 
     // 刚体类型下拉框（类型改变需要重建 body）
     {
-        const char *typeStrings[] = {"Static", "Kinematic", "Dynamic"};
+        const char *typeStrings[] = {"静态", "运动学", "动态"};
         int currentType = static_cast<int>(component.Type);
-        if (ImGui::BeginCombo("Type", typeStrings[currentType])) {
+        if (ImGui::BeginCombo("类型", typeStrings[currentType])) {
             for (int i = 0; i < 3; i++) {
                 const bool isSelected = currentType == i;
                 if (ImGui::Selectable(typeStrings[i], isSelected)) {
@@ -72,44 +72,44 @@ void SceneHierarchyPanel::DrawRigidBodyComponent(Entity entity, RigidBodyCompone
     // 质量（仅动态体有效，改变后需要更新属性）
     bool massDisabled = (component.Type != Physics::RigidBodyType::Dynamic);
     if (massDisabled) ImGui::BeginDisabled();
-    if (ImGui::DragFloat("Mass (kg)", &component.Mass, 0.1f, 0.01f, 10000.0f)) {
+    if (ImGui::DragFloat("质量（kg）", &component.Mass, 0.1f, 0.01f, 10000.0f)) {
         if (physicsWorld)
             physicsWorld->UpdateRigidBodyProperties(entityHandle);
     }
     if (massDisabled) ImGui::EndDisabled();
 
     // 摩擦系数
-    if (ImGui::DragFloat("Friction", &component.Friction, 0.01f, 0.0f, 1.0f)) {
+    if (ImGui::DragFloat("摩擦力", &component.Friction, 0.01f, 0.0f, 1.0f)) {
         if (physicsWorld)
             physicsWorld->UpdateRigidBodyProperties(entityHandle);
     }
 
     // 弹性系数
-    if (ImGui::DragFloat("Restitution", &component.Restitution, 0.01f, 0.0f, 1.0f)) {
+    if (ImGui::DragFloat("弹性恢复", &component.Restitution, 0.01f, 0.0f, 1.0f)) {
         if (physicsWorld)
             physicsWorld->UpdateRigidBodyProperties(entityHandle);
     }
 
     // 线性阻尼
-    if (ImGui::DragFloat("Linear Damping", &component.LinearDamping, 0.01f, 0.0f, 10.0f)) {
+    if (ImGui::DragFloat("线性阻尼", &component.LinearDamping, 0.01f, 0.0f, 10.0f)) {
         if (physicsWorld)
             physicsWorld->UpdateRigidBodyProperties(entityHandle);
     }
 
     // 角阻尼
-    if (ImGui::DragFloat("Angular Damping", &component.AngularDamping, 0.01f, 0.0f, 10.0f)) {
+    if (ImGui::DragFloat("角阻尼", &component.AngularDamping, 0.01f, 0.0f, 10.0f)) {
         if (physicsWorld)
             physicsWorld->UpdateRigidBodyProperties(entityHandle);
     }
 
     // 传感器标记（改变后需要更新属性）
-    if (ImGui::Checkbox("Is Sensor (Trigger)", &component.IsSensor)) {
+    if (ImGui::Checkbox("传感器（触发器）", &component.IsSensor)) {
         if (physicsWorld)
             physicsWorld->UpdateRigidBodyProperties(entityHandle);
     }
 
     ImGui::Separator();
-    ImGui::TextDisabled("Runtime Body ID: %s", component.IsInitialized ? "valid" : "uninitialized");
+    ImGui::TextDisabled("运行时刚体 ID: %s", component.IsInitialized ? "有效" : "未初始化");
 }
 
 // ============================================================
@@ -121,17 +121,17 @@ void SceneHierarchyPanel::DrawCharacterControllerComponent(
     const auto entityHandle = (entt::entity)entity;
 
     ImGui::Separator();
-    ImGui::TextDisabled("Runtime: %s%s",
-                        component.IsInitialized ? "active" : "uninitialized",
+    ImGui::TextDisabled("运行时: %s%s",
+                        component.IsInitialized ? "运行中" : "未初始化",
                         component.IsInitialized
-                            ? (component.IsGrounded ? " / on ground" : " / in air")
+                            ? (component.IsGrounded ? " / 在地面" : " / 空中")
                             : "");
 
     // 胶囊轴向（模型实际"上"不在局部 Y 时选 X/Z；改变胶囊朝向 → 重建角色）
     {
         const char *axisStrings[] = {"Y", "X", "Z"};
         const int currentAxis = static_cast<int>(component.Axis);
-        if (ImGui::BeginCombo("Direction", axisStrings[currentAxis])) {
+        if (ImGui::BeginCombo("胶囊轴向", axisStrings[currentAxis])) {
             for (int i = 0; i < 3; i++) {
                 const bool isSelected = currentAxis == i;
                 if (ImGui::Selectable(axisStrings[i], isSelected)) {
@@ -150,7 +150,7 @@ void SceneHierarchyPanel::DrawCharacterControllerComponent(
     {
         const char *frontStrings[] = {"Y", "X", "Z"};
         const int currentFront = static_cast<int>(component.FrontAxis);
-        if (ImGui::BeginCombo("Front Axis", frontStrings[currentFront])) {
+        if (ImGui::BeginCombo("前向基准轴", frontStrings[currentFront])) {
             for (int i = 0; i < 3; i++) {
                 const bool isSelected = currentFront == i;
                 if (ImGui::Selectable(frontStrings[i], isSelected))
@@ -162,42 +162,42 @@ void SceneHierarchyPanel::DrawCharacterControllerComponent(
         }
     }
     // 前向轴取反：模型"脸"在 FrontAxis 反方向时勾选（如角色初始旋转后正面朝 -Z）
-    ImGui::Checkbox("Invert Front", &component.InvertFront);
+    ImGui::Checkbox("反转前向", &component.InvertFront);
 
     // 半径/总高/最大坡度改变胶囊形状 → 销毁重建角色（取当前 Transform 作初始位置）
-    if (ImGui::DragFloat("Radius", &component.Radius, 0.05f, 0.001f, 100.0f)) {
+    if (ImGui::DragFloat("半径", &component.Radius, 0.05f, 0.001f, 100.0f)) {
         if (physicsWorld)
             physicsWorld->RebuildCharacter(entityHandle);
     }
-    if (ImGui::DragFloat("Height", &component.Height, 0.05f, 0.01f, 100.0f)) {
+    if (ImGui::DragFloat("高度", &component.Height, 0.05f, 0.01f, 100.0f)) {
         if (physicsWorld)
             physicsWorld->RebuildCharacter(entityHandle);
     }
-    if (DrawVec3Control("Offset", component.Offset, 0.0f, 120)) {
+    if (DrawVec3Control("偏移", component.Offset, 0.0f, 120)) {
         if (physicsWorld)
             physicsWorld->RebuildCharacter(entityHandle);
     }
-    if (ImGui::DragFloat("Max Slope (deg)", &component.MaxSlopeAngle, 0.5f, 0.0f, 89.0f)) {
+    if (ImGui::DragFloat("最大坡度（度）", &component.MaxSlopeAngle, 0.5f, 0.0f, 89.0f)) {
         if (physicsWorld)
             physicsWorld->RebuildCharacter(entityHandle);
     }
 
     // 跳跃初速 / 重力缩放不改形状：无需重建（引擎每子步实时读组件值）
-    ImGui::DragFloat("Max Jump Speed", &component.MaxJumpSpeed, 0.1f, 0.0f, 100.0f);
-    ImGui::DragFloat("Gravity Scale", &component.GravityScale, 0.05f, 0.0f, 20.0f);
+    ImGui::DragFloat("最大跳跃初速", &component.MaxJumpSpeed, 0.1f, 0.0f, 100.0f);
+    ImGui::DragFloat("重力缩放", &component.GravityScale, 0.05f, 0.0f, 20.0f);
 
     // 朝向移动：每子步实时读组件值，无需重建
-    ImGui::Checkbox("Face Movement", &component.FaceMovement);
+    ImGui::Checkbox("面向移动方向", &component.FaceMovement);
     if (component.FaceMovement) {
-        ImGui::DragFloat("Turn Speed (deg/s)", &component.TurnSpeed, 10.0f, 1.0f, 1080.0f);
+        ImGui::DragFloat("转向速度（度/秒）", &component.TurnSpeed, 10.0f, 1.0f, 1080.0f);
     }
 
     // ---- 根位移（纯配置，影响 Scene::UpdateRootMotion 功能开关，不触发 RebuildCharacter）----
     ImGui::Separator();
-    ImGui::TextDisabled("Root Motion");
-    ImGui::Checkbox("Use Root Motion", &component.UseRootMotion);
+    ImGui::TextDisabled("根位移");
+    ImGui::Checkbox("启用根位移", &component.UseRootMotion);
     if (component.UseRootMotion) {
-        ImGui::InputInt("Root Bone Node Index", &component.RootBoneNodeIndex, 1, 1);
+        ImGui::InputInt("根骨骼节点索引", &component.RootBoneNodeIndex, 1, 1);
         ImGui::TextDisabled("填模型根骨骼的 glTF nodeIndex（-1 = 未配置）");
 
         // 方便填写：从角色实体的 active clip 里列出带 Translation 通道的骨骼。
@@ -234,7 +234,7 @@ void SceneHierarchyPanel::DrawCharacterControllerComponent(
                 auto curIt = std::find_if(candidates.begin(), candidates.end(),
                                           [current](const BoneCandidate &c) { return c.nodeIndex == current; });
                 const char *preview = (curIt != candidates.end()) ? curIt->label.c_str() : "选择根骨骼...（或手填上方数字）";
-                if (ImGui::BeginCombo("Root Bone (从动画选择)", preview)) {
+                if (ImGui::BeginCombo("根骨骼（从动画选择）", preview)) {
                     for (const auto &c : candidates) {
                         const bool selected = (c.nodeIndex == current);
                         if (ImGui::Selectable(c.label.c_str(), selected))
@@ -248,7 +248,7 @@ void SceneHierarchyPanel::DrawCharacterControllerComponent(
                 ImGui::TextDisabled("角色实体没有可选的根骨骼 Translation 通道，请手填 glTF nodeIndex");
             }
         }
-        ImGui::Checkbox("Zero Root Bone Local", &component.ZeroRootBoneLocal);
+        ImGui::Checkbox("根骨骼局部归零", &component.ZeroRootBoneLocal);
         ImGui::TextDisabled("就地化：把根骨骼局部 Translation 归 base，烘焙动画防双倍移动");
         ImGui::TextDisabled("根骨骼局部每帧归 base；角色位移仍由原来的键盘输入驱动（不再提取动画根位移）");
     }
@@ -262,15 +262,15 @@ void SceneHierarchyPanel::DrawBoxColliderComponent(Entity entity, BoxColliderCom
     const auto entityHandle = (entt::entity)entity;
 
     // 碰撞体调试线框单独开关（仅影响视口叠加显示，不涉及物理）
-    ImGui::Checkbox("Draw Debug", &component.DrawDebug);
+    ImGui::Checkbox("显示调试线框", &component.DrawDebug);
     ImGui::Separator();
 
     // 形状改变 → 重建刚体
-    if (DrawVec3Control("Half Extents", component.HalfExtents, 0.5f, 120)) {
+    if (DrawVec3Control("半尺寸", component.HalfExtents, 0.5f, 120)) {
         if (physicsWorld)
             physicsWorld->RebuildRigidBody(entityHandle);
     }
-    if (DrawVec3Control("Offset", component.Offset, 0.0f, 120)) {
+    if (DrawVec3Control("偏移", component.Offset, 0.0f, 120)) {
         if (physicsWorld)
             physicsWorld->RebuildRigidBody(entityHandle);
     }
@@ -284,15 +284,15 @@ void SceneHierarchyPanel::DrawSphereColliderComponent(Entity entity, SphereColli
     const auto entityHandle = (entt::entity)entity;
 
     // 碰撞体调试线框单独开关（仅影响视口叠加显示，不涉及物理）
-    ImGui::Checkbox("Draw Debug", &component.DrawDebug);
+    ImGui::Checkbox("显示调试线框", &component.DrawDebug);
     ImGui::Separator();
 
     // 形状改变 → 重建刚体
-    if (ImGui::DragFloat("Radius", &component.Radius, 0.05f, 0.001f, 1000.0f)) {
+    if (ImGui::DragFloat("半径", &component.Radius, 0.05f, 0.001f, 1000.0f)) {
         if (physicsWorld)
             physicsWorld->RebuildRigidBody(entityHandle);
     }
-    if (DrawVec3Control("Offset", component.Offset, 0.0f, 120)) {
+    if (DrawVec3Control("偏移", component.Offset, 0.0f, 120)) {
         if (physicsWorld)
             physicsWorld->RebuildRigidBody(entityHandle);
     }
@@ -306,14 +306,14 @@ void SceneHierarchyPanel::DrawCapsuleColliderComponent(Entity entity, CapsuleCol
     const auto entityHandle = (entt::entity)entity;
 
     // 碰撞体调试线框单独开关（仅影响视口叠加显示，不涉及物理）
-    ImGui::Checkbox("Draw Debug", &component.DrawDebug);
+    ImGui::Checkbox("显示调试线框", &component.DrawDebug);
     ImGui::Separator();
 
     // 胶囊轴向（实体带旋转时让胶囊贴住模型实际朝向；改变需要重建刚体）
     {
         const char *axisStrings[] = {"Y", "X", "Z"};
         const int currentAxis = static_cast<int>(component.Axis);
-        if (ImGui::BeginCombo("Direction", axisStrings[currentAxis])) {
+        if (ImGui::BeginCombo("胶囊轴向", axisStrings[currentAxis])) {
             for (int i = 0; i < 3; i++) {
                 const bool isSelected = currentAxis == i;
                 if (ImGui::Selectable(axisStrings[i], isSelected)) {
@@ -329,15 +329,15 @@ void SceneHierarchyPanel::DrawCapsuleColliderComponent(Entity entity, CapsuleCol
     }
 
     // 形状改变 → 重建刚体
-    if (ImGui::DragFloat("Radius", &component.Radius, 0.05f, 0.001f, 1000.0f)) {
+    if (ImGui::DragFloat("半径", &component.Radius, 0.05f, 0.001f, 1000.0f)) {
         if (physicsWorld)
             physicsWorld->RebuildRigidBody(entityHandle);
     }
-    if (ImGui::DragFloat("Half Height", &component.HalfHeight, 0.05f, 0.0f, 1000.0f)) {
+    if (ImGui::DragFloat("半高", &component.HalfHeight, 0.05f, 0.0f, 1000.0f)) {
         if (physicsWorld)
             physicsWorld->RebuildRigidBody(entityHandle);
     }
-    if (DrawVec3Control("Offset", component.Offset, 0.0f, 120)) {
+    if (DrawVec3Control("偏移", component.Offset, 0.0f, 120)) {
         if (physicsWorld)
             physicsWorld->RebuildRigidBody(entityHandle);
     }
@@ -362,8 +362,8 @@ static glm::mat4 AnimLocalMatrix(const AnimLocalTrs &trs) {
 
 void SceneHierarchyPanel::DrawBoundingBoxComponent(Entity entity, BoundingBoxComponent &component, Scene *scene) {
     // Center/Size 为模型局部空间；Size 任一轴重置为 0 会令盒失效（不参与剔除）
-    DrawVec3Control("Center", component.Center, 0.0f, 120);
-    DrawVec3Control("Size", component.Size, 1.0f, 120);
+    DrawVec3Control("中心", component.Center, 0.0f, 120);
+    DrawVec3Control("尺寸", component.Size, 1.0f, 120);
     if (!component.IsValid()) {
         ImGui::TextDisabled("盒未摆放（Size 需全部 > 0）时不参与剔除");
     }

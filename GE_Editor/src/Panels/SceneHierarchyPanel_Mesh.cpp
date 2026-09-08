@@ -48,7 +48,7 @@ namespace GE {
 /// 绘制单个纹理槽位的下拉选择器（从 TextureManager 选纹理绑定到材质槽位）。
 static bool DrawTextureSlot(const char *label, Material *material, Material::TextureSlot slot) {
     if (!material) {
-        ImGui::Text("%s: (no material)", label);
+        ImGui::Text("%s: (无材质)", label);
         return false;
     }
 
@@ -57,7 +57,7 @@ static bool DrawTextureSlot(const char *label, Material *material, Material::Tex
 
     // 当前纹理的 key（用于在下拉框中显示预览文本）
     Texture *currentTex = material->GetTexture(slot);
-    std::string currentPreview = "(none)";
+    std::string currentPreview = "(无)";
     if (currentTex) {
         for (const auto &key : allKeys) {
             if (texMgr.Get(key) == currentTex) {
@@ -65,19 +65,19 @@ static bool DrawTextureSlot(const char *label, Material *material, Material::Tex
                 break;
             }
         }
-        if (currentPreview == "(none)" && !currentTex->GetFilePath().empty()) {
+        if (currentPreview == "(无)" && !currentTex->GetFilePath().empty()) {
             currentPreview = currentTex->GetFilePath();
-        } else if (currentPreview == "(none)") {
-            currentPreview = "(unnamed texture)";
+        } else if (currentPreview == "(无)") {
+            currentPreview = "(未命名纹理)";
         }
     }
 
     bool changed = false;
     std::string comboLabel = std::string(label) + "##slot_" + std::to_string(slot);
     if (ImGui::BeginCombo(comboLabel.c_str(), currentPreview.c_str())) {
-        // None 选项。独立压栈避免与某个 key 恰好为 "(none)" 的纹理撞 ID。
+        // None 选项。独立压栈避免与某个 key 恰好为 "(无)" 的纹理撞 ID。
         ImGui::PushID("none");
-        if (ImGui::Selectable("(none)", currentTex == nullptr)) {
+        if (ImGui::Selectable("(无)", currentTex == nullptr)) {
             material->SetTexture(slot, nullptr);
             changed = true;
         }
@@ -119,26 +119,26 @@ static void DrawMaterialEditor(Material *material) {
     // 材质显示名（独立字段，不改变 manager 注册 key）
     char nameBuf[128];
     snprintf(nameBuf, sizeof(nameBuf), "%s", material->GetName().c_str());
-    if (ImGui::InputText("名称 (Name)", nameBuf, sizeof(nameBuf))) {
+    if (ImGui::InputText("名称", nameBuf, sizeof(nameBuf))) {
         material->SetName(nameBuf);
     }
 
     // 材质类型（Blinn-Phong / PBR），决定渲染管线
     const char *typeNames[] = {"Blinn-Phong", "PBR"};
     int typeIdx = static_cast<int>(material->GetType());
-    if (ImGui::Combo("Type", &typeIdx, typeNames, 2)) {
+    if (ImGui::Combo("类型", &typeIdx, typeNames, 2)) {
         material->SetType(typeIdx == 1 ? Material::Type::PBR : Material::Type::BlinnPhong);
     }
 
     ImGui::Separator();
 
     // 纹理槽位
-    DrawTextureSlot("Albedo",   material, Material::Albedo);
-    DrawTextureSlot("Normal",   material, Material::Normal);
-    DrawTextureSlot("Emissive", material, Material::Emissive);
+    DrawTextureSlot("反照率",   material, Material::Albedo);
+    DrawTextureSlot("法线",   material, Material::Normal);
+    DrawTextureSlot("自发光", material, Material::Emissive);
     // PBR 专属：金属-粗糙度贴图（glTF 惯例：B=metallic, G=roughness）
     if (material->GetType() == Material::Type::PBR) {
-        bool mrChanged = DrawTextureSlot("Metallic Roughness", material, Material::MetallicRoughness);
+        bool mrChanged = DrawTextureSlot("金属粗糙度", material, Material::MetallicRoughness);
         // 绑定贴图时让贴图如实驱动金属度/粗糙度：标量系数自动归 1
         // （否则贴图 B/G 通道会被默认的 metallic=0、roughness=0.5 乘掉）。
         // 仅在本帧发生了"绑定"（仍是贴图）时触发，取消绑定（回到 none）不干预。
@@ -153,23 +153,23 @@ static void DrawMaterialEditor(Material *material) {
     // 标量参数（按材质类型分流）
     if (material->GetType() == Material::Type::PBR) {
         float metallic = material->GetFloat("metallic", 0.0f);
-        if (ImGui::SliderFloat("Metallic (金属度)", &metallic, 0.0f, 1.0f)) {
+        if (ImGui::SliderFloat("金属度", &metallic, 0.0f, 1.0f)) {
             material->SetFloat("metallic", metallic);
         }
         float roughness = material->GetFloat("roughness", 0.5f);
-        if (ImGui::SliderFloat("Roughness (粗糙度)", &roughness, 0.0f, 1.0f)) {
+        if (ImGui::SliderFloat("粗糙度", &roughness, 0.0f, 1.0f)) {
             material->SetFloat("roughness", roughness);
         }
     } else {
         // Blinn-Phong：高光指数（对数刻度 0~8 → shininess = 2^位置）
         float shininess = material->GetFloat("shininess", 32.0f);
         float logShininess = std::log2(std::max(shininess, 1.0f));
-        if (ImGui::SliderFloat("Shininess (高光指数, 对数刻度)", &logShininess,
+        if (ImGui::SliderFloat("高光指数（对数刻度）", &logShininess,
                                0.0f, 8.0f)) {
             material->SetFloat("shininess", std::pow(2.0f, logShininess));
         }
         float specularStrength = material->GetFloat("specularStrength", 0.5f);
-        if (ImGui::SliderFloat("Specular Strength (镜面强度)", &specularStrength,
+        if (ImGui::SliderFloat("镜面强度", &specularStrength,
                                0.0f, 2.0f)) {
             material->SetFloat("specularStrength", specularStrength);
         }
@@ -178,13 +178,13 @@ static void DrawMaterialEditor(Material *material) {
     // 自发光颜色因子（两种类型共用，glTF emissiveFactor）
     // 最终自发光颜色 = 自发光贴图颜色 × 该因子；[0,0,0] 表示不发光
     glm::vec3 emissiveFactor = material->GetEmissiveFactor();
-    if (ImGui::ColorEdit3("Emissive Factor (自发光颜色)", glm::value_ptr(emissiveFactor))) {
+    if (ImGui::ColorEdit3("自发光颜色", glm::value_ptr(emissiveFactor))) {
         material->SetEmissiveFactor(emissiveFactor);
     }
 
     // 纹理平铺 / UV 缩放密度（两种类型共用，采样前乘 inUV）
     float uvTiling = material->GetFloat("uvTiling", 1.0f);
-    if (ImGui::SliderFloat("UV Tiling (纹理平铺)", &uvTiling,
+    if (ImGui::SliderFloat("纹理平铺", &uvTiling,
                            0.1f, 10.0f)) {
         material->SetFloat("uvTiling", uvTiling);
     }
@@ -193,22 +193,22 @@ static void DrawMaterialEditor(Material *material) {
 
     // 渲染状态
     // 透明模式（对齐 glTF alphaMode）：Opaque=不透明 / Mask=裁剪 / Blend=半透明
-    static const char *kAlphaModeNames[] = {"Opaque (不透明)", "Mask (裁剪)", "Blend (半透明)"};
+    static const char *kAlphaModeNames[] = {"不透明", "裁剪", "半透明"};
     int alphaMode = static_cast<int>(material->alphaMode);
-    if (ImGui::Combo("Alpha Mode (透明模式)", &alphaMode, kAlphaModeNames,
+    if (ImGui::Combo("透明模式", &alphaMode, kAlphaModeNames,
                      IM_ARRAYSIZE(kAlphaModeNames))) {
         material->alphaMode = static_cast<Material::AlphaMode>(alphaMode);
     }
     if (material->alphaMode == Material::AlphaMode::Mask) {
-        ImGui::SliderFloat("Alpha Cutoff (裁剪阈值)", &material->alphaCutoff, 0.0f, 1.0f);
+        ImGui::SliderFloat("裁剪阈值", &material->alphaCutoff, 0.0f, 1.0f);
     }
-    ImGui::Checkbox("Double Sided", &material->doubleSided);
+    ImGui::Checkbox("双面渲染", &material->doubleSided);
 }
 
 /// 绘制子网格材质选择器：选材质即写入 MeshRendererComponent 的覆写表。
 ///
 /// 当前生效材质 = 覆写（materialOverrides）优先，否则子网格默认材质。
-/// 选择某材质 → 生成覆写（每实体独立）；选 "(use default)" → 清除覆写回退默认。
+/// 选择某材质 → 生成覆写（每实体独立）；选 "(使用默认)" → 清除覆写回退默认。
 static void DrawSubMeshMaterialEditor(MeshRendererComponent &comp, size_t index, const SubMesh &sub) {
     auto &matMgr = Renderer::GetMaterialManager();
     auto allMats = matMgr.GetAllNames();
@@ -222,23 +222,23 @@ static void DrawSubMeshMaterialEditor(MeshRendererComponent &comp, size_t index,
     Material *effective = override ? override : sub.defaultMaterial;
 
     // 显示名：用材质的显示名（GetName），不显示 manager 注册 key
-    std::string currentName = "(use default)";
+    std::string currentName = "(使用默认)";
     if (effective) {
         currentName = effective->GetName();
         if (currentName.empty()) {
-            currentName = "(unnamed)";
+            currentName = "(未命名)";
         }
         if (!override) {
-            currentName += " [default]";
+            currentName += " [默认]";
         }
     }
 
-    std::string label = "Material##sub_" + std::to_string(index);
+    std::string label = "材质##sub_" + std::to_string(index);
     if (ImGui::BeginCombo(label.c_str(), currentName.c_str())) {
-        // 使用默认（清除覆写）。独立压栈避免与某个恰好叫 "(use default)"
+        // 使用默认（清除覆写）。独立压栈避免与某个恰好叫 "(使用默认)"
         // 的材质显示名撞 ID。
         ImGui::PushID("use_default");
-        if (ImGui::Selectable("(use default)", override == nullptr)) {
+        if (ImGui::Selectable("(使用默认)", override == nullptr)) {
             comp.materialOverrides.erase(static_cast<uint32_t>(index));
         }
         ImGui::PopID();
@@ -276,29 +276,30 @@ static void DrawSubMeshMaterialEditor(MeshRendererComponent &comp, size_t index,
         DrawMaterialEditor(override);
         ImGui::Unindent();
     } else if (sub.defaultMaterial) {
-        ImGui::TextDisabled("using default (read-only) — 选一个材质以覆写");
+        ImGui::TextDisabled("使用默认（只读）— 选一个材质以覆写");
     }
 }
 
 void SceneHierarchyPanel::DrawMeshRendererComponent(MeshRendererComponent &component) {
-    ImGui::ColorEdit4("Color", glm::value_ptr(component.Color));
+    ImGui::ColorEdit4("颜色", glm::value_ptr(component.Color));
 
     // ---- 网格选择下拉框 ----
     // 列出内置几何体 + 所有已加载网格，选择即替换组件的 MeshPtr。
     auto &meshMgr = Renderer::GetMeshManager();
 
-    // 内置几何体（选择时按需加载并缓存）
-    const char *builtins[] = {"cube", "sphere", "plane", "quad"};
+    // 内置几何体（显示名中文化；引擎 key 仍用英文枚举，选择时按需加载并缓存）
+    const char *builtinNames[] = {"立方体", "球体", "平面", "四边形"};
+    const char *builtinKeys[] = {"cube", "sphere", "plane", "quad"};
 
     // 当前网格的显示标识（GetFilePath 为 builtin:xxx 或模型文件路径）
-    std::string currentKey = "(null)";
+    std::string currentKey = "(空)";
     if (component.MeshPtr) {
         currentKey = component.MeshPtr->GetFilePath();
     }
 
-    if (ImGui::BeginCombo("Mesh", currentKey.c_str())) {
+    if (ImGui::BeginCombo("网格", currentKey.c_str())) {
         // None 选项
-        if (ImGui::Selectable("(null)", component.MeshPtr == nullptr)) {
+        if (ImGui::Selectable("(空)", component.MeshPtr == nullptr)) {
             component.MeshPtr = nullptr;
         }
         if (component.MeshPtr == nullptr) {
@@ -306,12 +307,12 @@ void SceneHierarchyPanel::DrawMeshRendererComponent(MeshRendererComponent &compo
         }
 
         // 内置几何体
-        for (const char *type : builtins) {
-            std::string key = "builtin:" + std::string(type);
-            bool isSelected = (component.MeshPtr &&
-                               component.MeshPtr->GetFilePath() == key);
-            if (ImGui::Selectable(key.c_str(), isSelected)) {
-                component.MeshPtr = meshMgr.GetBuiltin(type);
+        for (int bi = 0; bi < IM_ARRAYSIZE(builtinKeys); ++bi) {
+            const std::string key = "builtin:" + std::string(builtinKeys[bi]);
+            const bool isSelected = (component.MeshPtr &&
+                                     component.MeshPtr->GetFilePath() == key);
+            if (ImGui::Selectable(builtinNames[bi], isSelected)) {
+                component.MeshPtr = meshMgr.GetBuiltin(builtinKeys[bi]);
             }
             if (isSelected) {
                 ImGui::SetItemDefaultFocus();
@@ -357,7 +358,7 @@ void SceneHierarchyPanel::DrawMeshRendererComponent(MeshRendererComponent &compo
     // 加载失败提示
     if (ImGui::BeginPopup("MeshLoadFailed")) {
         ImGui::Text("网格加载失败（请确认是合法的 .obj / .gemesh / .gltf / .glb 文件）");
-        if (ImGui::Button("OK")) {
+        if (ImGui::Button("确定")) {
             ImGui::CloseCurrentPopup();
         }
         ImGui::EndPopup();
@@ -366,23 +367,23 @@ void SceneHierarchyPanel::DrawMeshRendererComponent(MeshRendererComponent &compo
     // 网格信息 + 子网格材质编辑
     if (component.MeshPtr) {
         ImGui::Separator();
-        ImGui::Text("Path: %s", component.MeshPtr->GetFilePath().c_str());
+        ImGui::Text("路径: %s", component.MeshPtr->GetFilePath().c_str());
 
         // 异步加载中尚未就绪：不显示 0 统计 / 空子网格（避免误导），就绪后自动显示
         if (!component.MeshPtr->IsReady()) {
             ImGui::TextDisabled("加载中（异步）...");
         } else {
-            ImGui::Text("Vertices: %u", component.MeshPtr->GetVertexCount());
-            ImGui::Text("Indices:  %u", component.MeshPtr->GetIndexCount());
+            ImGui::Text("顶点数: %u", component.MeshPtr->GetVertexCount());
+            ImGui::Text("索引数:  %u", component.MeshPtr->GetIndexCount());
 
             // ---- 子网格列表：每个子网格一个可折叠下拉框，展开后绑定/编辑材质 ----
             const auto &subMeshes = component.MeshPtr->GetSubMeshes();
             ImGui::Separator();
-            ImGui::Text("SubMeshes: %zu", subMeshes.size());
+            ImGui::Text("子网格数: %zu", subMeshes.size());
             for (size_t i = 0; i < subMeshes.size(); ++i) {
                 // 折叠标题：显示子网格索引 + 索引数量
-                std::string header = "SubMesh " + std::to_string(i) +
-                                     " (" + std::to_string(subMeshes[i].indexCount) + " indices)";
+                std::string header = "子网格 " + std::to_string(i) +
+                                     "（" + std::to_string(subMeshes[i].indexCount) + " 索引）";
                 if (ImGui::CollapsingHeader(header.c_str())) {
                     // CollapsingHeader 带 NoTreePushOnOpen，内容不会推入 ID 栈：若不在
                     // 这里按子网格索引 PushID，各子网格材质编辑器内同名的 Combo/Slider/
@@ -403,9 +404,9 @@ void SceneHierarchyPanel::DrawMeshRendererComponent(MeshRendererComponent &compo
 // Sprite Renderer 组件
 // ============================================================
 void SceneHierarchyPanel::DrawSpriteRendererComponent(SpriteRendererComponent &component) {
-    ImGui::ColorEdit4("Color", glm::value_ptr(component.Color));
-    ImGui::Text("Texture: %s", component.SpriteTexture ? "(assigned)" : "(null)");
-    ImGui::Checkbox("Is UI (screen space, no depth)", &component.IsUI);
+    ImGui::ColorEdit4("颜色", glm::value_ptr(component.Color));
+    ImGui::Text("纹理: %s", component.SpriteTexture ? "(已指定)" : "(空)");
+    ImGui::Checkbox("UI 精灵（屏幕空间，不参与深度）", &component.IsUI);
 }
 
 } // namespace GE

@@ -9,7 +9,7 @@
 
 namespace GE {
 
-/// 场景层级面板层 —— 独立承载 SceneHierarchyPanel（"Scene Hierarchy" + "Properties" 窗口）。
+/// 场景层级面板层 —— 独立承载 SceneHierarchyPanel（"场景层级" + "属性" 窗口）。
 ///
 /// 与场景层共享 EditorContext。场景对象在新建/加载时会被替换，本层在每帧
 /// OnImGuiRender 前对比场景指针，变了就重新绑定面板并清空选中，避免悬空。

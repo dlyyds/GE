@@ -151,7 +151,7 @@ void SceneHierarchyPanel::DrawAnimationComponent(Entity entity, AnimationCompone
     } else {
         const std::string preview = component.clips[component.active].clip
             ? component.clips[component.active].clip->name
-            : ("Clip " + std::to_string(component.active));
+            : ("片段 " + std::to_string(component.active));
 
         // 过渡时长输入：带步进按钮会占用设定宽度一部分，给足余量避免数字截断
         ImGui::SetNextItemWidth(150.0f);
@@ -169,7 +169,7 @@ void SceneHierarchyPanel::DrawAnimationComponent(Entity entity, AnimationCompone
                 const bool selected = (i == component.active);
                 const std::string label = component.clips[i].clip
                     ? component.clips[i].clip->name
-                    : ("Clip " + std::to_string(i));
+                    : ("片段 " + std::to_string(i));
                 if (ImGui::Selectable(label.c_str(), selected)) {
                     // 手动切 clip = 外部覆盖：若状态机在跑，先关停（决策 9.5）
                     if (entity.HasComponent<AnimStateMachineComponent>()) {
@@ -305,8 +305,8 @@ void SceneHierarchyPanel::DrawAnimStateMachine(Entity entity, AnimStateMachineCo
         static_cast<entt::entity>(entity));
 
     // 本地复用字符串池（条件类型 / 比较符 → ImGui::Combo 的零结尾串）
-    static const char *kCondTypeItems = "FloatCmp\0Bool\0StateTime\0StateEnded\0";
-    static const char *kCmpItems = "Greater\0GreaterEq\0Less\0LessEq\0NearEq\0Not\0";
+    static const char *kCondTypeItems = "浮点比较\0布尔\0驻留时长\0播放结束\0";
+    static const char *kCmpItems = "大于\0大于等于\0小于\0小于等于\0约等于\0取反\0";
 
     // ---- 总开关 + 初始状态 + 运行状态 ----
     const bool wasEnabled = component.enabled;
@@ -385,7 +385,7 @@ void SceneHierarchyPanel::DrawAnimStateMachine(Entity entity, AnimStateMachineCo
         for (const auto &tn : component.triggers) {
             pending += tn + " ";
         }
-        ImGui::TextDisabled("待消费 trigger: %s", pending.c_str());
+        ImGui::TextDisabled("待消费触发: %s", pending.c_str());
     }
     ImGui::Separator();
 
@@ -484,11 +484,11 @@ void SceneHierarchyPanel::DrawAnimStateMachine(Entity entity, AnimStateMachineCo
         // BeginCombo 的内联标签（From/To）渲染在框右侧且计入控件布局宽度（total_bb），
         // 这里必须为两个标签预留 label 宽 + ItemInnerSpacing，否则整行实际宽度超出 rowW，
         // 会把第二个下拉框（To）向右顶出面板被裁掉。
-        const float labelW = ImGui::CalcTextSize("From").x + ImGui::CalcTextSize("To").x;
+        const float labelW = ImGui::CalcTextSize("从").x + ImGui::CalcTextSize("到").x;
         const float comboW = std::max(40.0f,
             (rowW - ImGui::CalcTextSize("→").x - labelW - 2.0f * innerSpacing - 2.0f * spacing) * 0.5f);
         ImGui::SetNextItemWidth(comboW);
-        if (ImGui::BeginCombo("From", fromPreview)) {
+        if (ImGui::BeginCombo("从", fromPreview)) {
             if (ImGui::Selectable("ANY (全局)", tr.from == SIZE_MAX)) {
                 tr.from = SIZE_MAX;
             }
@@ -504,7 +504,7 @@ void SceneHierarchyPanel::DrawAnimStateMachine(Entity entity, AnimStateMachineCo
         ImGui::Text("→");
         ImGui::SameLine();
         ImGui::SetNextItemWidth(comboW);
-        if (ImGui::BeginCombo("To", toPreview)) {
+        if (ImGui::BeginCombo("到", toPreview)) {
             for (size_t si = 0; si < component.states.size(); ++si) {
                 const bool sel = (tr.to == si);
                 if (ImGui::Selectable(component.states[si].name.c_str(), sel)) {
@@ -563,12 +563,12 @@ void SceneHierarchyPanel::DrawAnimStateMachine(Entity entity, AnimStateMachineCo
                         cond.param = pbuf;
                     }
                     ImGui::SameLine();
-                    const char *expectPreview = cond.expect ? "true" : "false";
+                    const char *expectPreview = cond.expect ? "真" : "假";
                     if (ImGui::BeginCombo("期望", expectPreview)) {
-                        if (ImGui::Selectable("true", cond.expect)) {
+                        if (ImGui::Selectable("真", cond.expect)) {
                             cond.expect = true;
                         }
-                        if (ImGui::Selectable("false", !cond.expect)) {
+                        if (ImGui::Selectable("假", !cond.expect)) {
                             cond.expect = false;
                         }
                         ImGui::EndCombo();

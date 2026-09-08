@@ -53,8 +53,8 @@ static void BuildDefaultLayout(ImGuiID dockspace_id, const ImVec2 &size) {
     ImGuiID dock_left_top, dock_left_bottom;
     dock_left_top = ImGui::DockBuilderSplitNode(dock_left, ImGuiDir_Down, 0.5f, nullptr, &dock_left_bottom);
 
-    ImGui::DockBuilderDockWindow("Scene Hierarchy", dock_left_top);
-    ImGui::DockBuilderDockWindow("Properties", dock_left_bottom);
+    ImGui::DockBuilderDockWindow("场景层级", dock_left_top);
+    ImGui::DockBuilderDockWindow("属性", dock_left_bottom);
     ImGui::DockBuilderDockWindow("Scene", dock_main);
     ImGui::DockBuilderDockWindow("SceneLayer", dock_bottom);
     ImGui::DockBuilderDockWindow("Scene Debug", dock_bottom);

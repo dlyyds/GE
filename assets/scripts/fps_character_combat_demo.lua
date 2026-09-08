@@ -72,17 +72,20 @@ function M.OnUpdate(self, ts)
     anim.set_bool("on_ground", character.get_grounded())
 
     -- 移动脚步音频：贴地且水平合速度超过阈值才播 walk（脚步语义），停住即停播；
-    -- 冲刺时提高播放音高（步频加快），切回走路恢复 1.0。pitch 只在变化时才下发，避免每帧冗余调用。
+    -- 跑步时调快播放倍速：按 实际速度/走路速度 比例缩放（走路≈1.0、冲刺≈1.75）。
+    -- miniaudio 的 pitch 即播放速率（重采样实现，倍速越高脚步越快、音调略升）。
+    -- 倍速只在变化时才下发，避免每帧冗余调用。
     -- audio.* 作用于本实体 AudioSource 组件的 slot（按名字解析到 "walk" 槽位）。
     local walking = character.get_grounded() and hspd > 0.5
-    local walk_pitch = sprinting and 1.3 or 1.0
+    local walk_base = speed > 0.1 and speed or 4.0
+    local walk_pitch = walking and math.max(1.0, math.min(hspd / walk_base, 1.75)) or 1.0
     if walking and not audio.is_playing("walk") then
         audio.play("walk")
         audio.set_loop("walk", true)
         audio.set_pitch("walk", walk_pitch)
         self._walk_pitch = walk_pitch
     elseif walking and audio.is_playing("walk") and self._walk_pitch ~= walk_pitch then
-        audio.set_pitch("walk", walk_pitch) -- 走路/跑步切换时实时更新音高
+        audio.set_pitch("walk", walk_pitch) -- 走路/跑步切换时实时更新倍速
         self._walk_pitch = walk_pitch
     elseif not walking and audio.is_playing("walk") then
         audio.stop("walk")

@@ -121,8 +121,9 @@ std::string ReadFileContents(const std::string &path) {
     return ss.str();
 }
 
-// 注入脚本 API：log / input / transform / entity / public / Key / Mouse
-void RegisterApi(Impl &eng) {
+// 注入脚本 API：log / input / transform / anim / character / camera / entity / public / Key / Mouse。
+// 每个命名空间一个独立注册函数，RegisterApi 汇总调用。
+void RegisterLogApi(Impl &eng) {
     sol::state &lua = eng.lua;
 
     // ---- log → spdlog ----
@@ -131,6 +132,10 @@ void RegisterApi(Impl &eng) {
     logT["warn"] = [](const std::string &m) { GE_CORE_WARN("[Lua] {}", m); };
     logT["error"] = [](const std::string &m) { GE_CORE_ERROR("[Lua] {}", m); };
     lua["log"] = logT;
+}
+
+void RegisterInputApi(Impl &eng) {
+    sol::state &lua = eng.lua;
 
     // ---- input → 场景输入快照（与 C++ 脚本同帧同源，见脚本输入系统计划书）----
     auto keyState = [&eng](bool (InputState::*fn)(KeyCode) const) {
@@ -167,6 +172,10 @@ void RegisterApi(Impl &eng) {
         return eng.scene ? eng.scene->GetInputState().GetScrollDelta() : 0.0f;
     };
     lua["input"] = inT;
+}
+
+void RegisterTransformApi(Impl &eng) {
+    sol::state &lua = eng.lua;
 
     // ---- transform → 局部 TRS（作用于挂载该脚本的实体）----
     sol::table trT = lua.create_table();
@@ -229,6 +238,10 @@ void RegisterApi(Impl &eng) {
         return false;
     };
     lua["transform"] = trT;
+}
+
+void RegisterAnimApi(Impl &eng) {
+    sol::state &lua = eng.lua;
 
     // ---- anim → 当前实体动画状态机（ASM）参数表（计划书 §2.2）----
     // 参数存 ASM 组件、不序列化：OnCreate 初始化、OnUpdate 按输入/物理驱动，
@@ -267,6 +280,10 @@ void RegisterApi(Impl &eng) {
         return 0.0f;
     };
     lua["anim"] = animT;
+}
+
+void RegisterCharacterApi(Impl &eng) {
+    sol::state &lua = eng.lua;
 
     // ---- character → 当前实体角色控制器（Jolt CharacterVirtual，计划书 §4）----
     // set_move 写水平期望速度（世界空间 x/z，垂直速度由引擎每子步积分），引擎消费；
@@ -312,6 +329,10 @@ void RegisterApi(Impl &eng) {
         return 1.0f;
     };
     lua["character"] = charT;
+}
+
+void RegisterCameraApi(Impl &eng) {
+    sol::state &lua = eng.lua;
 
     // ---- camera → 场景主相机只读查询（跟随相机脚本组合移动方向用）----
     // 只读、无副作用；取 Primary 优先的主相机（无主相机则第一个相机实体）。
@@ -436,6 +457,10 @@ void RegisterApi(Impl &eng) {
         return fc->ToggleEnabled;
     };
     lua["camera"] = camT;
+}
+
+void RegisterEntityApi(Impl &eng) {
+    sol::state &lua = eng.lua;
 
     // ---- entity → 挂载实体的基本查询 ----
     auto hasAny = [&eng](const char *name) -> bool {
@@ -474,6 +499,10 @@ void RegisterApi(Impl &eng) {
     };
     entT["has_component"] = [hasAny](const std::string &name) -> bool { return hasAny(name.c_str()); };
     lua["entity"] = entT;
+}
+
+void RegisterPublicApi(Impl &eng) {
+    sol::state &lua = eng.lua;
 
     // ---- public → 本实体 public 字段（脚本 PUBLIC_FIELDS 声明的可调配置）。
     // 每次 get 实时读 ScriptComponent.PublicFields：面板改值/场景加载即生效，无需同步运行中实例。
@@ -497,6 +526,10 @@ void RegisterApi(Impl &eng) {
         }
     };
     lua["public"] = pubT;
+}
+
+void RegisterKeyMouseApi(Impl &eng) {
+    sol::state &lua = eng.lua;
 
     // ---- Key / Mouse 键码表 ----
     sol::table keyT = lua.create_table();
@@ -508,6 +541,19 @@ void RegisterApi(Impl &eng) {
     for (const auto &m : kMouseNames)
         mouseT[m.name] = m.code;
     lua["Mouse"] = mouseT;
+}
+
+// 汇总注册全部脚本 API：按命名空间拆分后的各注册函数逐一调用
+void RegisterApi(Impl &eng) {
+    RegisterLogApi(eng);
+    RegisterInputApi(eng);
+    RegisterTransformApi(eng);
+    RegisterAnimApi(eng);
+    RegisterCharacterApi(eng);
+    RegisterCameraApi(eng);
+    RegisterEntityApi(eng);
+    RegisterPublicApi(eng);
+    RegisterKeyMouseApi(eng);
 }
 
 // 加载并缓存行为表；失败返回 false（调用方决定告警/禁用）

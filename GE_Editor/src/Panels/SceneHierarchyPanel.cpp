@@ -1759,12 +1759,53 @@ void SceneHierarchyPanel::DrawWaterComponent(WaterComponent &component) {
     }
 
     if (ImGui::CollapsingHeader("法线贴图", ImGuiTreeNodeFlags_DefaultOpen)) {
-        char texBuf[512] = {};
+        // 下拉选择已加载纹理，取代手动填路径；仍支持从资源面板拖入
+        auto &texMgr = Renderer::GetTextureManager();
+        const auto allKeys = texMgr.GetAllKeys();
+
+        // 当前贴图预览文本：优先 manager key，其次文件路径
+        std::string preview = "(无)";
         if (component.NormalMap) {
-            const std::string &path = component.NormalMap->GetFilePath();
-            strncpy_s(texBuf, sizeof(texBuf), path.c_str(), _TRUNCATE);
+            for (const auto &key : allKeys) {
+                if (texMgr.Get(key) == component.NormalMap) {
+                    preview = key;
+                    break;
+                }
+            }
+            if (preview == "(无)") {
+                preview = component.NormalMap->GetFilePath().empty()
+                              ? "(未命名纹理)" : component.NormalMap->GetFilePath();
+            }
         }
-        ImGui::InputText("法线贴图路径", texBuf, sizeof(texBuf));
+
+        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+        if (ImGui::BeginCombo("##normalmap", preview.c_str())) {
+            // "无"选项：独立压栈避免与某个恰好同名的纹理 key 撞 ID
+            ImGui::PushID("none");
+            if (ImGui::Selectable("(无)", component.NormalMap == nullptr)) {
+                component.NormalMap = nullptr;
+            }
+            ImGui::PopID();
+            if (component.NormalMap == nullptr) {
+                ImGui::SetItemDefaultFocus();
+            }
+
+            // 列出所有已加载纹理；按 key（唯一）压栈隔离，杜绝同名项 ID 冲突
+            for (const auto &key : allKeys) {
+                Texture *tex = texMgr.Get(key);
+                bool isSelected = (tex == component.NormalMap);
+                ImGui::PushID(key.c_str());
+                if (ImGui::Selectable(key.c_str(), isSelected)) {
+                    component.NormalMap = tex;
+                }
+                ImGui::PopID();
+                if (isSelected) {
+                    ImGui::SetItemDefaultFocus();
+                }
+            }
+            ImGui::EndCombo();
+        }
+        // 拖放目标：接受从资源面板拖来的纹理
         if (ImGui::BeginDragDropTarget()) {
             if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("TEXTURE_ASSET")) {
                 const size_t keyLen = payload->DataSize > 0
@@ -1773,13 +1814,16 @@ void SceneHierarchyPanel::DrawWaterComponent(WaterComponent &component) {
                 const std::string key(static_cast<const char *>(payload->Data), keyLen);
                 if (Texture *tex = Renderer::GetTextureManager().Get(key)) {
                     component.NormalMap = tex;
-                    ImGui::EndDragDropTarget();
                 }
             }
             ImGui::EndDragDropTarget();
         }
-        if (ImGui::Button("加载 / 更改")) {
-            const std::string path(texBuf);
+        // 从磁盘加载新法线贴图（加载后自动出现在下拉框里）
+        if (ImGui::Button("浏览并加载...")) {
+            std::string path = FileDialogs::OpenFile(
+                "Image Files (*.png *.jpg *.jpeg *.bmp *.tga)\0"
+                "*.png;*.jpg;*.jpeg;*.bmp;*.tga\0"
+                "All Files (*.*)\0*.*\0");
             if (!path.empty()) {
                 component.NormalMap = Renderer::GetAssetManager().LoadTextureAsync(path);
             }

@@ -220,34 +220,14 @@ void GizmoController::EditBounds(Entity entity, const Camera &camera,
         nullptr);            // boundsSnap
 
     if (changed && ImGuizmo::IsUsing()) {
-        // 拖拽首帧定格起始尺寸/中心：ImGuizmo 盒手柄比例是相对拖拽起点的绝对值，
-        // 若每帧拿最新 bb.Size 去乘会逐帧重复叠加（盒按 比例^帧数 指数膨胀，灵敏度失控）。
-        // 之后每帧一律由「起始值 × 阻尼比例」推出，保证静止不漂、拖多远放多大。
-        if (!m_BoundsDragActive) {
-            m_BoundsDragActive = true;
-            m_BoundsStartSize = bb.Size;
-            m_BoundsStartCenterWorld = worldCenter; // worldCenter 为本帧拖拽前的盒中心
-        }
-
-        // 原始缩放比例：帧矩阵各列模长即每轴缩放系数（相对拖拽起始盒）
-        glm::vec3 rawScale;
+        // 新尺寸 = 原尺寸 × 帧矩阵三列模长（列长即每轴缩放系数）
+        glm::vec3 newSize = bb.Size;
         const glm::mat3 m3 = glm::mat3(gizmoMatrix);
         for (int c = 0; c < 3; ++c) {
-            rawScale[c] = glm::length(m3[c]);
+            newSize[c] = bb.Size[c] * glm::length(m3[c]);
         }
-
-        // 灵敏度阻尼：比例向 1 收缩、中心位移按同系数缩减 —— 两者系数一致才能保证
-        // 仍围绕同一支点缩放（中心随动不过冲）；系数越小越不灵敏，0.5 即拖到 2 倍
-        // 需要的鼠标位移约为原来的 2 倍。
-        constexpr float kBoundsDragDamping = 0.5f;
-        const glm::vec3 dampedScale = 1.0f + kBoundsDragDamping * (rawScale - 1.0f);
-        const glm::vec3 newCenterWorld = m_BoundsStartCenterWorld
-            + kBoundsDragDamping * (glm::vec3(gizmoMatrix[3]) - m_BoundsStartCenterWorld);
-
-        // 新尺寸 = 起始尺寸 × 阻尼比例
-        glm::vec3 newSize = m_BoundsStartSize * dampedScale;
-
-        // 新世界中心还原回模型局部中心
+        // 新世界中心（帧矩阵平移）还原回模型局部中心
+        const glm::vec3 newCenterWorld = glm::vec3(gizmoMatrix[3]);
         const glm::vec3 newCenterLocal = glm::inverse(rotN) * (newCenterWorld - glm::vec3(transform[3]));
 
         // 防止缩成退化/反向盒：任一轴过小会让 IsValid()==false、剔除失效，钳制下限
@@ -255,8 +235,6 @@ void GizmoController::EditBounds(Entity entity, const Camera &camera,
         newSize = glm::max(newSize, glm::vec3(kMinSize));
         bb.Center = newCenterLocal;
         bb.Size = newSize;
-    } else {
-        m_BoundsDragActive = false; // 未在拖拽：重置标志，下次拖拽重新定格起始态
     }
 }
 

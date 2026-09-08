@@ -1,4 +1,4 @@
-﻿#define MINIAUDIO_IMPLEMENTATION
+#define MINIAUDIO_IMPLEMENTATION
 #include "miniaudio.h"
 
 #include "Audio/AudioContext.h"
@@ -10,6 +10,7 @@
 #include <cmath>
 #include <string>
 #include <unordered_map>
+#include <memory>
 #include <utility>
 
 namespace GE {
@@ -33,7 +34,7 @@ struct AudioContext::Impl {
     bool initialized = false;
     uint64_t nextHandle = 1;
     float masterVolume = 1.0f;
-    std::unordered_map<VoiceHandle, ma_sound> voices;
+    std::unordered_map<VoiceHandle, std::unique_ptr<ma_sound>> voices;
 };
 
 AudioContext::AudioContext()
@@ -116,33 +117,33 @@ VoiceHandle AudioContext::Play(SoundAsset *sound, bool loop, float volume, float
     if (!spatial)
         flags |= MA_SOUND_FLAG_NO_SPATIALIZATION;
 
-    ma_sound snd;
+    std::unique_ptr<ma_sound> snd = std::make_unique<ma_sound>();
     if (ma_sound_init_from_file(&m_Impl->engine, filepath.c_str(), flags,
-                                nullptr, nullptr, &snd) != MA_SUCCESS) {
+                                nullptr, nullptr, snd.get()) != MA_SUCCESS) {
         GE_CORE_WARN("AudioContext: failed to init sound \"{0}\"", filepath);
         return kInvalidVoice;
     }
 
     const VoiceHandle handle = m_Impl->nextHandle++;
+    ma_sound *voice = snd.get();
     m_Impl->voices.emplace(handle, std::move(snd));
-    ma_sound &voice = m_Impl->voices[handle];
 
-    ma_sound_set_looping(&voice, loop ? MA_TRUE : MA_FALSE);
-    ma_sound_set_volume(&voice, volume);
-    ma_sound_set_pitch(&voice, pitch);
+    ma_sound_set_looping(voice, loop ? MA_TRUE : MA_FALSE);
+    ma_sound_set_volume(voice, volume);
+    ma_sound_set_pitch(voice, pitch);
 
     if (spatial) {
-        ma_sound_set_positioning(&voice, ma_positioning_absolute);
-        ma_sound_set_position(&voice, pos.x, pos.y, pos.z);
-        ma_sound_set_attenuation_model(&voice, ToMaAttenuation(attenuation));
-        ma_sound_set_min_distance(&voice, minDist);
-        ma_sound_set_max_distance(&voice, maxDist);
-        ma_sound_set_rolloff(&voice, rolloff);
+        ma_sound_set_positioning(voice, ma_positioning_absolute);
+        ma_sound_set_position(voice, pos.x, pos.y, pos.z);
+        ma_sound_set_attenuation_model(voice, ToMaAttenuation(attenuation));
+        ma_sound_set_min_distance(voice, minDist);
+        ma_sound_set_max_distance(voice, maxDist);
+        ma_sound_set_rolloff(voice, rolloff);
     } else {
-        ma_sound_set_positioning(&voice, ma_positioning_relative);
+        ma_sound_set_positioning(voice, ma_positioning_relative);
     }
 
-    if (ma_sound_start(&voice) != MA_SUCCESS) {
+    if (ma_sound_start(voice) != MA_SUCCESS) {
         Stop(handle);
         return kInvalidVoice;
     }
@@ -158,8 +159,8 @@ void AudioContext::Stop(VoiceHandle h) {
     if (it == m_Impl->voices.end())
         return;
 
-    ma_sound_stop(&it->second);
-    ma_sound_uninit(&it->second);
+    ma_sound_stop(it->second.get());
+    ma_sound_uninit(it->second.get());
     m_Impl->voices.erase(it);
 }
 
@@ -169,8 +170,8 @@ void AudioContext::StopAll() {
 
     for (auto &[handle, sound] : m_Impl->voices) {
         (void)handle;
-        ma_sound_stop(&sound);
-        ma_sound_uninit(&sound);
+        ma_sound_stop(sound.get());
+        ma_sound_uninit(sound.get());
     }
     m_Impl->voices.clear();
 }
@@ -181,7 +182,7 @@ void AudioContext::SetVolume(VoiceHandle h, float v) {
 
     auto it = m_Impl->voices.find(h);
     if (it != m_Impl->voices.end())
-        ma_sound_set_volume(&it->second, v);
+        ma_sound_set_volume(it->second.get(), v);
 }
 
 void AudioContext::SetPitch(VoiceHandle h, float p) {
@@ -190,7 +191,7 @@ void AudioContext::SetPitch(VoiceHandle h, float p) {
 
     auto it = m_Impl->voices.find(h);
     if (it != m_Impl->voices.end())
-        ma_sound_set_pitch(&it->second, p);
+        ma_sound_set_pitch(it->second.get(), p);
 }
 
 void AudioContext::SetLoop(VoiceHandle h, bool loop) {
@@ -199,7 +200,7 @@ void AudioContext::SetLoop(VoiceHandle h, bool loop) {
 
     auto it = m_Impl->voices.find(h);
     if (it != m_Impl->voices.end())
-        ma_sound_set_looping(&it->second, loop ? MA_TRUE : MA_FALSE);
+        ma_sound_set_looping(it->second.get(), loop ? MA_TRUE : MA_FALSE);
 }
 
 void AudioContext::SetPosition(VoiceHandle h, const glm::vec3 &pos) {
@@ -208,7 +209,7 @@ void AudioContext::SetPosition(VoiceHandle h, const glm::vec3 &pos) {
 
     auto it = m_Impl->voices.find(h);
     if (it != m_Impl->voices.end())
-        ma_sound_set_position(&it->second, pos.x, pos.y, pos.z);
+        ma_sound_set_position(it->second.get(), pos.x, pos.y, pos.z);
 }
 
 bool AudioContext::IsPlaying(VoiceHandle h) const {
@@ -216,7 +217,7 @@ bool AudioContext::IsPlaying(VoiceHandle h) const {
         return false;
 
     auto it = m_Impl->voices.find(h);
-    return it != m_Impl->voices.end() && ma_sound_is_playing(&it->second) == MA_TRUE;
+    return it != m_Impl->voices.end() && ma_sound_is_playing(it->second.get()) == MA_TRUE;
 }
 
 } // namespace Audio

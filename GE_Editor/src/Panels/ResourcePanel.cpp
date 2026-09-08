@@ -170,6 +170,16 @@ void ResourcePanel::DrawTextureSection() {
 
         // 树节点：名称 + 缩略图 + 尺寸/格式，展开后编辑采样器
         bool open = ImGui::TreeNode(key.c_str());
+        // 拖动源：把纹理 key 拖给 WaterComponent 等组件面板复用。
+        // 必须紧跟在有 ID 的项（这里指树节点）之后：BeginDragDropSource()
+        // 只作用于上一条已提交的项，若挂在后面无 ID 的 TextDisabled 上，
+        // 按下鼠标时会走 imgui 的"无 ID 项"路径并在缺少
+        // ImGuiDragDropFlags_SourceAllowNullID 时触发 IM_ASSERT(0) 崩溃。
+        if (ImGui::BeginDragDropSource()) {
+            ImGui::SetDragDropPayload("TEXTURE_ASSET", key.c_str(), key.size() + 1);
+            ImGui::Text("%s", key.c_str());
+            ImGui::EndDragDropSource();
+        }
         if (ImTextureID tid = GetThumbnail(tex)) {
             ImGui::SameLine();
             ImGui::Image(tid, ImVec2(20.0f, 20.0f));
@@ -179,13 +189,6 @@ void ResourcePanel::DrawTextureSection() {
         ImGui::TextDisabled("%ux%u  %s", e.width, e.height, FormatToString(tex->GetFormat()));
         if (ImGui::IsItemHovered() && !tex->GetFilePath().empty()) {
             ImGui::SetTooltip("%s", tex->GetFilePath().c_str());
-        }
-
-        // 拖动源：把纹理 key 拖给 WaterComponent 等组件面板复用。
-        if (ImGui::BeginDragDropSource()) {
-            ImGui::SetDragDropPayload("TEXTURE_ASSET", key.c_str(), key.size() + 1);
-            ImGui::Text("%s", key.c_str());
-            ImGui::EndDragDropSource();
         }
 
         if (open) {

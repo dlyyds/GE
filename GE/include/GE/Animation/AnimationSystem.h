@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Scene/AnimationComponents.h"
+#include "Animation/AnimationComponents.h"
 #include "Core/Timestep.h"
 #include "entt.hpp"
 

@@ -1,9 +1,9 @@
 #include "pch.h"
-#include "Scene/AnimationSystem.h"
+#include "Animation/AnimationSystem.h"
 
 #include "Scene/Components.h"     // TransformComponent（采样写局部 TRS）
 #include "Scene/ScriptEngine.h"   // FireEvents → DispatchAnimationEvent
-#include "Render/AnimationClipManager.h" // ReloadClipSource → 按源文件枚举重载 + 补齐新增
+#include "Animation/AnimationClipManager.h" // ReloadClipSource → 按源文件枚举重载 + 补齐新增
 #include "Render/GLTFLoader.h"    // ReloadClipSource → 重读源文件枚举 model.animations
 #include "tinygltf/tiny_gltf.h"   // tinygltf::Model（前述头只前向声明）
 #include "Core/Log.h"             // GE_CORE_WARN（CUBICSPLINE 近似提示）

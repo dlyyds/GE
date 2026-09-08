@@ -12,7 +12,7 @@
 #include "Scene/Entity.h"
 #include "Scene/Components.h"
 #include "Render/GLTFLoader.h"
-#include "Render/AnimationClipManager.h"
+#include "Animation/AnimationClipManager.h"
 #include "Render/MeshManager.h"
 #include "Render/Mesh.h"
 #include "Core/Log.h"

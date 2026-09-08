@@ -1,7 +1,7 @@
 #include "pch.h"
 #include "Scene/Scene.h"
 #include "Scene/Components.h"
-#include "Scene/AnimationSystem.h"
+#include "Animation/AnimationSystem.h"
 #include "Scene/Entity.h"
 #include "Physics/PhysicsWorld.h"
 #include "Audio/AudioWorld.h"
@@ -736,7 +736,7 @@ void Scene::UpdateSkins() {
 
 
 void Scene::UpdateAnimations(Timestep ts) {
-    // 动画采样/事件/过渡混合 + ASM 求值 已抽取到 AnimationSystem 模块（Scene/AnimationSystem.cpp）
+    // 动画采样/事件/过渡混合 + ASM 求值 已抽取到 AnimationSystem 模块（Animation/AnimationSystem.cpp）
     AnimationSystem::UpdateAnimations(m_Registry, m_ScriptEngine, ts);
 }
 

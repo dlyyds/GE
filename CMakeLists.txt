@@ -116,6 +116,7 @@ file(GLOB GE_SRC
         ${CMAKE_SOURCE_DIR}/GE/src/Scene/*.cpp
         ${CMAKE_SOURCE_DIR}/GE/src/Physics/*.cpp
         ${CMAKE_SOURCE_DIR}/GE/src/Audio/*.cpp
+        ${CMAKE_SOURCE_DIR}/GE/src/Animation/*.cpp
         ${CMAKE_SOURCE_DIR}/GE/third_party/stb/stb_image.cpp
         ${CMAKE_SOURCE_DIR}/GE/third_party/tinyobjloader/tiny_obj_loader.cpp
         ${CMAKE_SOURCE_DIR}/GE/third_party/tinygltf/tiny_gltf.cc

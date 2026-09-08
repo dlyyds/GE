@@ -23,7 +23,7 @@
 #include "Render/GEMeshLoader.h"
 #include "Render/ModelLoader.h"
 #include "Render/GLTFLoader.h"
-#include "Render/AnimationClipManager.h"
+#include "Animation/AnimationClipManager.h"
 
 #include <yaml-cpp/yaml.h>
 #include <glm/glm.hpp>

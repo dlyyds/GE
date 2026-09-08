@@ -3,7 +3,7 @@
  * @brief .geanim 烘焙格式实现 —— 扁平二进制，magic + version + 顺序数据段。
  */
 
-#include "Render/AnimationClipLoader.h"
+#include "Animation/AnimationClipLoader.h"
 
 #include "Core/Log.h"
 

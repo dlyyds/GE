@@ -5,10 +5,10 @@
 
 #include "pch.h"
 
-#include "Render/AnimationClipManager.h"
+#include "Animation/AnimationClipManager.h"
 
 #include "Render/GLTFLoader.h"
-#include "Render/AnimationClipLoader.h"
+#include "Animation/AnimationClipLoader.h"
 #include "Core/Log.h"
 
 #include "tinygltf/tiny_gltf.h"

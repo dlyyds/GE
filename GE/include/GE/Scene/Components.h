@@ -23,7 +23,7 @@
 
 #include "Render/Camera.h"
 #include "Physics/PhysicsTypes.h"
-#include "Scene/AnimationComponents.h"
+#include "Animation/AnimationComponents.h"
 #include "Scene/AudioComponents.h"
 
 namespace GE {

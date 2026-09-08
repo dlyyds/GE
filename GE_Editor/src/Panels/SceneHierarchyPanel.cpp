@@ -9,7 +9,7 @@
 #include <backends/imgui_impl_vulkan.h>
 
 #include "GE/Scene/Components.h"
-#include "GE/Scene/AnimationSystem.h"
+#include "GE/Animation/AnimationSystem.h"
 #include "GE/Scene/Scene.h"
 #include "GE/Physics/PhysicsWorld.h"
 #include "GE/Render/Camera.h"

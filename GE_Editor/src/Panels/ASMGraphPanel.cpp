@@ -21,7 +21,7 @@
 #include "Panels/ASMGraphPanel.h"
 
 #include "HierarchyLayer.h"
-#include "GE/Scene/AnimationComponents.h"
+#include "GE/Animation/AnimationComponents.h"
 #include "GE/Scene/Scene.h" // Scene::Reg：读同实体 AnimationComponent 的 clips（clip 下拉数据源）
 #include "GE/Scene/Components.h" // IDComponent：用持久化 UUID 派生稳定 NodeId 以跨启动保持布局
 #include "NodeEditorUtils/builders.h" // ax::NodeEditor::Utilities::BlueprintNodeBuilder（阶段 4 节点骨架）

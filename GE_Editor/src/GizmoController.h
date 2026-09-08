@@ -45,6 +45,14 @@ private:
     float m_SnapTranslation = 0.5f;  ///< 平移吸附步长
     float m_SnapRotation = 15.0f;    ///< 旋转吸附步长（度，ImGuizmo 内部转弧度）
     float m_SnapScale = 0.5f;        ///< 缩放吸附步长
+
+    // == 包围盒拖拽起始状态缓存 ==
+    // ImGuizmo 盒手柄的缩放比例是「相对拖拽起点」的绝对值；若每帧拿最新 bb.Size 去乘，
+    // 会逐帧重复叠加比例造成指数漂移（盒按 比例^帧数 爆炸，灵敏度失控）。故拖拽首帧
+    // 定格起始尺寸/中心，之后每帧由「起始值 × 阻尼比例」推出，详见 EditBounds。
+    bool     m_BoundsDragActive        = false;               ///< 盒拖拽进行中（首帧定格起始态）
+    glm::vec3 m_BoundsStartSize        = {1.0f, 1.0f, 1.0f};  ///< 拖拽起始尺寸
+    glm::vec3 m_BoundsStartCenterWorld = {0.0f, 0.0f, 0.0f};  ///< 拖拽起始盒世界中心
 };
 
 } // namespace GE

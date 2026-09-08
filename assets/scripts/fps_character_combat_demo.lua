@@ -18,7 +18,7 @@ local M = {}
 
 -- public 字段：speed 为普通水平速度，sprint_speed 为按住 Shift 时的冲刺速度（m/s）
 M.PUBLIC_FIELDS = {
-    speed        = { type = "number", default = 4.0 },
+    speed = { type = "number", default = 4.0 },
     sprint_speed = { type = "number", default = 7.0 },
     -- 冲刺满速时 walk 音频的播放倍速（miniaudio pitch 即播放速率；2.0 = 二倍速）
     sprint_playback_speed = { type = "number", default = 2.0 },
@@ -32,7 +32,7 @@ function M.OnCreate(self)
 end
 
 function M.OnUpdate(self, ts)
-    local speed        = public.get("speed") or 4.0
+    local speed = public.get("speed") or 4.0
     local sprint_speed = public.get("sprint_speed") or 7.0
     local sprint_playback_speed = public.get("sprint_playback_speed") or 2.0
 
@@ -42,10 +42,18 @@ function M.OnUpdate(self, ts)
 
     -- WASD 输入（世界轴：W = -Z）
     local ix, iz = 0, 0
-    if input.is_held(Key.W) then iz = iz - 1 end
-    if input.is_held(Key.S) then iz = iz + 1 end
-    if input.is_held(Key.A) then ix = ix - 1 end
-    if input.is_held(Key.D) then ix = ix + 1 end
+    if input.is_held(Key.W) then
+        iz = iz - 1
+    end
+    if input.is_held(Key.S) then
+        iz = iz + 1
+    end
+    if input.is_held(Key.A) then
+        ix = ix - 1
+    end
+    if input.is_held(Key.D) then
+        ix = ix + 1
+    end
 
     -- Shift 冲刺：按住左/右 Shift 之一即加速
     local sprinting = input.is_held(Key.LeftShift) or input.is_held(Key.RightShift)
@@ -55,7 +63,7 @@ function M.OnUpdate(self, ts)
     -- 绕 Y 旋转到相机朝向系：W/S 沿相机前向，A/D 沿相机右向。
     -- 前向 = (-sin yaw, 0, -cos yaw)，右向 = (cos yaw, 0, -sin yaw)
     local fx, fz = -math.sin(ry), -math.cos(ry)
-    local rx, rz =  math.cos(ry), -math.sin(ry)
+    local rx, rz = math.cos(ry), -math.sin(ry)
     local wx = fx * (-iz) + rx * ix
     local wz = fz * (-iz) + rz * ix
 

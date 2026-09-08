@@ -886,7 +886,7 @@ void SceneHierarchyPanel::DrawComponents(Entity entity) {
     ImGui::SameLine();
     ImGui::PushItemWidth(-1);
 
-    if (ImGui::Button("Add Component"))
+    if (ImGui::Button("添加组件"))
         ImGui::OpenPopup("AddComponent");
 
     DrawAddComponentPopup();
@@ -971,27 +971,27 @@ void SceneHierarchyPanel::DrawAddComponentPopup() {
         return;
 
     // 每种组件一行：重复的 "判重 + 添加 + 警告 + 关闭弹窗" 模板收敛到 TryAddComponent
-    TryAddComponent<CameraComponent>("Camera");
-    TryAddComponent<MeshRendererComponent>("Mesh Renderer");
-    TryAddComponent<JointComponent>("Joint");
-    TryAddComponent<SkinComponent>("Skin");
-    TryAddComponent<AnimationComponent>("Animation");
-    TryAddComponent<AnimStateMachineComponent>("Anim State Machine");
-    TryAddComponent<SpriteRendererComponent>("Sprite Renderer");
-    TryAddComponent<PointLightComponent>("Point Light");
-    TryAddComponent<DirectionalLightComponent>("Directional Light");
-    TryAddComponent<AmbientLightComponent>("Ambient Light");
-    TryAddComponent<EnvironmentComponent>("Environment");
-    TryAddComponent<AudioSourceComponent>("Audio Source");
-    TryAddComponent<AudioListenerComponent>("Audio Listener");
-    TryAddComponent<RigidBodyComponent>("Rigid Body");
-    TryAddComponent<CharacterControllerComponent>("Character Controller");
-    TryAddComponent<FollowCameraComponent>("Follow Camera");
-    TryAddComponent<BoxColliderComponent>("Box Collider");
-    TryAddComponent<SphereColliderComponent>("Sphere Collider");
-    TryAddComponent<CapsuleColliderComponent>("Capsule Collider");
-    TryAddComponent<BoundingBoxComponent>("Bounding Box");
-    TryAddComponent<ScriptComponent>("Script");
+    TryAddComponent<CameraComponent>("相机");
+    TryAddComponent<MeshRendererComponent>("网格渲染器");
+    TryAddComponent<JointComponent>("关节");
+    TryAddComponent<SkinComponent>("蒙皮");
+    TryAddComponent<AnimationComponent>("动画");
+    TryAddComponent<AnimStateMachineComponent>("动画状态机");
+    TryAddComponent<SpriteRendererComponent>("精灵渲染器");
+    TryAddComponent<PointLightComponent>("点光源");
+    TryAddComponent<DirectionalLightComponent>("平行光");
+    TryAddComponent<AmbientLightComponent>("环境光");
+    TryAddComponent<EnvironmentComponent>("环境");
+    TryAddComponent<AudioSourceComponent>("音频源");
+    TryAddComponent<AudioListenerComponent>("音频监听器");
+    TryAddComponent<RigidBodyComponent>("刚体");
+    TryAddComponent<CharacterControllerComponent>("角色控制器");
+    TryAddComponent<FollowCameraComponent>("跟随相机");
+    TryAddComponent<BoxColliderComponent>("盒碰撞体");
+    TryAddComponent<SphereColliderComponent>("球碰撞体");
+    TryAddComponent<CapsuleColliderComponent>("胶囊碰撞体");
+    TryAddComponent<BoundingBoxComponent>("包围盒");
+    TryAddComponent<ScriptComponent>("脚本");
 
     ImGui::EndPopup();
 }

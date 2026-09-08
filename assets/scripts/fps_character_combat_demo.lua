@@ -100,6 +100,7 @@ function M.OnUpdate(self, ts)
     elseif walking and audio.is_playing("walk") and self._walk_pitch ~= walk_pitch then
         audio.set_pitch("walk", walk_pitch) -- 走路/跑步切换时实时更新倍速
         self._walk_pitch = walk_pitch
+        log.info("walk_pitch = {0}", walk_pitch)
     elseif not walking and audio.is_playing("walk") then
         audio.stop("walk")
         self._walk_pitch = nil

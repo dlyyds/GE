@@ -967,10 +967,6 @@ void SceneHierarchyPanel::DrawComponents(Entity entity) {
 // Add Component 弹窗
 // ============================================================
 void SceneHierarchyPanel::DrawAddComponentPopup() {
-    // 弹窗关闭时直接返回，避免每帧重复构建类别数据
-    if (!ImGui::IsPopupOpen("AddComponent"))
-        return;
-
     // 按类别分列展示：每个类别占一竖列，不同类别并排（表头即类别名）。
     // 组件项存「中文名 + 添加动作」，动作捕获 this 复用 TryAddComponent<T> 判重逻辑。
     struct AddEntry { const char *name; std::function<void()> add; };
@@ -1012,19 +1008,38 @@ void SceneHierarchyPanel::DrawAddComponentPopup() {
         } },
     };
 
+    // 显式给定弹窗宽度：由各列内容（表头/组件名最宽者 + 单元格内边距）求和。
+    // 弹窗带 AlwaysAutoResize，首帧按上一帧内容尺寸（=0）布局，窗口先为 0 宽，
+    // 表格在 0 宽宿主里布局列宽可能被钳制；SetNextWindowSize 从首帧就定宽，
+    // 保证 SizingFixedFit 按内容正确算列宽。高度传 0 仍按内容自适应。
+    const float cellPadX = ImGui::GetStyle().CellPadding.x;
+    float totalWidth = 0.0f;
+    for (const auto &cat : categories) {
+        float w = ImGui::CalcTextSize(cat.name).x;              // 表头（类别名）
+        for (const auto &item : cat.items)
+            w = std::max(w, ImGui::CalcTextSize(item.name).x);  // 组件名
+        w += cellPadX * 2.0f;                                   // 单元格左右内边距
+        totalWidth += w;
+    }
+    totalWidth += static_cast<float>(categories.size()) + 1.0f; // 列间竖线 + 表框
+    totalWidth += ImGui::GetStyle().WindowPadding.x * 2.0f;
+    totalWidth += 16.0f;                                        // 余量，避免测量与表格实际列宽有出入
+    ImGui::SetNextWindowSize(ImVec2(totalWidth, 0.0f));
+
     if (!ImGui::BeginPopup("AddComponent"))
         return;
 
-    // SizingFixedFit：每列按内容自适应宽度；NoHostExtendX：表格不横向拉伸，
-    // 弹窗宽度随表格收拢（EndTable 会把表格宽度反馈给弹窗自动尺寸）。
+    // SizingFixedFit：每列按内容自适应宽度；不设 NoHostExtendX，表格横向拉伸
+    // 填满已定宽的弹窗（固定列保持内容宽度，多余宽度落尾部），杜绝右缘裁剪。
     const int columnCount = static_cast<int>(categories.size());
     constexpr ImGuiTableFlags kTableFlags =
-        ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_NoHostExtendX |
-        ImGuiTableFlags_BordersInnerV;
+        ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_BordersInnerV;
     if (ImGui::BeginTable("AddComponentTable", columnCount, kTableFlags)) {
-        // 表头行：类别名
-        for (const auto &cat : categories)
-            ImGui::TableSetupColumn(cat.name);
+        // 表头行：类别名。标签带 ## 后缀与组件项隔离 ID（相机/动画/脚本同名）。
+        for (const auto &cat : categories) {
+            const std::string headerLabel = std::string(cat.name) + "##hdr";
+            ImGui::TableSetupColumn(headerLabel.c_str());
+        }
         ImGui::TableHeadersRow();
 
         // 逐行放置组件项：行号超过某列条目数则该列留空，各列高度以最长列为准

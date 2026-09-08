@@ -1033,9 +1033,13 @@ void SceneHierarchyPanel::DrawComponents(Entity entity) {
         return;
     }
 
-    // 每个实体独立记住上次查看的组件：按实体句柄作为 ImGui 状态键，切换实体不串台
+    // 每个实体独立记住上次查看的组件：按实体句柄作为 ImGui 状态键，切换实体不串台。
+    // 关键：GetStateStorage 返回「当前窗口」的存储，必须在打开下拉框之前（仍处于
+    // Properties 窗口作用域）拿到指针；否则 BeginCombo 会把当前窗口切到弹出层，
+    // SetInt 写进弹出层存储、下一帧读回 Properties 存储就找不到值 → 瞬间回到首项。
+    ImGuiStorage *propsStorage = ImGui::GetStateStorage();
     ImGuiID selKey = ImGui::GetID((void *)(uintptr_t)(uint32_t)entity);
-    int selected = ImGui::GetStateStorage()->GetInt(selKey, 0);
+    int selected = propsStorage->GetInt(selKey, 0);
     // 越界钳位：删除当前查看的组件后，停留在末尾（而非跳回首项）
     if (selected < 0) {
         selected = 0;
@@ -1050,7 +1054,7 @@ void SceneHierarchyPanel::DrawComponents(Entity entity) {
             const bool isSel = (i == selected);
             if (ImGui::Selectable(entries[i].name, isSel)) {
                 selected = i;
-                ImGui::GetStateStorage()->SetInt(selKey, selected);
+                propsStorage->SetInt(selKey, selected);
             }
             if (isSel) {
                 ImGui::SetItemDefaultFocus();

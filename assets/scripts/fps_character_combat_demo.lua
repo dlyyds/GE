@@ -20,6 +20,8 @@ local M = {}
 M.PUBLIC_FIELDS = {
     speed        = { type = "number", default = 4.0 },
     sprint_speed = { type = "number", default = 7.0 },
+    -- 冲刺满速时 walk 音频的播放倍速（miniaudio pitch 即播放速率；2.0 = 二倍速）
+    sprint_playback_speed = { type = "number", default = 2.0 },
 }
 
 function M.OnCreate(self)
@@ -32,6 +34,7 @@ end
 function M.OnUpdate(self, ts)
     local speed        = public.get("speed") or 4.0
     local sprint_speed = public.get("sprint_speed") or 7.0
+    local sprint_playback_speed = public.get("sprint_playback_speed") or 2.0
 
     -- 相机 yaw（度）：引擎每帧从鼠标增量更新，脚本只读
     local yaw = camera.get_yaw()
@@ -72,13 +75,19 @@ function M.OnUpdate(self, ts)
     anim.set_bool("on_ground", character.get_grounded())
 
     -- 移动脚步音频：贴地且水平合速度超过阈值才播 walk（脚步语义），停住即停播；
-    -- 跑步时调快播放倍速：按 实际速度/走路速度 比例缩放（走路≈1.0、冲刺≈1.75）。
+    -- 跑步时调快播放倍速：走路 1.0 → 冲刺 sprint_playback_speed（默认 2.0 = 二倍速），
+    -- 按 hspd 在 [speed, sprint_speed] 区间线性插值，速度变化时倍速平滑跟随。
     -- miniaudio 的 pitch 即播放速率（重采样实现，倍速越高脚步越快、音调略升）。
     -- 倍速只在变化时才下发，避免每帧冗余调用。
     -- audio.* 作用于本实体 AudioSource 组件的 slot（按名字解析到 "walk" 槽位）。
     local walking = character.get_grounded() and hspd > 0.5
-    local walk_base = speed > 0.1 and speed or 4.0
-    local walk_pitch = walking and math.max(1.0, math.min(hspd / walk_base, 1.75)) or 1.0
+    local walk_pitch = 1.0
+    if walking then
+        local walk_base = speed > 0.1 and speed or 4.0
+        local range = sprint_speed - walk_base
+        local t = range > 0.01 and math.max(0.0, math.min((hspd - walk_base) / range, 1.0)) or 0.0
+        walk_pitch = 1.0 + (sprint_playback_speed - 1.0) * t
+    end
     if walking and not audio.is_playing("walk") then
         audio.play("walk")
         audio.set_loop("walk", true)

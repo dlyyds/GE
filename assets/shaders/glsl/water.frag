@@ -111,12 +111,10 @@ void main()
                 * frame.iblParams.y * water.sizeParams.w * kReflectionGain;
     }
 
-    // 底色：深水色与色彩贴图按强度 mix（未贴图时强度 0 → 纯深水色，行为不变）；
-    // 阶段 2 将改用 ShallowColor + 深度吸收实现浅水渐变。
-    vec3 mapColor = texture(samplerColor, inUV * water.colorParams.x).rgb;
-    vec3 waterColor = mix(water.deepColor.rgb, mapColor, water.colorParams.y);
-
-    // —— 方向光 ——
+    // —— 方向光 / 点光 ——
+    // 水几乎无朗伯漫反射：若把体色 ×(环境光/方向光) 当作受光底色，透明水面
+    // 会被涂成不透明的染色玻璃。故水面受光只取 GGX 镜面高光；体色留待
+    // 阶段 2 折射时以「深度吸收」方式出现，不从体色直接乘光照。
     vec3 L = normalize(-frame.dirLightDirection.xyz);
     float NdL = max(dot(N, L), 0.0);
     vec3 H = normalize(L + V);
@@ -125,12 +123,8 @@ void main()
     vec3 F = fresnelSchlick(max(dot(H, V), 0.0), vec3(F0));
     vec3 specular = (D * G * F) / max(4.0 * NoV * NdL, 0.001);
 
-    vec3 result = waterColor
-                  * (frame.ambient.rgb * frame.ambient.w
-                     + frame.dirLightColor.rgb * frame.dirLightColor.w * NdL)
-                  + frame.dirLightColor.rgb * frame.dirLightColor.w * specular;
+    vec3 result = frame.dirLightColor.rgb * frame.dirLightColor.w * specular;
 
-    // —— 点光源（复用 LightBuffer）——
     for (int i = 0; i < int(frame.lightCount.x); ++i) {
         vec3 lp = lightBuffer.lights[i].position.xyz;
         vec3 lc = lightBuffer.lights[i].color.rgb * lightBuffer.lights[i].color.a;
@@ -145,7 +139,7 @@ void main()
         float pG = geometrySmith(N, V, lDir, water.timeParams.z);
         vec3 pF = fresnelSchlick(max(dot(pH, V), 0.0), vec3(F0));
         vec3 pSpec = (pD * pG * pF) / max(4.0 * NoV * ldL, 0.001);
-        result += (waterColor * ldL + pSpec) * lc * atten;
+        result += pSpec * lc * atten;
     }
 
     // 反射按 Fresnel 混入

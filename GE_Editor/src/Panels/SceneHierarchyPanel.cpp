@@ -1006,6 +1006,8 @@ void SceneHierarchyPanel::DrawComponents(Entity entity) {
         entries.push_back({"Ambient Light", [&] { DrawComponent<AmbientLightComponent>("Ambient Light", entity, [](auto &c) { DrawAmbientLightComponent(c); }); }});
     if (entity.HasComponent<EnvironmentComponent>())
         entries.push_back({"Environment", [&] { DrawComponent<EnvironmentComponent>("Environment", entity, [this](auto &c) { DrawEnvironmentComponent(c); }); }});
+    if (entity.HasComponent<WaterComponent>())
+        entries.push_back({"Water", [&] { DrawComponent<WaterComponent>("Water", entity, [](auto &c) { DrawWaterComponent(c); }); }});
     if (entity.HasComponent<AudioSourceComponent>())
         entries.push_back({"Audio Source", [&] { DrawComponent<AudioSourceComponent>("Audio Source", entity, [this](auto &c) { DrawAudioSourceComponent(c); }); }});
     if (entity.HasComponent<AudioListenerComponent>())
@@ -1081,6 +1083,7 @@ void SceneHierarchyPanel::DrawAddComponentPopup() {
             { "网格渲染器", [this] { TryAddComponent<MeshRendererComponent>("网格渲染器"); } },
             { "精灵渲染器", [this] { TryAddComponent<SpriteRendererComponent>("精灵渲染器"); } },
             { "环境",       [this] { TryAddComponent<EnvironmentComponent>("环境"); } },
+            { "水面",       [this] { TryAddComponent<WaterComponent>("水面"); } },
             { "点光源",     [this] { TryAddComponent<PointLightComponent>("点光源"); } },
             { "平行光",     [this] { TryAddComponent<DirectionalLightComponent>("平行光"); } },
             { "环境光",     [this] { TryAddComponent<AmbientLightComponent>("环境光"); } },
@@ -1727,6 +1730,92 @@ void SceneHierarchyPanel::DrawAmbientLightComponent(AmbientLightComponent &compo
     // 颜色 + 强度（alpha 通道作为强度）
     ImGui::ColorEdit4("Color + Intensity", glm::value_ptr(component.Color));
     ImGui::TextDisabled("全局环境光，不依赖 Transform");
+}
+
+// ============================================================
+// Water 组件（水面）
+// ============================================================
+void SceneHierarchyPanel::DrawWaterComponent(WaterComponent &component) {
+    if (ImGui::CollapsingHeader("几何", ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::DragFloat2("Size (XZ)", glm::value_ptr(component.Size), 0.5f, 1.0f, 2000.0f, "%.1f");
+        ImGui::DragFloat("Height Offset", &component.Height, 0.05f, -50.0f, 50.0f, "%.2f");
+        int resolution = static_cast<int>(component.Resolution);
+        if (ImGui::SliderInt("Resolution (N)", &resolution, 1, 256)) {
+            component.Resolution = static_cast<uint32_t>(resolution);
+        }
+        ImGui::DragFloat("Time Scale", &component.TimeScale, 0.01f, 0.0f, 10.0f, "%.2f");
+    }
+
+    if (ImGui::CollapsingHeader("色彩 / 材质", ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::ColorEdit3("Deep Color", glm::value_ptr(component.DeepColor));
+        ImGui::ColorEdit3("Shallow Color", glm::value_ptr(component.ShallowColor));
+        ImGui::DragFloat("Roughness", &component.Roughness, 0.01f, 0.0f, 1.0f, "%.3f");
+        ImGui::DragFloat("Normal Tiling", &component.NormalTiling, 0.1f, 0.5f, 32.0f, "%.2f");
+        ImGui::DragFloat("Normal Strength", &component.NormalStrength, 0.01f, 0.0f, 2.0f, "%.2f");
+        ImGui::DragFloat("Reflection Strength", &component.ReflectionStrength, 0.01f, 0.0f, 1.0f, "%.2f");
+        ImGui::DragFloat("Refraction Strength", &component.RefractionStrength, 0.01f, 0.0f, 1.0f, "%.2f");
+        ImGui::DragFloat("Absorption Depth", &component.AbsorptionDepth, 0.05f, 0.0f, 20.0f, "%.2f");
+    }
+
+    if (ImGui::CollapsingHeader("法线贴图", ImGuiTreeNodeFlags_DefaultOpen)) {
+        char texBuf[512] = {};
+        if (component.NormalMap) {
+            const std::string &path = component.NormalMap->GetFilePath();
+            strncpy_s(texBuf, sizeof(texBuf), path.c_str(), _TRUNCATE);
+        }
+        ImGui::InputText("Normal Map Path", texBuf, sizeof(texBuf));
+        if (ImGui::BeginDragDropTarget()) {
+            if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("TEXTURE_ASSET")) {
+                const size_t keyLen = payload->DataSize > 0
+                                          ? static_cast<size_t>(payload->DataSize) - 1
+                                          : 0;
+                const std::string key(static_cast<const char *>(payload->Data), keyLen);
+                if (Texture *tex = Renderer::GetTextureManager().Get(key)) {
+                    component.NormalMap = tex;
+                    ImGui::EndDragDropTarget();
+                }
+            }
+            ImGui::EndDragDropTarget();
+        }
+        if (ImGui::Button("加载 / 更改")) {
+            const std::string path(texBuf);
+            if (!path.empty()) {
+                component.NormalMap = Renderer::GetAssetManager().LoadTextureAsync(path);
+            }
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("清除")) {
+            component.NormalMap = nullptr;
+        }
+        if (component.NormalMap) {
+            ImGui::TextUnformatted(component.NormalMap->GetFilePath().c_str());
+        } else {
+            ImGui::TextDisabled("(无法线贴图)，默认始平泛法线");
+        }
+    }
+
+    if (ImGui::CollapsingHeader("Gerstner 波", ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::TextDisabled("目前支持最多 4 层，波长 <= 0 视为关闭");
+        for (int i = 0; i < 4; ++i) {
+            auto &w = component.Waves[i];
+            ImGui::PushID(i);
+            ImGui::PushStyleColor(ImGuiCol_Header, ImGui::GetStyleColorVec4(ImGuiCol_HeaderHovered));
+            if (ImGui::CollapsingHeader(("Wave " + std::to_string(i + 1)).c_str())) {
+                ImGui::DragFloat2("Direction", glm::value_ptr(w.Direction), 0.01f);
+                ImGui::DragFloat("Amplitude", &w.Amplitude, 0.01f, 0.0f, 5.0f, "%.3f");
+                ImGui::DragFloat("Wavelength", &w.Wavelength, 0.1f, 0.0f, 100.0f, "%.1f");
+                ImGui::DragFloat("Speed", &w.Speed, 0.01f, 0.0f, 20.0f, "%.2f");
+            }
+            ImGui::PopStyleColor();
+            ImGui::PopID();
+        }
+    }
+
+    if (ImGui::CollapsingHeader("岸线（阶段 2预留）")) {
+        ImGui::DragFloat("Foam Distance", &component.FoamDistance, 0.05f, 0.0f, 20.0f, "%.2f");
+        ImGui::DragFloat("Foam Intensity", &component.FoamIntensity, 0.01f, 0.0f, 2.0f, "%.2f");
+        ImGui::TextDisabled("需要阶段 2 场景深度后才生效");
+    }
 }
 
 // ============================================================

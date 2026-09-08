@@ -19,6 +19,7 @@
 
 #include <cmath>
 #include <filesystem>
+#include <algorithm>
 #include <memory>
 
 #ifndef M_PI
@@ -510,6 +511,71 @@ void MeshManager::BuildSubMeshMaterials(Mesh &mesh, const std::string &filepath)
 
 Mesh *MeshManager::GetBuiltin(const std::string &type) {
     return Load("builtin:" + type);
+}
+
+Mesh *MeshManager::CreateWaterGrid(uint32_t resolution, const glm::vec2 &size) {
+    const uint32_t n = std::max<uint32_t>(1u, resolution);
+    const std::string key = "watergrid:" + std::to_string(n) + ":"
+                            + std::to_string(size.x) + ":" + std::to_string(size.y);
+
+    if (Mesh *existing = Get(key)) {
+        return existing;
+    }
+    if (!m_Device) {
+        GE_CORE_WARN("MeshManager: 无法创建水格 {}（未提供 VulkanDevice）", key);
+        return nullptr;
+    }
+
+    // ── 生成 CPU 顶点/索引数据 ──
+    // XZ 平面，中心在原点，法线 +Y。UV 覆盖 [0,1]，供法线贴图平铺。
+    MeshData data;
+    auto &vertices = data.vertices;
+    auto &indices = data.indices;
+
+    vertices.reserve(static_cast<size_t>(n + 1) * (n + 1));
+    for (uint32_t row = 0; row <= n; ++row) {
+        const float v = static_cast<float>(row) / static_cast<float>(n);
+        const float z = (v - 0.5f) * size.y;
+        for (uint32_t col = 0; col <= n; ++col) {
+            const float u = static_cast<float>(col) / static_cast<float>(n);
+            const float x = (u - 0.5f) * size.x;
+
+            Vertex vert;
+            vert.Position = {x, 0.0f, z};
+            vert.Normal = {0.0f, 1.0f, 0.0f};
+            vert.TexCoord = {u, v};
+            vert.Tangent = {1.0f, 0.0f, 0.0f, 1.0f};
+            // JointIdx/Weight 保持默认 {0,0,0,0}，静态网格不参与蒙皮
+            vertices.push_back(vert);
+        }
+    }
+
+    indices.reserve(static_cast<size_t>(n) * n * 6);
+    for (uint32_t row = 0; row < n; ++row) {
+        for (uint32_t col = 0; col < n; ++col) {
+            const uint32_t a = row * (n + 1) + col;
+            const uint32_t b = a + 1;
+            const uint32_t c = a + (n + 1);
+            const uint32_t d = c + 1;
+            // 逆时针（从 +Y 俯视）的两组三角（a,c,b / b,c,d），法线朝 +Y
+            indices.push_back(a);
+            indices.push_back(c);
+            indices.push_back(b);
+            indices.push_back(b);
+            indices.push_back(c);
+            indices.push_back(d);
+        }
+    }
+
+    auto mesh = Mesh::Create(*m_Device, std::move(data));
+    if (!mesh) {
+        GE_CORE_WARN("MeshManager: 水格创建失败: {}", key);
+        return nullptr;
+    }
+    mesh->SetFilePath(key);
+    BuildSubMeshMaterials(*mesh, key);
+
+    return Register(key, std::move(mesh));
 }
 
 Mesh *MeshManager::Register(const std::string &key,

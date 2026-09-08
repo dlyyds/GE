@@ -92,6 +92,8 @@ private:
 
     /// 绘制 AmbientLight 组件属性
     static void DrawAmbientLightComponent(AmbientLightComponent &component);
+    /// 绘制 Water（水面）组件属性
+    static void DrawWaterComponent(WaterComponent &component);
 
     /// 绘制 Environment 组件属性
     void DrawEnvironmentComponent(EnvironmentComponent &component);

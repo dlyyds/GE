@@ -3,6 +3,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <algorithm>
+#include <array>
 #include <utility>
 #include <functional>
 
@@ -317,6 +318,59 @@ struct MeshRendererComponent {
 };
 
 
+/**
+ * @brief 水面组件 —— 标记一个实体为可渲染水面。
+ *
+ * Scene::RenderMeshes3D 会按 TransformComponent + WaterComponent 生成水格网格
+ * 并提交到 Renderer3D::DrawWater；水面在透明段绘制（BLEND、深度写关、远→近）。
+ *
+ * 阶段 1：仅驱动渲染；序列化 / 编辑器面板在阶段 3 接入。
+ */
+struct WaterComponent {
+    glm::vec2 Size = {40.0f, 40.0f};   ///< 水面范围 XZ（世界坐标）
+    float Height = 0.0f;               ///< 水面静止高度（世界 Y，跟随 Transform 时通常保持 0）
+    uint32_t Resolution = 48;          ///< 细分分辨率（N → (N+1)^2 顶点）
+
+    // —— Gerstner 波 ——
+    struct GerstnerWave {
+        glm::vec2 Direction = {1.0f, 0.0f}; ///< 传播方向（CPU 里做归一化）
+        float Amplitude = 0.5f;             ///< 振幅
+        float Wavelength = 8.0f;            ///< 波长
+        float Speed = 1.2f;                 ///< 相速度
+    };
+    std::array<GerstnerWave, 4> Waves;      ///< 最多 4 层波叠加
+    float TimeScale = 1.0f;                 ///< 全局时间缩放
+
+    // —— 视觉材质 ——
+    glm::vec3 DeepColor   = {0.012f, 0.055f, 0.09f}; ///< 深水吸收色
+    glm::vec3 ShallowColor = {0.05f, 0.30f, 0.38f}; ///< 浅水色（阶段 2 深度采样使用）
+    Texture *NormalMap = nullptr;                   ///< 法线细节贴图（可选）
+    float NormalTiling  = 4.0f;                     ///< 法线平铺
+    float NormalStrength = 0.55f;                   ///< 法线强度
+    float Roughness      = 0.12f;                   ///< 粗糙度（影响高光/反射模糊）
+
+    // —— 反射 / 折射 ——
+    float ReflectionStrength = 0.85f;               ///< IBL 反射叠加强度
+    float RefractionStrength = 0.25f;               ///< UV 扰动强度（阶段 2 使用）
+    float AbsorptionDepth    = 2.0f;                ///< 深度吸收参考深度（阶段 2 使用）
+
+    // —— 岸线 ——（阶段 2 使用）
+    float FoamDistance  = 0.8f;
+    float FoamIntensity = 0.9f;
+
+    WaterComponent() {
+        // 默认四层波：方向各不同的简单组合，保证开箱即有起伏
+        const glm::vec2 dirs[4] = {
+            {1.0f, 0.0f}, {0.0f, 1.0f}, {0.7071f, 0.7071f}, {-0.7071f, 0.7071f}
+        };
+        const float amps[4] = {0.5f, 0.35f, 0.25f, 0.18f};
+        const float lens[4] = {8.0f, 5.5f, 4.0f, 2.5f};
+        const float speeds[4] = {1.2f, 1.6f, 2.0f, 2.6f};
+        for (int i = 0; i < 4; ++i) {
+            Waves[i] = {dirs[i], amps[i], lens[i], speeds[i]};
+        }
+    }
+};
 /**
  * @brief 相机组件 —— 挂载到实体上的相机，用于 3D 场景渲染。
  *

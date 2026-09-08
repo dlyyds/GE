@@ -181,6 +181,13 @@ void ResourcePanel::DrawTextureSection() {
             ImGui::SetTooltip("%s", tex->GetFilePath().c_str());
         }
 
+        // 拖动源：把纹理 key 拖给 WaterComponent 等组件面板复用。
+        if (ImGui::BeginDragDropSource()) {
+            ImGui::SetDragDropPayload("TEXTURE_ASSET", key.c_str(), key.size() + 1);
+            ImGui::Text("%s", key.c_str());
+            ImGui::EndDragDropSource();
+        }
+
         if (open) {
             DrawSamplerControls(tex);
             ImGui::TreePop();

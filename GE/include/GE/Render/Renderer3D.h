@@ -47,6 +47,7 @@ class VulkanCommandBuffer;
 class VulkanRenderFrame;
 class VulkanSampler;
 struct PassExecuteContext;
+struct WaterComponent;
 
 /**
  * @brief 3D 网格渲染器。
@@ -362,6 +363,20 @@ public:
                            Material *material,
                            const glm::vec4 &color = {1.0f, 1.0f, 1.0f, 1.0f},
                            uint32_t cascade = 0);
+    /**
+     * @brief 提交一个水面实例（阶段 1：Gerstner 波 + IBL 反射）。
+     *
+     * 与网格不同，水面不挂 MeshRendererComponent，而是实体带 WaterComponent 时
+     * 由 Scene 生成水格网格并调用本方法。实例进入透明段（BLEND、深度写关、
+     * 远→近），在标准网格透明段之后绘制。
+     *
+     * @param transform 模型变换矩阵（通常来自 TransformComponent.worldMatrix）
+     * @param mesh      水格网格（MeshManager::CreateWaterGrid 生成；不能为空）
+     * @param water     水面组件参数（仅拷贝，不持有实体引用）
+     */
+    void DrawWater(const glm::mat4 &transform,
+                   Mesh *mesh,
+                   const WaterComponent &water);
 
     /**
      * @brief 提交一个被皮肤驱动的 3D 子网格到某级阴影专用集合（阴影剔除计划书 §4.4）。
@@ -584,6 +599,25 @@ private:
     };
 
     static_assert(sizeof(MaterialUBO) == 48, "MaterialUBO 必须 16 字节对齐");
+    /// 水面 UBO（std140 布局，set 0 binding 2，按批次绑定）
+    ///   model = 水格模型矩阵
+    ///   timeParams = x:时间, y:法线强度, z:粗糙度, w:折射强度
+    ///   deepColor / shallowColor = 深/浅水色
+    ///   sizeParams = x,y:水面尺寸, z:法线平铺, w:反射强度
+    ///   foamParams = 阶段 2 岸线预留（FoamDistance/FoamIntensity/AbsorptionDepth/TimeScale）
+    ///   waves[i] = x,y:传播方向, z:振幅, w:波长；waveSpeeds[i].x = 相速度
+    struct WaterUBO {
+        glm::mat4 model{1.0f};
+        glm::vec4 timeParams{0.0f};
+        glm::vec4 deepColor{0.0f};
+        glm::vec4 shallowColor{0.0f};
+        glm::vec4 sizeParams{0.0f};
+        glm::vec4 foamParams{0.0f};
+        std::array<glm::vec4, 4> waves{};
+        std::array<glm::vec4, 4> waveSpeeds{};
+    };
+
+    static_assert(sizeof(WaterUBO) % 16 == 0, "WaterUBO 必须 16 字节对齐");
 
     /// 天空盒 UBO（std140 布局，set 0 binding 0）
     /// 只存反投影所需矩阵：仅旋转视图矩阵逆（invView）+ 投影矩阵逆（invProj）。
@@ -616,6 +650,35 @@ private:
         uint32_t firstInstance; ///< 该批次在全局实例缓冲中的起始实例索引
         uint32_t instanceCount; ///< 实例数量
         const void *skinKey = nullptr; ///< 共享皮肤定义指针（SkinDef*，nullptr = 静态）
+    };
+    /// 单个 Gerstner 波参数。
+    struct WaterGerstnerWave {
+        glm::vec2 direction{1.0f, 0.0f};
+        float amplitude = 0.5f;
+        float wavelength = 8.0f;
+        float speed = 1.2f;
+    };
+
+    /// 一个水面实例（阶段 1）。存储在渲染器内部，与 ECS 组件解耦。
+    struct WaterBatch {
+        glm::mat4 transform{1.0f};
+        Mesh *mesh = nullptr;
+        uint32_t firstIndex = 0;
+        uint32_t indexCount = 0;
+        glm::vec2 size{40.0f, 40.0f};   ///< 水格世界尺寸（XZ）
+        std::array<WaterGerstnerWave, 4> waves{};
+        float timeScale = 1.0f;
+        glm::vec3 deepColor{0.012f, 0.055f, 0.09f};
+        glm::vec3 shallowColor{0.05f, 0.30f, 0.38f};
+        Texture *normalMap = nullptr;
+        float normalTiling = 4.0f;
+        float normalStrength = 0.55f;
+        float roughness = 0.12f;
+        float reflectionStrength = 0.85f;
+        float refractionStrength = 0.25f;
+        float absorptionDepth = 2.0f;
+        float foamDistance = 0.8f;
+        float foamIntensity = 0.9f;
     };
 
     // ========================================================================
@@ -694,6 +757,14 @@ private:
                                bool transparent = false,
                                bool hdrTransparent = false);
 
+    /// 配置水面管线状态（透明混合、深度写关、顶点输入、动态状态）。
+    /// 与 ConfigureMeshPipeline 类似，但绑定独立 water pipeline layout，
+    /// hdrTransparent 选择 water_hdr.frag（线性 HDR 输出）。
+    void ConfigureWaterPipeline(VulkanCommandBuffer &cmd,
+                                vk::Format colorFormat, vk::Format depthFormat,
+                                vk::Extent2D extent,
+                                bool hdrTransparent);
+
     /// 配置 GBuffer MRT 管线状态（四个颜色附件 / 深度 / 视口剪刀）
     void ConfigureGBufferPipeline(VulkanCommandBuffer &cmd,
                                   const std::vector<vk::Format> &colorFormats,
@@ -758,6 +829,15 @@ private:
     VulkanPipelineLayout *ResolveMeshLayout(bool shadow, bool gbuffer,
                                             bool pbr, bool useIbl, bool skinned,
                                             bool hdrTransparent = false);
+    /// 录制水面批次（阶段 1：逐水格单 draw）。在网格透明段之后、Tonemap 前调用，
+    /// hdrTransparent 为 true 时写 Scene_HDR（water_hdr.frag），否则写前向帧缓冲（water.frag）。
+    void DrawWaterBatches(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame,
+                          const BufferAllocation &frameUbo,
+                          const BufferAllocation &lightBuffer,
+                          vk::Format colorFormat, vk::Format depthFormat,
+                          vk::Extent2D extent,
+                          bool hdrTransparent);
+
     /// 统计 draw call 与三角形数量（draw call = 批次数量）
     void RecordStats(uint32_t drawCallCount);
 
@@ -862,6 +942,16 @@ private:
 
     /// PBR-IBL HDR 透明片元着色器（mesh_pbr_ibl_hdr.frag：线性 HDR 输出，不做 ACES）
     VulkanShaderModule *m_FragShaderPBR_IBL_HDR = nullptr;
+    /// 水面顶点着色器（water.vert：Gerstner 位移 + 法线重建）
+    VulkanShaderModule *m_VertShaderWater = nullptr;
+
+    /// 水面片元着色器（water.frag：ACES；water_hdr.frag：线性 HDR）
+    VulkanShaderModule *m_FragShaderWater = nullptr;
+    VulkanShaderModule *m_FragShaderWaterHDR = nullptr;
+
+    /// 水面管线布局（前向 + HDR 透明各一）
+    VulkanPipelineLayout *m_WaterLayout = nullptr;
+    VulkanPipelineLayout *m_WaterLayoutHDR = nullptr;
 
     /// Blinn-Phong 管线布局（由全局资源缓存管理，不拥有）
     VulkanPipelineLayout *m_PipelineLayout = nullptr;
@@ -1029,6 +1119,11 @@ private:
 
     /// 待绘制的网格列表
     std::vector<MeshInstance> m_Meshes;
+    /// 待绘制的水面列表（阶段 1，独立于网格批，直接在透明段末绘制）
+    std::vector<WaterBatch> m_WaterBatches;
+
+    /// 水面动画时间（秒，每帧 BeginScene 用 steady_clock 刷新）
+    float m_WaterTime = 0.0f;
 
     /// 每级阴影专用网格列表（Scene 逐级遍历按该级阴影世界 AABB 剔除后提交，FlushShadow
     /// 逐级单独成批；BeginScene 清空，阴影剔除计划书 §4.4 / CSM 计划书 §4.3）。

@@ -958,6 +958,76 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
             fcNode["ZoomSpeed"] = fcc.ZoomSpeed;
         }
 
+        // ---- WaterComponent（阶段 1 + 阶段 3 序列化）----
+        if (entity.HasComponent<WaterComponent>()) {
+            const auto &wc = entity.GetComponent<WaterComponent>();
+            YAML::Node waterNode = entityNode["Water"];
+            waterNode["Size"] = SerializeVec2(wc.Size);
+            waterNode["Height"] = wc.Height;
+            waterNode["Resolution"] = wc.Resolution;
+            waterNode["TimeScale"] = wc.TimeScale;
+            waterNode["DeepColor"] = SerializeVec3(wc.DeepColor);
+            waterNode["ShallowColor"] = SerializeVec3(wc.ShallowColor);
+            if (wc.NormalMap && !wc.NormalMap->GetFilePath().empty()) {
+                waterNode["NormalMap"] = wc.NormalMap->GetFilePath();
+            }
+            waterNode["NormalTiling"] = wc.NormalTiling;
+            waterNode["NormalStrength"] = wc.NormalStrength;
+            waterNode["Roughness"] = wc.Roughness;
+            waterNode["ReflectionStrength"] = wc.ReflectionStrength;
+            waterNode["RefractionStrength"] = wc.RefractionStrength;
+            waterNode["AbsorptionDepth"] = wc.AbsorptionDepth;
+            waterNode["FoamDistance"] = wc.FoamDistance;
+            waterNode["FoamIntensity"] = wc.FoamIntensity;
+            for (int i = 0; i < 4; ++i) {
+                const auto &w = wc.Waves[i];
+                YAML::Node waveNode = waterNode["Waves"][std::to_string(i)];
+                waveNode["Direction"] = SerializeVec2(w.Direction);
+                waveNode["Amplitude"] = w.Amplitude;
+                waveNode["Wavelength"] = w.Wavelength;
+                waveNode["Speed"] = w.Speed;
+            }
+        }
+
+        // ---- WaterComponent ----
+        if (entityNode["Water"]) {
+            YAML::Node wn = entityNode["Water"];
+            auto &wc = entity.AddComponent<WaterComponent>();
+            wc.Size = DeserializeVec2(wn["Size"], {40.0f, 40.0f});
+            wc.Height = wn["Height"] ? wn["Height"].as<float>(0.0f) : 0.0f;
+            wc.Resolution = wn["Resolution"] ? wn["Resolution"].as<uint32_t>(48) : 48;
+            wc.TimeScale = wn["TimeScale"] ? wn["TimeScale"].as<float>(1.0f) : 1.0f;
+            wc.DeepColor = DeserializeVec3(wn["DeepColor"], {0.012f, 0.055f, 0.09f});
+            wc.ShallowColor = DeserializeVec3(wn["ShallowColor"], {0.05f, 0.30f, 0.38f});
+            wc.NormalTiling = wn["NormalTiling"] ? wn["NormalTiling"].as<float>(4.0f) : 4.0f;
+            wc.NormalStrength = wn["NormalStrength"] ? wn["NormalStrength"].as<float>(0.55f) : 0.55f;
+            wc.Roughness = wn["Roughness"] ? wn["Roughness"].as<float>(0.12f) : 0.12f;
+            wc.ReflectionStrength = wn["ReflectionStrength"] ? wn["ReflectionStrength"].as<float>(0.85f) : 0.85f;
+            wc.RefractionStrength = wn["RefractionStrength"] ? wn["RefractionStrength"].as<float>(0.25f) : 0.25f;
+            wc.AbsorptionDepth = wn["AbsorptionDepth"] ? wn["AbsorptionDepth"].as<float>(2.0f) : 2.0f;
+            wc.FoamDistance = wn["FoamDistance"] ? wn["FoamDistance"].as<float>(0.8f) : 0.8f;
+            wc.FoamIntensity = wn["FoamIntensity"] ? wn["FoamIntensity"].as<float>(0.9f) : 0.9f;
+            if (wn["NormalMap"]) {
+                const std::string texPath = wn["NormalMap"].as<std::string>("");
+                if (!texPath.empty()) {
+                    wc.NormalMap = Renderer::GetAssetManager().LoadTextureAsync(texPath);
+                }
+            }
+            if (wn["Waves"]) {
+                for (int i = 0; i < 4; ++i) {
+                    YAML::Node waveNode = wn["Waves"][std::to_string(i)];
+                    if (!waveNode) {
+                        continue;
+                    }
+                    auto &w = wc.Waves[i];
+                    w.Direction = DeserializeVec2(waveNode["Direction"], {1.0f, 0.0f});
+                    w.Amplitude = waveNode["Amplitude"] ? waveNode["Amplitude"].as<float>(0.5f) : 0.5f;
+                    w.Wavelength = waveNode["Wavelength"] ? waveNode["Wavelength"].as<float>(8.0f) : 8.0f;
+                    w.Speed = waveNode["Speed"] ? waveNode["Speed"].as<float>(1.2f) : 1.2f;
+                }
+            }
+        }
+
         // ---- BoxColliderComponent ----
         if (entity.HasComponent<BoxColliderComponent>()) {
             const auto &bcc = entity.GetComponent<BoxColliderComponent>();

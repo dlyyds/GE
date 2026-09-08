@@ -6,11 +6,14 @@
 #include "Render/Renderer3D.h"
 
 #include <algorithm>
+#include <array>
 #include <bit>
+#include <chrono>
 #include <filesystem>
 
 #include <glm/gtc/matrix_inverse.hpp> // glm::inverse（矩阵求逆）
 
+#include "Scene/Components.h"
 #include "Core/Log.h"
 #include "Debug/Assert.h"
 #include "Render/Texture.h"
@@ -149,6 +152,39 @@ Renderer3D::Renderer3D() {
     m_PipelineLayoutSkinnedPBR_IBL_HDR = &cache.RequestPipelineLayout(
         {m_VertShaderSkinned, m_FragShaderPBR_IBL_HDR});
     m_PipelineLayoutSkinnedPBR_IBL_HDR->SetDebugName("Mesh3D_PipelineLayout_Skinned_PBR_IBL_HDR");
+
+    // ── 水面（阶段 1）：water.vert / water.frag / water_hdr.frag ──────
+    // 水面拥有独立水格与 UBO（WaterUBO），不塞进通用 mesh 管线；前向用
+    // water.frag（ACES），HDR 透明段用 water_hdr.frag（线性 HDR，交给
+    // Tonemap 统一色调映射）。
+    m_VertShaderWater = &cache.RequestShaderModule(
+        vk::ShaderStageFlagBits::eVertex,
+        ShaderSource(Renderer::GetAssetManager()
+            .ResolvePath(std::string(AssetPaths::Shaders) + "/water.vert.spv")
+            .string()),
+        "main", ShaderVariant{});
+
+    m_FragShaderWater = &cache.RequestShaderModule(
+        vk::ShaderStageFlagBits::eFragment,
+        ShaderSource(Renderer::GetAssetManager()
+            .ResolvePath(std::string(AssetPaths::Shaders) + "/water.frag.spv")
+            .string()),
+        "main", ShaderVariant{});
+
+    m_FragShaderWaterHDR = &cache.RequestShaderModule(
+        vk::ShaderStageFlagBits::eFragment,
+        ShaderSource(Renderer::GetAssetManager()
+            .ResolvePath(std::string(AssetPaths::Shaders) + "/water_hdr.frag.spv")
+            .string()),
+        "main", ShaderVariant{});
+
+    m_WaterLayout = &cache.RequestPipelineLayout(
+        {m_VertShaderWater, m_FragShaderWater});
+    m_WaterLayout->SetDebugName("Water_PipelineLayout");
+
+    m_WaterLayoutHDR = &cache.RequestPipelineLayout(
+        {m_VertShaderWater, m_FragShaderWaterHDR});
+    m_WaterLayoutHDR->SetDebugName("Water_PipelineLayout_HDR");
 
     // ── 延迟渲染：GBuffer 片元着色器 + 静态/蒙皮两份管线布局 ─────────
     // GBuffer 只输出 G-Buffer 属性，光照后置到 Lighting pass。静态路径复用
@@ -486,6 +522,12 @@ void Renderer3D::BeginScene(const glm::mat4 &view,
     // 清空上一帧的网格列表
     m_Meshes.clear();
 
+    // 清空上一帧的水面列表，并刷新水面动画时间
+    m_WaterBatches.clear();
+    const auto now = std::chrono::steady_clock::now();
+    static const auto s_Start = now;
+    m_WaterTime = std::chrono::duration<float>(now - s_Start).count();
+
     // 清空上一帧的每级阴影专用网格列表（本帧由 Scene 逐级阴影遍历重新提交）
     for (auto &shadowMeshes : m_ShadowMeshes) {
         shadowMeshes.clear();
@@ -533,6 +575,42 @@ void Renderer3D::DrawSkinnedSubMesh(const glm::mat4 &transform,
                                     const void *skinKey) {
     DrawSubMeshImpl(transform, mesh,
                     submesh.firstIndex, submesh.indexCount, material, color, skinKey);
+}
+
+void Renderer3D::DrawWater(const glm::mat4 &transform,
+                           Mesh *mesh,
+                           const WaterComponent &water) {
+    GE_CORE_ASSERT(m_InScene, "DrawWater called outside BeginScene/EndScene!");
+
+    if (!mesh || !mesh->IsReady() || mesh->GetIndexCount() == 0) {
+        return;
+    }
+
+    // 拷贝组件参数进渲染器内部批次，渲染器不持有实体引用（改进可追踪性）。
+    WaterBatch batch;
+    batch.transform = transform;
+    batch.mesh = mesh;
+    batch.size = water.Size;
+    batch.firstIndex = 0;
+    batch.indexCount = mesh->GetIndexCount();
+    batch.timeScale = water.TimeScale;
+    batch.deepColor = water.DeepColor;
+    batch.shallowColor = water.ShallowColor;
+    batch.normalMap = water.NormalMap;
+    batch.normalTiling = water.NormalTiling;
+    batch.normalStrength = water.NormalStrength;
+    batch.roughness = water.Roughness;
+    batch.reflectionStrength = water.ReflectionStrength;
+    batch.refractionStrength = water.RefractionStrength;
+    batch.absorptionDepth = water.AbsorptionDepth;
+    batch.foamDistance = water.FoamDistance;
+    batch.foamIntensity = water.FoamIntensity;
+    for (int i = 0; i < 4; ++i) {
+        const auto &w = water.Waves[i];
+        batch.waves[i] = {glm::normalize(w.Direction), w.Amplitude, w.Wavelength, w.Speed};
+    }
+
+    m_WaterBatches.push_back(std::move(batch));
 }
 
 void Renderer3D::DrawShadowSubMesh(const glm::mat4 &transform,
@@ -985,7 +1063,6 @@ void Renderer3D::FlushLighting(PassExecuteContext &ctx) {
     cmd.Draw(3, 1, 0, 0);
 }
 
-
 void Renderer3D::FlushTonemap(PassExecuteContext &ctx) {
     GE_PROFILE_SCOPE("Renderer3D::FlushTonemap");
 
@@ -1113,6 +1190,12 @@ void Renderer3D::FlushTransparent(PassExecuteContext &ctx) {
                               /*hdrTransparent=*/true);
         }
 
+        // 水面（透明段末）：HDR 变体输出到 Scene_HDR（Tonemap 前）。
+        DrawWaterBatches(*ctx.cmd, *ctx.frame, m_CachedFrameUBO, m_CachedLightBuffer,
+                         colorFormat, depthFormat, ctx.renderArea.extent,
+                         /*hdrTransparent=*/true);
+        m_WaterBatches.clear();
+
         m_OpaqueBatches.clear();
         m_TransparentBatches.clear();
         for (auto &shadowBatches : m_ShadowBatches) {
@@ -1185,8 +1268,13 @@ void Renderer3D::RecordScene(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame,
         DrawMeshInstances(cmd, frame, transparentBatches, instanceBuffer);
     }
 
-    // ── 统计 draw call 与三角形数量 ──
-    RecordStats(static_cast<uint32_t>(batches.size()));
+    // ── 段 3：水面（透明段末）────────────────────────────────
+    // 水面不在通用网格批次中：独立水格 + 独立 WaterUBO，但同样走 Blend 透明段。
+    DrawWaterBatches(cmd, frame, frameUboAlloc, lightBuffer,
+                     colorFormat, depthFormat, extent, /*hdrTransparent=*/false);
+    // ── 统计 draw call 与三角形数量（含水面批次）──
+    RecordStats(static_cast<uint32_t>(batches.size() + m_WaterBatches.size()));
+    m_WaterBatches.clear();
 }
 
 void Renderer3D::SortMeshes(std::vector<MeshInstance> &meshes) {
@@ -1387,7 +1475,6 @@ BufferAllocation Renderer3D::UploadLightingUBO(VulkanRenderFrame &frame) {
     alloc.update(ubo);
     return alloc;
 }
-
 
 BufferAllocation Renderer3D::UploadTonemapUBO(VulkanRenderFrame &frame) {
     // Tonemap UBO：曝光来自场景/编辑器相机（m_Exposure，默认 1.0）。
@@ -1603,6 +1690,71 @@ void Renderer3D::ConfigureMeshPipeline(VulkanCommandBuffer &cmd,
     cmd.SetScissor(0, {scissor});
 }
 
+void Renderer3D::ConfigureWaterPipeline(VulkanCommandBuffer &cmd,
+                                        vk::Format colorFormat, vk::Format depthFormat,
+                                        vk::Extent2D extent,
+                                        bool hdrTransparent) {
+    // 水面独立管线：绑定 water pipeline layout（water.vert + water.frag /
+    // water_hdr.frag）。混合与深度语义与通用 Blend 透明段一致：alpha 混合、
+    // 深度写关、深度测试开，远→近由透明段排序保证。
+    VulkanPipelineLayout *layout = hdrTransparent ? m_WaterLayoutHDR : m_WaterLayout;
+    if (!layout) {
+        GE_CORE_WARN("ConfigureWaterPipeline: 水面管线布局未初始化，跳过");
+        return;
+    }
+    cmd.BindPipelineLayout(*layout);
+
+    auto &ps = cmd.GetPipelineState();
+    ps.setRenderingFormats({colorFormat}, depthFormat);
+
+    vk::PipelineColorBlendAttachmentState blendState{};
+    blendState.colorWriteMask = vk::ColorComponentFlagBits::eR
+                                | vk::ColorComponentFlagBits::eG
+                                | vk::ColorComponentFlagBits::eB
+                                | vk::ColorComponentFlagBits::eA;
+    blendState.blendEnable = VK_TRUE;
+    blendState.srcColorBlendFactor = vk::BlendFactor::eSrcAlpha;
+    blendState.dstColorBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha;
+    blendState.srcAlphaBlendFactor = vk::BlendFactor::eOne;
+    blendState.dstAlphaBlendFactor = hdrTransparent
+                                         ? vk::BlendFactor::eZero   // Scene_HDR alpha 是天空/几何元数据
+                                         : vk::BlendFactor::eOneMinusSrcAlpha;
+    ps.setColorBlendAttachments({blendState});
+
+    // 顶点输入：与通用网格一致，stride 以 C++ Vertex（80B）为权威
+    ps.setVertexInputFromShader(*m_VertShaderWater, 0,
+                                vk::VertexInputRate::eVertex,
+                                static_cast<uint32_t>(sizeof(Vertex)));
+
+    ps.setInputAssembly(vk::PrimitiveTopology::eTriangleList)
+        .setCullMode(vk::CullModeFlagBits::eBack)
+        .setFrontFace(vk::FrontFace::eCounterClockwise)
+        .setDepthTestEnable(VK_TRUE)
+        .setDepthWriteEnable(VK_FALSE)
+        .setDepthCompareOp(vk::CompareOp::eLess);
+
+    ps.enableDynamicState(vk::DynamicState::eViewport)
+        .enableDynamicState(vk::DynamicState::eScissor)
+        .enableDynamicState(vk::DynamicState::eCullMode)
+        .enableDynamicState(vk::DynamicState::eFrontFace)
+        .enableDynamicState(vk::DynamicState::ePrimitiveTopology)
+        .enableDynamicState(vk::DynamicState::eDepthTestEnable)
+        .enableDynamicState(vk::DynamicState::eDepthWriteEnable)
+        .enableDynamicState(vk::DynamicState::eDepthCompareOp);
+
+    vk::Viewport vp;
+    vp.width = static_cast<float>(extent.width);
+    vp.height = static_cast<float>(extent.height);
+    vp.minDepth = 0.0f;
+    vp.maxDepth = 1.0f;
+    cmd.SetViewport(0, {vp});
+
+    vk::Rect2D scissor;
+    scissor.extent.width = extent.width;
+    scissor.extent.height = extent.height;
+    cmd.SetScissor(0, {scissor});
+}
+
 void Renderer3D::ConfigureGBufferPipeline(VulkanCommandBuffer &cmd,
                                           const std::vector<vk::Format> &colorFormats,
                                           vk::Format depthFormat,
@@ -1701,7 +1853,6 @@ void Renderer3D::ConfigureLightingPipeline(VulkanCommandBuffer &cmd,
     scissor.extent.height = extent.height;
     cmd.SetScissor(0, {scissor});
 }
-
 
 void Renderer3D::ConfigureTonemapPipeline(VulkanCommandBuffer &cmd,
                                           vk::Format colorFormat,
@@ -2043,6 +2194,75 @@ void Renderer3D::DrawMeshInstances(VulkanCommandBuffer &cmd, VulkanRenderFrame &
     }
 }
 
+void Renderer3D::DrawWaterBatches(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame,
+                                  const BufferAllocation &frameUbo,
+                                  const BufferAllocation &lightBuffer,
+                                  vk::Format colorFormat, vk::Format depthFormat,
+                                  vk::Extent2D extent,
+                                  bool hdrTransparent) {
+    if (m_WaterBatches.empty()) {
+        return;
+    }
+
+    // 水面走独立混合管线，但共享 FrameUBO / LightBuffer 与 IBL 反射贴图。
+    ConfigureWaterPipeline(cmd, colorFormat, depthFormat, extent, hdrTransparent);
+    BindSharedUniforms(cmd, frameUbo, lightBuffer);
+
+    // IBL 预滤波 cubemap（反射）：有环境图且就绪时绑环境图，否则绑默认 1x1
+    // 白色立方体 fallback，避免 descriptor set 出现未写入的 binding。
+    const bool useIbl = (m_EnvironmentMap != nullptr) && m_EnvironmentMap->IsReady() && m_IBLEnabled;
+    Texture *iblTex = useIbl ? &m_EnvironmentMap->GetPrefilter() : m_DefaultSkyboxTexture.get();
+    if (iblTex) {
+        cmd.BindImage(iblTex->GetImageView(), iblTex->GetSampler(), 1, 1);
+    }
+
+    for (const auto &batch : m_WaterBatches) {
+        if (!batch.mesh || batch.indexCount == 0) {
+            continue;
+        }
+
+        // 法线细节贴图（set 1 binding 0）：无绑定或未就绪时回退默认平坦法线。
+        Texture *normalTex = (batch.normalMap && batch.normalMap->IsReady())
+                                 ? batch.normalMap : m_DefaultNormalTexture.get();
+        if (normalTex) {
+            cmd.BindImage(normalTex->GetImageView(), normalTex->GetSampler(), 1, 0);
+        }
+
+        // 填充水面 UBO（std140）。waveSpeeds 只用到 x，其余补 0。
+        WaterUBO ubo{};
+        ubo.model = batch.transform;
+        ubo.timeParams = glm::vec4(m_WaterTime * batch.timeScale,
+                                   batch.normalStrength,
+                                   batch.roughness,
+                                   batch.refractionStrength);
+        ubo.deepColor = glm::vec4(batch.deepColor, 1.0f);
+        ubo.shallowColor = glm::vec4(batch.shallowColor, 1.0f);
+        ubo.sizeParams = glm::vec4(batch.size.x, batch.size.y,
+                                   batch.normalTiling, batch.reflectionStrength);
+        ubo.foamParams = glm::vec4(batch.foamDistance, batch.foamIntensity,
+                                   batch.absorptionDepth, batch.timeScale);
+        for (int i = 0; i < 4; ++i) {
+            const auto &w = batch.waves[i];
+            ubo.waves[i] = glm::vec4(w.direction.x, w.direction.y,
+                                     w.amplitude, w.wavelength);
+            ubo.waveSpeeds[i] = glm::vec4(w.speed, 0.0f, 0.0f, 0.0f);
+        }
+
+        BufferAllocation uboAlloc = frame.AllocateBuffer(
+            vk::BufferUsageFlagBits::eUniformBuffer, sizeof(WaterUBO));
+        uboAlloc.update(ubo);
+        cmd.BindBuffer(uboAlloc.get_buffer(), uboAlloc.get_offset(),
+                       uboAlloc.get_size(), 0, 2);
+
+        // 单 water draw：水面面积大、实例少，不参与 instancing 合批。
+        cmd.BindVertexBuffers(0,
+                              {std::ref(batch.mesh->GetVertexBuffer())},
+                              {vk::DeviceSize(0)});
+        cmd.BindIndexBuffer(batch.mesh->GetIndexBuffer(), 0, vk::IndexType::eUint32);
+        cmd.DrawIndexed(batch.indexCount, 1, batch.firstIndex, 0, 0);
+    }
+}
+
 void Renderer3D::RecordStats(uint32_t drawCallCount) {
     // ── 6b. 统计 draw call 与三角形数量 ───────────────────────────────
     // draw call = 不透明批次数 + 透明批次数（RecordScene 把两段合起来统计，
@@ -2052,12 +2272,15 @@ void Renderer3D::RecordStats(uint32_t drawCallCount) {
     for (const auto &instance : m_Meshes) {
         triangles += instance.indexCount / 3;
     }
+    // 水面批次（WaterBatch 独立于 m_Meshes，按实例累计）。
+    for (const auto &water : m_WaterBatches) {
+        triangles += water.indexCount / 3;
+    }
     Renderer::Get().AddStats3D(drawCallCount, triangles);
 
     // 统计 instancing 批次数量（相同 mesh + 相同材质分一组），
     // 用于观察合批收益：批次数越少 → draw call 越少
     Renderer::Get().AddBatches3D(drawCallCount);
 }
-
 
 } // namespace GE

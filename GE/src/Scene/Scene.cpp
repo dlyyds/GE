@@ -19,6 +19,7 @@
 #include "Render/VulkanBase/VulkanRenderFrame.h"
 #include "Core/Log.h"
 #include "Render/AssetManager.h"
+#include "Render/MeshManager.h"
 
 #include <algorithm>
 #include <unordered_set>
@@ -1402,6 +1403,23 @@ void Scene::RenderMeshes3D(const glm::mat4 &view, const glm::mat4 &projection,
         }
     }
 
+
+    // ── 水面（阶段 1）：TransformComponent + WaterComponent ──────────
+    // 水面不走 MeshRendererComponent：由 MeshManager 生成细分水格网格，按组件
+    // 参数逐实体提交到 Renderer3D 的独立水面批次（透明段末绘制）。
+    auto waterView = m_Registry.view<TransformComponent, WaterComponent>();
+    if (waterView.begin() != waterView.end()) {
+        auto &meshMgr = Renderer::GetMeshManager();
+        for (auto entity : waterView) {
+            auto &tc = waterView.get<TransformComponent>(entity);
+            auto &wc = waterView.get<WaterComponent>(entity);
+            Mesh *waterMesh = meshMgr.CreateWaterGrid(wc.Resolution, wc.Size);
+            if (waterMesh) {
+                r3d.DrawWater(tc.GetWorldMatrix(), waterMesh, wc);
+            }
+        }
+    }
+
     r3d.EndScene();
 }
 
@@ -1558,6 +1576,11 @@ void Scene::OnComponentAdded<ScriptComponent>(Entity entity, ScriptComponent &co
 
 template <>
 void Scene::OnComponentAdded<MeshRendererComponent>(Entity entity, MeshRendererComponent &component) {
+}
+
+template <>
+void Scene::OnComponentAdded<WaterComponent>(Entity entity, WaterComponent &component) {
+    // 阶段 1：水面主要由 Renderer3D::DrawWater 消费，无额外生命周期逻辑。
 }
 
 template <>

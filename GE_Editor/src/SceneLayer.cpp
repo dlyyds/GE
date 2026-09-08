@@ -101,6 +101,11 @@ void SceneLayer::BuildDefaultSceneFromCode() {
     } else {
         GE_CORE_WARN("SceneLayer: 车模加载失败");
     }
+
+    // 水面（阶段 1）：64×64 水格 + 默认 4 层 Gerstner 波。
+    auto water = m_Context->Scene->CreateEntity("Water");
+    water.GetComponent<TransformComponent>().Translation = {0.0f, -0.5f, 0.0f};
+    water.AddComponent<WaterComponent>();
 }
 
 void SceneLayer::OnDetach() {
@@ -117,7 +122,7 @@ void SceneLayer::UpdateMouseCapture() {
     // Play 态且场景存在挂 FollowCameraComponent 的角色才锁定
     const bool playing = m_Context->Scene->IsPlaying();
     auto followView = m_Context->Scene->Reg().view<TransformComponent, CharacterControllerComponent,
-                                               FollowCameraComponent>();
+                                                   FollowCameraComponent>();
     const bool hasFollowCam = playing && (followView.begin() != followView.end());
 
     if (hasFollowCam && !m_MouseCaptured) {
@@ -252,7 +257,7 @@ void SceneLayer::RecordScenePasses(RenderTarget &viewportRT, const glm::vec4 &cl
                 AttachmentDesc shadowDepth;
                 shadowDepth.resource = hShadow[c];
                 shadowDepth.usage = ResourceUsage::DepthStencilAttachment;
-                shadowDepth.loadOp = vk::AttachmentLoadOp::eClear;   // 每帧清空重画
+                shadowDepth.loadOp = vk::AttachmentLoadOp::eClear; // 每帧清空重画
                 shadowDepth.storeOp = vk::AttachmentStoreOp::eStore; // 保留给 Lighting 采样
                 shadowDepth.finalLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
                 shadowPass.depthAttachment = shadowDepth;
@@ -412,8 +417,8 @@ void SceneLayer::RecordScenePasses(RenderTarget &viewportRT, const glm::vec4 &cl
             RenderPassDesc &bloomFirstDown = b.AddPass("BloomDownsample0");
             bloomFirstDown.renderArea = vk::Rect2D{{0, 0}, bloomMipExtent(0)};
             bloomFirstDown.readImages.push_back(
-                {hBloomFull, ResourceUsage::ShaderRead,
-                 vk::ImageLayout::eShaderReadOnlyOptimal});
+            {hBloomFull, ResourceUsage::ShaderRead,
+             vk::ImageLayout::eShaderReadOnlyOptimal});
             AttachmentDesc firstDownColor;
             firstDownColor.resource = hBloomDown[0];
             firstDownColor.usage = ResourceUsage::ColorAttachment;
@@ -430,8 +435,8 @@ void SceneLayer::RecordScenePasses(RenderTarget &viewportRT, const glm::vec4 &cl
                 RenderPassDesc &pass = b.AddPass("BloomDownsample" + std::to_string(i));
                 pass.renderArea = vk::Rect2D{{0, 0}, bloomMipExtent(i)};
                 pass.readImages.push_back(
-                    {hBloomDown[i - 1], ResourceUsage::ShaderRead,
-                     vk::ImageLayout::eShaderReadOnlyOptimal});
+                {hBloomDown[i - 1], ResourceUsage::ShaderRead,
+                 vk::ImageLayout::eShaderReadOnlyOptimal});
                 AttachmentDesc color;
                 color.resource = hBloomDown[i];
                 color.usage = ResourceUsage::ColorAttachment;
@@ -451,16 +456,17 @@ void SceneLayer::RecordScenePasses(RenderTarget &viewportRT, const glm::vec4 &cl
                 while (true) {
                     --m; // 首个输出 = levels-2（与 Bloom_Up[levels-2] 尺寸一致）
                     const ResourceHandle smallRes =
-                        (m + 1 >= bloomLevels - 1) ? hBloomDown[bloomLevels - 1]
-                                                   : hBloomUp[m + 1];
+                        (m + 1 >= bloomLevels - 1)
+                            ? hBloomDown[bloomLevels - 1]
+                            : hBloomUp[m + 1];
                     RenderPassDesc &pass = b.AddPass("BloomUpsample" + std::to_string(m));
                     pass.renderArea = vk::Rect2D{{0, 0}, bloomMipExtent(m)};
                     pass.readImages.push_back(
-                        {smallRes, ResourceUsage::ShaderRead,
-                         vk::ImageLayout::eShaderReadOnlyOptimal});
+                    {smallRes, ResourceUsage::ShaderRead,
+                     vk::ImageLayout::eShaderReadOnlyOptimal});
                     pass.readImages.push_back(
-                        {hBloomDown[m], ResourceUsage::ShaderRead,
-                         vk::ImageLayout::eShaderReadOnlyOptimal});
+                    {hBloomDown[m], ResourceUsage::ShaderRead,
+                     vk::ImageLayout::eShaderReadOnlyOptimal});
                     AttachmentDesc color;
                     color.resource = hBloomUp[m];
                     color.usage = ResourceUsage::ColorAttachment;

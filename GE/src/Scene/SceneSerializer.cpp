@@ -974,6 +974,11 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
             }
             waterNode["NormalTiling"] = wc.NormalTiling;
             waterNode["NormalStrength"] = wc.NormalStrength;
+            if (wc.ColorMap && !wc.ColorMap->GetFilePath().empty()) {
+                waterNode["ColorMap"] = wc.ColorMap->GetFilePath();
+            }
+            waterNode["ColorTiling"] = wc.ColorTiling;
+            waterNode["ColorStrength"] = wc.ColorStrength;
             waterNode["Roughness"] = wc.Roughness;
             waterNode["Opacity"] = wc.Opacity;
             waterNode["ReflectionStrength"] = wc.ReflectionStrength;
@@ -1610,6 +1615,8 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
             wc.ShallowColor = DeserializeVec3(wn["ShallowColor"], {0.05f, 0.30f, 0.38f});
             wc.NormalTiling = wn["NormalTiling"] ? wn["NormalTiling"].as<float>(4.0f) : 4.0f;
             wc.NormalStrength = wn["NormalStrength"] ? wn["NormalStrength"].as<float>(0.55f) : 0.55f;
+            wc.ColorTiling = wn["ColorTiling"] ? wn["ColorTiling"].as<float>(1.0f) : 1.0f;
+            wc.ColorStrength = wn["ColorStrength"] ? wn["ColorStrength"].as<float>(0.6f) : 0.6f;
             wc.Roughness = wn["Roughness"] ? wn["Roughness"].as<float>(0.12f) : 0.12f;
             wc.Opacity = wn["Opacity"] ? wn["Opacity"].as<float>(1.0f) : 1.0f;
             wc.ReflectionStrength = wn["ReflectionStrength"] ? wn["ReflectionStrength"].as<float>(0.85f) : 0.85f;
@@ -1621,6 +1628,12 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
                 const std::string texPath = wn["NormalMap"].as<std::string>("");
                 if (!texPath.empty()) {
                     wc.NormalMap = Renderer::GetAssetManager().LoadTextureAsync(texPath);
+                }
+            }
+            if (wn["ColorMap"]) {
+                const std::string texPath = wn["ColorMap"].as<std::string>("");
+                if (!texPath.empty()) {
+                    wc.ColorMap = Renderer::GetAssetManager().LoadTextureAsync(texPath);
                 }
             }
             if (wn["Waves"]) {

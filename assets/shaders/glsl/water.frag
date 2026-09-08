@@ -35,10 +35,12 @@ layout(set = 0, binding = 2, std140) uniform WaterUBO
     vec4 foamParams;
     vec4 waves[4];
     vec4 waveSpeeds[4];
+    vec4 colorParams; // x=色彩平铺, y=色彩强度
 } water;
 
 layout(set = 1, binding = 0) uniform sampler2D samplerNormal;
 layout(set = 1, binding = 1) uniform samplerCube samplerPrefilter;
+layout(set = 1, binding = 2) uniform sampler2D samplerColor; // 色彩/固有色贴图（可选）
 
 layout(location = 0) in vec2 inUV;
 layout(location = 1) in vec3 inWorldPos;
@@ -104,8 +106,10 @@ void main()
                 * frame.iblParams.y * water.sizeParams.w;
     }
 
-    // 阶段 1：无场景深度，水色先取深水色；阶段 2 替换为折射/深度吸收。
-    vec3 waterColor = water.deepColor.rgb;
+    // 底色：深水色与色彩贴图按强度 mix（未贴图时强度 0 → 纯深水色，行为不变）；
+    // 阶段 2 将改用 ShallowColor + 深度吸收实现浅水渐变。
+    vec3 mapColor = texture(samplerColor, inUV * water.colorParams.x).rgb;
+    vec3 waterColor = mix(water.deepColor.rgb, mapColor, water.colorParams.y);
 
     // —— 方向光 ——
     vec3 L = normalize(-frame.dirLightDirection.xyz);

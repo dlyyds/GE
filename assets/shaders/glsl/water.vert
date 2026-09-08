@@ -31,6 +31,7 @@ layout(set = 0, binding = 2, std140) uniform WaterUBO
     vec4 foamParams;    // x=foamDistance, y=foamIntensity, z=absorptionDepth, w=timeScale
     vec4 waves[4];      // x=dirX, y=dirY, z=amplitude, w=wavelength
     vec4 waveSpeeds[4]; // x=speed
+    vec4 colorParams;   // 与片元一致（顶点阶段未使用，仅保持布局相同）
 } water;
 
 layout(location = 0) out vec2 outUV;

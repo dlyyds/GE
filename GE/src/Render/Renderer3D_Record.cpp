@@ -500,6 +500,13 @@ void Renderer3D::DrawWaterBatches(VulkanCommandBuffer &cmd, VulkanRenderFrame &f
             cmd.BindImage(normalTex->GetImageView(), normalTex->GetSampler(), 1, 0);
         }
 
+        // 色彩/固有色贴图（set 1 binding 2）：无绑定或未就绪时回退默认 1x1 白色。
+        const bool colorReady = batch.colorMap && batch.colorMap->IsReady();
+        Texture *colorTex = colorReady ? batch.colorMap : m_DefaultWhiteTexture;
+        if (colorTex) {
+            cmd.BindImage(colorTex->GetImageView(), colorTex->GetSampler(), 1, 2);
+        }
+
         // 填充水面 UBO（std140）。waveSpeeds 只用到 x，其余补 0。
         WaterUBO ubo{};
         ubo.model = glm::scale(batch.transform, glm::vec3(batch.size.x, 1.0f, batch.size.y));
@@ -513,6 +520,10 @@ void Renderer3D::DrawWaterBatches(VulkanCommandBuffer &cmd, VulkanRenderFrame &f
                                    batch.normalTiling, batch.reflectionStrength);
         ubo.foamParams = glm::vec4(batch.foamDistance, batch.foamIntensity,
                                    batch.absorptionDepth, batch.timeScale);
+        // 未绑/未就绪色彩贴图时强度强制 0 → mix 结果 = 纯深水色，老场景视觉不变。
+        ubo.colorParams = glm::vec4(batch.colorTiling,
+                                    colorReady ? batch.colorStrength : 0.0f,
+                                    0.0f, 0.0f);
         for (int i = 0; i < 4; ++i) {
             const auto &w = batch.waves[i];
             ubo.waves[i] = glm::vec4(w.direction.x, w.direction.y,

@@ -95,6 +95,10 @@ private:
     /// 绘制 Water（水面）组件属性
     static void DrawWaterComponent(WaterComponent &component);
 
+    /// 通用贴图槽选择器：下拉选已加载纹理 / 从资源面板拖入 / 「浏览并加载...」读磁盘 / 清除。
+    /// 供 Water 等组件的 NormalMap / ColorMap 等贴图字段复用（调用方用 PushID 隔离各槽）。
+    static void DrawTexturePicker(const char *comboId, const char *emptyHint, Texture *&texture);
+
     /// 绘制 Environment 组件属性
     void DrawEnvironmentComponent(EnvironmentComponent &component);
 

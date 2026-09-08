@@ -127,6 +127,9 @@ void Renderer3D::DrawWater(const glm::mat4 &transform,
     batch.normalMap = water.NormalMap;
     batch.normalTiling = water.NormalTiling;
     batch.normalStrength = water.NormalStrength;
+    batch.colorMap = water.ColorMap;
+    batch.colorTiling = water.ColorTiling;
+    batch.colorStrength = water.ColorStrength;
     batch.roughness = water.Roughness;
     batch.opacity = water.Opacity;
     batch.reflectionStrength = water.ReflectionStrength;

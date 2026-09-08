@@ -606,6 +606,7 @@ private:
     ///   sizeParams = x,y:水面尺寸, z:法线平铺, w:反射强度
     ///   foamParams = 阶段 2 岸线预留（FoamDistance/FoamIntensity/AbsorptionDepth/TimeScale）
     ///   waves[i] = x,y:传播方向, z:振幅, w:波长；waveSpeeds[i].x = 相速度
+    ///   colorParams = x:色彩贴图平铺, y:色彩贴图强度（未贴图时为 0 → 纯深水色）
     struct WaterUBO {
         glm::mat4 model{1.0f};
         glm::vec4 timeParams{0.0f};
@@ -615,6 +616,7 @@ private:
         glm::vec4 foamParams{0.0f};
         std::array<glm::vec4, 4> waves{};
         std::array<glm::vec4, 4> waveSpeeds{};
+        glm::vec4 colorParams{0.0f};
     };
 
     static_assert(sizeof(WaterUBO) % 16 == 0, "WaterUBO 必须 16 字节对齐");
@@ -673,6 +675,9 @@ private:
         Texture *normalMap = nullptr;
         float normalTiling = 4.0f;
         float normalStrength = 0.55f;
+        Texture *colorMap = nullptr;
+        float colorTiling = 1.0f;
+        float colorStrength = 0.6f;
         float roughness = 0.12f;
         float opacity = 1.0f;          ///< 整体不透明度（写 deepColor.a 传给 shader）
         float reflectionStrength = 0.85f;

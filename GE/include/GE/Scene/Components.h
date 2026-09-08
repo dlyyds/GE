@@ -349,6 +349,12 @@ struct WaterComponent {
     float NormalStrength = 0.55f;                   ///< 法线强度
     float Roughness      = 0.12f;                   ///< 粗糙度（影响高光/反射模糊）
 
+    /// 色彩/固有色贴图（可选）：采样颜色按 ColorStrength 与 DeepColor 混合成水面底色。
+    /// 绑定为空时渲染端强制强度为 0，视觉等同现在的纯深水色（老场景/老文件不变）。
+    Texture *ColorMap = nullptr;
+    float ColorTiling = 1.0f;  ///< 色彩贴图平铺次数（UV 乘数）
+    float ColorStrength = 0.6f; ///< 0 = 纯深水色，1 = 完全用贴图颜色
+
     float Opacity          = 1.0f;                   ///< 整体不透明度 0~1（1=与旧行为一致；前向/HDR 均按 Fresnel 逐像素生效）
 
     // —— 反射 / 折射 ——

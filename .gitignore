@@ -121,10 +121,7 @@ assets/materal/
 # ============================================
 # 音效素材包（大量 .wav 样本，体积大，不入版本库；需要时从 zip 解压到本地）
 # ============================================
-assets/audio/人声采集素材/
-assets/audio/冷兵器/
-assets/audio/人声采集素材.zip
-assets/audio/冷兵器.zip
+assets/audio/
 
 # ============================================
 # Old/outdated paths (kept for safety)

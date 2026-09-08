@@ -98,6 +98,12 @@ private:
     /// 从文件加载场景（会重建场景并重新绑定相机）
     bool LoadSceneFromFile(std::string_view filepath);
 
+    /// 编辑器相机状态：关闭时把 EditorCamera 参数写入状态文件（工作目录下）。
+    void SaveEditorCameraState();
+
+    /// 编辑器相机状态：启动时从状态文件恢复 EditorCamera（无文件则保持默认）。
+    void RestoreEditorCameraState();
+
     /// 确保离屏渲染视口在本帧可用，并返回视口像素尺寸。
     /// 首帧无尺寸、创建/重建失败时返回 false。
     bool EnsureViewport(Timestep &ts, uint32_t &vpWidth, uint32_t &vpHeight);

@@ -26,6 +26,9 @@
 
 #include <algorithm>
 #include <array>
+#include <fstream>
+#include <map>
+#include <sstream>
 
 #include "imgui.h"
 #include "ImGuizmo.h"
@@ -41,6 +44,40 @@
 
 #include <glm/gtc/matrix_transform.hpp>
 
+namespace {
+// 编辑器相机状态文件：放在工作目录（与 imgui.ini 同级）。
+// 这是个人编辑器偏好而非场景内容，不入版本库（见 .gitignore）。
+constexpr const char *kEditorCameraStateFile = "editor_camera.cfg";
+
+// 读取整个状态文件为 key→value 表（空行与 '#' 注释行跳过；坏键忽略）
+std::map<std::string, float> LoadCameraStateFile() {
+    std::map<std::string, float> kv;
+    std::ifstream in(kEditorCameraStateFile);
+    std::string line;
+    while (std::getline(in, line)) {
+        std::istringstream ss(line);
+        std::string key;
+        if (!(ss >> key)) {
+            continue; // 空行
+        }
+        if (key[0] == '#') {
+            continue; // 注释
+        }
+        float value = 0.0f;
+        if (ss >> value) {
+            kv[key] = value;
+        }
+    }
+    return kv;
+}
+
+// 从状态表取键值，缺失（首次运行/格式升级缺字段）时回退默认
+float CameraStateValue(const std::map<std::string, float> &kv, const char *key, float fallback) {
+    auto it = kv.find(key);
+    return it != kv.end() ? it->second : fallback;
+}
+} // namespace
+
 namespace GE {
 
 SceneLayer::SceneLayer(std::shared_ptr<EditorContext> context) : Layer("SceneLayer"), m_Context(std::move(context)) {
@@ -55,6 +92,9 @@ void SceneLayer::OnAttach() {
     m_Context->EditorCamera.SetPerspective(60.0f, 16.0f / 9.0f, 0.1, 500);
     m_Context->EditorCamera.SetTarget(glm::vec3(0.0f, 0.5f, 0.0f));
     m_Context->EditorCamera.SetOrbit(0.0f, 25.0f, 8.0f);
+
+    // 上次关闭保存的相机状态覆盖默认值（无状态文件时保持上面的默认视角）
+    RestoreEditorCameraState();
 
 #if GE_EDITOR_BUILD_SCENE_FROM_CODE
     // 从代码程序化构建默认场景（网格/纹理/材质由全局管理器持有）
@@ -109,6 +149,9 @@ void SceneLayer::BuildDefaultSceneFromCode() {
 }
 
 void SceneLayer::OnDetach() {
+    // 关闭前保存编辑器相机状态（此后 Scene 与视口会被释放）
+    SaveEditorCameraState();
+
     m_Viewport.reset(); // 释放离屏渲染目标（GPU 资源）
     m_Context->Scene.reset();
 }
@@ -965,6 +1008,58 @@ bool SceneLayer::LoadSceneFromFile(std::string_view filepath) {
         return false;
     }
     return true;
+}
+
+void SceneLayer::SaveEditorCameraState() {
+    const Camera &cam = m_Context->EditorCamera;
+
+    std::ofstream out(kEditorCameraStateFile);
+    if (!out) {
+        GE_CORE_WARN("SaveEditorCameraState: 无法写入编辑器相机状态文件 {0}", kEditorCameraStateFile);
+        return;
+    }
+    out.precision(9); // float 有效位写全，恢复时不致视角漂移
+
+    const glm::vec3 target = cam.GetTarget();
+    out << "mode " << static_cast<int>(cam.GetMode()) << '\n';
+    out << "target_x " << target.x << '\n';
+    out << "target_y " << target.y << '\n';
+    out << "target_z " << target.z << '\n';
+    out << "theta " << cam.GetTheta() << '\n';
+    out << "phi " << cam.GetPhi() << '\n';
+    out << "distance " << cam.GetDistance() << '\n';
+    out << "fov " << cam.GetFov() << '\n';
+    out << "near " << cam.GetNear() << '\n';
+    out << "far " << cam.GetFar() << '\n';
+    out << "exposure " << cam.GetExposure() << '\n';
+    out << "mouse_sensitivity " << cam.MouseSensitivity << '\n';
+    out << "scroll_sensitivity " << cam.ScrollSensitivity << '\n';
+    out << "move_speed " << cam.MoveSpeed << '\n';
+}
+
+void SceneLayer::RestoreEditorCameraState() {
+    const auto kv = LoadCameraStateFile();
+    if (kv.empty()) {
+        return; // 无状态文件：保持 OnAttach 设置的默认视角
+    }
+
+    Camera &cam = m_Context->EditorCamera;
+    // 状态文件中缺失的键用当前（默认）值回退，保证老格式/手改坏文件也能恢复
+    cam.SetMode(static_cast<Camera::Mode>(static_cast<int>(CameraStateValue(kv, "mode", 0.0f))));
+    cam.SetTarget(glm::vec3(CameraStateValue(kv, "target_x", cam.GetTarget().x),
+                            CameraStateValue(kv, "target_y", cam.GetTarget().y),
+                            CameraStateValue(kv, "target_z", cam.GetTarget().z)));
+    cam.SetOrbit(CameraStateValue(kv, "theta", cam.GetTheta()),
+                 CameraStateValue(kv, "phi", cam.GetPhi()),
+                 CameraStateValue(kv, "distance", cam.GetDistance()));
+    cam.SetPerspective(CameraStateValue(kv, "fov", cam.GetFov()),
+                       cam.GetAspect(), // 宽高比每帧随视口更新，不入文件
+                       CameraStateValue(kv, "near", cam.GetNear()),
+                       CameraStateValue(kv, "far", cam.GetFar()));
+    cam.SetExposure(CameraStateValue(kv, "exposure", cam.GetExposure()));
+    cam.MouseSensitivity = CameraStateValue(kv, "mouse_sensitivity", cam.MouseSensitivity);
+    cam.ScrollSensitivity = CameraStateValue(kv, "scroll_sensitivity", cam.ScrollSensitivity);
+    cam.MoveSpeed = CameraStateValue(kv, "move_speed", cam.MoveSpeed);
 }
 
 void SceneLayer::LoadScene() {

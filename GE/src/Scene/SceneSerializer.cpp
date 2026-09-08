@@ -99,6 +99,23 @@ ScriptFieldType ScriptFieldTypeFromName(const std::string &name) {
     return ScriptFieldType::None;
 }
 
+const char *AttenuationToString(Audio::AttenuationModel model) {
+    switch (model) {
+    case Audio::AttenuationModel::Linear:      return "Linear";
+    case Audio::AttenuationModel::Exponential: return "Exponential";
+    case Audio::AttenuationModel::None:        return "None";
+    default:                                   return "Inverse";
+    }
+}
+
+Audio::AttenuationModel AttenuationFromString(const std::string &s) {
+    if (s == "Linear")      return Audio::AttenuationModel::Linear;
+    if (s == "Exponential") return Audio::AttenuationModel::Exponential;
+    if (s == "None")        return Audio::AttenuationModel::None;
+    return Audio::AttenuationModel::Inverse;
+}
+
+
 // ============================================================
 // 动画状态机 ASM 辅助（条件类型 / 比较符 ←→ 字符串标签）
 // ============================================================
@@ -837,6 +854,38 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
             envNode["IBLIntensity"] = ec.IBLIntensity;
         }
 
+        // ---- AudioSourceComponent / AudioListenerComponent ----
+        if (entity.HasComponent<AudioSourceComponent>()) {
+            const auto &as = entity.GetComponent<AudioSourceComponent>();
+            YAML::Node srcNode = entityNode["AudioSource"];
+            srcNode["Enabled"] = as.Enabled;
+            srcNode["Spatial"] = as.Spatial;
+            if (!as.Sounds.empty()) {
+                YAML::Node soundsNode = srcNode["Sounds"];
+                soundsNode.SetStyle(YAML::EmitterStyle::Block);
+                for (const auto &s : as.Sounds) {
+                    YAML::Node sn;
+                    sn["Name"] = s.Name;
+                    sn["SoundPath"] = s.SoundPath;
+                    sn["PlayOnAwake"] = s.PlayOnAwake;
+                    sn["Loop"] = s.Loop;
+                    sn["Volume"] = s.Volume;
+                    sn["Pitch"] = s.Pitch;
+                    sn["MinDistance"] = s.MinDistance;
+                    sn["MaxDistance"] = s.MaxDistance;
+                    sn["Rolloff"] = s.Rolloff;
+                    sn["Attenuation"] = AttenuationToString(s.Attenuation);
+                    soundsNode.push_back(sn);
+                }
+            }
+        }
+
+        if (entity.HasComponent<AudioListenerComponent>()) {
+            const auto &al = entity.GetComponent<AudioListenerComponent>();
+            YAML::Node alNode = entityNode["AudioListener"];
+            alNode["Enabled"] = al.Enabled;
+        }
+
         // ---- RigidBodyComponent ----
         if (entity.HasComponent<RigidBodyComponent>()) {
             const auto &rbc = entity.GetComponent<RigidBodyComponent>();
@@ -1404,6 +1453,36 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
             ec.SkyboxEnabled = envNode["SkyboxEnabled"] ? envNode["SkyboxEnabled"].as<bool>(true) : true;
             ec.IBLEnabled = envNode["IBLEnabled"] ? envNode["IBLEnabled"].as<bool>(true) : true;
             ec.IBLIntensity = envNode["IBLIntensity"] ? envNode["IBLIntensity"].as<float>(1.0f) : 1.0f;
+        }
+
+        // ---- AudioSourceComponent / AudioListenerComponent ----
+        if (entityNode["AudioSource"]) {
+            YAML::Node srcNode = entityNode["AudioSource"];
+            auto &as = entity.AddComponent<AudioSourceComponent>();
+            as.Enabled = srcNode["Enabled"] ? srcNode["Enabled"].as<bool>(true) : true;
+            as.Spatial = srcNode["Spatial"] ? srcNode["Spatial"].as<bool>(true) : true;
+            if (srcNode["Sounds"] && srcNode["Sounds"].IsSequence()) {
+                for (const auto &sn : srcNode["Sounds"]) {
+                    AudioSound s;
+                    s.Name = sn["Name"] ? sn["Name"].as<std::string>() : std::string();
+                    s.SoundPath = sn["SoundPath"] ? sn["SoundPath"].as<std::string>() : std::string();
+                    s.PlayOnAwake = sn["PlayOnAwake"] ? sn["PlayOnAwake"].as<bool>(false) : false;
+                    s.Loop = sn["Loop"] ? sn["Loop"].as<bool>(false) : false;
+                    s.Volume = sn["Volume"] ? sn["Volume"].as<float>(1.0f) : 1.0f;
+                    s.Pitch = sn["Pitch"] ? sn["Pitch"].as<float>(1.0f) : 1.0f;
+                    s.MinDistance = sn["MinDistance"] ? sn["MinDistance"].as<float>(1.0f) : 1.0f;
+                    s.MaxDistance = sn["MaxDistance"] ? sn["MaxDistance"].as<float>(100.0f) : 100.0f;
+                    s.Rolloff = sn["Rolloff"] ? sn["Rolloff"].as<float>(1.0f) : 1.0f;
+                    s.Attenuation = AttenuationFromString(sn["Attenuation"] ? sn["Attenuation"].as<std::string>("Inverse") : "Inverse");
+                    as.Sounds.push_back(s);
+                }
+            }
+        }
+
+        if (entityNode["AudioListener"]) {
+            YAML::Node alNode = entityNode["AudioListener"];
+            auto &alc = entity.AddComponent<AudioListenerComponent>();
+            alc.Enabled = alNode["Enabled"] ? alNode["Enabled"].as<bool>(true) : true;
         }
 
         // ---- RigidBodyComponent ----

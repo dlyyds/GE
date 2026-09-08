@@ -4,6 +4,7 @@
 #include "Scene/AnimationSystem.h"
 #include "Scene/Entity.h"
 #include "Physics/PhysicsWorld.h"
+#include "Audio/AudioWorld.h"
 #include "Events/Event.h"
 #include "Events/KeyEvent.h"
 #include "Events/MouseEvent.h"
@@ -254,13 +255,19 @@ static bool SampleRootBoneBaseLocal(entt::registry &reg, entt::entity e, int nod
 }
 } // namespace
 
-
 Scene::Scene() {
     // 创建物理世界
     m_PhysicsWorld = std::make_unique<Physics::PhysicsWorld>(this);
 
+    // 创建音频世界（每 Scene 一个，与 PhysicsWorld 平行）
+    m_AudioWorld = std::make_unique<Audio::AudioWorld>(this);
+
     // 注册 RigidBodyComponent 销毁回调
     m_Registry.on_destroy<RigidBodyComponent>().connect<&Scene::OnRigidBodyDestroyed>(this);
+
+    // 注册音频组件销毁回调（停止 Voice）
+    m_Registry.on_destroy<AudioSourceComponent>().connect<&Scene::OnAudioSourceDestroyed>(this);
+    m_Registry.on_destroy<AudioListenerComponent>().connect<&Scene::OnAudioListenerDestroyed>(this);
 
     // 注册碰撞体销毁回调（移除碰撞体时触发刚体重建）
     m_Registry.on_destroy<BoxColliderComponent>().connect<&Scene::OnColliderDestroyed>(this);
@@ -278,6 +285,11 @@ Scene::Scene() {
 }
 
 Scene::~Scene() {
+    // 提前解挂音频销毁回调并销毁音频世界，避免注册表析构时回调碰已释放的 AudioWorld
+    m_Registry.on_destroy<AudioSourceComponent>().disconnect<&Scene::OnAudioSourceDestroyed>(this);
+    m_Registry.on_destroy<AudioListenerComponent>().disconnect<&Scene::OnAudioListenerDestroyed>(this);
+    m_AudioWorld.reset();
+
     // 提前解挂脚本销毁回调并清理，避免注册表析构时 on_destroy 回调碰卸了一半的 Lua/场景
     m_Registry.on_destroy<ScriptComponent>().disconnect<&Scene::OnScriptComponentDestroyed>(this);
     m_ScriptEngine.Shutdown();
@@ -285,7 +297,6 @@ Scene::~Scene() {
 
 Entity Scene::CreateEntity(const std::string &name) {
     Entity entity{m_Registry.create(), this};
-
     entity.AddComponent<TransformComponent>();
     entity.AddComponent<TagComponent>(name);
     entity.AddComponent<IDComponent>(GenerateUUID());
@@ -414,6 +425,10 @@ void Scene::ClearAllEntities() {
         m_PhysicsWorld->ClearPendingCharacters();
         m_PhysicsWorld->ResetAccumulator();
     }
+
+    if (m_AudioWorld)
+        m_AudioWorld->OnStop();
+
     m_ChildrenOf.clear();
     m_Registry.clear();
 }
@@ -544,12 +559,18 @@ void Scene::Play() {
     }
 
     m_SimulationState = SimulationState::Playing;
+    if (m_AudioWorld)
+        m_AudioWorld->OnPlay();
 }
 
 void Scene::Stop() {
     // 非 Playing：调用无操作
     if (m_SimulationState != SimulationState::Playing)
         return;
+
+    // 停止音频（必须在状态切回 Edit 前，停止 PlayOnAwake/循环声音）
+    if (m_AudioWorld)
+        m_AudioWorld->OnStop();
     if (!m_PhysicsWorld)
         return;
 
@@ -818,6 +839,9 @@ void Scene::OnUpdate3DSimulation(Timestep ts) {
     // ── 蒙皮更新：基于本帧刚算好的关节 world，算 jointMatrix = world × IBM ──
     // 并上传关节 SSBO。必须先于渲染、且紧跟 UpdateWorldTransforms。
     UpdateSkins();
+
+    // —— 音频：必须拿到本帧最新 world 后才同步 Listener/Source 位置 ——
+    UpdateAudio(ts);
 }
 
 void Scene::Render3D(const glm::mat4 &view,
@@ -1574,6 +1598,18 @@ void Scene::OnComponentAdded<FollowCameraComponent>(Entity entity, FollowCameraC
 }
 
 template <>
+void Scene::OnComponentAdded<AudioSourceComponent>(Entity entity, AudioSourceComponent &component) {
+    if (m_AudioWorld)
+        m_AudioWorld->OnComponentAdded(static_cast<entt::entity>(entity));
+}
+
+template <>
+void Scene::OnComponentAdded<AudioListenerComponent>(Entity entity, AudioListenerComponent &component) {
+    if (m_AudioWorld)
+        m_AudioWorld->OnComponentAdded(static_cast<entt::entity>(entity));
+}
+
+template <>
 void Scene::OnComponentAdded<RigidBodyComponent>(Entity entity, RigidBodyComponent &component) {
     // 延迟创建：将实体加入 PhysicsWorld 的待创建列表
     // 实际创建发生在下一次 Step() 调用时，确保 collider 组件也已添加
@@ -1659,5 +1695,24 @@ void Scene::OnCharacterControllerDestroyed(entt::registry &registry, entt::entit
 }
 
 
+
+void Scene::UpdateAudio(Timestep ts) {
+    // 只在 Playing 态发声；编辑器试听走 AudioContext::Play 直接通道。
+    if (m_SimulationState != SimulationState::Playing || !m_AudioWorld)
+        return;
+    m_AudioWorld->Update(ts);
+}
+
+void Scene::OnAudioSourceDestroyed(entt::registry &/*registry*/, entt::entity entity) {
+    // 音频源组件移除/实体销毁：停止该实体全部 Voice
+    if (m_AudioWorld)
+        m_AudioWorld->OnComponentDestroyed(entity);
+}
+
+void Scene::OnAudioListenerDestroyed(entt::registry &/*registry*/, entt::entity entity) {
+    // 监听器组件移除/实体销毁：清理缓存
+    if (m_AudioWorld)
+        m_AudioWorld->OnComponentDestroyed(entity);
+}
 } //
 // Created by Lenovo on 2026/5/9.

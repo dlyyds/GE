@@ -34,6 +34,11 @@ class MaterialManager;
 class Texture;
 class Mesh;
 
+namespace Audio {
+    class SoundAsset;
+    class SoundManager;
+}
+
 /**
  * @brief 集中定义的资源子路径常量（相对资源根目录）。
  *
@@ -48,6 +53,7 @@ namespace AssetPaths {
     inline constexpr const char *Scenes   = "scenes";         ///< 场景目录
     inline constexpr const char *Fonts    = "fonts/opensans"; ///< 字体目录
     inline constexpr const char *HDRI     = "HDRI";           ///< HDR 环境贴图目录
+    inline constexpr const char *Audio    = "audio";          ///< 音频目录
 }
 
 /**
@@ -119,6 +125,9 @@ public:
     /// 访问材质管理器。
     MaterialManager &GetMaterialManager();
 
+    /// 访问声音资源管理器。
+    Audio::SoundManager &GetSoundManager();
+
     /// 访问资源异步上传管理器（由 Renderer 持有，此处仅转发）。
     AsyncUploadManager &GetAsyncUploadManager();
 
@@ -158,6 +167,17 @@ public:
      */
     Mesh *LoadMesh(const std::string &path);
 
+    /**
+     * @brief 加载声音（自动解析路径）。
+     *
+     * @param path 声音路径（相对资源根或绝对路径）
+     * @return 声音资源指针，加载失败返回 nullptr
+     */
+    Audio::SoundAsset *LoadSound(const std::string &path);
+
+    /// 直接播放一次（编辑器试听 / 一次性 SFX），自动解析路径。
+    bool PlayOneShot(const std::string &path, float volume = 1.0f);
+
 private:
     /// 资源根目录，可通过 SetAssetRoot 重定位。
     std::filesystem::path m_AssetRoot{"assets"};
@@ -170,6 +190,9 @@ private:
 
     /// 材质管理器（拥有）。
     std::unique_ptr<MaterialManager> m_MaterialManager;
+
+    /// 声音资源管理器（拥有；独立于 Vulkan）。
+    std::unique_ptr<Audio::SoundManager> m_SoundManager;
 
     /// 异步上传管理器（非拥有，由 Renderer 持有），供子管理器异步加载使用。
     AsyncUploadManager *m_AsyncUpload = nullptr;

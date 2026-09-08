@@ -115,6 +115,7 @@ file(GLOB GE_SRC
         ${CMAKE_SOURCE_DIR}/GE/src/Render/RenderGraph/*.cpp
         ${CMAKE_SOURCE_DIR}/GE/src/Scene/*.cpp
         ${CMAKE_SOURCE_DIR}/GE/src/Physics/*.cpp
+        ${CMAKE_SOURCE_DIR}/GE/src/Audio/*.cpp
         ${CMAKE_SOURCE_DIR}/GE/third_party/stb/stb_image.cpp
         ${CMAKE_SOURCE_DIR}/GE/third_party/tinyobjloader/tiny_obj_loader.cpp
         ${CMAKE_SOURCE_DIR}/GE/third_party/tinygltf/tiny_gltf.cc
@@ -148,6 +149,7 @@ target_include_directories(${GE_NAME} PUBLIC
         ${CMAKE_SOURCE_DIR}/GE/third_party/lua-5.4.8
         ${CMAKE_SOURCE_DIR}/GE/third_party/stb
         ${CMAKE_SOURCE_DIR}/GE/third_party/tinyobjloader
+        ${CMAKE_SOURCE_DIR}/GE/third_party/miniaudio-0.11.25
         ${Vulkan_INCLUDE_DIRS}
         ${CMAKE_SOURCE_DIR}/GE/third_party/SPIRV-Cross
 )

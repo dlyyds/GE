@@ -13,6 +13,7 @@
 #include <Events/ApplicationEvent.h>
 
 #include <GLFW/glfw3.h>
+#include "Audio/AudioContext.h"
 #include <chrono>
 #include <functional>
 #include <memory>
@@ -29,6 +30,13 @@ Application::Application(const std::string &name, ApplicationCommandLineArgs arg
 
     m_Window = Window::Create(WindowProperties(name, 1600, 900));
     m_Window->SetVSync(VsyncMode::OFF);
+
+    // 音频后端：全局一份，与 Vulkan 解耦（失败不阻塞启动，仅打日志）。
+    m_AudioContext = std::make_unique<Audio::AudioContext>();
+    if (!m_AudioContext->Init()) {
+        GE_CORE_WARN("AudioContext init failed; audio features disabled");
+        m_AudioContext.reset();
+    }
     m_Window->SetEventCallback(GE_BIND_EVENT_FN(Application::OnEvent));
 
     // 初始化渲染器（内部完成 VulkanContext → RenderContext → Prepare → ImGui 初始化）
@@ -56,6 +64,9 @@ Application::~Application() {
 
     // 3. 销毁渲染器（内部再次 waitIdle + 释放 ImGui 与所有 Vulkan 资源）
     m_Renderer.reset();
+
+    // 4. 销毁音频上下文（在 Window 销毁前，Render/Asset 已释放资源）
+    m_AudioContext.reset();
 
     s_Instance = nullptr;
 }

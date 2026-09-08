@@ -18,6 +18,7 @@ int main(int argc, char **argv);
 
 namespace GE {
 class Shader;
+namespace Audio { class AudioContext; }
 
 struct ApplicationCommandLineArgs {
     int Count = 0;
@@ -74,6 +75,9 @@ public:
 
     [[nodiscard]] ApplicationCommandLineArgs GetCommandLineArgs() const { return m_CommandLineArgs; }
 
+    /// 全局音频上下文（音频后端），可能为 nullptr（初始化失败/未创建）。
+    [[nodiscard]] Audio::AudioContext *GetAudioContext() const { return m_AudioContext.get(); }
+
 
     [[nodiscard]] float GetFPS() const { return m_FPS; }
 
@@ -107,6 +111,9 @@ private:
 
     // -- 渲染器：统一管理所有 Vulkan 资源 --
     std::unique_ptr<Renderer> m_Renderer;
+
+    // -- 音频后端：全局一份，与渲染解耦 --
+    std::unique_ptr<Audio::AudioContext> m_AudioContext;
 
 private:
     static Application *s_Instance;

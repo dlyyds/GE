@@ -6,6 +6,7 @@
 
 #include "GE/Core/Application.h"
 #include "GE/Render/Renderer.h"
+#include "GE/Render/AssetManager.h"
 
 #include "imgui.h"
 
@@ -30,6 +31,12 @@ void RenderStatsPanel::OnImGuiRender() {
             ImGui::TextDisabled("已启用");
         } else {
             ImGui::TextDisabled("未启用");
+        }
+
+        ImGui::Separator();
+        ImGui::Text("音频");
+        if (ImGui::Button("Play Test Tone")) {
+            Renderer::GetAssetManager().PlayOneShot("audio/sfx/test.wav", 1.0f);
         }
 
         ImGui::Separator();

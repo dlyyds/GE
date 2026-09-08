@@ -8,6 +8,7 @@
 #include "Render/TextureManager.h"
 #include "Render/MeshManager.h"
 #include "Render/MaterialManager.h"
+#include "Audio/SoundManager.h"
 
 #include "Render/VulkanBase/VulkanDevice.h"
 #include "Render/VulkanBase/VulkanResourceCache.h"
@@ -23,6 +24,7 @@ AssetManager::AssetManager(VulkanDevice &device, VulkanResourceCache &cache,
     m_TextureManager  = std::make_unique<TextureManager>(device, cache, upload);
     // 材质管理器先于网格管理器创建，供 MeshManager 在加载模型时创建子网格材质
     m_MaterialManager = std::make_unique<MaterialManager>();
+    m_SoundManager    = std::make_unique<Audio::SoundManager>();
     m_MeshManager     = std::make_unique<MeshManager>(device, *m_MaterialManager,
                                                       *m_TextureManager, upload);
     GE_CORE_INFO("AssetManager initialized (asset root: {0})", m_AssetRoot.string());
@@ -96,4 +98,17 @@ Mesh *AssetManager::LoadMesh(const std::string &path) {
     return GetMeshManager().Load(resolved.string());
 }
 
+Audio::SoundManager &AssetManager::GetSoundManager() {
+    return *m_SoundManager;
+}
+
+Audio::SoundAsset *AssetManager::LoadSound(const std::string &path) {
+    const std::filesystem::path resolved = ResolvePath(path);
+    return GetSoundManager().Load(resolved.string());
+}
+
+bool AssetManager::PlayOneShot(const std::string &path, float volume) {
+    const std::filesystem::path resolved = ResolvePath(path);
+    return GetSoundManager().PlayOneShot(resolved.string(), volume);
+}
 } // namespace GE

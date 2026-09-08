@@ -21,6 +21,10 @@ namespace GE {
 class Entity;
 class Event;
 
+namespace Audio {
+    class AudioWorld;
+}
+
 namespace Physics {
 class PhysicsWorld;
 struct CollisionEvent; // 定义在 PhysicsTypes.h（头文件只前向声明，避免引 Jolt）
@@ -166,6 +170,9 @@ public:
     /** @brief 获取物理世界指针（可能为 nullptr，如果物理系统未启用） */
     [[nodiscard]] Physics::PhysicsWorld *GetPhysicsWorld() const { return m_PhysicsWorld.get(); }
 
+    /// 音频世界（每 Scene 一个实例；可能为 nullptr）。
+    [[nodiscard]] Audio::AudioWorld *GetAudioWorld() const { return m_AudioWorld.get(); }
+
     /// 模拟运行态：Edit = 编辑器编辑（物理静止、可自由摆放），Playing = 运行时模拟（物理接管）
     enum class SimulationState : uint8_t { Edit, Playing };
 
@@ -222,6 +229,9 @@ private:
     /// 必须在 UpdateWorldTransforms（DFS 算好全部关节 world）之后调用。
     void UpdateSkins();
 
+    /// 每帧音频同步：Listener/Source 位置、延迟命令队列到 AudioContext（Play 态）。
+    void UpdateAudio(Timestep ts);
+
     /// 每帧动画更新：采样当前 clip 键帧写目标实体的局部 TRS。
     /// 必须在 UpdateWorldTransforms（DFS 据此重算 world）之前调用。
     void UpdateAnimations(Timestep ts);
@@ -259,6 +269,9 @@ private:
 
     /// 物理世界（每个 Scene 一个实例）
     std::unique_ptr<Physics::PhysicsWorld> m_PhysicsWorld;
+
+    /// 音频世界（每个 Scene 一个实例）
+    std::unique_ptr<Audio::AudioWorld> m_AudioWorld;
 
     /// 是否将输入路由给主相机（由编辑器设置）
     bool m_ProcessCameraInput = false;
@@ -307,6 +320,12 @@ private:
 
     /// 脚本组件销毁回调（清理 ScriptEngine 实例并调 OnDestroy）
     void OnScriptComponentDestroyed(entt::registry &registry, entt::entity entity);
+
+    /// 音频源组件销毁回调（停止该实体全部 Voice）
+    void OnAudioSourceDestroyed(entt::registry &registry, entt::entity entity);
+
+    /// 音频监听器组件销毁回调（清理缓存/失效状态）
+    void OnAudioListenerDestroyed(entt::registry &registry, entt::entity entity);
 
     friend class Entity;
     friend class Physics::PhysicsWorld;

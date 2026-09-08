@@ -929,6 +929,12 @@ void SceneHierarchyPanel::DrawComponents(Entity entity) {
     DrawComponent<EnvironmentComponent>("Environment", entity,
         [this](auto &c) { DrawEnvironmentComponent(c); });
 
+    DrawComponent<AudioSourceComponent>("Audio Source", entity,
+        [this](auto &c) { DrawAudioSourceComponent(c); });
+
+    DrawComponent<AudioListenerComponent>("Audio Listener", entity,
+        [](auto &c) { DrawAudioListenerComponent(c); });
+
     DrawComponent<RigidBodyComponent>("Rigid Body", entity,
         [&](auto &c) { DrawRigidBodyComponent(entity, c); });
 
@@ -976,6 +982,8 @@ void SceneHierarchyPanel::DrawAddComponentPopup() {
     TryAddComponent<DirectionalLightComponent>("Directional Light");
     TryAddComponent<AmbientLightComponent>("Ambient Light");
     TryAddComponent<EnvironmentComponent>("Environment");
+    TryAddComponent<AudioSourceComponent>("Audio Source");
+    TryAddComponent<AudioListenerComponent>("Audio Listener");
     TryAddComponent<RigidBodyComponent>("Rigid Body");
     TryAddComponent<CharacterControllerComponent>("Character Controller");
     TryAddComponent<FollowCameraComponent>("Follow Camera");
@@ -1662,6 +1670,78 @@ ImTextureID SceneHierarchyPanel::GetEnvironmentThumbnail(const std::string &envN
     m_EnvThumbnails[envName] = id;
     return id;
 }
+
+// ============================================================
+// Audio Source / Audio Listener 组件
+// ============================================================
+void SceneHierarchyPanel::DrawAudioSourceComponent(AudioSourceComponent &component) {
+    ImGui::Checkbox("Enabled", &component.Enabled);
+    ImGui::Checkbox("Spatial (3D)", &component.Spatial);
+    ImGui::Separator();
+
+    if (ImGui::Button("Add Sound"))
+        component.Sounds.emplace_back();
+
+    int removeIndex = -1;
+    for (int i = 0; i < static_cast<int>(component.Sounds.size()); ++i) {
+        AudioSound &s = component.Sounds[i];
+        ImGui::PushID(i);
+        ImGui::Text("Slot %d", i);
+
+        char nameBuf[256] = {};
+        strncpy_s(nameBuf, sizeof(nameBuf), s.Name.c_str(), _TRUNCATE);
+        if (ImGui::InputText("Name##slot", nameBuf, sizeof(nameBuf)))
+            s.Name = nameBuf;
+
+        char pathBuf[512] = {};
+        strncpy_s(pathBuf, sizeof(pathBuf), s.SoundPath.c_str(), _TRUNCATE);
+        if (ImGui::InputText("Sound Path##slot", pathBuf, sizeof(pathBuf)))
+            s.SoundPath = pathBuf;
+
+        ImGui::Checkbox("Play On Awake", &s.PlayOnAwake);
+        ImGui::Checkbox("Loop", &s.Loop);
+        ImGui::DragFloat("Volume", &s.Volume, 0.01f, 0.0f, 4.0f);
+        ImGui::DragFloat("Pitch", &s.Pitch, 0.01f, 0.1f, 4.0f);
+
+        ImGui::DragFloat("MinDistance", &s.MinDistance, 0.1f, 0.0f, 1000.0f);
+        ImGui::DragFloat("MaxDistance", &s.MaxDistance, 0.1f, 0.0f, 1000.0f);
+        ImGui::DragFloat("Rolloff", &s.Rolloff, 0.05f, 0.0f, 10.0f);
+
+        const char *attItems[] = { "Inverse", "Linear", "Exponential", "None" };
+        int attIdx = 0;
+        switch (s.Attenuation) {
+        case Audio::AttenuationModel::Linear:      attIdx = 1; break;
+        case Audio::AttenuationModel::Exponential: attIdx = 2; break;
+        case Audio::AttenuationModel::None:        attIdx = 3; break;
+        default:                                   attIdx = 0; break;
+        }
+        if (ImGui::Combo("Attenuation##slot", &attIdx, attItems, 4)) {
+            if (attIdx == 1)      s.Attenuation = Audio::AttenuationModel::Linear;
+            else if (attIdx == 2) s.Attenuation = Audio::AttenuationModel::Exponential;
+            else if (attIdx == 3) s.Attenuation = Audio::AttenuationModel::None;
+            else                  s.Attenuation = Audio::AttenuationModel::Inverse;
+        }
+
+        if (!s.SoundPath.empty() && ImGui::Button("Preview##slot"))
+            Renderer::GetAssetManager().PlayOneShot(s.SoundPath, 1.0f);
+
+        ImGui::SameLine();
+        if (ImGui::Button("Remove##slot"))
+            removeIndex = i;
+
+        ImGui::Separator();
+        ImGui::PopID();
+    }
+
+    if (removeIndex >= 0)
+        component.Sounds.erase(component.Sounds.begin() + removeIndex);
+}
+
+void SceneHierarchyPanel::DrawAudioListenerComponent(AudioListenerComponent &component) {
+    ImGui::Checkbox("Enabled", &component.Enabled);
+    ImGui::TextWrapped("Listener 位置来自实体 Transform；无 Listener 时回退主相机。");
+}
+
 
 // ============================================================
 // Rigid Body 组件

@@ -117,6 +117,12 @@ private:
     /// 绘制 CapsuleCollider 组件属性
     void DrawCapsuleColliderComponent(Entity entity, CapsuleColliderComponent &component);
 
+    /// 绘制 AudioSource 组件属性
+    void DrawAudioSourceComponent(AudioSourceComponent &component);
+
+    /// 绘制 AudioListener 组件属性
+    static void DrawAudioListenerComponent(AudioListenerComponent &component);
+
     /// 绘制 BoundingBox（实体级粗剔除盒）组件属性
     static void DrawBoundingBoxComponent(Entity entity, BoundingBoxComponent &component, Scene *scene);
 

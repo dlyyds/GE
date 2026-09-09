@@ -574,7 +574,8 @@ Mesh *MeshManager::CreateWaterGrid(uint32_t resolution) {
         return nullptr;
     }
     mesh->SetFilePath(key);
-    BuildSubMeshMaterials(*mesh, key);
+    // 水面不通过普通子网格/材质路径绘制（Renderer3D 用其独立 WaterUBO + 默认法线 fallback），
+    // 不走 BuildSubMeshMaterials，避免在 MaterialManager 残留一个无用的 default 材质/纹理。
 
     return Register(key, std::move(mesh));
 }

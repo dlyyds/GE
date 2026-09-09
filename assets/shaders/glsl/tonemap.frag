@@ -9,8 +9,8 @@
 
 layout (set = 0, binding = 0, std140) uniform TonemapUBO
 {
-    vec4 exposure; // x = 曝光系数（默认 1.0），yzw 预留
-    vec4 flags;    // x = tonemap 开关，y = 启用天空 alpha 旗标，zw 预留
+    vec4 exposure;// x = 曝光系数（默认 1.0），yzw 预留
+    vec4 flags;// x = tonemap 开关，y = 启用天空 alpha 旗标，zw 预留
 } tonemap;
 
 layout (set = 0, binding = 1) uniform sampler2D samplerHDR;
@@ -21,7 +21,7 @@ layout (location = 0) out vec4 outColor;
 vec3 acesToneMap(vec3 x)
 {
     return clamp((x * (2.51 * x + 0.03)) /
-                 (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
+    (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
 }
 
 void main()
@@ -29,12 +29,12 @@ void main()
     vec4 hdr = texture(samplerHDR, inUV);
     vec3 color = hdr.rgb;
 
-    if (tonemap.flags.y > 0.5 && hdr.a < 0.5)
-    {
-        // 天空像素：直接输出，不曝光不 tonemap（维持现状语义）
-        outColor = vec4(color, 1.0);
-        return;
-    }
+    //    if (tonemap.flags.y > 0.5 && hdr.a < 0.5)
+    //    {
+    //        // 天空像素：直接输出，不曝光不 tonemap（维持现状语义）
+    //        outColor = vec4(color, 1.0);
+    //        return;
+    //    }
 
     color *= tonemap.exposure.x;
     if (tonemap.flags.x > 0.5)

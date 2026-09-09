@@ -116,6 +116,7 @@ function M.OnUpdate(self, ts)
     -- 普通攻击：鼠标左键按下一次触发一次攻击脉冲
     if input.just_mouse_pressed(Mouse.ButtonLeft) then
         anim.trigger("attack")
+        audio.play("attack")
         log.info("fps_character_combat_demo: 普通攻击")
     end
 end

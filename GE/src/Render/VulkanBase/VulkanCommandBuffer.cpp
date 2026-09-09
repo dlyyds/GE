@@ -32,6 +32,7 @@
 
 #include <cassert>
 #include <cstring>
+#include <stdexcept>
 #include <utility>
 
 namespace GE {
@@ -372,7 +373,11 @@ void VulkanCommandBuffer::FlushPipelineState(VulkanDevice &device,
         auto &pipeline = cache.RequestGraphicsPipeline(m_PipelineState);
         GetHandle().bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline.GetHandle());
     } else if (pipeline_bind_point == vk::PipelineBindPoint::eCompute) {
-        auto &pipeline = cache.RequestComputePipeline(m_PipelineState);
+        auto *layout = m_PipelineState.getPipelineLayout();
+        if (!layout) {
+            throw std::runtime_error("Compute dispatch requires a bound pipeline layout");
+        }
+        auto &pipeline = cache.RequestComputePipeline(*layout);
         GetHandle().bindPipeline(vk::PipelineBindPoint::eCompute, pipeline.GetHandle());
     }
 

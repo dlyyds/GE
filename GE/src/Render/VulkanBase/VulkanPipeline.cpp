@@ -20,8 +20,10 @@
  * @brief VulkanPipeline 各子类实现。
  */
 
-#include "Render/VulkanBase/VulkanPipeline.h"
 #include "Render/VulkanBase/VulkanDevice.h"
+#include "Render/VulkanBase/VulkanPipeline.h"
+#include "Render/VulkanBase/VulkanPipelineLayout.h"
+#include "Render/VulkanBase/VulkanShaderModule.h"
 
 namespace GE {
 
@@ -77,15 +79,39 @@ VulkanGraphicsPipeline::~VulkanGraphicsPipeline() {
 // ============================================================================
 // VulkanComputePipeline
 // ============================================================================
-// TODO: 计算管线使用 vk::ComputePipelineCreateInfo，需要从 VulkanPipelineState
-//       中提取 compute shader 阶段和 pipeline layout。当前 VulkanPipelineState
-//       主要针对图形管线设计，计算管线功能待后续补充。
+// 计算管线只依赖 VulkanPipelineLayout：布局须恰好挂载一个 compute shader
+// 模块，阶段与 pipeline layout 均从布局提取，不需要 VulkanPipelineState。
 // ============================================================================
 
 VulkanComputePipeline::VulkanComputePipeline(VulkanDevice &device,
-                                             VulkanPipelineState & /*pipeline_state*/,
-                                             VkPipelineCache /*pipeline_cache*/) : VulkanPipeline(device) {
-    throw std::runtime_error("Compute pipeline not yet implemented");
+                                             VulkanPipelineLayout &pipeline_layout,
+                                             VkPipelineCache pipeline_cache) : VulkanPipeline(device) {
+    const auto &modules = pipeline_layout.GetShaderModules();
+    if (modules.size() != 1 || modules[0]->get_stage() != vk::ShaderStageFlagBits::eCompute) {
+        throw std::runtime_error(
+            "Compute pipeline requires a layout containing exactly one compute shader module");
+    }
+
+    // compute 阶段（入口点字符串来自模块，存活期覆盖同步创建调用）
+    vk::PipelineShaderStageCreateInfo stage{
+        .stage  = vk::ShaderStageFlagBits::eCompute,
+        .module = modules[0]->GetHandle(),
+        .pName  = modules[0]->get_entry_point().c_str(),
+    };
+
+    vk::ComputePipelineCreateInfo compute_info{
+        .stage  = stage,
+        .layout = pipeline_layout.GetHandle(),
+    };
+
+    auto result = GetDevice().GetHandle().createComputePipeline(
+        vk::PipelineCache{pipeline_cache}, compute_info);
+
+    if (result.result != vk::Result::eSuccess) {
+        throw std::runtime_error("Failed to create compute pipeline");
+    }
+
+    SetHandle(result.value);
 }
 
 VulkanComputePipeline::~VulkanComputePipeline() = default;

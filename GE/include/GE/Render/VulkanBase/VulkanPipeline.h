@@ -24,7 +24,7 @@
  *     ├─ VulkanGraphicsPipeline（图形管线）
  *     └─ VulkanComputePipeline（计算管线）
  *
- * 基类持有由外部传入的 VulkanPipelineState 副本。
+ * 基类持有 VulkanPipelineState 副本（仅图形管线填充；计算管线不使用该状态）。
  */
 
 #pragma once
@@ -39,6 +39,7 @@
 namespace GE {
 
 class VulkanDevice;
+class VulkanPipelineLayout;
 
 /**
  * @brief Vulkan 管线基类。
@@ -106,12 +107,13 @@ public:
 /**
  * @brief 计算管线。
  *
- * 从给定的 VulkanPipelineState 创建 VkPipeline。
+ * 从给定 VulkanPipelineLayout 创建 VkPipeline；该布局须恰好挂载一个
+ * compute shader 模块（阶段与 layout 均取自布局，不需要 VulkanPipelineState）。
  */
 class VulkanComputePipeline : public VulkanPipeline {
 public:
     VulkanComputePipeline(VulkanDevice &device,
-                          VulkanPipelineState &pipeline_state,
+                          VulkanPipelineLayout &pipeline_layout,
                           VkPipelineCache pipeline_cache = VK_NULL_HANDLE);
 
     ~VulkanComputePipeline() override;

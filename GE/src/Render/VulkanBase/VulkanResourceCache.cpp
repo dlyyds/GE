@@ -71,9 +71,9 @@ VulkanGraphicsPipeline &VulkanResourceCache::RequestGraphicsPipeline(VulkanPipel
                                                     pipeline_state);
 }
 
-VulkanComputePipeline &VulkanResourceCache::RequestComputePipeline(VulkanPipelineState &pipeline_state) {
+VulkanComputePipeline &VulkanResourceCache::RequestComputePipeline(VulkanPipelineLayout &pipeline_layout) {
     return RequestResource<VulkanComputePipeline>(m_ComputePipelineMutex, m_ComputePipelines,
-                                                   pipeline_state);
+                                                   pipeline_layout);
 }
 
 VulkanSampler &VulkanResourceCache::RequestSampler(vk::Filter              mag_filter,

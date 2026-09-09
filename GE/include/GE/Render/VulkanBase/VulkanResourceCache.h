@@ -105,9 +105,9 @@ public:
     VulkanGraphicsPipeline &RequestGraphicsPipeline(VulkanPipelineState &pipeline_state);
 
     /**
-     * @brief 请求计算管线（按 pipeline_state 去重）。
+     * @brief 请求计算管线（按 pipeline_layout 去重）。
      */
-    VulkanComputePipeline &RequestComputePipeline(VulkanPipelineState &pipeline_state);
+    VulkanComputePipeline &RequestComputePipeline(VulkanPipelineLayout &pipeline_layout);
 
     /**
      * @brief 请求 Sampler（按创建参数去重）。

@@ -94,7 +94,7 @@ void Renderer3D::RecordScene(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame,
     // ── 段 3：水面（透明段末）────────────────────────────────
     // 水面不在通用网格批次中：独立水格 + 独立 WaterUBO，但同样走 Blend 透明段。
     DrawWaterBatches(cmd, frame, frameUboAlloc, lightBuffer,
-                     colorFormat, depthFormat, extent, /*hdrTransparent=*/false);
+                     colorFormat, depthFormat, extent, {}, /*hdrTransparent=*/false);
     // ── 统计 draw call 与三角形数量（含水面批次）──
     RecordStats(static_cast<uint32_t>(batches.size() + m_WaterBatches.size()));
     m_WaterBatches.clear();
@@ -471,6 +471,7 @@ void Renderer3D::DrawWaterBatches(VulkanCommandBuffer &cmd, VulkanRenderFrame &f
                                   const BufferAllocation &lightBuffer,
                                   vk::Format colorFormat, vk::Format depthFormat,
                                   vk::Extent2D extent,
+                                  const std::vector<VulkanImageView *> &readImages,
                                   bool hdrTransparent) {
     if (m_WaterBatches.empty()) {
         return;
@@ -506,6 +507,21 @@ void Renderer3D::DrawWaterBatches(VulkanCommandBuffer &cmd, VulkanRenderFrame &f
         if (colorTex) {
             cmd.BindImage(colorTex->GetImageView(), colorTex->GetSampler(), 1, 2);
         }
+        // Stage 2 refraction inputs (HDR transparent path only):
+        // readImageViews[0] = Scene_HDR copy, readImageViews[1] = SceneDepth copy.
+        // Scene color uses a linear sampler; depth uses nearest to avoid interpolation.
+        if (hdrTransparent && m_DefaultWhiteTexture) {
+            if (readImages.size() >= 1 && readImages[0]) {
+                cmd.BindImage(*readImages[0], m_DefaultWhiteTexture->GetSampler(), 1, 3);
+            }
+            VulkanSampler *sceneDepthSampler = m_ShadowSampler
+                                                   ? m_ShadowSampler
+                                                   : &m_DefaultWhiteTexture->GetSampler();
+            if (readImages.size() >= 2 && readImages[1] && sceneDepthSampler) {
+                cmd.BindImage(*readImages[1], *sceneDepthSampler, 1, 4);
+            }
+        }
+
 
         // 填充水面 UBO（std140）。waveSpeeds 只用到 x，其余补 0。
         WaterUBO ubo{};
@@ -520,10 +536,11 @@ void Renderer3D::DrawWaterBatches(VulkanCommandBuffer &cmd, VulkanRenderFrame &f
                                    batch.normalTiling, batch.reflectionStrength);
         ubo.foamParams = glm::vec4(batch.foamDistance, batch.foamIntensity,
                                    batch.absorptionDepth, batch.timeScale);
+        ubo.invProj = glm::inverse(m_Projection);  // for SceneDepth -> view-space reconstruction
         // 未绑/未就绪色彩贴图时强度强制 0 → mix 结果 = 纯深水色，老场景视觉不变。
         ubo.colorParams = glm::vec4(batch.colorTiling,
                                     colorReady ? batch.colorStrength : 0.0f,
-                                    0.0f, 0.0f);
+                                    batch.alphaCoverage, 0.0f);
         for (int i = 0; i < 4; ++i) {
             const auto &w = batch.waves[i];
             ubo.waves[i] = glm::vec4(w.direction.x, w.direction.y,

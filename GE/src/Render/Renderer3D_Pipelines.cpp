@@ -76,6 +76,7 @@ void Renderer3D::ConfigureShadowPipeline(VulkanCommandBuffer &cmd,
     scissor.extent.height = extent.height;
     cmd.SetScissor(0, {scissor});
 }
+
 void Renderer3D::ConfigureMeshPipeline(VulkanCommandBuffer &cmd,
                                        vk::Format colorFormat, vk::Format depthFormat,
                                        vk::Extent2D extent,
@@ -175,6 +176,7 @@ void Renderer3D::ConfigureMeshPipeline(VulkanCommandBuffer &cmd,
     scissor.extent.height = extent.height;
     cmd.SetScissor(0, {scissor});
 }
+
 void Renderer3D::ConfigureWaterPipeline(VulkanCommandBuffer &cmd,
                                         vk::Format colorFormat, vk::Format depthFormat,
                                         vk::Extent2D extent,
@@ -215,7 +217,7 @@ void Renderer3D::ConfigureWaterPipeline(VulkanCommandBuffer &cmd,
                                 static_cast<uint32_t>(sizeof(Vertex)));
 
     ps.setInputAssembly(vk::PrimitiveTopology::eTriangleList)
-        .setCullMode(vk::CullModeFlagBits::eBack)
+        .setCullMode(vk::CullModeFlagBits::eNone)
         .setFrontFace(vk::FrontFace::eCounterClockwise)
         .setDepthTestEnable(VK_TRUE)
         .setDepthWriteEnable(VK_FALSE)
@@ -242,6 +244,7 @@ void Renderer3D::ConfigureWaterPipeline(VulkanCommandBuffer &cmd,
     scissor.extent.height = extent.height;
     cmd.SetScissor(0, {scissor});
 }
+
 void Renderer3D::ConfigureGBufferPipeline(VulkanCommandBuffer &cmd,
                                           const std::vector<vk::Format> &colorFormats,
                                           vk::Format depthFormat,
@@ -294,6 +297,7 @@ void Renderer3D::ConfigureGBufferPipeline(VulkanCommandBuffer &cmd,
     scissor.extent.height = extent.height;
     cmd.SetScissor(0, {scissor});
 }
+
 void Renderer3D::ConfigureLightingPipeline(VulkanCommandBuffer &cmd,
                                            vk::Format colorFormat,
                                            vk::Extent2D extent) {
@@ -339,6 +343,7 @@ void Renderer3D::ConfigureLightingPipeline(VulkanCommandBuffer &cmd,
     scissor.extent.height = extent.height;
     cmd.SetScissor(0, {scissor});
 }
+
 void Renderer3D::ConfigureTonemapPipeline(VulkanCommandBuffer &cmd,
                                           vk::Format colorFormat,
                                           vk::Extent2D extent) {
@@ -383,11 +388,12 @@ void Renderer3D::ConfigureTonemapPipeline(VulkanCommandBuffer &cmd,
     scissor.extent.height = extent.height;
     cmd.SetScissor(0, {scissor});
 }
+
 void Renderer3D::ConfigureBloomFullscreenPipeline(VulkanCommandBuffer &cmd,
-                                                 VulkanPipelineLayout *layout,
-                                                 VulkanShaderModule *vert,
-                                                 vk::Format colorFormat,
-                                                 vk::Extent2D extent) {
+                                                  VulkanPipelineLayout *layout,
+                                                  VulkanShaderModule *vert,
+                                                  vk::Format colorFormat,
+                                                  vk::Extent2D extent) {
     // Bloom 各 pass 不依赖顶点缓冲 / 深度附件；全屏三角形采样一张或多张输入后写出。
     cmd.BindPipelineLayout(*layout);
 
@@ -429,6 +435,7 @@ void Renderer3D::ConfigureBloomFullscreenPipeline(VulkanCommandBuffer &cmd,
     scissor.extent.height = extent.height;
     cmd.SetScissor(0, {scissor});
 }
+
 void Renderer3D::BindSharedUniforms(VulkanCommandBuffer &cmd,
                                     const BufferAllocation &frameUbo,
                                     const BufferAllocation &lightBuffer,
@@ -444,6 +451,7 @@ void Renderer3D::BindSharedUniforms(VulkanCommandBuffer &cmd,
                        lightBuffer.get_size(), 0, 1);
     }
 }
+
 VulkanPipelineLayout *Renderer3D::ResolveMeshLayout(bool shadow, bool gbuffer,
                                                     bool pbr, bool useIbl,
                                                     bool skinned,

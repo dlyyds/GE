@@ -45,6 +45,7 @@ class VulkanPipelineLayout;
 class VulkanShaderModule;
 class VulkanCommandBuffer;
 class VulkanRenderFrame;
+class VulkanImageView;
 class VulkanSampler;
 struct PassExecuteContext;
 struct WaterComponent;
@@ -483,6 +484,12 @@ public:
     /// 录制 Lighting pass（采样 GBuffer，输出线性 HDR 到 Scene_HDR）。
     void FlushLighting(PassExecuteContext &ctx);
 
+    /// Stage 2: copy Scene_HDR into Scene_HDR_Base for water pass (no self read/write).
+    void FlushSceneColorCopy(PassExecuteContext &ctx);
+
+    /// Stage 2: expose opaque scene depth as a sampled color resource.
+    void FlushSceneDepthCopy(PassExecuteContext &ctx);
+
     /// 录制 Tonemap pass（采样 Scene_HDR，曝光 + ACES 后写入视口颜色）。
     void FlushTonemap(PassExecuteContext &ctx);
 
@@ -617,6 +624,7 @@ private:
         std::array<glm::vec4, 4> waves{};
         std::array<glm::vec4, 4> waveSpeeds{};
         glm::vec4 colorParams{0.0f};
+        glm::mat4 invProj{1.0f}; ///< inverse projection for SceneDepth reconstruction
     };
 
     static_assert(sizeof(WaterUBO) % 16 == 0, "WaterUBO 必须 16 字节对齐");
@@ -679,7 +687,9 @@ private:
         float colorTiling = 1.0f;
         float colorStrength = 0.6f;
         float roughness = 0.12f;
-        float opacity = 1.0f;          ///< 整体不透明度（写 deepColor.a 传给 shader）
+        float opacity = 1.0f;
+        float alphaCoverage = 0.55f;   ///< vertical-view alpha baseline, multiplied by opacity
+          ///< 整体不透明度（写 deepColor.a 传给 shader）
         float reflectionStrength = 0.85f;
         float refractionStrength = 0.25f;
         float absorptionDepth = 2.0f;
@@ -842,6 +852,7 @@ private:
                           const BufferAllocation &lightBuffer,
                           vk::Format colorFormat, vk::Format depthFormat,
                           vk::Extent2D extent,
+                          const std::vector<VulkanImageView *> &readImages,
                           bool hdrTransparent);
 
     /// 统计 draw call 与三角形数量（draw call = 批次数量）
@@ -1009,6 +1020,12 @@ private:
 
     /// 延迟 Lighting 管线布局（由全局资源缓存管理，不拥有）
     VulkanPipelineLayout *m_LightingLayout = nullptr;
+
+    /// Stage 2 copy passes: Scene_HDR base + SceneDepth.
+    VulkanShaderModule *m_SceneColorCopyFrag = nullptr;
+    VulkanShaderModule *m_SceneDepthCopyFrag = nullptr;
+    VulkanPipelineLayout *m_SceneColorCopyLayout = nullptr;
+    VulkanPipelineLayout *m_SceneDepthCopyLayout = nullptr;
 
     /// Tonemap 全屏三角形顶点/片元着色器（由全局资源缓存管理，不拥有）
     VulkanShaderModule *m_TonemapVert = nullptr;

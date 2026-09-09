@@ -265,6 +265,42 @@ void Renderer3D::FlushLighting(PassExecuteContext &ctx) {
 
     cmd.Draw(3, 1, 0, 0);
 }
+void Renderer3D::FlushSceneColorCopy(PassExecuteContext &ctx) {
+    GE_PROFILE_SCOPE("Renderer3D::FlushSceneColorCopy");
+
+    GE_CORE_ASSERT(ctx.colorAttachmentView, "SceneColorCopy pass must have a color attachment");
+    const vk::Format colorFormat = ctx.colorAttachmentView->get_format();
+
+    ConfigureBloomFullscreenPipeline(*ctx.cmd, m_SceneColorCopyLayout, m_LightingVert,
+                                     colorFormat, ctx.renderArea.extent);
+
+    auto &cmd = *ctx.cmd;
+    if (m_DefaultWhiteTexture && !ctx.readImageViews.empty()) {
+        cmd.BindImage(*ctx.readImageViews[0], m_DefaultWhiteTexture->GetSampler(), 0, 0);
+    }
+    cmd.Draw(3, 1, 0, 0);
+}
+void Renderer3D::FlushSceneDepthCopy(PassExecuteContext &ctx) {
+    GE_PROFILE_SCOPE("Renderer3D::FlushSceneDepthCopy");
+
+    GE_CORE_ASSERT(ctx.colorAttachmentView, "SceneDepthCopy pass must have a color attachment");
+    const vk::Format colorFormat = ctx.colorAttachmentView->get_format();
+
+    ConfigureBloomFullscreenPipeline(*ctx.cmd, m_SceneDepthCopyLayout, m_LightingVert,
+                                     colorFormat, ctx.renderArea.extent);
+
+    auto &cmd = *ctx.cmd;
+    if (!ctx.readImageViews.empty()) {
+        VulkanSampler *sampler = m_ShadowSampler ? m_ShadowSampler
+                                                    : (m_DefaultWhiteTexture
+                                                           ? &m_DefaultWhiteTexture->GetSampler()
+                                                           : nullptr);
+        if (sampler) {
+            cmd.BindImage(*ctx.readImageViews[0], *sampler, 0, 0);
+        }
+    }
+    cmd.Draw(3, 1, 0, 0);
+}
 void Renderer3D::FlushTonemap(PassExecuteContext &ctx) {
     GE_PROFILE_SCOPE("Renderer3D::FlushTonemap");
 
@@ -390,7 +426,7 @@ void Renderer3D::FlushTransparent(PassExecuteContext &ctx) {
         // 水面（透明段末）：HDR 变体输出到 Scene_HDR（Tonemap 前）。
         DrawWaterBatches(*ctx.cmd, *ctx.frame, m_CachedFrameUBO, m_CachedLightBuffer,
                          colorFormat, depthFormat, ctx.renderArea.extent,
-                         /*hdrTransparent=*/true);
+                         ctx.readImageViews, /*hdrTransparent=*/true);
         m_WaterBatches.clear();
 
         m_OpaqueBatches.clear();

@@ -36,6 +36,7 @@ layout(set = 0, binding = 2, std140) uniform WaterUBO
     vec4 waves[4];
     vec4 waveSpeeds[4];
     vec4 colorParams; // x=色彩平铺, y=色彩强度
+    mat4 invProj;     // inverse projection for SceneDepth reconstruction
 } water;
 
 layout(set = 1, binding = 0) uniform sampler2D samplerNormal;
@@ -177,6 +178,7 @@ void main()
     // 轮廓钳到 [0.12,1] 后抬升为 0.25+0.75×轮廓，让垂直视角也有基础实度，
     // 再乘整体不透明度（编辑器「不透明度」）——滑条 0→1 全角度线性响应。
     float fresnelProfile = clamp(fresnel + 0.1, 0.0, 1.0);
+    float alphaCoverage = clamp(water.colorParams.z, 0.0, 1.0);  // UI: alpha baseline at vertical view
     float alpha;
     if (underwater) {
         // 水下表面保持半透明、透出背后内容：掠射方向若按 Fresnel 抬 alpha，
@@ -185,7 +187,7 @@ void main()
         // 只留一层淡淡的"水膜"质感。
         alpha = clamp(water.deepColor.a * (0.15 + 0.2 * fresnelProfile), 0.0, 1.0);
     } else {
-        alpha = clamp(water.deepColor.a * (0.25 + 0.75 * fresnelProfile), 0.0, 1.0);
+        alpha = clamp(water.deepColor.a * (alphaCoverage + (1.0 - alphaCoverage) * fresnelProfile), 0.0, 1.0);
     }
 
     // 前向路径：ACES 色调映射后再输出（由 sRGB swapchain 硬件编码）

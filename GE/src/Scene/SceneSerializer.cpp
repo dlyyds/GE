@@ -981,6 +981,7 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
             waterNode["ColorStrength"] = wc.ColorStrength;
             waterNode["Roughness"] = wc.Roughness;
             waterNode["Opacity"] = wc.Opacity;
+            waterNode["AlphaCoverage"] = wc.AlphaCoverage;
             waterNode["ReflectionStrength"] = wc.ReflectionStrength;
             waterNode["RefractionStrength"] = wc.RefractionStrength;
             waterNode["AbsorptionDepth"] = wc.AbsorptionDepth;
@@ -1619,6 +1620,7 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
             wc.ColorStrength = wn["ColorStrength"] ? wn["ColorStrength"].as<float>(0.6f) : 0.6f;
             wc.Roughness = wn["Roughness"] ? wn["Roughness"].as<float>(0.12f) : 0.12f;
             wc.Opacity = wn["Opacity"] ? wn["Opacity"].as<float>(1.0f) : 1.0f;
+            wc.AlphaCoverage = wn["AlphaCoverage"] ? wn["AlphaCoverage"].as<float>(0.55f) : 0.55f;
             wc.ReflectionStrength = wn["ReflectionStrength"] ? wn["ReflectionStrength"].as<float>(0.85f) : 0.85f;
             wc.RefractionStrength = wn["RefractionStrength"] ? wn["RefractionStrength"].as<float>(0.25f) : 0.25f;
             wc.AbsorptionDepth = wn["AbsorptionDepth"] ? wn["AbsorptionDepth"].as<float>(2.0f) : 2.0f;

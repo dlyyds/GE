@@ -401,6 +401,7 @@ void SceneHierarchyPanel::DrawWaterComponent(WaterComponent &component) {
     if (ImGui::CollapsingHeader("色彩 / 材质", ImGuiTreeNodeFlags_DefaultOpen)) {
         ImGui::ColorEdit3("深水色", glm::value_ptr(component.DeepColor));
         ImGui::DragFloat("不透明度", &component.Opacity, 0.01f, 0.0f, 1.0f, "%.2f"); // 前向/HDR 统一按 Fresnel 逐像素生效（deepColor.a 传入 shader）
+        ImGui::DragFloat("表面覆盖", &component.AlphaCoverage, 0.01f, 0.0f, 1.0f, "%.2f"); // vertical-view alpha baseline: 0=very transparent, 1=almost solid
         ImGui::ColorEdit3("浅水色", glm::value_ptr(component.ShallowColor));
         ImGui::DragFloat("粗糙度", &component.Roughness, 0.01f, 0.0f, 1.0f, "%.3f");
         ImGui::DragFloat("法线平铺", &component.NormalTiling, 0.1f, 0.5f, 32.0f, "%.2f");

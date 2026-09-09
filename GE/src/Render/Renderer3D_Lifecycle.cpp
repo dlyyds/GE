@@ -238,6 +238,24 @@ Renderer3D::Renderer3D() {
     m_LightingLayout = &cache.RequestPipelineLayout({m_LightingVert, m_LightingFrag});
     m_LightingLayout->SetDebugName("DeferredLighting_PipelineLayout");
 
+    // Stage 2: Scene_HDR / SceneDepth snapshot passes used by the water Transparent pass.
+    m_SceneColorCopyFrag = &cache.RequestShaderModule(
+        vk::ShaderStageFlagBits::eFragment,
+        ShaderSource(Renderer::GetAssetManager()
+            .ResolvePath(std::string(AssetPaths::Shaders) + "/scene_color_copy.frag.spv")
+            .string()),
+        "main", ShaderVariant{});
+    m_SceneDepthCopyFrag = &cache.RequestShaderModule(
+        vk::ShaderStageFlagBits::eFragment,
+        ShaderSource(Renderer::GetAssetManager()
+            .ResolvePath(std::string(AssetPaths::Shaders) + "/scene_depth_copy.frag.spv")
+            .string()),
+        "main", ShaderVariant{});
+    m_SceneColorCopyLayout = &cache.RequestPipelineLayout({m_LightingVert, m_SceneColorCopyFrag});
+    m_SceneColorCopyLayout->SetDebugName("SceneColorCopy_PipelineLayout");
+    m_SceneDepthCopyLayout = &cache.RequestPipelineLayout({m_LightingVert, m_SceneDepthCopyFrag});
+    m_SceneDepthCopyLayout->SetDebugName("SceneDepthCopy_PipelineLayout");
+
     // ── 延迟渲染：Tonemap 全屏三角形着色器 + 管线布局 ──────────────
     m_TonemapVert = &cache.RequestShaderModule(
         vk::ShaderStageFlagBits::eVertex,
@@ -476,6 +494,10 @@ Renderer3D::~Renderer3D() {
     m_LightingVert = nullptr;
     m_LightingFrag = nullptr;
     m_LightingLayout = nullptr;
+    m_SceneColorCopyFrag = nullptr;
+    m_SceneDepthCopyFrag = nullptr;
+    m_SceneColorCopyLayout = nullptr;
+    m_SceneDepthCopyLayout = nullptr;
     m_SkyboxVert = nullptr;
     m_SkyboxFrag = nullptr;
     m_SkyboxLayout = nullptr;

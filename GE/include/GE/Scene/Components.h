@@ -355,7 +355,9 @@ struct WaterComponent {
     float ColorTiling = 1.0f;  ///< 色彩贴图平铺次数（UV 乘数）
     float ColorStrength = 0.6f; ///< 0 = 纯深水色，1 = 完全用贴图颜色
 
-    float Opacity          = 1.0f;                   ///< 整体不透明度 0~1（1=与旧行为一致；前向/HDR 均按 Fresnel 逐像素生效）
+    float Opacity          = 1.0f;
+    float AlphaCoverage    = 0.55f;                  ///< alpha baseline at vertical view (0=very transparent, 1=solid; multiplied with Opacity)
+                   ///< 整体不透明度 0~1（1=与旧行为一致；前向/HDR 均按 Fresnel 逐像素生效）
 
     // —— 反射 / 折射 ——
     float ReflectionStrength = 0.85f;               ///< IBL 反射叠加强度

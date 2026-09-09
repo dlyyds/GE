@@ -276,6 +276,17 @@ void SceneLayer::RecordScenePasses(RenderTarget &viewportRT, const glm::vec4 &cl
         hdrDesc.samples = vk::SampleCountFlagBits::e1;
         hdrDesc.format = vk::Format::eR16G16B16A16Sfloat;
         ResourceHandle hHDR = b.CreateVirtualResource(hdrDesc, "Scene_HDR");
+        // Stage 2: copies of the opaque scene used by the water pass.
+        // Scene_HDR_Base is a snapshot of Lighting output; SceneDepth is the
+        // opaque depth copied into a sampled color texture. Water reads these
+        // instead of the live Transparent attachments to avoid self-dependency.
+        RenderGraphResourceDesc hdrBaseDesc = hdrDesc;
+        ResourceHandle hHDRBase = b.CreateVirtualResource(hdrBaseDesc, "Scene_HDR_Base");
+        RenderGraphResourceDesc sceneDepthDesc;
+        sceneDepthDesc.extent = extent;
+        sceneDepthDesc.samples = vk::SampleCountFlagBits::e1;
+        sceneDepthDesc.format = vk::Format::eR32Sfloat;
+        ResourceHandle hSceneDepth = b.CreateVirtualResource(sceneDepthDesc, "SceneDepth");
 
         // 方向光阴影（CSM C2）：逐级声明 ShadowMap_C0..C{N-1}，每级一张独立深度图
         // （虚拟资源，格式 D32F，尺寸 = GetCascadeShadowSize(c)：级 0 保持现状 4096²、
@@ -378,12 +389,49 @@ void SceneLayer::RecordScenePasses(RenderTarget &viewportRT, const glm::vec4 &cl
             Renderer::Get3DRenderer().FlushLighting(ctx);
         };
 
+        // Pass2a1 "SceneColorCopy": Lighting -> Scene_HDR_Base (for water refraction).
+        RenderPassDesc &sceneColorCopyPass = b.AddPass("SceneColorCopy");
+        sceneColorCopyPass.renderArea = renderArea;
+        sceneColorCopyPass.readImages.push_back(
+            {hHDR, ResourceUsage::ShaderRead, vk::ImageLayout::eShaderReadOnlyOptimal});
+        AttachmentDesc sceneColorCopyColor;
+        sceneColorCopyColor.resource = hHDRBase;
+        sceneColorCopyColor.usage = ResourceUsage::ColorAttachment;
+        sceneColorCopyColor.loadOp = vk::AttachmentLoadOp::eClear;
+        sceneColorCopyColor.storeOp = vk::AttachmentStoreOp::eStore;
+        sceneColorCopyColor.clearValue.color = {0.0f, 0.0f, 0.0f, 0.0f};
+        sceneColorCopyPass.colorAttachments.push_back(sceneColorCopyColor);
+        sceneColorCopyPass.execute = [](PassExecuteContext &ctx) {
+            Renderer::Get3DRenderer().FlushSceneColorCopy(ctx);
+        };
+
+        // Pass2a2 "SceneDepthCopy": opaque depth -> SceneDepth (sampled R32 color).
+        RenderPassDesc &sceneDepthCopyPass = b.AddPass("SceneDepthCopy");
+        sceneDepthCopyPass.renderArea = renderArea;
+        sceneDepthCopyPass.readImages.push_back(
+            {hDepth, ResourceUsage::ShaderRead, vk::ImageLayout::eShaderReadOnlyOptimal});
+        AttachmentDesc sceneDepthCopyColor;
+        sceneDepthCopyColor.resource = hSceneDepth;
+        sceneDepthCopyColor.usage = ResourceUsage::ColorAttachment;
+        sceneDepthCopyColor.loadOp = vk::AttachmentLoadOp::eClear;
+        sceneDepthCopyColor.storeOp = vk::AttachmentStoreOp::eStore;
+        sceneDepthCopyColor.clearValue.color = {0.0f, 0.0f, 0.0f, 0.0f};
+        sceneDepthCopyPass.colorAttachments.push_back(sceneDepthCopyColor);
+        sceneDepthCopyPass.execute = [](PassExecuteContext &ctx) {
+            Renderer::Get3DRenderer().FlushSceneDepthCopy(ctx);
+        };
+
         // Pass2b "Transparent"：在 Tonemap 前写回 Scene_HDR，在线性 HDR 空间
         // 合成。颜色 eLoad（Lighting 已清/写 HDR）、深度 eLoad，叠在前向透明
         // 混合管线上；FlushTransparent 以 hdrTransparent=true 配置混合，强制
         // alpha 通道收敛到 1，避免透明覆盖天空后被 Tonemap 误判为天空。
         RenderPassDesc &transparentPass = b.AddPass("Transparent");
         transparentPass.renderArea = renderArea;
+        // Stage 2: water reads the Scene_HDR snapshot and SceneDepth from these inputs.
+        transparentPass.readImages.push_back(
+            {hHDRBase, ResourceUsage::ShaderRead, vk::ImageLayout::eShaderReadOnlyOptimal});
+        transparentPass.readImages.push_back(
+            {hSceneDepth, ResourceUsage::ShaderRead, vk::ImageLayout::eShaderReadOnlyOptimal});
         AttachmentDesc transparentColorLoad;
         transparentColorLoad.resource = hHDR;
         transparentColorLoad.usage = ResourceUsage::ColorAttachment;

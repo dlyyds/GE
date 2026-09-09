@@ -132,6 +132,7 @@ void Renderer3D::DrawWater(const glm::mat4 &transform,
     batch.colorStrength = water.ColorStrength;
     batch.roughness = water.Roughness;
     batch.opacity = water.Opacity;
+    batch.alphaCoverage = water.AlphaCoverage;
     batch.reflectionStrength = water.ReflectionStrength;
     batch.refractionStrength = water.RefractionStrength;
     batch.absorptionDepth = water.AbsorptionDepth;

@@ -37,11 +37,14 @@ layout(set = 0, binding = 2, std140) uniform WaterUBO
     vec4 waves[4];
     vec4 waveSpeeds[4];
     vec4 colorParams; // x=色彩平铺, y=色彩强度
+    mat4 invProj;     // inverse projection for SceneDepth reconstruction
 } water;
 
 layout(set = 1, binding = 0) uniform sampler2D samplerNormal;
 layout(set = 1, binding = 1) uniform samplerCube samplerPrefilter;
 layout(set = 1, binding = 2) uniform sampler2D samplerColor; // 色彩/固有色贴图（可选）
+layout(set = 1, binding = 3) uniform sampler2D samplerSceneColor; // Stage 2: Scene_HDR base snapshot
+layout(set = 1, binding = 4) uniform sampler2D samplerSceneDepth; // Stage 2: opaque scene depth
 
 layout(location = 0) in vec2 inUV;
 layout(location = 1) in vec3 inWorldPos;
@@ -164,7 +167,46 @@ void main()
 
     // 环境内容按观察侧别混入：水面以上反射 ×Fresnel；水面以下透射天空
     // ×(1-Fresnel)（掠射角近全内反射 → 透射趋于 0，该处无上方光可显）。
+    // Stage 2: screen-space refraction + depth absorption + shore foam.
+    // Above-water fragments sample Scene_HDR/SceneDepth, reconstruct the view-space
+    // depth difference to the opaque scene, and tint the transmitted color.
+    vec3 refrCol = vec3(0.0);
+    float foam = 0.0;
+    if (!underwater) {
+        vec2 sceneUV = gl_FragCoord.xy / vec2(textureSize(samplerSceneColor, 0));
+        float thickness = clamp(dot(vec3(0.0, 1.0, 0.0), -V), 0.0, 1.0) * 0.5 + 0.5;
+        // Use view-space normal so the UV offset is relative to the screen/view.
+        vec3 viewN = normalize(mat3(frame.view) * N);
+        vec2 refrUV = sceneUV + viewN.xy * water.timeParams.w * 0.2 * thickness;
+        vec3 sceneCol = texture(samplerSceneColor, refrUV).rgb;
+        float sceneRaw = texture(samplerSceneDepth, refrUV).r;
+
+        vec4 ndc = vec4(refrUV * 2.0 - 1.0, sceneRaw, 1.0);
+        vec4 sceneViewPos = water.invProj * ndc;
+        vec3 sceneViewPos3 = sceneViewPos.xyz / max(abs(sceneViewPos.w), 1e-6);
+        float sceneDist = -sceneViewPos3.z;
+
+        vec4 waterViewPos4 = frame.view * vec4(inWorldPos, 1.0);
+        float waterDist = -waterViewPos4.z;
+        float depthDiff = max(sceneDist - waterDist, 0.0);
+
+        float absorption = 1.0 - exp(-depthDiff / max(water.foamParams.z, 0.001));
+        vec3 waterBody = mix(water.shallowColor.rgb, water.deepColor.rgb, absorption);
+        // Keep more of the transmitted underwater scene visible so refraction is obvious.
+        refrCol = mix(sceneCol, waterBody, absorption * 0.55);
+
+        foam = smoothstep(0.0, water.foamParams.x, water.foamParams.x - depthDiff)
+             * water.foamParams.y;
+    }
+
+    // Reflection/transmission mixing (same side logic as before), plus the
+    // above-water transmitted scene color and foam added here.
     result += reflCol * (underwater ? (1.0 - fresnel) : fresnel);
+    if (!underwater) {
+        result += refrCol * (1.0 - fresnel);
+        result += vec3(foam);
+    }
+
 
     // HDR 透明：保留线性 HDR 输出，ACES 由最后 Tonemap pass 统一执行。
     // 透明度与 water.frag 一致：Fresnel 提供视角轮廓 + 不透明度做主控。
@@ -173,6 +215,7 @@ void main()
     // 底下是不透明几何 → 收敛到 1（Tonemap 当几何、正常曝光），底下是天空 →
     // 保留片元 alpha，透到只剩天空时被 Tonemap 当天空直出（语义一致）。
     float fresnelProfile = clamp(fresnel + 0.1, 0.0, 1.0);
+    float alphaCoverage = clamp(water.colorParams.z, 0.0, 1.0);  // UI: alpha baseline at vertical view
     float alpha;
     if (underwater) {
         // 水下表面保持半透明、透出背后内容：掠射方向若按 Fresnel 抬 alpha，
@@ -181,7 +224,7 @@ void main()
         // 只留一层淡淡的"水膜"质感。
         alpha = clamp(water.deepColor.a * (0.15 + 0.2 * fresnelProfile), 0.0, 1.0);
     } else {
-        alpha = clamp(water.deepColor.a * (0.25 + 0.75 * fresnelProfile), 0.0, 1.0);
+        alpha = clamp(water.deepColor.a * (alphaCoverage + (1.0 - alphaCoverage) * fresnelProfile), 0.0, 1.0);
     }
     outFragColor = vec4(result, alpha);
 }

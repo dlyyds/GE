@@ -407,7 +407,7 @@ void SceneHierarchyPanel::DrawWaterComponent(WaterComponent &component) {
         ImGui::DragFloat("法线平铺", &component.NormalTiling, 0.1f, 0.5f, 32.0f, "%.2f");
         ImGui::DragFloat("法线强度", &component.NormalStrength, 0.01f, 0.0f, 2.0f, "%.2f");
         ImGui::DragFloat("反射强度", &component.ReflectionStrength, 0.01f, 0.0f, 1.0f, "%.2f");
-        ImGui::DragFloat("折射强度", &component.RefractionStrength, 0.01f, 0.0f, 1.0f, "%.2f");
+        ImGui::DragFloat("折射强度", &component.RefractionStrength, 0.01f, 0.0f, 5.0f, "%.2f");
         ImGui::DragFloat("吸收深度", &component.AbsorptionDepth, 0.05f, 0.0f, 20.0f, "%.2f");
     }
 

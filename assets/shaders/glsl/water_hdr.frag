@@ -36,15 +36,15 @@ layout(set = 0, binding = 2, std140) uniform WaterUBO
     vec4 foamParams;
     vec4 waves[4];
     vec4 waveSpeeds[4];
-    vec4 colorParams; // x=色彩平铺, y=色彩强度
-    mat4 invProj;     // inverse projection for SceneDepth reconstruction
+    vec4 colorParams;// x=色彩平铺, y=色彩强度
+    mat4 invProj;// inverse projection for SceneDepth reconstruction
 } water;
 
 layout(set = 1, binding = 0) uniform sampler2D samplerNormal;
 layout(set = 1, binding = 1) uniform samplerCube samplerPrefilter;
-layout(set = 1, binding = 2) uniform sampler2D samplerColor; // 色彩/固有色贴图（可选）
-layout(set = 1, binding = 3) uniform sampler2D samplerSceneColor; // Stage 2: Scene_HDR base snapshot
-layout(set = 1, binding = 4) uniform sampler2D samplerSceneDepth; // Stage 2: opaque scene depth
+layout(set = 1, binding = 2) uniform sampler2D samplerColor;// 色彩/固有色贴图（可选）
+layout(set = 1, binding = 3) uniform sampler2D samplerSceneColor;// Stage 2: Scene_HDR base snapshot
+layout(set = 1, binding = 4) uniform sampler2D samplerSceneDepth;// Stage 2: opaque scene depth
 
 layout(location = 0) in vec2 inUV;
 layout(location = 1) in vec3 inWorldPos;
@@ -78,7 +78,7 @@ float geometrySchlickGGX(float NdV, float roughness)
 float geometrySmith(vec3 N, vec3 V, vec3 L, float roughness)
 {
     return geometrySchlickGGX(max(dot(N, V), 0.0), roughness)
-         * geometrySchlickGGX(max(dot(N, L), 0.0), roughness);
+    * geometrySchlickGGX(max(dot(N, L), 0.0), roughness);
 }
 
 vec3 fresnelSchlick(float cosTheta, vec3 F0)
@@ -120,17 +120,17 @@ void main()
             vec3 airDir = refract(-V, -upN, 1.33);
             if (dot(airDir, airDir) > 1e-5) {
                 // Snell 窗口边缘平滑衰减，避免与全内反射区硬切
-                float cosCrit = 0.6614; // 临界角余弦 = 1/1.33 ≈ 48.6°
+                float cosCrit = 0.6614;// 临界角余弦 = 1/1.33 ≈ 48.6°
                 float cosIn = clamp(dot(upN, -V), 0.0, 1.0);
                 float window = smoothstep(cosCrit, 1.0, cosIn);
                 reflCol = textureLod(samplerPrefilter, airDir, roughLod).rgb
-                        * frame.iblParams.y * water.sizeParams.w
-                        * kReflectionGain * window;
+                * frame.iblParams.y * water.sizeParams.w
+                * kReflectionGain * window;
             }
         } else {
             vec3 R = reflect(-V, N);
             reflCol = textureLod(samplerPrefilter, R, roughLod).rgb
-                    * frame.iblParams.y * water.sizeParams.w * kReflectionGain;
+            * frame.iblParams.y * water.sizeParams.w * kReflectionGain;
         }
     }
 
@@ -173,14 +173,27 @@ void main()
     vec3 refrCol = vec3(0.0);
     float foam = 0.0;
     if (!underwater) {
+        // 折射强度只作用于“法线相对平面基准的扰动”，而不是直接用 viewN.xy。
+        // 水面几何法线 transform 到视图空间后，viewN.xy 本身已带一个与相机视角
+        // 有关的固定偏移；直接乘强度会让整帧采样整体平移，产生重影；强度一高
+        // 还会把采样推出画面边缘（底部出现被 clamp 的天空）。
+        const float kRefractionMaxScreenFrac = 0.25;
+
         vec2 sceneUV = gl_FragCoord.xy / vec2(textureSize(samplerSceneColor, 0));
         float thickness = clamp(dot(vec3(0.0, 1.0, 0.0), -V), 0.0, 1.0) * 0.5 + 0.5;
-        // Use view-space normal so the UV offset is relative to the screen/view.
+        // 折射基准必须是“未受任何波浪扰动的平面几何法线”。
+        // geoN 是顶点阶段 Gerstner 波扰动后的法线，用它做基准会把整条波扰动减掉，
+        // 只剩很弱的法线贴图细节，导致折射滑条几乎不可见。这里取网格模型自身 +Y。
+        vec3 flatWorldN = normalize(mat3(water.model) * vec3(0.0, 1.0, 0.0));
+        vec3 flatViewN = normalize(mat3(frame.view) * flatWorldN);
         vec3 viewN = normalize(mat3(frame.view) * N);
-        vec2 refrUV = sceneUV + viewN.xy * water.timeParams.w * 0.2 * thickness;
+        vec2 refrOffset = viewN.xy - flatViewN.xy;
+        vec2 refrUV = clamp(
+        sceneUV + refrOffset * water.timeParams.w * kRefractionMaxScreenFrac * thickness,
+        0.0, 1.0);
+        vec3 directSceneCol = texture(samplerSceneColor, sceneUV).rgb;
         vec3 sceneCol = texture(samplerSceneColor, refrUV).rgb;
         float sceneRaw = texture(samplerSceneDepth, refrUV).r;
-
         vec4 ndc = vec4(refrUV * 2.0 - 1.0, sceneRaw, 1.0);
         vec4 sceneViewPos = water.invProj * ndc;
         vec3 sceneViewPos3 = sceneViewPos.xyz / max(abs(sceneViewPos.w), 1e-6);
@@ -188,15 +201,41 @@ void main()
 
         vec4 waterViewPos4 = frame.view * vec4(inWorldPos, 1.0);
         float waterDist = -waterViewPos4.z;
-        float depthDiff = max(sceneDist - waterDist, 0.0);
 
-        float absorption = 1.0 - exp(-depthDiff / max(water.foamParams.z, 0.001));
+        // Signed depth difference: >0 means the sampled scene is behind the water
+        // surface (valid transmission); <0 means it is occluding geometry in front.
+        float signedDepthDiff = sceneDist - waterDist;
+        float waterThickness = max(signedDepthDiff, 0.0);
+        const float kDepthEpsilon = 0.25;// View-space meters; avoids a hard silhouette edge.
+        float behindWater = smoothstep(-kDepthEpsilon, kDepthEpsilon, signedDepthDiff);
+
+        // 视角深度之外再加一道“水面下方”的世界高度校验：只让真正位于水面
+        // 以下的采样点参与折射。远处凸出水面的山/树即使视角深度在水面之后，
+        // 也不应被当成水下内容折射进来。
+        vec3 sceneWorldPos = frame.viewPos.xyz + transpose(mat3(frame.view)) * sceneViewPos3;
+        float waterSurfaceY = inWorldPos.y;
+        const float kWaterEpsilon = 0.15;// 米，容忍波高/法线毛边
+        float belowWaterPlane = 1.0 - smoothstep(-kWaterEpsilon, kWaterEpsilon,
+        sceneWorldPos.y - waterSurfaceY);
+
+        float underwaterContent = behindWater * belowWaterPlane;
+
+        // AbsorptionDepth=0 表示“无吸收/最透明”，应该透出水下折射内容；
+        // 不能把它当成 0.001 米来算，否则水会瞬间吸成深水色，折射再调都看不见。
+        float absDepth = max(water.foamParams.z, 0.0);
+        float absorption = absDepth > 1e-4
+            ? 1.0 - exp(-waterThickness / absDepth)
+            : 0.0;
         vec3 waterBody = mix(water.shallowColor.rgb, water.deepColor.rgb, absorption);
         // Keep more of the transmitted underwater scene visible so refraction is obvious.
-        refrCol = mix(sceneCol, waterBody, absorption * 0.55);
+        vec3 transmitted = mix(sceneCol, waterBody, absorption * 0.55);
+        // 非水下采样（水线/凸起物体上方）不能叠加 waterBody（会变绿色），
+        // 也不能直接给 0（水面不透明时会变黑色边框）。这里用“未折射的原始画面”
+        // 作为兜底，只有真正位于水面以下的内容才用折射+水色混合。
+        refrCol = mix(directSceneCol, transmitted, underwaterContent);
 
-        foam = smoothstep(0.0, water.foamParams.x, water.foamParams.x - depthDiff)
-             * water.foamParams.y;
+        foam = smoothstep(0.0, water.foamParams.x, water.foamParams.x - waterThickness)
+        * water.foamParams.y * underwaterContent;
     }
 
     // Reflection/transmission mixing (same side logic as before), plus the
@@ -215,7 +254,7 @@ void main()
     // 底下是不透明几何 → 收敛到 1（Tonemap 当几何、正常曝光），底下是天空 →
     // 保留片元 alpha，透到只剩天空时被 Tonemap 当天空直出（语义一致）。
     float fresnelProfile = clamp(fresnel + 0.1, 0.0, 1.0);
-    float alphaCoverage = clamp(water.colorParams.z, 0.0, 1.0);  // UI: alpha baseline at vertical view
+    float alphaCoverage = clamp(water.colorParams.z, 0.0, 1.0);// UI: alpha baseline at vertical view
     float alpha;
     if (underwater) {
         // 水下表面保持半透明、透出背后内容：掠射方向若按 Fresnel 抬 alpha，

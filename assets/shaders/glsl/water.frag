@@ -96,19 +96,46 @@ void main()
     vec3 N = normalize(geoN + vec3(detail.x, 0.0, detail.y) * water.timeParams.y);
 
     vec3 V = normalize(frame.viewPos.xyz - inWorldPos);
+
+    // —— 相机在水面以下（片元为背面）时的双面处理 ——
+    // 水格几何法线恒朝 +Y：若背面片元仍按朝上法线计算，NoV 会被钳到 0 →
+    // Fresnel 恒 1 → alpha 饱和成实墙（从水下往上看水面不透明）。这里把着色
+    // 法线翻转朝向相机，让两侧的 Fresnel / 高光 / 透明度都取到正确值。
+    bool underwater = !gl_FrontFacing;
+    if (underwater) {
+        N = -N;
+    }
+
     float NoV = clamp(dot(N, V), 0.0, 1.0);
 
     // —— Fresnel（绝缘体 F0≈0.02）——
     const float F0 = 0.02;
     float fresnel = F0 + (1.0 - F0) * pow(1.0 - NoV, 5.0);
 
-    // —— 反射：IBL 预滤波（frame.iblParams.x > 0 表示环境图可用）——
+    // —— 环境内容：水上=镜面反射 IBL，水下=透射天空（Snell 窗口）——
+    // frame.iblParams.x > 0 表示环境图可用。水面以上取 reflect(-V,N) 的镜面反射；
+    // 水面以下看不到"反射"，看到的是从上方透下来的光：按水(n≈1.33)→空气的
+    // Snell 折射采样预滤波环境，超过临界角即全内反射（refract 返回 0）。
     vec3 reflCol = vec3(0.0);
     if (frame.iblParams.x > 0.0) {
-        vec3 R = reflect(-V, N);
         float roughLod = water.timeParams.z * frame.iblParams.x;
-        reflCol = textureLod(samplerPrefilter, R, roughLod).rgb
-                * frame.iblParams.y * water.sizeParams.w * kReflectionGain;
+        if (underwater) {
+            vec3 upN = normalize(geoN);
+            vec3 airDir = refract(-V, -upN, 1.33);
+            if (dot(airDir, airDir) > 1e-5) {
+                // Snell 窗口边缘平滑衰减，避免与全内反射区硬切
+                float cosCrit = 0.6614; // 临界角余弦 = 1/1.33 ≈ 48.6°
+                float cosIn = clamp(dot(upN, -V), 0.0, 1.0);
+                float window = smoothstep(cosCrit, 1.0, cosIn);
+                reflCol = textureLod(samplerPrefilter, airDir, roughLod).rgb
+                        * frame.iblParams.y * water.sizeParams.w
+                        * kReflectionGain * window;
+            }
+        } else {
+            vec3 R = reflect(-V, N);
+            reflCol = textureLod(samplerPrefilter, R, roughLod).rgb
+                    * frame.iblParams.y * water.sizeParams.w * kReflectionGain;
+        }
     }
 
     // —— 方向光 / 点光 ——
@@ -142,8 +169,9 @@ void main()
         result += pSpec * lc * atten;
     }
 
-    // 反射按 Fresnel 混入
-    result += reflCol * fresnel;
+    // 环境内容按观察侧别混入：水面以上反射 ×Fresnel；水面以下透射天空
+    // ×(1-Fresnel)（掠射角近全内反射 → 透射趋于 0，该处无上方光可显）。
+    result += reflCol * (underwater ? (1.0 - fresnel) : fresnel);
 
     // 水面透明：Fresnel 提供视角轮廓（垂直较透、掠射较实），不透明度做主控。
     // 轮廓钳到 [0.12,1] 后抬升为 0.25+0.75×轮廓，让垂直视角也有基础实度，

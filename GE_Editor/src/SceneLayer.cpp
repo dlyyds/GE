@@ -964,6 +964,15 @@ void SceneLayer::OnImGuiRender() {
                 static_cast<uint32_t>(bloomMipLevels));
         }
 
+        // UnderwaterFX 总开关：仅延迟 HDR 链生效（Transparent → UnderwaterFX → Bloom → Tonemap）。
+        bool underwaterFx = Renderer::Get3DRenderer().IsUnderwaterFxEnabled();
+        if (ImGui::Checkbox("水下后处理", &underwaterFx)) {
+            Renderer::Get3DRenderer().SetUnderwaterFxEnabled(underwaterFx);
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("相机入水后的全屏水雾/焦散；关闭后画面零变化");
+        }
+
         ImGui::Separator();
         // ---- 编辑器相机：直接调整轨道/投影/灵敏度参数 ----
         // EditorCamera 是工具视角（不进场景、不序列化），默认靠视口内鼠标漫游。
@@ -1132,6 +1141,7 @@ void SceneLayer::SaveEditorSettings() {
     out << "bloom_threshold " << r3d.GetBloomThreshold() << '\n';
     out << "bloom_intensity " << r3d.GetBloomIntensity() << '\n';
     out << "bloom_mip_levels " << r3d.GetBloomMipLevels() << '\n';
+    out << "underwater_enabled " << (r3d.IsUnderwaterFxEnabled() ? 1 : 0) << '\n';
 }
 
 void SceneLayer::RestoreEditorSettings() {
@@ -1179,6 +1189,7 @@ void SceneLayer::RestoreEditorSettings() {
     r3d.SetBloomIntensity(get("bloom_intensity", r3d.GetBloomIntensity()));
     r3d.SetBloomMipLevels(
         static_cast<uint32_t>(get("bloom_mip_levels", static_cast<float>(r3d.GetBloomMipLevels()))));
+    r3d.SetUnderwaterFxEnabled(getBool("underwater_enabled", r3d.IsUnderwaterFxEnabled()));
 }
 
 void SceneLayer::LoadScene() {

@@ -597,7 +597,9 @@ private:
     /// params.x = submersion(0..1), y = fogDensity(每米), z = desaturate, w = vignette。
     struct UnderwaterUBO {
         glm::mat4 invProj;   ///< SceneDepth → 视空间重建
-        glm::vec4 params;    ///< x=submersion, y=fogDensity, z=desaturate, w=vignette
+        glm::mat4 invView;   ///< 视空间 → 世界空间重建（段 B 焦散几何 gating）
+        glm::vec4 params;    ///< x=submersion, y=fogDensity(每米), z=desaturate, w=vignette
+        glm::vec4 fogParams;   ///< x = FogDensity 用户倍率（1.0 = 维持当前可见度）
         glm::vec4 deepColor; ///< 水下雾色（取自被淹没水体 DeepColor）
         glm::vec4 caustics;  ///< 预留：x=strength, y=scale, z=enable, w=时光滑
         glm::vec4 sunDir;    ///< 预留：段 B 焦散投影方向
@@ -731,6 +733,9 @@ private:
         float absorptionDepth = 2.0f;
         float foamDistance = 0.8f;
         float foamIntensity = 0.9f;
+        float fogDensity = 1.0f;            ///< 水下雾密度倍率（1.0 = 维持当前可见度）
+        bool causticsEnabled = true;        ///< 焦散开关
+        float causticsIntensity = 1.0f;     ///< 焦散强度倍率
     };
 
     // ========================================================================
@@ -1200,6 +1205,9 @@ private:
     float m_WaterSubmersion = 0.0f;      ///< 平滑后淹没量 0..1
     float m_WaterPlaneY = 0.0f;          ///< 被淹没水体波面 Y
     float m_WaterAbsorption = 2.0f;      ///< 被淹没水体吸收深度（雾密度 = 1/深度）
+    float m_WaterFogDensity = 1.0f;      ///< 被淹没水体雾密度倍率（1.0 = 维持当前可见度）
+    bool m_WaterCausticsEnabled = true;  ///< 被淹没水体焦散开关
+    float m_WaterCausticsIntensity = 1.0f; ///< 被淹没水体焦散强度倍率
     glm::vec3 m_WaterDeepColor{0.012f, 0.055f, 0.09f}; ///< 被淹没水体 DeepColor
     float m_LastSubmersionTime = -1.0f;  ///< 上一帧 EndScene 的 m_WaterTime（用于平滑 dt）
 

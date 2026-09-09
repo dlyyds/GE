@@ -191,13 +191,22 @@ BufferAllocation Renderer3D::UploadUnderwaterUBO(VulkanRenderFrame &frame) {
     // 阶段 0 只消费 submersion + fogDensity + deepColor，其余字段为后续阶段预留。
     UnderwaterUBO ubo{};
     ubo.invProj = glm::inverse(m_Projection);
+    ubo.invView = glm::inverse(m_View);
     ubo.params = glm::vec4(
         m_WaterSubmersion,
         1.0f / std::max(m_WaterAbsorption * 3.0f, 0.25f),
         0.25f,   // desaturate (lightened: keep more scene color)
         0.15f);  // vignette (lightened)
+    ubo.fogParams = glm::vec4(m_WaterFogDensity, 0.0f, 0.0f, 0.0f);
     ubo.deepColor = glm::vec4(m_WaterDeepColor, 1.0f);
-    ubo.caustics = glm::vec4(0.0f);
+    {
+        constexpr float kCausticBaseStrength = 0.8f;
+        ubo.caustics = glm::vec4(
+            m_WaterCausticsEnabled ? (m_WaterCausticsIntensity * kCausticBaseStrength) : 0.0f,
+            0.6f,    // causticsScale
+            m_WaterCausticsEnabled ? 1.0f : 0.0f,
+            0.0f);   // 时光滑预留
+    }
     ubo.sunDir = glm::vec4(m_LightParams.dirLightDirection, 0.0f);
     ubo.waterPlane = glm::vec4(m_WaterPlaneY, 0.0f, 0.0f, 0.0f);
     ubo.timeParams = glm::vec4(m_WaterTime, 0.0f, 0.0f, 0.0f);

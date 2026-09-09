@@ -8,7 +8,7 @@ Scene:
         Scale: [1, 1, 1]
       Water:
         Size: [477, 569]
-        Height: 0.7
+        Height: 0.2
         Resolution: 46
         TimeScale: 1
         DeepColor: [0.011764706, 0.05490196, 0.09803922]
@@ -17,35 +17,35 @@ Scene:
         NormalStrength: 0.95
         ColorTiling: 16.9
         ColorStrength: 0.6
-        Roughness: 0.57
+        Roughness: 0.5
         Opacity: 1
         AlphaCoverage: 1
         ReflectionStrength: 1
         RefractionStrength: 0.2
-        AbsorptionDepth: 2.95
+        AbsorptionDepth: 1.05
         FoamDistance: 0.45
         FoamIntensity: 1.16
         Waves:
           0:
-            Direction: [0.9, -0.15]
-            Amplitude: 0.45
-            Wavelength: 16
-            Speed: 3.4
+            Direction: [0.85, -0.08]
+            Amplitude: 0.2
+            Wavelength: 32.1
+            Speed: 2.8
           1:
-            Direction: [0.4, 1]
-            Amplitude: 0.3
-            Wavelength: 9.5
-            Speed: 2.6
+            Direction: [0.35, 1.3]
+            Amplitude: 0.12
+            Wavelength: 7.4
+            Speed: 2.2
           2:
-            Direction: [-0.35, 0.95]
-            Amplitude: 0.15
-            Wavelength: 5
-            Speed: 1.9
+            Direction: [-0.6, 0.5]
+            Amplitude: 0.06
+            Wavelength: 21.7
+            Speed: 1.5
           3:
-            Direction: [1.1, 0.6]
-            Amplitude: 0.08
-            Wavelength: 3
-            Speed: 1.4
+            Direction: [1, 1.2]
+            Amplitude: 0.03
+            Wavelength: 14.1
+            Speed: 1
     - Name: PhysicsFloor
       Id: 943c5580c0f8760d7c4cccfce60004e06c8d34d9193608d70ffbaace8486a0c7
       Transform:
@@ -174,9 +174,9 @@ Scene:
         Theta: 0
         Phi: 0
         Distance: 2
-        Position: [-8.077517, -154.10167, -24.598368]
-        Yaw: -40.899853
-        Pitch: 47.400063
+        Position: [-7.354381, -2.6831183, 7.933891]
+        Yaw: -43.49959
+        Pitch: -8.300048
       AudioSource:
         Enabled: true
         Spatial: true
@@ -241,18 +241,18 @@ Scene:
         ScriptPath: fps_character_combat_demo.lua
         Enabled: true
         PublicFields:
-          sprint_speed:
-            Type: number
-            Value: 17.1
           sprint_playback_speed:
             Type: number
             Value: 1.6
           speed:
             Type: number
             Value: 11.4
+          sprint_speed:
+            Type: number
+            Value: 17.1
       Animation:
         Active: 0
-        Time: 0.1385374
+        Time: 1.7170787
         Speed: 1
         Playing: true
         Loop: true
@@ -398,7 +398,7 @@ Scene:
         Color: [1, 1, 1, 1]
         Mesh: F:\yxy\project\GameEngine\assets\models\shayv\未命名.gemesh
       Skin:
-        Id: dabac10bacdc0d2aa52adf311de278f1463b84f9cf3b3f8ee8bc006c89d20169
+        Id: 33c432735e31996166d1b2426a13b24714b591aa0b31b66527e522aaa7874d14
         Mesh: F:\yxy\project\GameEngine\assets\models\shayv\未命名.gemesh
     - Name: 0001_Ellen_Body_2
       Id: 6482f53b4df3deaa7101c2f2aa11db830bc25f7d20f6386ef71dd55e053f5d0d
@@ -411,7 +411,7 @@ Scene:
         Color: [1, 1, 1, 1]
         Mesh: F:\yxy\project\GameEngine\assets\models\shayv\未命名_1.gemesh
       Skin:
-        Id: dabac10bacdc0d2aa52adf311de278f1463b84f9cf3b3f8ee8bc006c89d20169
+        Id: 33c432735e31996166d1b2426a13b24714b591aa0b31b66527e522aaa7874d14
         Mesh: F:\yxy\project\GameEngine\assets\models\shayv\未命名_1.gemesh
     - Name: 0002_Ellen_Face
       Id: 1d0892e8ec9fac2401fe22aad298029559ac609cde9efd34aa0acd7e92fdc0f3
@@ -424,7 +424,7 @@ Scene:
         Color: [1, 1, 1, 1]
         Mesh: F:\yxy\project\GameEngine\assets\models\shayv\未命名_2.gemesh
       Skin:
-        Id: dabac10bacdc0d2aa52adf311de278f1463b84f9cf3b3f8ee8bc006c89d20169
+        Id: 33c432735e31996166d1b2426a13b24714b591aa0b31b66527e522aaa7874d14
         Mesh: F:\yxy\project\GameEngine\assets\models\shayv\未命名_2.gemesh
     - Name: 0003_Ellen_HairShadow
       Id: e9c6cd2acb3938abbdef26bf3eff06305010c97de003f7e6b6a0cd8dfd369bec
@@ -437,7 +437,7 @@ Scene:
         Color: [1, 1, 1, 1]
         Mesh: F:\yxy\project\GameEngine\assets\models\shayv\未命名_3.gemesh
       Skin:
-        Id: dabac10bacdc0d2aa52adf311de278f1463b84f9cf3b3f8ee8bc006c89d20169
+        Id: 33c432735e31996166d1b2426a13b24714b591aa0b31b66527e522aaa7874d14
         Mesh: F:\yxy\project\GameEngine\assets\models\shayv\未命名_3.gemesh
     - Name: 0004_Ellen_Face
       Id: 2b8ad0beedc74d6619a90700a7ab2ebfb378fa835a953a446384896afce5547d
@@ -450,7 +450,7 @@ Scene:
         Color: [1, 1, 1, 1]
         Mesh: F:\yxy\project\GameEngine\assets\models\shayv\未命名_4.gemesh
       Skin:
-        Id: dabac10bacdc0d2aa52adf311de278f1463b84f9cf3b3f8ee8bc006c89d20169
+        Id: 33c432735e31996166d1b2426a13b24714b591aa0b31b66527e522aaa7874d14
         Mesh: F:\yxy\project\GameEngine\assets\models\shayv\未命名_4.gemesh
     - Name: 0005_Ellen_Weapon
       Id: 44dd8b31f7491947b4444106a7bcce3411a7d68ae762e9321a3491033dd7e3bb
@@ -463,7 +463,7 @@ Scene:
         Color: [1, 1, 1, 1]
         Mesh: F:\yxy\project\GameEngine\assets\models\shayv\未命名_5.gemesh
       Skin:
-        Id: dabac10bacdc0d2aa52adf311de278f1463b84f9cf3b3f8ee8bc006c89d20169
+        Id: 33c432735e31996166d1b2426a13b24714b591aa0b31b66527e522aaa7874d14
         Mesh: F:\yxy\project\GameEngine\assets\models\shayv\未命名_5.gemesh
     - Name: 0006_Ellen_Weapon_1
       Id: c109c6c047956d90307c77ba17f113d0876a41c0059c32a0f7f982a0ce89b3ff
@@ -476,7 +476,7 @@ Scene:
         Color: [1, 1, 1, 1]
         Mesh: F:\yxy\project\GameEngine\assets\models\shayv\未命名_6.gemesh
       Skin:
-        Id: dabac10bacdc0d2aa52adf311de278f1463b84f9cf3b3f8ee8bc006c89d20169
+        Id: 33c432735e31996166d1b2426a13b24714b591aa0b31b66527e522aaa7874d14
         Mesh: F:\yxy\project\GameEngine\assets\models\shayv\未命名_6.gemesh
     - Name: Branch_04_Center
       Id: b5f65472f5bca0cfe0ca919c33683075b49d1e74cca4b8c0740a3b94874a9117
@@ -566,7 +566,7 @@ Scene:
       Id: fe1575e1b8787a31b38c95f8acdc7eecfe2fad45f0f19f6469d593e29b06884b
       Parent: ede3bb235ef54276e0d839a18bbca78fbd31109a3ab90e246c0d1bf6b9d7b5ed
       Transform:
-        Translation: [0, 2.411698, -0]
+        Translation: [0, 1.582989, -0]
         Rotation: [1, 0, 0, -0]
         Scale: [1, 1, 1]
     - Name: WallCollider
@@ -581,7 +581,7 @@ Scene:
       Parent: ede3bb235ef54276e0d839a18bbca78fbd31109a3ab90e246c0d1bf6b9d7b5ed
       Transform:
         Translation: [-0.022999987, 2.5716068e-10, -0.8724129]
-        Rotation: [0.04274718, 0.6456136, 0.7619341, 0.028497688]
+        Rotation: [0.039268322, 0.6238295, 0.77944815, 0.041897114]
         Scale: [0.99999976, 0.99999964, 0.9999998]
       Joint:
         JointIndex: 0
@@ -590,7 +590,7 @@ Scene:
       Parent: b5086e2d388db45d973ac3d2803290a5c78bb366410c63273ebb104ad89d6cf1
       Transform:
         Translation: [-1.202352e-09, 4.984031e-10, 9.480573e-08]
-        Rotation: [0.50000054, -0.50000036, -0.5, -0.49999914]
+        Rotation: [0.50000054, -0.50000036, -0.5, -0.4999991]
         Scale: [0.9999999, 0.99999976, 0.99999994]
       Joint:
         JointIndex: 1
@@ -598,8 +598,8 @@ Scene:
       Id: 2d41e76bbc5f8bc6281cf3415bce1e7f904e2a46bbc7f49decac5d7cf30e4358
       Parent: d0158446df8fd4f3db8c4060fc6181a738c30c09d7043861b1071882b1290f6c
       Transform:
-        Translation: [-1.5507189e-07, 1.3779946e-07, 0.07887879]
-        Rotation: [0.09275867, 0.07789452, -0.9898062, 0.07491388]
+        Translation: [-1.5584469e-07, 1.3858117e-07, 0.07887879]
+        Rotation: [0.098855875, 0.065733716, -0.98966837, 0.08039341]
         Scale: [1, 1, 0.9999999]
       Joint:
         JointIndex: 2
@@ -607,26 +607,26 @@ Scene:
       Id: 47d4aca2dd124d22cf27787ae201913511d257ac196e360b54282d1b9e9a0091
       Parent: 2d41e76bbc5f8bc6281cf3415bce1e7f904e2a46bbc7f49decac5d7cf30e4358
       Transform:
-        Translation: [0.37572575, 1.901876e-08, -1.11939556e-07]
-        Rotation: [0.9982073, -1.086521e-07, 7.1873295e-08, -0.059850913]
-        Scale: [1.0000001, 1.0000002, 1.0000001]
+        Translation: [0.37572575, 1.4424599e-08, -1.0941277e-07]
+        Rotation: [0.99717855, -5.5645305e-08, 7.811206e-08, -0.075067274]
+        Scale: [1, 1.0000001, 1]
       Joint:
         JointIndex: 3
     - Name: Bip001 L Foot
       Id: 79f95bfa13d92f45cecabbc633423c9f8a716e032b84beef42a29e13464d4b1c
       Parent: 47d4aca2dd124d22cf27787ae201913511d257ac196e360b54282d1b9e9a0091
       Transform:
-        Translation: [0.4041194, 6.022985e-08, -6.1351166e-08]
-        Rotation: [0.99191535, -0.02084306, -0.04319752, 0.11748852]
-        Scale: [0.9999998, 0.99999994, 0.9999998]
+        Translation: [0.40411937, 5.388991e-08, -5.3495157e-08]
+        Rotation: [0.9890347, -0.054156285, -0.045673627, 0.12958157]
+        Scale: [0.9999999, 1, 0.9999998]
       Joint:
         JointIndex: 4
     - Name: Bip001 L Toe0
       Id: bd4cfdd650e0529579d8b4b8c133dad029e9a7b8c809d92dbffd3d443b5d3d0a
       Parent: 79f95bfa13d92f45cecabbc633423c9f8a716e032b84beef42a29e13464d4b1c
       Transform:
-        Translation: [0.09970669, 0.08781262, 3.523108e-05]
-        Rotation: [0.69425046, 0.03691572, -0.030840816, 0.7181241]
+        Translation: [0.09970668, 0.08781262, 3.5234756e-05]
+        Rotation: [0.69550717, 0.03686776, -0.030677289, 0.71691656]
         Scale: [1, 0.99999994, 1.0000001]
       Joint:
         JointIndex: 5
@@ -634,8 +634,8 @@ Scene:
       Id: 47d2e4fab23634708833f7b96288be202610e5274e34b264616bdb0f6a2a8d81
       Parent: 47d4aca2dd124d22cf27787ae201913511d257ac196e360b54282d1b9e9a0091
       Transform:
-        Translation: [6.2132806e-08, 7.564261e-09, 1.2180645e-08]
-        Rotation: [1, 5.915291e-09, 9.313225e-09, 8.945595e-08]
+        Translation: [3.3962706e-08, 1.1562616e-08, 1.4156134e-08]
+        Rotation: [1, 1.7814166e-08, 9.313225e-09, 9.0191016e-08]
         Scale: [1, 1.0000001, 1]
       Joint:
         JointIndex: 6
@@ -643,62 +643,62 @@ Scene:
       Id: 89887c5a82e7cf95099a99daa745d49477925caf8996fa6d2b263063acbb1fdf
       Parent: 47d2e4fab23634708833f7b96288be202610e5274e34b264616bdb0f6a2a8d81
       Transform:
-        Translation: [0.33101293, 0.018908283, -0.0057749925]
-        Rotation: [0.9673839, -0.03405977, -0.011012418, 0.2507731]
-        Scale: [0.9999999, 0.9999999, 0.99999994]
+        Translation: [0.3310129, 0.018908266, -0.005774999]
+        Rotation: [0.964737, -0.07043112, 0.0026628757, 0.25360382]
+        Scale: [0.9999999, 0.99999994, 0.9999999]
       Joint:
         JointIndex: 7
     - Name: Skn_L_Knee_Fix
       Id: ccd88980a8b2073ec353d92b2bc8e85d909602d894ad4fba6738b5ede99d9503
       Parent: 47d4aca2dd124d22cf27787ae201913511d257ac196e360b54282d1b9e9a0091
       Transform:
-        Translation: [0.0016316397, -0.0019192459, 3.7087007e-06]
-        Rotation: [0.723133, -0.00021894049, -0.00016307145, 0.69070876]
-        Scale: [1.0007538, 0.97406673, 1.0000287]
+        Translation: [0.0020976064, -0.0024792645, 3.958913e-06]
+        Rotation: [0.72745293, -0.00023199666, -0.00016826829, 0.6861576]
+        Scale: [1.0008379, 0.96192753, 1.0000291]
       Joint:
         JointIndex: 8
     - Name: Skn_L_Pelvis_Fix
       Id: 99923c484242a727af5f31c8ebdcd193469fda379c62f4f4a99a9ab17ffffd74
       Parent: 2d41e76bbc5f8bc6281cf3415bce1e7f904e2a46bbc7f49decac5d7cf30e4358
       Transform:
-        Translation: [0.035476822, -0.01540454, -0.05795333]
-        Rotation: [0.6552014, -0.75225747, 0.053453084, 0.044300884]
-        Scale: [1, 1.0000002, 1.0000001]
+        Translation: [0.035517663, -0.01608152, -0.05778277]
+        Rotation: [0.6535627, -0.75392693, 0.05798767, 0.03297292]
+        Scale: [1, 1.0000002, 1]
       Joint:
         JointIndex: 9
     - Name: Skn_L_PelvisF_Fix
       Id: a354fcd70bd1097b3367b04eed9f19bc3e7c0e627a54796b54b8dc0da6493672
       Parent: 2d41e76bbc5f8bc6281cf3415bce1e7f904e2a46bbc7f49decac5d7cf30e4358
       Transform:
-        Translation: [0.044745855, 0.060132634, -0.007658411]
-        Rotation: [0.039609797, 0.99797845, 0.049698252, -0.00019210305]
-        Scale: [1, 1, 1]
+        Translation: [0.04474602, 0.06004536, -0.008351199]
+        Rotation: [0.045393024, 0.99814653, 0.04033594, 0.003979222]
+        Scale: [0.99999994, 0.9999999, 1]
       Joint:
         JointIndex: 10
     - Name: Skn_L_Thigh_Twist
       Id: ef48ea457bbe228bc12cba9d6b3046829ea9d3d548d7a50f300978725cfb3d88
       Parent: 2d41e76bbc5f8bc6281cf3415bce1e7f904e2a46bbc7f49decac5d7cf30e4358
       Transform:
-        Translation: [-2.2382986e-08, 6.6735453e-09, 1.9868525e-08]
-        Rotation: [0.99786496, -0.065311015, -6.666885e-08, -2.778306e-09]
-        Scale: [1, 1.0000001, 0.9999999]
+        Translation: [-4.5996963e-08, 1.1117025e-08, 1.9126013e-08]
+        Rotation: [0.99748963, -0.07081106, -3.372049e-08, -3.268972e-08]
+        Scale: [1, 1, 0.9999999]
       Joint:
         JointIndex: 11
     - Name: Bip001 R Thigh
       Id: 60fbd05ee6fdc470111383cb8ce022ec6a1d1908e843b988230674eec7702420
       Parent: d0158446df8fd4f3db8c4060fc6181a738c30c09d7043861b1071882b1290f6c
       Transform:
-        Translation: [1.6212395e-07, -6.734715e-08, -0.07887877]
-        Rotation: [0.042215545, 0.031215774, -0.9876724, -0.14746751]
-        Scale: [1, 0.99999976, 1]
+        Translation: [1.6345916e-07, -6.770265e-08, -0.07887877]
+        Rotation: [0.04945509, 0.010099867, -0.98872495, -0.14097974]
+        Scale: [1, 0.99999976, 0.99999994]
       Joint:
         JointIndex: 12
     - Name: Bip001 R Calf
       Id: cce5fb3cfa319bf43ce638bc2b707d4c7a6d00aa945b74b00fed5d6a1ffbd067
       Parent: 60fbd05ee6fdc470111383cb8ce022ec6a1d1908e843b988230674eec7702420
       Transform:
-        Translation: [0.3757257, 2.4585798e-08, 2.619338e-11]
-        Rotation: [0.99868315, -1.5017915e-09, -3.5759655e-08, -0.051302593]
+        Translation: [0.37572563, 2.5791765e-08, -6.6224173e-09]
+        Rotation: [0.99817187, -1.3255708e-08, -4.1977994e-08, -0.060438406]
         Scale: [0.9999998, 1.0000001, 1.0000001]
       Joint:
         JointIndex: 13
@@ -706,17 +706,17 @@ Scene:
       Id: 20313e118e1e9fbe47834249be7e33cc53f1db065c1eda98ff77bd2d593cbf96
       Parent: cce5fb3cfa319bf43ce638bc2b707d4c7a6d00aa945b74b00fed5d6a1ffbd067
       Transform:
-        Translation: [0.40411922, -7.66563e-08, -7.206645e-08]
-        Rotation: [0.9957866, 0.021775048, 0.05153683, 0.07265532]
-        Scale: [0.9999998, 0.9999998, 0.99999994]
+        Translation: [0.40411922, -8.010192e-08, -7.1928625e-08]
+        Rotation: [0.99620616, -0.012153538, 0.049681656, 0.07040912]
+        Scale: [0.9999999, 0.9999998, 0.9999999]
       Joint:
         JointIndex: 14
     - Name: Bip001 R Toe0
       Id: 730b52fd1aecbc1ec220019f44d5840dcb75351bc75c73ccd60f366df36fefb4
       Parent: 20313e118e1e9fbe47834249be7e33cc53f1db065c1eda98ff77bd2d593cbf96
       Transform:
-        Translation: [0.09970671, 0.08781262, -3.5254863e-05]
-        Rotation: [0.69436646, 0.0015998641, 0.0040027862, 0.71960866]
+        Translation: [0.09970671, 0.08781262, -3.5255347e-05]
+        Rotation: [0.6948594, 0.0015992387, 0.00391318, 0.7191332]
         Scale: [0.99999994, 1, 1]
       Joint:
         JointIndex: 15
@@ -724,17 +724,17 @@ Scene:
       Id: bc36070a4e362ef0b3c8b3339bc919c553ccc656f2cf9f47011e02b0b7b2e02d
       Parent: cce5fb3cfa319bf43ce638bc2b707d4c7a6d00aa945b74b00fed5d6a1ffbd067
       Transform:
-        Translation: [-5.6650265e-08, 3.110406e-08, -1.3066236e-08]
-        Rotation: [0.9999999, -1.2913092e-08, 4.3067783e-07, -0.0003017382]
-        Scale: [0.99999994, 1, 0.99999994]
+        Translation: [-3.5029e-08, 3.840878e-08, -9.115259e-09]
+        Rotation: [0.9999999, 3.063895e-08, 2.7725895e-07, -0.00036687191]
+        Scale: [0.9999999, 0.99999994, 0.9999999]
       Joint:
         JointIndex: 16
     - Name: Skn_R_AnkleF_Fix
       Id: f714345338f0f58ee86a3353262f8a614ff4a54f5786ade902cf815ffd105a21
       Parent: bc36070a4e362ef0b3c8b3339bc919c553ccc656f2cf9f47011e02b0b7b2e02d
       Transform:
-        Translation: [0.33101282, 0.0189079, 0.0057712086]
-        Rotation: [0.9718162, 0.037915867, 0.013651394, 0.23226942]
+        Translation: [0.33101282, 0.018907903, 0.0057712123]
+        Rotation: [0.9721056, 0.0019349927, 0.026732542, 0.2330072]
         Scale: [1, 0.9999999, 0.9999999]
       Joint:
         JointIndex: 17
@@ -742,26 +742,26 @@ Scene:
       Id: ab8914cfa97acf851a76bea1907ebe1c4fc5858c7578d6287088e4c1feac7499
       Parent: cce5fb3cfa319bf43ce638bc2b707d4c7a6d00aa945b74b00fed5d6a1ffbd067
       Transform:
-        Translation: [0.0010382615, -0.0003887995, -1.4656232e-06]
-        Rotation: [0.7062365, 1.1125355e-06, -9.776273e-07, 0.70797604]
-        Scale: [0.99999964, 0.96646106, 0.9999998]
+        Translation: [0.0010382622, -0.000388805, -1.4575146e-06]
+        Rotation: [0.7057611, 1.1050636e-06, -9.857955e-07, 0.70844996]
+        Scale: [0.99999964, 0.9592993, 1]
       Joint:
         JointIndex: 18
     - Name: Skn_R_Pelvis_Fix
       Id: 0e6998941c1ace7987b24b102cda4c693184dfad3c3fd0fafb3aa50519815062
       Parent: 60fbd05ee6fdc470111383cb8ce022ec6a1d1908e843b988230674eec7702420
       Transform:
-        Translation: [0.035131894, -0.023597546, 0.05500089]
-        Rotation: [0.81818664, -0.5476636, -0.13092889, -0.116159335]
-        Scale: [0.99999994, 0.99999905, 0.9999988]
+        Translation: [0.03513199, -0.022914834, 0.055290796]
+        Rotation: [0.81112075, -0.5566835, -0.12233918, -0.13122417]
+        Scale: [0.9999999, 0.99999917, 0.99999875]
       Joint:
         JointIndex: 19
     - Name: Skn_R_PelvisF_Fix
       Id: 125e41f11165ff135399f16f8169f7e12c810b5cf9bd948611abeae88d7d48b1
       Parent: 60fbd05ee6fdc470111383cb8ce022ec6a1d1908e843b988230674eec7702420
       Transform:
-        Translation: [0.044745978, 0.05839861, 0.01624951]
-        Rotation: [0.18309852, -0.9779525, -0.045481544, -0.08952695]
+        Translation: [0.044746023, 0.05859816, 0.015515262]
+        Rotation: [0.17440957, -0.97949314, -0.030226642, -0.096233]
         Scale: [1.0000001, 0.99999934, 1]
       Joint:
         JointIndex: 20
@@ -769,8 +769,8 @@ Scene:
       Id: 3ce6face98a8bb6e43a3f5cb66247ecd635d0ddeaaea1072890297bda3f5833a
       Parent: 60fbd05ee6fdc470111383cb8ce022ec6a1d1908e843b988230674eec7702420
       Transform:
-        Translation: [2.4440387e-08, -3.8302243e-08, 2.4575671e-08]
-        Rotation: [0.99048483, 0.1376218, -2.0181095e-07, 1.9866701e-07]
+        Translation: [-1.8675804e-08, -4.4776485e-08, 1.9137346e-08]
+        Rotation: [0.99136937, 0.13109875, -1.948884e-07, 1.4523278e-07]
         Scale: [0.99999994, 0.9999999, 1]
       Joint:
         JointIndex: 21
@@ -778,8 +778,8 @@ Scene:
       Id: 4120ce360a7493626efd71f31edc1d9086656e56c1909ca5a502c65b01c7616f
       Parent: d0158446df8fd4f3db8c4060fc6181a738c30c09d7043861b1071882b1290f6c
       Transform:
-        Translation: [0.050707925, 0.010133047, 5.1049415e-06]
-        Rotation: [0.9989164, -0.0360304, -0.02945075, -0.0006239704]
+        Translation: [0.0507086, 0.010133039, 5.0321432e-06]
+        Rotation: [0.99892306, -0.03541831, -0.029792912, 0.0032687187]
         Scale: [0.9999999, 0.9999999, 0.99999994]
       Joint:
         JointIndex: 22
@@ -787,8 +787,8 @@ Scene:
       Id: 004036e6c7b7f4a444ecc3d6cf2fd3ecc070227994386420efd3a85e88c6f986
       Parent: 4120ce360a7493626efd71f31edc1d9086656e56c1909ca5a502c65b01c7616f
       Transform:
-        Translation: [0.08833211, -7.405752e-05, 5.7423454e-06]
-        Rotation: [0.9985944, -0.04069922, 0.004589274, -0.03364481]
+        Translation: [0.08833211, -7.405631e-05, 5.746664e-06]
+        Rotation: [0.99705184, -0.059957065, 0.031450745, -0.036105603]
         Scale: [0.99999994, 0.99999994, 1]
       Joint:
         JointIndex: 23
@@ -796,8 +796,8 @@ Scene:
       Id: 65e53f9fbbd72d4954ae2cfecbbb5a7080ea2046a395b1d5977715dc12920096
       Parent: 004036e6c7b7f4a444ecc3d6cf2fd3ecc070227994386420efd3a85e88c6f986
       Transform:
-        Translation: [0.093488954, -0.00015573142, 1.2056331e-05]
-        Rotation: [0.9941059, -0.02567327, 0.072185256, -0.0767049]
+        Translation: [0.093488954, -0.0001557305, 1.2060098e-05]
+        Rotation: [0.9931415, -0.024246113, 0.054315582, -0.10065757]
         Scale: [0.99999994, 0.9999999, 0.9999998]
       Joint:
         JointIndex: 24
@@ -805,8 +805,8 @@ Scene:
       Id: 2179e7898b47f10fd55715a94f10d3188aafe4e69f8c1491656c552df0559771
       Parent: 65e53f9fbbd72d4954ae2cfecbbb5a7080ea2046a395b1d5977715dc12920096
       Transform:
-        Translation: [0.16914894, -0.023955062, 0.015530815]
-        Rotation: [0.12686183, -0.6437198, 0.14647189, -0.7403222]
+        Translation: [0.16914892, -0.023955062, 0.015530812]
+        Rotation: [0.123578906, -0.67290616, 0.13227567, -0.7172368]
         Scale: [1, 1.0000001, 1.0000037]
       Joint:
         JointIndex: 25
@@ -814,17 +814,17 @@ Scene:
       Id: 59f50a20d31f49800dde46c4c90d2520f33204d058d2fd17ac5de3ae628da457
       Parent: 2179e7898b47f10fd55715a94f10d3188aafe4e69f8c1491656c552df0559771
       Transform:
-        Translation: [0.082837336, 5.0389723e-08, -2.221329e-09]
-        Rotation: [0.82586634, 0.048911214, 0.5433806, 0.14244299]
-        Scale: [1.0000001, 0.9999999, 0.9999999]
+        Translation: [0.082837336, 4.3130953e-08, -7.7473665e-08]
+        Rotation: [0.80787474, 0.0896428, 0.56038713, 0.15896149]
+        Scale: [1, 0.99999994, 0.9999999]
       Joint:
         JointIndex: 26
     - Name: Bip001 L Forearm
       Id: bcc3de10b8504fcaec3bc5fbadcf2aa5189471b3978328de0bea7aa209601b31
       Parent: 59f50a20d31f49800dde46c4c90d2520f33204d058d2fd17ac5de3ae628da457
       Transform:
-        Translation: [0.22355147, 3.4507636e-07, 2.4964348e-07]
-        Rotation: [0.9994209, 2.9280715e-08, 8.8684465e-07, -0.034027092]
+        Translation: [0.22355154, 3.4754387e-07, 2.6434464e-07]
+        Rotation: [0.9994209, 3.0406323e-08, 8.8885184e-07, -0.034027096]
         Scale: [1, 1, 0.9999999]
       Joint:
         JointIndex: 27
@@ -832,8 +832,8 @@ Scene:
       Id: cd2172711f9bdb21e56e74a160c11d724a60cb80ec2ab8f3388cae2ff12cc3eb
       Parent: bcc3de10b8504fcaec3bc5fbadcf2aa5189471b3978328de0bea7aa209601b31
       Transform:
-        Translation: [0.20211394, 2.9978176e-07, 2.8693228e-07]
-        Rotation: [0.9400418, 0.27275476, -0.014853864, 0.2042196]
+        Translation: [0.20211399, 2.9821973e-07, 3.0916806e-07]
+        Rotation: [0.93731064, 0.297553, 0.019385193, 0.18037577]
         Scale: [0.9999999, 0.9999999, 0.99999994]
       Joint:
         JointIndex: 28
@@ -841,26 +841,26 @@ Scene:
       Id: 6ef251e6be2152fd3858dec1b34bf814c455997f6df811cb432756ebdda1928f
       Parent: cd2172711f9bdb21e56e74a160c11d724a60cb80ec2ab8f3388cae2ff12cc3eb
       Transform:
-        Translation: [0.008499372, 0.0054123867, -0.010965806]
-        Rotation: [0.7195212, 0.61031854, 0.27295184, -0.18787672]
-        Scale: [0.9999999, 0.9999999, 1]
+        Translation: [0.008499348, 0.0054123932, -0.010965809]
+        Rotation: [0.7247735, 0.6176781, 0.25697103, -0.16475089]
+        Scale: [0.9999999, 0.9999999, 0.99999994]
       Joint:
         JointIndex: 29
     - Name: Bip001 L Finger01
       Id: a2d585bb9e37fd5d37577831e8f2b6b258ac43204622df85e951bcb5c5af82a7
       Parent: 6ef251e6be2152fd3858dec1b34bf814c455997f6df811cb432756ebdda1928f
       Transform:
-        Translation: [0.036985513, -3.970768e-08, 9.299695e-08]
-        Rotation: [0.9897322, -0.0018958799, -0.031189712, 0.13947703]
-        Scale: [0.99999994, 0.9999998, 1]
+        Translation: [0.0369855, -2.2805446e-08, 9.5349264e-08]
+        Rotation: [0.99061763, -0.0016930371, -0.031201396, 0.1330429]
+        Scale: [0.9999999, 0.99999976, 0.9999999]
       Joint:
         JointIndex: 30
     - Name: Bip001 L Finger02
       Id: 19a8054d0859488aaf1e3eb81600c01c6fb6f778081d9f2732a8905219285c68
       Parent: a2d585bb9e37fd5d37577831e8f2b6b258ac43204622df85e951bcb5c5af82a7
       Transform:
-        Translation: [0.025575751, -9.313741e-08, 5.0449902e-08]
-        Rotation: [0.98769015, -0.0048123254, -0.019186305, 0.15516734]
+        Translation: [0.025575802, -9.3548294e-08, 8.043887e-08]
+        Rotation: [0.98323804, -0.0053184116, -0.019052207, 0.18125057]
         Scale: [0.99999976, 0.99999976, 0.9999999]
       Joint:
         JointIndex: 31
@@ -868,62 +868,62 @@ Scene:
       Id: df1f9e8ed1b7f16a35788a8f0269eca85004e07de3bfd468e48da2f6292f8448
       Parent: cd2172711f9bdb21e56e74a160c11d724a60cb80ec2ab8f3388cae2ff12cc3eb
       Transform:
-        Translation: [0.06958212, -0.0024179493, -0.016843019]
-        Rotation: [0.98005056, 0.08723243, 0.0037608282, -0.17854218]
-        Scale: [1.0000001, 1, 1]
+        Translation: [0.06958206, -0.0024179406, -0.01684302]
+        Rotation: [0.98546714, 0.08730939, 0.0008447987, -0.14570811]
+        Scale: [1, 1, 0.99999994]
       Joint:
         JointIndex: 32
     - Name: Bip001 L Finger11
       Id: 59a2718df4356ffa704c5f1caa0073b4e83592023c3ade561fed374380562fa0
       Parent: df1f9e8ed1b7f16a35788a8f0269eca85004e07de3bfd468e48da2f6292f8448
       Transform:
-        Translation: [0.030227832, -2.1631787e-07, 7.23247e-08]
-        Rotation: [0.9926806, -1.41741875e-05, -0.0019574242, 0.12075302]
-        Scale: [0.9999998, 1, 0.9999998]
+        Translation: [0.030227793, -2.0530595e-07, 6.754677e-08]
+        Rotation: [0.99068004, -4.4649518e-05, -0.0019569532, 0.13619563]
+        Scale: [0.9999999, 1, 0.9999999]
       Joint:
         JointIndex: 33
     - Name: Bip001 L Finger12
       Id: cf357857347adcb11e491430ae75e033d80919c74bbaca115441ed455bd24d91
       Parent: 59a2718df4356ffa704c5f1caa0073b4e83592023c3ade561fed374380562fa0
       Transform:
-        Translation: [0.01889109, 2.8448266e-09, 3.8380705e-08]
-        Rotation: [0.8365129, -0.003863868, -0.0046842056, 0.54791355]
-        Scale: [1.0000001, 1, 1]
+        Translation: [0.018891072, 9.607915e-09, 2.735472e-08]
+        Rotation: [0.8619917, -0.0036331054, -0.0048652953, 0.5068862]
+        Scale: [1, 0.99999994, 0.99999994]
       Joint:
         JointIndex: 34
     - Name: Bip001 L Finger2
       Id: 4f3da58c1d34ad5168f470e46f857dbd8e4b0affd7f933a4366a17065bed8ed7
       Parent: cd2172711f9bdb21e56e74a160c11d724a60cb80ec2ab8f3388cae2ff12cc3eb
       Transform:
-        Translation: [0.0675785, -0.0055336067, -0.0017464022]
-        Rotation: [0.9995175, -0.0008072735, -0.026670884, 0.015898978]
-        Scale: [0.99999994, 0.9999998, 0.9999999]
+        Translation: [0.06757849, -0.0055335816, -0.0017463965]
+        Rotation: [0.9984292, -0.0016975494, -0.026628997, 0.049266074]
+        Scale: [0.9999999, 0.99999976, 0.9999999]
       Joint:
         JointIndex: 35
     - Name: Bip001 L Finger21
       Id: 70108403b87a4da5f2066aec4f805b0b30a65f6b50410ceec81c9ad00cc15d24
       Parent: 4f3da58c1d34ad5168f470e46f857dbd8e4b0affd7f933a4366a17065bed8ed7
       Transform:
-        Translation: [0.032065224, -8.7307434e-08, 2.960927e-08]
-        Rotation: [0.9186307, -0.00021789422, -0.00024220569, 0.39511716]
-        Scale: [1.0000001, 1, 1]
+        Translation: [0.032065205, -8.0157676e-08, 3.1079402e-08]
+        Rotation: [0.9120376, -0.00022183202, -0.00023859859, 0.41010645]
+        Scale: [1, 0.99999994, 1]
       Joint:
         JointIndex: 36
     - Name: Bip001 L Finger22
       Id: 5c03fb861647bb116c75f9a17d0bda0798db25ae557deef6fd28dfd96b52a293
       Parent: 70108403b87a4da5f2066aec4f805b0b30a65f6b50410ceec81c9ad00cc15d24
       Transform:
-        Translation: [0.022007838, -5.460931e-08, 3.1392368e-08]
-        Rotation: [0.954671, 7.3238996e-05, 8.338041e-06, 0.29766276]
-        Scale: [0.99999994, 0.9999999, 0.99999994]
+        Translation: [0.022007827, -1.7307329e-07, 2.9922226e-08]
+        Rotation: [0.96683216, 7.2788025e-05, 1.1560042e-05, 0.2554128]
+        Scale: [0.9999999, 0.9999999, 0.9999999]
       Joint:
         JointIndex: 37
     - Name: Bip001 L Finger3
       Id: b2cc47155cf7166165a7b3a59d83e17cd25642b519e4e8006de1471c08195586
       Parent: cd2172711f9bdb21e56e74a160c11d724a60cb80ec2ab8f3388cae2ff12cc3eb
       Transform:
-        Translation: [0.0648696, -0.0021575303, 0.012728348]
-        Rotation: [0.9947645, -0.08351855, -0.050251607, 0.030711845]
+        Translation: [0.06486954, -0.002157529, 0.01272836]
+        Rotation: [0.9931831, -0.085148044, -0.04743747, 0.06392827]
         Scale: [0.99999994, 1, 0.9999999]
       Joint:
         JointIndex: 38
@@ -931,8 +931,8 @@ Scene:
       Id: d2b4b4cc850ed905f0958d85ca2214ce7f1fe12debf9a4c7b83263513c793a24
       Parent: b2cc47155cf7166165a7b3a59d83e17cd25642b519e4e8006de1471c08195586
       Transform:
-        Translation: [0.029341783, -1.1034819e-07, 8.602595e-09]
-        Rotation: [0.8306107, 0.010527309, 0.006394587, 0.5567173]
+        Translation: [0.029341793, -1.05544984e-07, 4.927269e-09]
+        Rotation: [0.8295729, 0.010539306, 0.0063747275, 0.5582626]
         Scale: [0.9999999, 1, 1]
       Joint:
         JointIndex: 39
@@ -940,8 +940,8 @@ Scene:
       Id: e06d160ce156914071784add3da3d201bc4d5a47df8b82534d86d01d25baedd8
       Parent: d2b4b4cc850ed905f0958d85ca2214ce7f1fe12debf9a4c7b83263513c793a24
       Transform:
-        Translation: [0.021057516, -9.661644e-08, 3.389478e-08]
-        Rotation: [0.9324822, 0.0007216295, -0.00029682816, 0.361215]
+        Translation: [0.02105752, -1.2201781e-07, 4.639089e-08]
+        Rotation: [0.94214875, 0.0007295812, -0.00027668875, 0.3351942]
         Scale: [0.99999994, 0.99999994, 1]
       Joint:
         JointIndex: 40
@@ -949,17 +949,17 @@ Scene:
       Id: 6e41eba09d1b7422935524b2bbe112a85ada34f753fdadf259a4b462c5542c4b
       Parent: cd2172711f9bdb21e56e74a160c11d724a60cb80ec2ab8f3388cae2ff12cc3eb
       Transform:
-        Translation: [0.056248806, 0.006111533, 0.023446858]
-        Rotation: [0.9543089, -0.07611954, -0.101072416, -0.2707115]
-        Scale: [1, 0.99999994, 0.9999998]
+        Translation: [0.056248732, 0.006111553, 0.023446852]
+        Rotation: [0.9628178, -0.079453506, -0.098473795, -0.23868787]
+        Scale: [0.99999994, 0.9999999, 0.99999976]
       Joint:
         JointIndex: 41
     - Name: Bip001 L Finger41
       Id: 23a3e11ad55e1ae68cccf42910a8c966d9c2922e432ad278d647b0c8cb98fae9
       Parent: 6e41eba09d1b7422935524b2bbe112a85ada34f753fdadf259a4b462c5542c4b
       Transform:
-        Translation: [0.024419192, -1.1196276e-07, 7.1026484e-08]
-        Rotation: [0.85099, -0.001775781, -0.003760688, 0.52516556]
+        Translation: [0.024419222, -1.1004778e-07, 4.6769326e-08]
+        Rotation: [0.8560484, -0.0017392794, -0.0037777566, 0.5168787]
         Scale: [0.9999998, 1.0000001, 0.99999994]
       Joint:
         JointIndex: 42
@@ -967,8 +967,8 @@ Scene:
       Id: 1281c86b0f42de895448b1cce5e5c05a8757fb8344a62532faa11c5ae8ccc80c
       Parent: 23a3e11ad55e1ae68cccf42910a8c966d9c2922e432ad278d647b0c8cb98fae9
       Transform:
-        Translation: [0.014353411, -9.197788e-08, -3.5293433e-09]
-        Rotation: [0.81686634, 0.0048698056, -2.6023288e-05, 0.5768065]
+        Translation: [0.014353426, -9.069846e-08, -5.890839e-10]
+        Rotation: [0.8216058, 0.004869861, 1.4285689e-05, 0.5700352]
         Scale: [1, 0.99999994, 1]
       Joint:
         JointIndex: 43
@@ -976,8 +976,8 @@ Scene:
       Id: 187fd408ee704cd0dc76cce9fd58f669a78e1845250289a3d424917a3134d631
       Parent: bcc3de10b8504fcaec3bc5fbadcf2aa5189471b3978328de0bea7aa209601b31
       Transform:
-        Translation: [-8.132608e-05, 7.132834e-06, -4.863174e-05]
-        Rotation: [0.7048309, 1.6231721e-05, -3.9887494e-05, 0.7093753]
+        Translation: [-8.133527e-05, 7.1355907e-06, -4.8637805e-05]
+        Rotation: [0.7048309, 1.6229647e-05, -3.9905906e-05, 0.7093753]
         Scale: [1.0000594, 1.0001156, 1.0023516]
       Joint:
         JointIndex: 44
@@ -985,8 +985,8 @@ Scene:
       Id: 17ffca3a0eeb12f7fb8849273af79d84acb043faade8f6f5b4b6a1d74c8baca2
       Parent: bcc3de10b8504fcaec3bc5fbadcf2aa5189471b3978328de0bea7aa209601b31
       Transform:
-        Translation: [1.0776303e-07, 1.3848671e-09, -2.3773325e-07]
-        Rotation: [1, -1.616337e-07, -2.2335646e-08, 7.042023e-07]
+        Translation: [1.0850958e-07, -2.2904607e-09, -2.1347608e-07]
+        Rotation: [1, -1.5538564e-07, -2.2530898e-08, 7.0604e-07]
         Scale: [1, 1.0000002, 1]
       Joint:
         JointIndex: 45
@@ -994,8 +994,8 @@ Scene:
       Id: b07ba736ba37ccb1f422e02b2a856d8f4b387d5e533e30f53e6a29cb9a1b69c6
       Parent: 17ffca3a0eeb12f7fb8849273af79d84acb043faade8f6f5b4b6a1d74c8baca2
       Transform:
-        Translation: [-1.4199239e-07, -2.9829035e-08, -1.436104e-08]
-        Rotation: [0.86300296, 0.5051991, -5.807897e-07, -1.0104701e-06]
+        Translation: [-1.5894483e-07, -2.5232701e-08, -1.6929953e-08]
+        Rotation: [0.85757107, 0.5143656, -6.0009376e-07, -9.99229e-07]
         Scale: [1.0000001, 0.99999994, 0.99999964]
       Joint:
         JointIndex: 46
@@ -1003,33 +1003,33 @@ Scene:
       Id: a4d9cf49c8dae403e52fff4477783f9d669e14dd57b67917b2c08a844ed7d8a7
       Parent: 59f50a20d31f49800dde46c4c90d2520f33204d058d2fd17ac5de3ae628da457
       Transform:
-        Translation: [-1.9731286e-07, 7.8462765e-09, 2.3967516e-08]
-        Rotation: [0.9950697, -0.099178016, 8.618575e-07, 4.20529e-07]
-        Scale: [1, 0.99999994, 1.0000005]
+        Translation: [-3.2555363e-09, -5.4308447e-09, 3.07439e-08]
+        Rotation: [0.9881843, -0.15327005, 9.013545e-07, 4.539894e-07]
+        Scale: [1, 1, 1.0000006]
       Joint:
         JointIndex: 47
     - Name: Skn_L_UpArm_Twist02
       Id: b7f7bbefafa8b4de1a348d9d557ffb46ec423d6040e973467943657e49b95581
       Parent: 59f50a20d31f49800dde46c4c90d2520f33204d058d2fd17ac5de3ae628da457
       Transform:
-        Translation: [0.1066287, 1.0070834e-07, -5.567688e-08]
-        Rotation: [0.99969155, -0.02483645, 7.556267e-07, 5.4430797e-07]
-        Scale: [0.99999994, 0.9999997, 1]
+        Translation: [0.106628805, 1.03464835e-07, -6.3119415e-08]
+        Rotation: [0.99926, -0.038464114, 8.341931e-07, 5.699141e-07]
+        Scale: [0.99999994, 0.99999976, 1]
       Joint:
         JointIndex: 48
     - Name: Bip001 L ForeTwist OLD
       Id: 522d2b5ca1d8510e9d1756f9fdc502ccee9e6f23759d4d7fccfe5c77073af27e
       Parent: 59f50a20d31f49800dde46c4c90d2520f33204d058d2fd17ac5de3ae628da457
       Transform:
-        Translation: [0.22355233, 0.22245306, -4.5495554e-09]
-        Rotation: [0.70636386, 0.7069516, -0.025204903, -0.025183968]
-        Scale: [1, 1, 1]
+        Translation: [0.22355226, 0.22245307, -1.0026472e-08]
+        Rotation: [0.70636386, 0.7069516, -0.025204903, -0.025183957]
+        Scale: [1, 1, 0.99999994]
     - Name: Ctr_L_Lace_01
       Id: 661fc3f1e9760e1f0c97001ccce5abf3054fcdbe9a3ce98e1d40ba88aa7437a9
       Parent: 2179e7898b47f10fd55715a94f10d3188aafe4e69f8c1491656c552df0559771
       Transform:
-        Translation: [0.06676504, -0.024473963, 0.019819567]
-        Rotation: [0.30341557, 0.92356426, -0.21013336, 0.10398125]
+        Translation: [0.06676508, -0.024473973, 0.01981946]
+        Rotation: [0.2997273, 0.9212611, -0.226127, 0.10152906]
         Scale: [0.99999964, 0.9999998, 0.9999995]
       Joint:
         JointIndex: 49
@@ -1037,8 +1037,8 @@ Scene:
       Id: 619b8b31ee39c43b19d8e233bb4e57d0e0cd56fa95f61b12de7c0cf016fd51d0
       Parent: 2179e7898b47f10fd55715a94f10d3188aafe4e69f8c1491656c552df0559771
       Transform:
-        Translation: [0.058947157, 0.005362961, 0.036097247]
-        Rotation: [0.57529175, 0.74197596, -0.29303965, 0.18066247]
+        Translation: [0.05894711, 0.005362977, 0.036097128]
+        Rotation: [0.56967103, 0.74051136, -0.30877063, 0.17826545]
         Scale: [1, 1.0000001, 1]
       Joint:
         JointIndex: 50
@@ -1046,17 +1046,17 @@ Scene:
       Id: cbd4601b3115e3714bbeb6a822f43dcc7e2086c85564a0458f906a8449308017
       Parent: 2179e7898b47f10fd55715a94f10d3188aafe4e69f8c1491656c552df0559771
       Transform:
-        Translation: [0.06998501, 0.04140323, 0.017010383]
-        Rotation: [0.9280646, 0.25381523, -0.1813144, 0.20346749]
-        Scale: [0.99999994, 1, 1]
+        Translation: [0.06998503, 0.04140327, 0.01701024]
+        Rotation: [0.9268124, 0.25578514, -0.19063263, 0.19812083]
+        Scale: [1, 1.0000001, 1]
       Joint:
         JointIndex: 51
     - Name: Bip001 Neck
       Id: 3fdbef170b0e299cbba6445bf97b5a9198e217088ee05f537ef5c6a8e9616735
       Parent: 65e53f9fbbd72d4954ae2cfecbbb5a7080ea2046a395b1d5977715dc12920096
       Transform:
-        Translation: [0.19417194, -0.016185272, -1.1570032e-05]
-        Rotation: [0.99176675, 0.10690113, -0.0023203662, 0.07046545]
+        Translation: [0.19417194, -0.016185272, -1.1570767e-05]
+        Rotation: [0.9851926, 0.13446745, 0.009578256, 0.105935425]
         Scale: [0.9999998, 0.9999998, 1]
       Joint:
         JointIndex: 52
@@ -1064,8 +1064,8 @@ Scene:
       Id: 952d0ee5b17d060ad42a2dbe8c1c6d696c30c394ca14c8c169c63db4c00958e9
       Parent: 3fdbef170b0e299cbba6445bf97b5a9198e217088ee05f537ef5c6a8e9616735
       Transform:
-        Translation: [0.06496753, 5.7328602e-08, -1.1814767e-08]
-        Rotation: [0.9764433, 0.012769855, 0.03690897, 0.21221024]
+        Translation: [0.06496757, 5.92388e-08, -1.1814766e-08]
+        Rotation: [0.9781322, 0.015594574, 0.034344997, 0.20453504]
         Scale: [1, 1, 1]
       Joint:
         JointIndex: 53
@@ -1073,26 +1073,26 @@ Scene:
       Id: 4733270ed294f761b2de8fade2e039f9eba83d132b31349354d236524776d4ec
       Parent: 952d0ee5b17d060ad42a2dbe8c1c6d696c30c394ca14c8c169c63db4c00958e9
       Transform:
-        Translation: [0.17180538, -0.07431497, -1.452778e-07]
-        Rotation: [0.25989106, -0.00017973589, 0.00066823984, -0.9656377]
-        Scale: [1.0000001, 1.0000001, 1.0000001]
+        Translation: [0.17180529, -0.07431497, -1.5079081e-07]
+        Rotation: [0.25054187, 0.00025461556, -0.00095050334, -0.9681054]
+        Scale: [1, 1, 1]
       Joint:
         JointIndex: 54
     - Name: Ctr_B_HairA_02
       Id: 3542a9c33295b142857d8e06ec1a0a51f5dd24fdce61b73274392355a74932ce
       Parent: 4733270ed294f761b2de8fade2e039f9eba83d132b31349354d236524776d4ec
       Transform:
-        Translation: [0.07613909, 3.6606377e-07, 1.7010382e-08]
-        Rotation: [0.9336435, 0.00026090528, -0.00010141989, -0.35820356]
-        Scale: [0.9999998, 0.9999998, 0.9999999]
+        Translation: [0.07613908, 4.3796325e-07, 1.4070098e-08]
+        Rotation: [0.9385868, 0.0010060238, -0.00036994042, -0.34504166]
+        Scale: [0.9999999, 0.9999999, 0.99999994]
       Joint:
         JointIndex: 55
     - Name: Ctr_B_HairA_03
       Id: 8e3410f2aaf826a9b7517d27b59756ffb3c7baac31afe5187f1a8188f12ae7dd
       Parent: 3542a9c33295b142857d8e06ec1a0a51f5dd24fdce61b73274392355a74932ce
       Transform:
-        Translation: [0.073281184, 1.200028e-07, 1.12394245e-08]
-        Rotation: [0.9861821, 0.0006264629, -0.000275445, -0.16566354]
+        Translation: [0.073281184, 1.2043796e-07, 1.2709556e-08]
+        Rotation: [0.98991036, 0.0007915212, -0.00011298526, -0.14169289]
         Scale: [0.9999998, 0.99999994, 0.99999994]
       Joint:
         JointIndex: 56
@@ -1100,42 +1100,42 @@ Scene:
       Id: 5c2af0a55d05a9688f93234cb53758a4bcc3b69c822f3f8dc9adc6baf4afda2d
       Parent: 8e3410f2aaf826a9b7517d27b59756ffb3c7baac31afe5187f1a8188f12ae7dd
       Transform:
-        Translation: [0.0826299, 0.036640666, 1.2407878e-09]
-        Rotation: [0.7057426, 0.70574164, -0.043909498, -0.04390955]
+        Translation: [0.08262989, 0.036640644, 2.7344922e-09]
+        Rotation: [0.7057426, 0.7057417, -0.043909498, -0.043909542]
         Scale: [1, 0.99999994, 1]
     - Name: Ctr_B_HairB_01
       Id: dfe985a57b9d4a9dd1f880c1724a8b4ba858545526618774d488ccc7cca5a753
       Parent: 3542a9c33295b142857d8e06ec1a0a51f5dd24fdce61b73274392355a74932ce
       Transform:
-        Translation: [2.04998e-08, -3.761691e-08, -1.4573622e-09]
-        Rotation: [0.9992112, -2.8676026e-05, 0.004733301, 0.03942876]
-        Scale: [1, 1, 0.99999994]
+        Translation: [-4.1473385e-09, -1.2651552e-08, 1.2765067e-11]
+        Rotation: [0.99913234, 0.00080523733, 0.00026632246, 0.041640006]
+        Scale: [0.9999999, 1, 0.9999999]
       Joint:
         JointIndex: 57
     - Name: Ctr_B_HairB_02
       Id: 32e73b6a9af630ddcb342e6865ccd53507caae4cc7a23e600b985e287ad83d51
       Parent: dfe985a57b9d4a9dd1f880c1724a8b4ba858545526618774d488ccc7cca5a753
       Transform:
-        Translation: [0.06957401, -6.085521e-08, -1.3348138e-08]
-        Rotation: [0.99983263, -0.00022497089, 0.010930318, 0.014668936]
-        Scale: [1, 1.0000001, 1]
+        Translation: [0.06957398, -4.9180777e-08, -4.527349e-09]
+        Rotation: [0.9994845, 0.00036786476, 0.012788281, 0.02944595]
+        Scale: [1, 1, 1]
       Joint:
         JointIndex: 58
     - Name: Ctr_B_HairC_01
       Id: 5fdfe1ad75c4adb1f37570c206707a857833cf370ef710bbec945f6ad00f6568
       Parent: 4733270ed294f761b2de8fade2e039f9eba83d132b31349354d236524776d4ec
       Transform:
-        Translation: [0.004710366, 0.0031078309, -0.017061125]
-        Rotation: [0.9974814, -0.067217276, 0.020841539, 0.008857024]
-        Scale: [0.9999989, 0.99999994, 0.9999999]
+        Translation: [0.00471033, 0.0031078644, -0.017061124]
+        Rotation: [0.9977179, -0.065757565, 0.012096885, 0.009417873]
+        Scale: [0.999999, 0.9999999, 0.99999994]
       Joint:
         JointIndex: 59
     - Name: Ctr_B_HairC_02
       Id: 0b03710ae57dec7c98e08b918c1d55d34cd7cb538dcd4e9e7562c600391d4ac6
       Parent: 5fdfe1ad75c4adb1f37570c206707a857833cf370ef710bbec945f6ad00f6568
       Transform:
-        Translation: [0.07546286, 1.9063583e-07, 1.0500272e-08]
-        Rotation: [0.9321155, -0.047046103, -0.24182643, -0.26545683]
+        Translation: [0.07546285, 1.2487021e-07, 3.123615e-08]
+        Rotation: [0.9318389, -0.045752022, -0.24369788, -0.26494235]
         Scale: [0.9999996, 1.0000001, 1]
       Joint:
         JointIndex: 60
@@ -1143,17 +1143,17 @@ Scene:
       Id: f3bb89a566ef12d52c6792a0a32b727226c82ebfd588f880ea08cf49f578fdea
       Parent: 952d0ee5b17d060ad42a2dbe8c1c6d696c30c394ca14c8c169c63db4c00958e9
       Transform:
-        Translation: [0.1545203, 0.07529622, 0.013571221]
-        Rotation: [0.013513008, -0.19682984, -0.97745323, -0.075236954]
-        Scale: [0.9999998, 0.9999997, 0.9999998]
+        Translation: [0.15452029, 0.0752962, 0.0135712065]
+        Rotation: [0.011767097, -0.20405146, -0.9760877, -0.07400869]
+        Scale: [0.99999976, 0.99999964, 0.9999999]
       Joint:
         JointIndex: 61
     - Name: Ctr_F_Hair_02
       Id: 194fc48c418b3c5b2585148ef496751fc5ba51264a923af48451f72b7dd02c69
       Parent: f3bb89a566ef12d52c6792a0a32b727226c82ebfd588f880ea08cf49f578fdea
       Transform:
-        Translation: [0.04546173, -1.5838702e-07, -3.5945615e-09]
-        Rotation: [0.9835946, -0.010196577, -0.005828741, -0.1800104]
+        Translation: [0.04546168, -1.4691132e-07, 4.6403574e-09]
+        Rotation: [0.98181, -0.006957259, 0.013106859, -0.18928517]
         Scale: [0.99999994, 0.99999994, 0.99999994]
       Joint:
         JointIndex: 62
@@ -1161,51 +1161,51 @@ Scene:
       Id: 51e7a6fa51f857ddcbfb21d7b8622f298eb2aeffd98b97409a41c544decab1e6
       Parent: 952d0ee5b17d060ad42a2dbe8c1c6d696c30c394ca14c8c169c63db4c00958e9
       Transform:
-        Translation: [0.11045162, 0.021229375, 0.07816331]
-        Rotation: [0.034532968, -0.06950117, -0.99101394, 0.10894166]
-        Scale: [1, 1.0000001, 0.99999994]
+        Translation: [0.11045155, 0.021229403, 0.07816331]
+        Rotation: [0.033780664, -0.08487376, -0.9896698, 0.11049467]
+        Scale: [1, 1, 0.9999999]
       Joint:
         JointIndex: 63
     - Name: Ctr_L_HairA_02
       Id: 1075c8ed074b905ee12dc28d987e2294d8b1c5ef7b2dc90630377e5bcec8ef03
       Parent: 51e7a6fa51f857ddcbfb21d7b8622f298eb2aeffd98b97409a41c544decab1e6
       Transform:
-        Translation: [0.04586782, 0.00015840073, -1.4478016e-05]
-        Rotation: [0.9904099, -0.011305394, -0.13046096, -0.044049136]
-        Scale: [1, 0.9999998, 0.99999994]
+        Translation: [0.045867816, 0.00015840934, -1.4488276e-05]
+        Rotation: [0.9892117, -0.009156483, -0.12991859, -0.06706411]
+        Scale: [1, 0.9999999, 0.99999994]
       Joint:
         JointIndex: 64
     - Name: Ctr_L_HairA_03
       Id: 3bca344e90edd6851ff305d3658d0915b47ebec3ea2e644b118dccc4fce4b831
       Parent: 1075c8ed074b905ee12dc28d987e2294d8b1c5ef7b2dc90630377e5bcec8ef03
       Transform:
-        Translation: [0.04992793, -0.0008037515, 2.3045668e-05]
-        Rotation: [0.996205, 0.01558993, -0.03965834, -0.07589325]
-        Scale: [0.99999994, 1, 0.99999976]
+        Translation: [0.049928047, -0.00080375717, 2.304326e-05]
+        Rotation: [0.9931117, 0.01565395, -0.0382041, -0.10965721]
+        Scale: [0.9999999, 0.99999994, 0.9999999]
       Joint:
         JointIndex: 65
     - Name: Ctr_L_HairA_04
       Id: fb0a4458dbf7bfc90b6342f9fc3a1211c82d6f3222eafc9d730b53703dfa9f0e
       Parent: 3bca344e90edd6851ff305d3658d0915b47ebec3ea2e644b118dccc4fce4b831
       Transform:
-        Translation: [0.03873744, 0.049266804, -0.000112817084]
-        Rotation: [0.6755332, 0.71409816, -0.11494653, 0.1431993]
+        Translation: [0.038737457, 0.0492668, -0.00011281391]
+        Rotation: [0.6755332, 0.7140982, -0.11494654, 0.1431993]
         Scale: [1, 1, 1]
     - Name: Ctr_L_HairB_01
       Id: b0483f20f21db599de08ba6ea362e042c7fe0e84a3045fc6f9b2ca68a0e19678
       Parent: 952d0ee5b17d060ad42a2dbe8c1c6d696c30c394ca14c8c169c63db4c00958e9
       Transform:
-        Translation: [0.16622007, -0.048778623, 0.06446997]
-        Rotation: [0.21123853, -0.072088, -0.49196514, -0.8415176]
-        Scale: [0.99999976, 0.99999994, 1]
+        Translation: [0.16622001, -0.048778623, 0.06446998]
+        Rotation: [0.20061354, -0.079770766, -0.49590552, -0.8411115]
+        Scale: [0.9999998, 0.9999999, 1]
       Joint:
         JointIndex: 66
     - Name: Ctr_L_HairB_02
       Id: cb9a3b0d68c2cc6d243f66829eb7b0fbeb1712adea01cad2dd72708022edc4e0
       Parent: b0483f20f21db599de08ba6ea362e042c7fe0e84a3045fc6f9b2ca68a0e19678
       Transform:
-        Translation: [0.07296872, 4.751952e-08, -2.3989205e-07]
-        Rotation: [0.95038325, -0.024010304, -0.023895584, -0.30923188]
+        Translation: [0.072968766, 3.890528e-08, -1.985852e-07]
+        Rotation: [0.9548323, -0.02173325, -0.011666523, -0.29611954]
         Scale: [0.99999994, 1, 0.9999998]
       Joint:
         JointIndex: 67
@@ -1213,69 +1213,69 @@ Scene:
       Id: 1f2bf591cb53b1e3b69f057ac17594b26b777cc2efbb7934459197294b6343b1
       Parent: cb9a3b0d68c2cc6d243f66829eb7b0fbeb1712adea01cad2dd72708022edc4e0
       Transform:
-        Translation: [0.06949381, -1.0278143e-06, 1.6842701e-07]
-        Rotation: [0.9965354, -0.0013522386, -0.025316428, -0.07920982]
-        Scale: [0.99999994, 1.0000001, 1]
+        Translation: [0.069493845, -1.0355437e-06, 1.7867026e-07]
+        Rotation: [0.99836785, -0.0020558182, 0.0025359385, -0.0570179]
+        Scale: [1, 1.0000001, 1]
       Joint:
         JointIndex: 68
     - Name: Ctr_L_Headband
       Id: 9ea36ad8135cffd5b7a655431bce21df6d514eb74c75d99b90d2bf6adb9959e8
       Parent: 952d0ee5b17d060ad42a2dbe8c1c6d696c30c394ca14c8c169c63db4c00958e9
       Transform:
-        Translation: [0.18549465, 0.04288741, 0.0570702]
-        Rotation: [0.9684103, 0.11854233, -0.21935004, -0.003848507]
-        Scale: [0.9999999, 0.9999999, 1]
+        Translation: [0.18549457, 0.042887412, 0.05707019]
+        Rotation: [0.965864, 0.11602531, -0.23160931, -0.001430342]
+        Scale: [0.99999994, 0.9999999, 1]
       Joint:
         JointIndex: 69
     - Name: Ctr_M_Headband
       Id: e19a626b329447b33ff291fe86ef27cc2e2906ffc9b0fa0b216f6fe251c85889
       Parent: 952d0ee5b17d060ad42a2dbe8c1c6d696c30c394ca14c8c169c63db4c00958e9
       Transform:
-        Translation: [0.20158601, 0.052022386, 1.5367091e-07]
-        Rotation: [0.99927545, 0.0007148498, 0.01796788, -0.03354469]
-        Scale: [0.99999994, 1.0000001, 1.0000001]
+        Translation: [0.20158595, 0.0520224, 1.4981185e-07]
+        Rotation: [0.9992871, -0.0008469904, 0.0069424957, -0.037100196]
+        Scale: [0.99999994, 1, 1]
       Joint:
         JointIndex: 70
     - Name: Ctr_R_HairA_01
       Id: 789054ce50f5fab353fdf0ff56fea19b7cdc1bb9121acb267a8734ef864ad72c
       Parent: 952d0ee5b17d060ad42a2dbe8c1c6d696c30c394ca14c8c169c63db4c00958e9
       Transform:
-        Translation: [0.14349142, 0.06713292, -0.04650936]
-        Rotation: [0.18127161, 0.019485964, 0.9584718, 0.21930078]
-        Scale: [0.9999998, 1.0000004, 1]
+        Translation: [0.14349133, 0.06713295, -0.046509366]
+        Rotation: [0.18352559, 0.024564886, 0.9580609, 0.21871012]
+        Scale: [0.9999999, 1.0000004, 1]
       Joint:
         JointIndex: 71
     - Name: Ctr_R_HairA_02
       Id: c748b1776d0f10a3d08c0e61e4d11f6507bc28e64e82471a0b4a4ee5c10e43ec
       Parent: 789054ce50f5fab353fdf0ff56fea19b7cdc1bb9121acb267a8734ef864ad72c
       Transform:
-        Translation: [0.038879193, 9.104042e-08, 4.3187526e-07]
-        Rotation: [0.9829772, 0.03665868, 0.17987612, -0.007511358]
-        Scale: [1.0000001, 0.9999999, 0.9999998]
+        Translation: [0.038879223, 1.2411103e-07, 4.2648554e-07]
+        Rotation: [0.9802123, 0.035884317, 0.19340278, -0.022168286]
+        Scale: [1, 0.9999999, 0.99999976]
       Joint:
         JointIndex: 72
     - Name: Ctr_R_HairA_03
       Id: a588dc59934114f3b0b0b1bc8b689fb5c00a393ecd488c7d0837d9eebb26bd46
       Parent: c748b1776d0f10a3d08c0e61e4d11f6507bc28e64e82471a0b4a4ee5c10e43ec
       Transform:
-        Translation: [0.04260166, 0.038879298, 7.0054526e-08]
-        Rotation: [0.7111927, 0.69986784, 0.0487525, -0.044867072]
-        Scale: [1, 0.9999999, 1]
+        Translation: [0.04260166, 0.038879298, 7.254403e-08]
+        Rotation: [0.7111927, 0.6998679, 0.0487525, -0.044867076]
+        Scale: [1, 0.99999994, 1]
     - Name: Ctr_R_HairB_01
       Id: 9e0a4ac6213d7d7fdba4c5fa03d5a971eae337632c95a573784f0c01124cc8c1
       Parent: 952d0ee5b17d060ad42a2dbe8c1c6d696c30c394ca14c8c169c63db4c00958e9
       Transform:
-        Translation: [0.13153169, 0.040457714, -0.07390397]
-        Rotation: [0.09957169, 0.031840254, 0.9911336, 0.082011424]
-        Scale: [1, 1, 0.99999994]
+        Translation: [0.13153158, 0.040457726, -0.07390398]
+        Rotation: [0.10086151, 0.036060125, 0.9909384, 0.08104052]
+        Scale: [0.9999999, 1, 0.9999999]
       Joint:
         JointIndex: 73
     - Name: Ctr_R_HairB_02
       Id: 862d3c6f12e64ac01497581e2c23ce0b20549b2dd5917f5d6c3c5fe0890feed3
       Parent: 9e0a4ac6213d7d7fdba4c5fa03d5a971eae337632c95a573784f0c01124cc8c1
       Transform:
-        Translation: [0.05090034, 1.9924653e-07, -3.1309607e-08]
-        Rotation: [0.9861271, 0.002246758, 0.1659675, 0.0017792741]
+        Translation: [0.050900333, 1.9915714e-07, -4.1165592e-08]
+        Rotation: [0.98492306, 0.0020442277, 0.17278612, -0.008207573]
         Scale: [1, 0.9999999, 0.9999998]
       Joint:
         JointIndex: 74
@@ -1283,67 +1283,67 @@ Scene:
       Id: f4f818ab798fc74aed3286fb0293f23b1ae641ddfa3608d4621ac4338f8d6a04
       Parent: 952d0ee5b17d060ad42a2dbe8c1c6d696c30c394ca14c8c169c63db4c00958e9
       Transform:
-        Translation: [0.043965243, -0.017992763, -0.08180182]
-        Rotation: [0.5571245, -0.16884035, 0.79151815, -0.1860223]
-        Scale: [0.99999994, 0.9999998, 0.99999994]
+        Translation: [0.04396522, -0.017992763, -0.08180183]
+        Rotation: [0.5575076, -0.16249157, 0.79305404, -0.1839756]
+        Scale: [0.9999999, 0.99999976, 0.9999999]
       Joint:
         JointIndex: 75
     - Name: Ctr_R_HairC_02
       Id: aabf6c598c76ac7dae81045deedcf76985ed9b224e371edbde708e972cee47c3
       Parent: f4f818ab798fc74aed3286fb0293f23b1ae641ddfa3608d4621ac4338f8d6a04
       Transform:
-        Translation: [0.03760743, 3.8208648e-07, 2.3147905e-08]
-        Rotation: [0.9950907, 0.0076662377, 0.021689702, -0.09625684]
-        Scale: [0.99999994, 1, 1]
+        Translation: [0.037607428, 3.913613e-07, -1.4472643e-08]
+        Rotation: [0.9935554, 0.007471119, 0.0039380505, -0.113031924]
+        Scale: [0.9999999, 1, 0.9999999]
       Joint:
         JointIndex: 76
     - Name: Ctr_R_HairC_03
       Id: 9611b70e6a659cf38fff0cc10200b1200dfa2e56062985ca9639dc072bc2ceaf
       Parent: aabf6c598c76ac7dae81045deedcf76985ed9b224e371edbde708e972cee47c3
       Transform:
-        Translation: [0.03952223, 0.037607443, -1.9449692e-07]
-        Rotation: [0.6944364, 0.71810454, 0.023273963, 0.039272685]
+        Translation: [0.039522238, 0.03760743, -2.6494996e-07]
+        Rotation: [0.6944364, 0.71810454, 0.023273963, 0.039272696]
         Scale: [1, 0.9999999, 1.0000001]
     - Name: Ctr_R_HairD_01
       Id: e19ebdb771dbb582a9a1f83a1309f3b6d97752612f5fe7bc7075388e020b952b
       Parent: 952d0ee5b17d060ad42a2dbe8c1c6d696c30c394ca14c8c169c63db4c00958e9
       Transform:
-        Translation: [0.16622019, -0.048778377, -0.06447249]
-        Rotation: [0.21815088, 0.07666851, 0.49204704, -0.83929837]
-        Scale: [0.9999999, 1.0000001, 1.0000001]
+        Translation: [0.16622013, -0.04877837, -0.064472504]
+        Rotation: [0.21223302, 0.07364788, 0.49115723, -0.8416043]
+        Scale: [0.9999999, 1, 1]
       Joint:
         JointIndex: 77
     - Name: Ctr_R_HairD_02
       Id: a30e0391c640ccb1de98a16aa3ba34ef805507fa2f2616dfa04de24dff09057c
       Parent: e19ebdb771dbb582a9a1f83a1309f3b6d97752612f5fe7bc7075388e020b952b
       Transform:
-        Translation: [0.072969116, -1.8456241e-08, 5.2759244e-08]
-        Rotation: [0.95653766, 0.023939593, 0.019409083, -0.2899759]
-        Scale: [1, 0.99999994, 0.99999994]
+        Translation: [0.07296905, 2.6747225e-08, 8.0413606e-08]
+        Rotation: [0.9582044, 0.024773473, 0.019065091, -0.28437182]
+        Scale: [0.99999994, 0.9999999, 0.9999999]
       Joint:
         JointIndex: 78
     - Name: Ctr_R_HairD_03
       Id: 9a757c45d0c5e680f24c4a8599682879dad1b53e94405d13bd16d8c499e9c69b
       Parent: a30e0391c640ccb1de98a16aa3ba34ef805507fa2f2616dfa04de24dff09057c
       Transform:
-        Translation: [0.06949374, -1.1031266e-06, -1.8386774e-07]
-        Rotation: [0.9983681, 0.0024224967, 0.018723125, -0.053894367]
-        Scale: [0.99999994, 1, 0.9999999]
+        Translation: [0.06949378, -1.0985414e-06, -1.5478619e-07]
+        Rotation: [0.9987633, 0.003184424, 0.02163162, -0.044651814]
+        Scale: [0.99999994, 1, 0.99999994]
       Joint:
         JointIndex: 79
     - Name: Ctr_R_HairD_07
       Id: 4591d3e93bed15f2ca0a5bb7fa3ec1abfbaf610dd84347d045772e525e4176ab
       Parent: 9a757c45d0c5e680f24c4a8599682879dad1b53e94405d13bd16d8c499e9c69b
       Transform:
-        Translation: [0.07122192, 0.06949395, 3.1168653e-07]
-        Rotation: [0.71475494, 0.6973204, -0.049571846, -0.020305004]
-        Scale: [0.99999994, 1, 0.9999999]
+        Translation: [0.07122198, 0.06949395, 3.057117e-07]
+        Rotation: [0.71475494, 0.69732034, -0.049571835, -0.020305011]
+        Scale: [0.99999994, 1, 0.99999994]
     - Name: Ctr_R_Headband
       Id: 1058f754a117ef0319e8c8deb3b818316c8a1d8a85ba6e86246f8d92f6169078
       Parent: 952d0ee5b17d060ad42a2dbe8c1c6d696c30c394ca14c8c169c63db4c00958e9
       Transform:
-        Translation: [0.18549453, 0.04288763, -0.05706675]
-        Rotation: [0.96059006, -0.116397515, 0.25242516, -0.00014941013]
+        Translation: [0.18549448, 0.042887613, -0.057066783]
+        Rotation: [0.9625272, -0.11900346, 0.24357852, -0.0070064575]
         Scale: [0.99999994, 1, 1]
       Joint:
         JointIndex: 80
@@ -1351,44 +1351,44 @@ Scene:
       Id: 229d762e5048fb949a39cdfb45337aabf3b0fca5b919129f793489e68d6dad69
       Parent: 952d0ee5b17d060ad42a2dbe8c1c6d696c30c394ca14c8c169c63db4c00958e9
       Transform:
-        Translation: [0.054376803, -0.0057581756, 0.021676583]
-        Rotation: [0.0020840634, -0.73661184, -0.6763088, -0.0022375658]
-        Scale: [1, 0.99999994, 1]
+        Translation: [0.054376706, -0.0057581626, 0.021676581]
+        Rotation: [0.0063670557, -0.73430586, -0.6787539, -0.006886556]
+        Scale: [0.9999999, 0.9999998, 0.99999994]
       Joint:
         JointIndex: 81
     - Name: Skn_L_Pupil
       Id: 64ad1df298296040d2952d89e19705af5eee98b50c61d734a934c514acedd368
       Parent: 229d762e5048fb949a39cdfb45337aabf3b0fca5b919129f793489e68d6dad69
       Transform:
-        Translation: [0.06403948, -0.011800982, -0.01435348]
+        Translation: [0.06403946, -0.011800883, -0.0143534895]
         Rotation: [1, 7.916242e-09, -1.3154931e-07, 5.308539e-08]
-        Scale: [0.9999998, 0.9999807, 0.99999124]
+        Scale: [0.9999999, 0.99995834, 1.0000324]
       Joint:
         JointIndex: 82
     - Name: Skn_L_Mouth
       Id: 3f0ff6b231ad35f24302053c558ef75dc57677bae79b70034dd12876010fc16a
       Parent: 952d0ee5b17d060ad42a2dbe8c1c6d696c30c394ca14c8c169c63db4c00958e9
       Transform:
-        Translation: [0.0008194069, 0.06002603, 0.008046144]
-        Rotation: [0.00017263182, -0.7403498, -0.6722218, -5.5546036e-07]
-        Scale: [1.0000002, 1.0000001, 1]
+        Translation: [0.0008193912, 0.060026035, 0.008046138]
+        Rotation: [0.00017263344, -0.7403498, -0.6722218, -5.5585986e-07]
+        Scale: [1.0000002, 1, 1]
       Joint:
         JointIndex: 83
     - Name: Skn_M_Mouth
       Id: 693da5f41153e767409790b3eb3232522461cb1753a7a931d653f22a6ec9de79
       Parent: 952d0ee5b17d060ad42a2dbe8c1c6d696c30c394ca14c8c169c63db4c00958e9
       Transform:
-        Translation: [0.0014850453, 0.05996165, 8.3971196e-07]
-        Rotation: [0.00017266301, -0.7403498, -0.6722218, -3.9220433e-07]
-        Scale: [1, 1, 1]
+        Translation: [0.0014849826, 0.059961654, 8.3599065e-07]
+        Rotation: [0.00017266384, -0.7403498, -0.6722218, -3.925631e-07]
+        Scale: [1, 0.99999994, 1]
       Joint:
         JointIndex: 84
     - Name: Skn_R_Eye
       Id: 97cd6348eb2f556ab95bc857d014b5ecf7c279dccc58b19ef5af8b45bde5417e
       Parent: 952d0ee5b17d060ad42a2dbe8c1c6d696c30c394ca14c8c169c63db4c00958e9
       Transform:
-        Translation: [0.05437803, -0.0057582916, -0.021679968]
-        Rotation: [0.0020531383, -0.73662126, -0.67629874, -0.0022270458]
+        Translation: [0.054378055, -0.005758267, -0.02167998]
+        Rotation: [0.00637769, -0.73431516, -0.67874396, -0.006876203]
         Scale: [1, 1.0000004, 0.99999994]
       Joint:
         JointIndex: 85
@@ -1396,42 +1396,42 @@ Scene:
       Id: e31f033d39d739d5fb1ab328fac90a09b745c12515ecf5999adc0e60e148a489
       Parent: 97cd6348eb2f556ab95bc857d014b5ecf7c279dccc58b19ef5af8b45bde5417e
       Transform:
-        Translation: [0.064039215, -0.0118038375, 0.014346313]
-        Rotation: [1, -9.484689e-09, 5.5640395e-08, 6.256688e-08]
-        Scale: [0.9999998, 0.9999583, 1.0000323]
+        Translation: [0.06403918, -0.011803748, 0.014346313]
+        Rotation: [1, -1.2057418e-08, 5.554852e-08, 6.858524e-08]
+        Scale: [1, 0.9999582, 1.0000323]
       Joint:
         JointIndex: 86
     - Name: Skn_R_Mouth
       Id: 6a982f5787a84e88cc96578e18ef8aadad55da9bd575792d7a38ea9d611b2547
       Parent: 952d0ee5b17d060ad42a2dbe8c1c6d696c30c394ca14c8c169c63db4c00958e9
       Transform:
-        Translation: [0.00081950054, 0.06002596, -0.008049889]
-        Rotation: [0.00024415998, -0.7403502, -0.6722214, -4.926851e-07]
-        Scale: [1.0000001, 0.9999999, 1]
+        Translation: [0.00081947853, 0.06002596, -0.00804989]
+        Rotation: [0.0001253472, -0.74035025, -0.67222136, -5.26528e-07]
+        Scale: [1, 0.9999999, 1]
       Joint:
         JointIndex: 87
     - Name: FaceShadowPoint
       Id: 161f3e7416ece6eea2d1f68938b71009a2a7d1e70d9cc9045b2b392e888a94e8
       Parent: 952d0ee5b17d060ad42a2dbe8c1c6d696c30c394ca14c8c169c63db4c00958e9
       Transform:
-        Translation: [0.11350004, 0.2675641, 1.335164e-08]
-        Rotation: [0.7071067, 0.7071069, -1.680362e-07, -3.4800752e-07]
+        Translation: [0.1135, 0.26756412, 9.243952e-09]
+        Rotation: [0.70710665, 0.7071069, -1.7173292e-07, -3.4281447e-07]
         Scale: [1, 1, 1]
     - Name: Bip001 R Clavicle
       Id: 0360adcdcdfb4640707fa3c633285a238b0c101356cbee44828b2ec008a41512
       Parent: 65e53f9fbbd72d4954ae2cfecbbb5a7080ea2046a395b1d5977715dc12920096
       Transform:
-        Translation: [0.16914879, -0.023954997, -0.015530953]
-        Rotation: [0.040411945, 0.6735727, -0.04478213, -0.7366554]
-        Scale: [0.9999999, 0.99999994, 1.0000037]
+        Translation: [0.16914879, -0.023954988, -0.015530966]
+        Rotation: [0.004482715, -0.67964435, -0.004249572, 0.7335158]
+        Scale: [0.9999999, 1, 1.0000038]
       Joint:
         JointIndex: 88
     - Name: Bip001 R UpperArm
       Id: 7cbd81ade6df1a35361552992c89d286f5db26da5192f067de78629c5125d4bb
       Parent: 0360adcdcdfb4640707fa3c633285a238b0c101356cbee44828b2ec008a41512
       Transform:
-        Translation: [0.08283742, 3.7231928e-08, 3.6737106e-07]
-        Rotation: [0.8363498, 0.10641486, -0.490187, 0.22116]
+        Translation: [0.08283739, 2.4689871e-08, 3.3888728e-07]
+        Rotation: [0.82311887, 0.07650565, -0.5065685, 0.2449708]
         Scale: [1.0000002, 1.0000001, 1.0000001]
       Joint:
         JointIndex: 89
@@ -1439,17 +1439,17 @@ Scene:
       Id: f5d5629b66e4e01fb66553c42fd6625fac0b7820d90b84d9a61ab766602d0552
       Parent: 7cbd81ade6df1a35361552992c89d286f5db26da5192f067de78629c5125d4bb
       Transform:
-        Translation: [0.22355159, -3.6350193e-07, -3.9664448e-07]
-        Rotation: [0.9914677, -4.4392849e-07, -4.0405496e-07, -0.1303525]
-        Scale: [0.99999994, 0.9999999, 0.9999998]
+        Translation: [0.22355154, -3.5358278e-07, -4.2310688e-07]
+        Rotation: [0.98631036, -3.581868e-07, -4.3555747e-07, -0.16489919]
+        Scale: [0.99999994, 0.99999994, 0.9999999]
       Joint:
         JointIndex: 90
     - Name: Bip001 R Hand
       Id: 586c80331376a453a8e2008537debc010b1a7f666a1cb81bb7516934287592bb
       Parent: f5d5629b66e4e01fb66553c42fd6625fac0b7820d90b84d9a61ab766602d0552
       Transform:
-        Translation: [0.20211408, -2.7981213e-07, -5.818061e-07]
-        Rotation: [0.84328115, 0.51263577, 0.15786004, 0.034079656]
+        Translation: [0.20211405, -3.139927e-07, -6.0569573e-07]
+        Rotation: [0.8222502, 0.5426815, 0.16239482, 0.055039685]
         Scale: [1, 1, 1]
       Joint:
         JointIndex: 91
@@ -1457,17 +1457,17 @@ Scene:
       Id: 4151b2ffa2d91613778df6078d18f35022447739f531b4e58c1f8cb6eee6531b
       Parent: 586c80331376a453a8e2008537debc010b1a7f666a1cb81bb7516934287592bb
       Transform:
-        Translation: [0.04730666, 0.031476058, -0.015080822]
-        Rotation: [0.91439235, 0.037779577, 0.37257048, 0.1537877]
-        Scale: [1, 0.9999999, 1.0000001]
+        Translation: [0.04730662, 0.031476058, -0.015080774]
+        Rotation: [0.91439235, 0.037779547, 0.37257046, 0.1537877]
+        Scale: [1, 0.9999999, 1]
       Joint:
         JointIndex: 92
     - Name: Ctr_Wpn_A
       Id: f4b345ec713febdb8a3672f9172726145ad0c63532cb21ad96d63133e3866cd5
       Parent: 4151b2ffa2d91613778df6078d18f35022447739f531b4e58c1f8cb6eee6531b
       Transform:
-        Translation: [-0.008006209, 0.0027404265, -0.48444334]
-        Rotation: [0.49999902, 0.5000006, -0.5000004, 0.5000001]
+        Translation: [-0.00800622, 0.002740406, -0.48444343]
+        Rotation: [0.49999902, 0.50000066, -0.50000036, 0.5000001]
         Scale: [0.9999998, 0.9999997, 0.9999999]
       Joint:
         JointIndex: 93
@@ -1475,8 +1475,8 @@ Scene:
       Id: 802679c8a8a7c29ff5506dab4d5b7856fe4d49c1326b887ff187b32f1b557e20
       Parent: f4b345ec713febdb8a3672f9172726145ad0c63532cb21ad96d63133e3866cd5
       Transform:
-        Translation: [1.0524793, -0.19095185, 0.03168791]
-        Rotation: [0.9999454, -1.6013324e-06, 5.7479987e-08, 0.010449859]
+        Translation: [1.0524793, -0.19095185, 0.031687927]
+        Rotation: [0.9999454, -1.5953908e-06, 5.1661242e-08, 0.010449853]
         Scale: [0.9999999, 1, 0.9999999]
       Joint:
         JointIndex: 94
@@ -1484,8 +1484,8 @@ Scene:
       Id: 3df915dbdf34bfafd44354fc877c426baaab82e94d6d0a23a155435e57f83f11
       Parent: f4b345ec713febdb8a3672f9172726145ad0c63532cb21ad96d63133e3866cd5
       Transform:
-        Translation: [0.95496464, -0.09402409, 4.5475463e-07]
-        Rotation: [0.00011404864, 0.02203111, -0.99967486, -0.012837195]
+        Translation: [0.95496464, -0.094024085, 4.479552e-07]
+        Rotation: [0.00025185148, 0.022031177, -0.9996749, -0.012837022]
         Scale: [0.9999999, 0.9999999, 0.99999994]
       Joint:
         JointIndex: 95
@@ -1493,8 +1493,8 @@ Scene:
       Id: d3053dee1b5cf93140b95476626884196aedc324b813d6b2ca2a9a5020cbc8ee
       Parent: 3df915dbdf34bfafd44354fc877c426baaab82e94d6d0a23a155435e57f83f11
       Transform:
-        Translation: [0.25425315, 0.0014894675, 1.4335885e-07]
-        Rotation: [0.999964, 7.4300663e-09, -1.18158184e-07, 0.008487348]
+        Translation: [0.25425315, 0.0014894616, 1.5511989e-07]
+        Rotation: [0.999964, 2.499612e-08, -1.0918797e-07, 0.008487366]
         Scale: [0.9999999, 0.99999994, 1]
       Joint:
         JointIndex: 96
@@ -1502,8 +1502,8 @@ Scene:
       Id: 3aaad8096fc3d8d4515214abc2eeb4bda312f63565d461450626630493569a75
       Parent: 3df915dbdf34bfafd44354fc877c426baaab82e94d6d0a23a155435e57f83f11
       Transform:
-        Translation: [0.1381095, -0.12236221, -8.452397e-06]
-        Rotation: [0.110190466, 0.4450371, -0.8875082, 0.04614351]
+        Translation: [0.13873811, -0.11839406, -0.0011690937]
+        Rotation: [0.09663498, 0.42767578, -0.89264005, 0.10463674]
         Scale: [0.9999999, 1, 1]
       Joint:
         JointIndex: 97
@@ -1511,17 +1511,17 @@ Scene:
       Id: fb0a0af2f8f08c8c759b21a3f00098f123a42534b0f32858697f6b143ab30fc7
       Parent: 3df915dbdf34bfafd44354fc877c426baaab82e94d6d0a23a155435e57f83f11
       Transform:
-        Translation: [0.17567874, -0.12155217, -1.3712047e-07]
-        Rotation: [0.12615235, 0.46378475, -0.87673056, 0.018243339]
-        Scale: [0.99999976, 0.99999976, 1]
+        Translation: [0.17567888, -0.12155251, 1.4036802e-07]
+        Rotation: [0.14479794, 0.48902103, -0.8600739, -0.012838218]
+        Scale: [0.9999998, 0.9999999, 1]
       Joint:
         JointIndex: 98
     - Name: Ctr_Wpn_B1
       Id: aa8a55c8cfee2782b81ebca5c5c3c003acd973e01b995baf0651469dc36cc6b7
       Parent: 3df915dbdf34bfafd44354fc877c426baaab82e94d6d0a23a155435e57f83f11
       Transform:
-        Translation: [-0.0882702, 0.0049295323, -0.03168718]
-        Rotation: [0.00024400739, -0.016434351, -0.99986494, 1.0089945e-07]
+        Translation: [-0.0882702, 0.004929535, -0.03168715]
+        Rotation: [0.00024403306, -0.016434353, -0.99986494, 1.2455746e-07]
         Scale: [1, 0.9999998, 0.99999994]
       Joint:
         JointIndex: 99
@@ -1529,24 +1529,24 @@ Scene:
       Id: 840ba1340c1974253afb108211c4e3e35e53e57b777d5dec400a084ecd46b732
       Parent: aa8a55c8cfee2782b81ebca5c5c3c003acd973e01b995baf0651469dc36cc6b7
       Transform:
-        Translation: [0.21711662, 1.3528805e-07, -2.2245606e-08]
-        Rotation: [0.988419, 3.2931524e-08, -1.9582528e-07, 0.15174952]
-        Scale: [0.9999999, 0.99999976, 1]
+        Translation: [0.21711662, 1.2967836e-07, -3.4006657e-08]
+        Rotation: [0.98841906, 1.7055903e-08, -2.0867415e-07, 0.15174952]
+        Scale: [0.9999999, 0.9999999, 1]
       Joint:
         JointIndex: 100
     - Name: Skn_Spring
       Id: 7734882a641c58e649ef8bb11073ce0e2b2f55ded5aaf069393e29814fe2feb4
       Parent: f4b345ec713febdb8a3672f9172726145ad0c63532cb21ad96d63133e3866cd5
       Transform:
-        Translation: [0.7974304, 0.92485297, 4.2282778e-07]
-        Rotation: [0.22208352, -0.6799494, 0.6683557, -0.20407987]
+        Translation: [0.7974303, 0.924853, 4.1162497e-07]
+        Rotation: [0.21158747, -0.683292, 0.67141116, -0.19377793]
         Scale: [1, 0.99999994, 0.99999994]
     - Name: Bip001 R Finger0
       Id: 0773bf013ae428ec05a2b73a4bc6b4d6e4b54108f3ae563c2d7f2aa572731180
       Parent: 586c80331376a453a8e2008537debc010b1a7f666a1cb81bb7516934287592bb
       Transform:
-        Translation: [0.008499306, 0.0054124566, 0.010965787]
-        Rotation: [0.25130966, -0.82090986, -0.5117252, 0.032980878]
+        Translation: [0.008499273, 0.005412472, 0.0109658]
+        Rotation: [0.25130972, -0.8209099, -0.51172525, 0.0329809]
         Scale: [0.99999994, 0.9999999, 1.0000001]
       Joint:
         JointIndex: 101
@@ -1554,8 +1554,8 @@ Scene:
       Id: fe144e7bb3068b1512bc71bb185b656a8e9e63b1750745ccfff439ae580f4677
       Parent: 0773bf013ae428ec05a2b73a4bc6b4d6e4b54108f3ae563c2d7f2aa572731180
       Transform:
-        Translation: [0.036985584, -6.344942e-08, -1.2025838e-07]
-        Rotation: [0.9711493, 0.004918982, 0.030784449, 0.23642586]
+        Translation: [0.036985546, -7.9238895e-08, -1.14287886e-07]
+        Rotation: [0.9711493, 0.004918977, 0.030784443, 0.23642586]
         Scale: [1, 0.9999999, 1.0000001]
       Joint:
         JointIndex: 102
@@ -1563,35 +1563,35 @@ Scene:
       Id: 96d08e1da2be89e63e10ee7b4fbb9261cf4282a0415f7b9b348f97c0af1eaf37
       Parent: fe144e7bb3068b1512bc71bb185b656a8e9e63b1750745ccfff439ae580f4677
       Transform:
-        Translation: [0.025575822, -8.650795e-08, -7.120144e-08]
-        Rotation: [0.9500845, 0.0076172547, 0.018006036, 0.31137952]
-        Scale: [0.99999994, 0.9999999, 0.99999994]
+        Translation: [0.025575772, -6.9641615e-08, -7.726145e-08]
+        Rotation: [0.9500845, 0.007617245, 0.018006034, 0.31137952]
+        Scale: [0.9999999, 0.9999999, 0.9999999]
       Joint:
         JointIndex: 103
     - Name: Bip001 R Finger1
       Id: b232c6120dfd85c83d69e39df3912d1c1e560365d93f7eb925621d4c262715dd
       Parent: 586c80331376a453a8e2008537debc010b1a7f666a1cb81bb7516934287592bb
       Transform:
-        Translation: [0.06958189, -0.0024179805, 0.016842961]
-        Rotation: [0.9235352, -0.07186808, 0.16209722, 0.340062]
-        Scale: [0.99999994, 1, 1]
+        Translation: [0.06958184, -0.0024179546, 0.01684296]
+        Rotation: [0.9235352, -0.07186806, 0.16209725, 0.34006196]
+        Scale: [0.9999999, 1, 1]
       Joint:
         JointIndex: 104
     - Name: Bip001 R Finger11
       Id: cf4d675440c74325940838a524aee49eb6ab66c62988d6c89655ef6d5db44530
       Parent: b232c6120dfd85c83d69e39df3912d1c1e560365d93f7eb925621d4c262715dd
       Transform:
-        Translation: [0.030227818, -1.3026181e-07, -4.1861057e-08]
-        Rotation: [0.89332265, -1.1852923e-06, -1.6594722e-06, 0.4494159]
-        Scale: [0.9999998, 0.9999998, 0.9999999]
+        Translation: [0.030227803, -1.2937603e-07, -2.7159741e-08]
+        Rotation: [0.8933226, -1.1793202e-06, -1.6395963e-06, 0.4494159]
+        Scale: [0.99999976, 0.9999999, 0.9999999]
       Joint:
         JointIndex: 105
     - Name: Bip001 R Finger12
       Id: 5472ccb8d10ce652807916243c962381ea06f3239f6292d6d1f35ea365e6b9f3
       Parent: cf4d675440c74325940838a524aee49eb6ab66c62988d6c89655ef6d5db44530
       Transform:
-        Translation: [0.018891029, 6.702848e-08, -3.9924664e-08]
-        Rotation: [0.9455637, 8.2296907e-07, 2.388336e-07, 0.32543704]
+        Translation: [0.01889104, 4.8838334e-08, -3.110388e-08]
+        Rotation: [0.9455638, 8.3159216e-07, 2.386248e-07, 0.32543704]
         Scale: [1, 1, 1.0000001]
       Joint:
         JointIndex: 106
@@ -1599,8 +1599,8 @@ Scene:
       Id: 11fa02c0d0d1c09420901edb57d4af7d94f3bb917d8fcaf626af7b15b2149018
       Parent: 586c80331376a453a8e2008537debc010b1a7f666a1cb81bb7516934287592bb
       Transform:
-        Translation: [0.06757843, -0.005533664, 0.0017463515]
-        Rotation: [0.83631456, 0.016572563, 0.13236348, 0.5317736]
+        Translation: [0.067578405, -0.005533612, 0.0017463546]
+        Rotation: [0.83631456, 0.016572569, 0.13236348, 0.5317736]
         Scale: [1.0000007, 1.0000002, 0.9999999]
       Joint:
         JointIndex: 107
@@ -1608,17 +1608,17 @@ Scene:
       Id: c59a25abca5594e7e3986389406a3d61c3517b91613e4e91e62e69935ef86cc5
       Parent: 11fa02c0d0d1c09420901edb57d4af7d94f3bb917d8fcaf626af7b15b2149018
       Transform:
-        Translation: [0.03206514, -1.5330332e-07, -3.5506662e-08]
-        Rotation: [0.8591524, 2.0775205e-06, 1.4406061e-06, 0.5117199]
-        Scale: [1, 0.9999997, 1]
+        Translation: [0.032065105, -1.15383585e-07, -3.550667e-08]
+        Rotation: [0.8591524, 2.0727196e-06, 1.4530414e-06, 0.5117198]
+        Scale: [1.0000001, 0.99999976, 1]
       Joint:
         JointIndex: 108
     - Name: Bip001 R Finger22
       Id: 6fa6b8e0eff4760638d1379eacefcc375a99c3474181e715c02eff26e5c43e32
       Parent: c59a25abca5594e7e3986389406a3d61c3517b91613e4e91e62e69935ef86cc5
       Transform:
-        Translation: [0.022007797, -7.989834e-08, 3.65971e-08]
-        Rotation: [0.98258096, 1.4043203e-06, -2.042633e-07, 0.18583527]
+        Translation: [0.022007786, -9.488253e-08, 4.247763e-08]
+        Rotation: [0.982581, 1.40362e-06, -2.0657063e-07, 0.18583526]
         Scale: [1.0000001, 0.99999994, 1]
       Joint:
         JointIndex: 109
@@ -1626,8 +1626,8 @@ Scene:
       Id: 7cd823e53f58155393adbda2184088c12f3cf480ad81dadbdb461085623bac99
       Parent: 586c80331376a453a8e2008537debc010b1a7f666a1cb81bb7516934287592bb
       Transform:
-        Translation: [0.0648695, -0.002157554, -0.012728409]
-        Rotation: [0.78458947, 0.138874, 0.18003638, 0.5768191]
+        Translation: [0.06486945, -0.002157528, -0.0127284005]
+        Rotation: [0.78458947, 0.13887398, 0.18003638, 0.5768191]
         Scale: [0.99999994, 1.0000001, 1]
       Joint:
         JointIndex: 110
@@ -1635,17 +1635,17 @@ Scene:
       Id: 51ff610ea47536410e34720fdde7af14a31caf6500c2e93b96e7a79b5a2591ff
       Parent: 7cd823e53f58155393adbda2184088c12f3cf480ad81dadbdb461085623bac99
       Transform:
-        Translation: [0.029341824, -6.07118e-08, -1.8209278e-08]
-        Rotation: [0.88586617, 3.594556e-06, 2.142888e-06, 0.46394077]
-        Scale: [0.99999994, 1, 1]
+        Translation: [0.029341793, -7.234598e-08, -3.291061e-08]
+        Rotation: [0.8858663, 3.5971293e-06, 2.1263027e-06, 0.4639408]
+        Scale: [0.9999999, 0.99999994, 1]
       Joint:
         JointIndex: 111
     - Name: Bip001 R Finger32
       Id: 0ad5d63ec3204623ddbcf8bd612e276f04502234da3d3875efe239d95e95b7c5
       Parent: 51ff610ea47536410e34720fdde7af14a31caf6500c2e93b96e7a79b5a2591ff
       Transform:
-        Translation: [0.021057488, 4.276717e-09, 7.671853e-09]
-        Rotation: [0.98316246, -8.642257e-07, 3.870224e-07, 0.18273385]
+        Translation: [0.021057475, -2.1611763e-08, -9.969716e-09]
+        Rotation: [0.98316246, -8.836585e-07, 4.0666453e-07, 0.18273383]
         Scale: [1, 1.0000001, 0.9999999]
       Joint:
         JointIndex: 112
@@ -1653,17 +1653,17 @@ Scene:
       Id: 4d9846716c2e3f0dbb727773b9ce75a46d3aee4b9b8230e66b5a5500a2f3fdb3
       Parent: 586c80331376a453a8e2008537debc010b1a7f666a1cb81bb7516934287592bb
       Transform:
-        Translation: [0.056248527, 0.006111406, -0.023446891]
-        Rotation: [0.71081203, 0.25428623, 0.20587775, 0.6226548]
-        Scale: [1, 0.99999994, 1.0000001]
+        Translation: [0.05624847, 0.006111445, -0.023446882]
+        Rotation: [0.7108121, 0.2542862, 0.20587775, 0.6226548]
+        Scale: [0.9999999, 0.9999999, 1.0000001]
       Joint:
         JointIndex: 113
     - Name: Bip001 R Finger41
       Id: 44d6b0be65798b1fbe0c52129cb6b7b979fde369e731058868bd681fc0414404
       Parent: 4d9846716c2e3f0dbb727773b9ce75a46d3aee4b9b8230e66b5a5500a2f3fdb3
       Transform:
-        Translation: [0.024419192, -9.1999624e-08, 5.6958186e-08]
-        Rotation: [0.9465982, 3.967209e-06, 2.6493306e-06, 0.3224158]
+        Translation: [0.024419198, -1.0065743e-07, 4.5197133e-08]
+        Rotation: [0.9465982, 3.962605e-06, 2.6541022e-06, 0.3224158]
         Scale: [0.9999999, 1.0000001, 1]
       Joint:
         JointIndex: 114
@@ -1671,26 +1671,26 @@ Scene:
       Id: 0f8fb44d4f4730550c3c6eaa5043e73d4a24a4a8c95f0664e194f77ba19374ac
       Parent: 44d6b0be65798b1fbe0c52129cb6b7b979fde369e731058868bd681fc0414404
       Transform:
-        Translation: [0.014353384, 5.5108398e-08, -3.313571e-08]
-        Rotation: [0.9632255, -1.2368732e-06, -1.9457747e-07, 0.26869443]
-        Scale: [1, 1, 1]
+        Translation: [0.014353411, -1.3137097e-08, -2.725518e-08]
+        Rotation: [0.9632255, -1.2392925e-06, -1.9757942e-07, 0.26869443]
+        Scale: [1, 0.99999994, 1]
       Joint:
         JointIndex: 115
     - Name: Skn_R_Elbow_Fix
       Id: f94a21907f527bbb997cf258fcb063991fc0ef1ce712f3de1c74855e3f87b2bd
       Parent: f5d5629b66e4e01fb66553c42fd6625fac0b7820d90b84d9a61ab766602d0552
       Transform:
-        Translation: [0.00091502396, 0.00094669225, 6.789268e-05]
-        Rotation: [0.67581296, 0.0004522368, 0.00069583126, 0.7370727]
-        Scale: [1.0010165, 0.7980181, 1.0001338]
+        Translation: [0.0009150697, 0.00094672054, 6.790958e-05]
+        Rotation: [0.6644388, 0.00046867324, 0.00077110896, 0.7473423]
+        Scale: [1.0012329, 0.72407603, 1.0001338]
       Joint:
         JointIndex: 116
     - Name: Skn_R_ForeArm_Adv
       Id: c4d407c9028d24603f08908694556cb8cf9806999dbf1bd940a64e118a8366fb
       Parent: f5d5629b66e4e01fb66553c42fd6625fac0b7820d90b84d9a61ab766602d0552
       Transform:
-        Translation: [-2.5212717e-07, 0.0022311993, 1.1685194e-07]
-        Rotation: [0.999985, 8.049519e-07, 5.6396726e-08, -0.005482504]
+        Translation: [-1.5992168e-07, 0.0029730017, 1.0415221e-07]
+        Rotation: [0.9999728, 8.1047585e-07, -1.0935071e-07, -0.0073730834]
         Scale: [1, 0.9999999, 1]
       Joint:
         JointIndex: 117
@@ -1698,40 +1698,40 @@ Scene:
       Id: 27899dd530bfe09e2c269564d5b124a4972651109554c259e72c78e7d7148a34
       Parent: c4d407c9028d24603f08908694556cb8cf9806999dbf1bd940a64e118a8366fb
       Transform:
-        Translation: [2.94892e-08, 0.19070514, -1.4519759e-09]
-        Rotation: [0.69010794, 0.72370654, 7.658719e-09, -1.6368041e-08]
-        Scale: [1, 1, 1]
+        Translation: [3.3596883e-08, 0.19070515, 3.5270387e-09]
+        Rotation: [0.68466884, 0.7288544, 9.414367e-09, -9.878616e-09]
+        Scale: [1, 1, 0.99999994]
     - Name: Skn_R_UpArm_Twist01
       Id: 09f64c36cb167f9056102ae1697c6f9cd10584e2f6337924a599335d8d32ec70
       Parent: 7cbd81ade6df1a35361552992c89d286f5db26da5192f067de78629c5125d4bb
       Transform:
-        Translation: [-2.8532972e-07, 2.4288395e-08, 1.6065968e-08]
-        Rotation: [0.99918824, -0.040285233, -3.6046927e-07, 1.4131604e-07]
-        Scale: [0.9999993, 0.99999994, 0.9999997]
+        Translation: [-2.3461021e-07, 1.14247465e-08, -1.3918395e-09]
+        Rotation: [0.9999904, 0.0043783807, -3.9417347e-07, 1.2958274e-07]
+        Scale: [0.99999934, 0.99999994, 0.9999998]
       Joint:
         JointIndex: 118
     - Name: Skn_R_UpArm_Twist02
       Id: a45104435ebaed4666dc33eeb0d530294b881a981d73acd86ec5dadc730ec5b4
       Parent: 7cbd81ade6df1a35361552992c89d286f5db26da5192f067de78629c5125d4bb
       Transform:
-        Translation: [0.1066257, 7.2834376e-07, 3.714593e-06]
-        Rotation: [0.9999494, -0.010068802, -4.4915598e-07, 7.835291e-08]
-        Scale: [0.9999999, 1.0000001, 0.9999997]
+        Translation: [0.10662572, 7.151126e-07, 3.6938275e-06]
+        Rotation: [0.9999994, 0.0011038334, -4.5137156e-07, 1.14081864e-07]
+        Scale: [0.99999994, 1.0000002, 0.99999976]
       Joint:
         JointIndex: 119
     - Name: Bip001 R ForeTwist OLD
       Id: 8b1ba04c073712e3eb6e1d3e25d3ae3407b401d0a3cc90ba0a0cb0b4b343f966
       Parent: 7cbd81ade6df1a35361552992c89d286f5db26da5192f067de78629c5125d4bb
       Transform:
-        Translation: [0.22355211, 0.20374249, 8.826299e-08]
-        Rotation: [0.7069516, 0.70636386, -0.02518396, -0.025204936]
+        Translation: [0.22355211, 0.20374256, 9.6976265e-08]
+        Rotation: [0.7069516, 0.70636386, -0.025183957, -0.025204945]
         Scale: [1, 1, 1]
     - Name: Ctr_R_Lace_01
       Id: 22aa9db6de316e20b74cd8af390a29b8911cc15a8b279859f4b22df501ca210b
       Parent: 0360adcdcdfb4640707fa3c633285a238b0c101356cbee44828b2ec008a41512
       Transform:
-        Translation: [0.066766836, -0.024473868, -0.019819884]
-        Rotation: [0.3127843, -0.9258793, 0.17020744, 0.12626536]
+        Translation: [0.06676684, -0.024473885, -0.019819902]
+        Rotation: [0.3002652, -0.92163634, 0.22458422, 0.099946626]
         Scale: [0.99999994, 0.9999997, 0.99999994]
       Joint:
         JointIndex: 120
@@ -1739,8 +1739,8 @@ Scene:
       Id: 6859f778649c5330462fcfa33ff51d779e8a7bf2d381b2a756ef6aca5c8367f9
       Parent: 0360adcdcdfb4640707fa3c633285a238b0c101356cbee44828b2ec008a41512
       Transform:
-        Translation: [0.05894707, 0.005363178, -0.03609684]
-        Rotation: [0.6055708, -0.7148328, 0.2203168, 0.27158538]
+        Translation: [0.05894705, 0.0053631803, -0.03609688]
+        Rotation: [0.5949638, -0.7258251, 0.25492704, 0.2328267]
         Scale: [0.999999, 0.9999999, 1.0000001]
       Joint:
         JointIndex: 121
@@ -1748,17 +1748,17 @@ Scene:
       Id: 3709be2ca2e12f9f7cd4e4ae4fa3d4d482440a3636696e82276486066d7a6e89
       Parent: 0360adcdcdfb4640707fa3c633285a238b0c101356cbee44828b2ec008a41512
       Transform:
-        Translation: [0.06998331, 0.04140358, -0.01700938]
-        Rotation: [0.9194453, -0.24176994, 0.17758463, 0.2542271]
-        Scale: [0.99999994, 1.0000001, 0.9999999]
+        Translation: [0.06998331, 0.041403554, -0.01700943]
+        Rotation: [0.92968076, -0.25750592, 0.1864264, 0.18608986]
+        Scale: [0.9999999, 1, 0.99999994]
       Joint:
         JointIndex: 122
     - Name: Ctr_L_Belt_01
       Id: 956d65e1d6ef31a7ba23d722cfb28ad577b007029799bfe80d7fcfe59ac62f7d
       Parent: 65e53f9fbbd72d4954ae2cfecbbb5a7080ea2046a395b1d5977715dc12920096
       Transform:
-        Translation: [0.1901113, -0.06194666, 0.016021563]
-        Rotation: [0.38117972, -0.20173742, 0.14200987, -0.8909755]
+        Translation: [0.19011128, -0.061946683, 0.01602158]
+        Rotation: [0.3700123, -0.13893567, 0.16832192, -0.9030258]
         Scale: [1.0000006, 0.9999997, 1.0000001]
       Joint:
         JointIndex: 123
@@ -1766,26 +1766,26 @@ Scene:
       Id: f9c73e414884ae6f34f69d2bbec4dd8e7b93dacc0c43ae7909a58d6786127634
       Parent: 956d65e1d6ef31a7ba23d722cfb28ad577b007029799bfe80d7fcfe59ac62f7d
       Transform:
-        Translation: [0.056144543, -1.0990688e-07, 7.199886e-08]
-        Rotation: [0.9972646, 0.0037441077, -0.028541563, -0.068077795]
-        Scale: [1, 0.9999998, 0.9999998]
+        Translation: [0.05614458, -1.17408234e-07, 1.9625407e-08]
+        Rotation: [0.99749255, 0.0037345944, -0.028411202, -0.06471053]
+        Scale: [1, 0.9999999, 0.9999999]
       Joint:
         JointIndex: 124
     - Name: Ctr_L_Belt_03
       Id: 59731ef9acb4d8bd787edc17c554c3182cf4a7d73f6b2a0b43f34504ee5d783b
       Parent: f9c73e414884ae6f34f69d2bbec4dd8e7b93dacc0c43ae7909a58d6786127634
       Transform:
-        Translation: [0.0680576, 8.127585e-08, 2.735024e-08]
-        Rotation: [0.99454826, 0.0013407868, -0.053681348, -0.08938774]
-        Scale: [0.9999997, 0.9999999, 0.9999999]
+        Translation: [0.06805759, 8.7876074e-08, 2.64417e-08]
+        Rotation: [0.99524236, -0.00030335662, -0.06401832, -0.073445335]
+        Scale: [0.99999976, 0.9999999, 0.9999999]
       Joint:
         JointIndex: 125
     - Name: Ctr_L_Belt_04
       Id: 442afa009a2e7c3ab20dd6997d946dc925f21aa4152891be2e9432113cc00a3d
       Parent: 59731ef9acb4d8bd787edc17c554c3182cf4a7d73f6b2a0b43f34504ee5d783b
       Transform:
-        Translation: [0.0939673, -3.2230127e-09, 1.5374468e-07]
-        Rotation: [0.9949568, 0.0060545336, 0.03625807, -0.093325526]
+        Translation: [0.0939673, -8.4226315e-09, 1.4554385e-07]
+        Rotation: [0.99800706, 0.0023868545, -0.026808266, -0.057074178]
         Scale: [0.99999994, 1.0000001, 1.0000001]
       Joint:
         JointIndex: 126
@@ -1793,17 +1793,17 @@ Scene:
       Id: 311d41c6e9039949595eb312a2d8ee5608472d3e9123926c161d767730636183
       Parent: 442afa009a2e7c3ab20dd6997d946dc925f21aa4152891be2e9432113cc00a3d
       Transform:
-        Translation: [0.08000684, 3.8519758e-08, -1.0039816e-07]
-        Rotation: [0.99284655, 0.0050731837, 0.09821115, -0.0677099]
-        Scale: [1, 0.99999976, 0.99999976]
+        Translation: [0.08000676, 5.7480054e-08, -4.469429e-08]
+        Rotation: [0.9987626, 0.0012444553, -0.03626594, -0.034005433]
+        Scale: [1, 0.9999999, 0.9999999]
       Joint:
         JointIndex: 127
     - Name: Ctr_L_Belt_06
       Id: fc918fcfc23ccc9aabbe6f270423041522f4c8fa06105bfc8c7877d680922a84
       Parent: 311d41c6e9039949595eb312a2d8ee5608472d3e9123926c161d767730636183
       Transform:
-        Translation: [0.100107916, 1.6037145e-08, 1.5322354e-07]
-        Rotation: [0.99241704, -0.0064028907, 0.11431293, -0.044724032]
+        Translation: [0.10010794, 2.0751928e-08, 1.6156193e-07]
+        Rotation: [0.99787277, -0.009855027, -0.049030427, -0.04182095]
         Scale: [0.99999994, 0.99999994, 1.0000002]
       Joint:
         JointIndex: 128
@@ -1811,17 +1811,17 @@ Scene:
       Id: 8f5d2f9dafba416680fbbec9ba8a70c592bb945b21305399d3cc3a7a12325424
       Parent: fc918fcfc23ccc9aabbe6f270423041522f4c8fa06105bfc8c7877d680922a84
       Transform:
-        Translation: [0.13721266, 3.82332e-08, 8.2397314e-08]
-        Rotation: [1, 4.2399413e-09, 6.493526e-08, 6.267431e-08]
-        Scale: [1, 1, 1]
+        Translation: [0.13721263, 3.896826e-08, 8.901291e-08]
+        Rotation: [1, 4.975007e-09, 6.456772e-08, 6.331749e-08]
+        Scale: [0.99999994, 1, 1]
       Joint:
         JointIndex: 129
     - Name: Ctr_R_Belt_01
       Id: 92ffb86dd3c9907320e2b9621ba7e5aa0dbf24ffea3dceaa12619d34bf5cde9a
       Parent: 65e53f9fbbd72d4954ae2cfecbbb5a7080ea2046a395b1d5977715dc12920096
       Transform:
-        Translation: [0.19011149, -0.061946575, -0.01601992]
-        Rotation: [0.3171187, 0.34754097, 0.055210892, -0.8806831]
+        Translation: [0.19011144, -0.061946593, -0.01601994]
+        Rotation: [0.30262828, 0.27598628, 0.043439154, -0.9112414]
         Scale: [1.0000012, 1, 1.0000005]
       Joint:
         JointIndex: 130
@@ -1829,17 +1829,17 @@ Scene:
       Id: f866e2057b3b806f0f01201447dde62aa27431156c9eec30b56370d88fa9f370
       Parent: 92ffb86dd3c9907320e2b9621ba7e5aa0dbf24ffea3dceaa12619d34bf5cde9a
       Transform:
-        Translation: [0.056144234, 8.273734e-08, -2.3802906e-07]
-        Rotation: [0.99931747, 0.0060384865, 0.03592647, 0.0061381776]
-        Scale: [1, 0.9999999, 1]
+        Translation: [0.056144215, 3.6754336e-08, -2.3824907e-07]
+        Rotation: [0.9976984, 0.0059212246, 0.06745635, -0.003525694]
+        Scale: [1, 0.9999998, 0.9999999]
       Joint:
         JointIndex: 131
     - Name: Ctr_R_Belt_03
       Id: 1169d717f17308c5290392a69c20ad5afc24b56aea57593ec0a5c15ca3acf6cd
       Parent: f866e2057b3b806f0f01201447dde62aa27431156c9eec30b56370d88fa9f370
       Transform:
-        Translation: [0.068057194, 3.3615635e-08, -1.8010466e-07]
-        Rotation: [0.9959854, -0.007439537, -0.04109392, -0.07917767]
+        Translation: [0.068057224, 2.0816177e-08, -1.9832405e-07]
+        Rotation: [0.99666804, -0.00534977, 0.0045246547, -0.081262864]
         Scale: [1, 0.99999994, 0.99999994]
       Joint:
         JointIndex: 132
@@ -1847,8 +1847,8 @@ Scene:
       Id: b5ad307a5092b71442b081fe6c305db29969fff6d2b90261f90092e43c74395e
       Parent: 1169d717f17308c5290392a69c20ad5afc24b56aea57593ec0a5c15ca3acf6cd
       Transform:
-        Translation: [0.09396747, 1.340175e-07, -1.3096326e-07]
-        Rotation: [0.9938818, -0.011322349, -0.059711568, -0.09222395]
+        Translation: [0.09396742, 1.0131093e-07, -1.0755667e-07]
+        Rotation: [0.9949901, -0.008384148, 0.030319352, -0.09489475]
         Scale: [1, 0.99999994, 1]
       Joint:
         JointIndex: 133
@@ -1856,26 +1856,26 @@ Scene:
       Id: 6376a06a9474b910b2d9c025a4def1b789dff2f78560702b4fd453ea56edb376
       Parent: b5ad307a5092b71442b081fe6c305db29969fff6d2b90261f90092e43c74395e
       Transform:
-        Translation: [0.080006726, 5.979621e-08, -1.8504105e-07]
-        Rotation: [0.9888121, 0.0012926375, -0.11258015, -0.0978503]
-        Scale: [0.9999998, 0.99999994, 0.99999994]
+        Translation: [0.0800067, 6.403102e-08, -2.4520634e-07]
+        Rotation: [0.9946886, 0.0019501294, -0.01918165, -0.10110821]
+        Scale: [0.9999999, 0.99999994, 0.9999999]
       Joint:
         JointIndex: 134
     - Name: Ctr_R_Belt_06
       Id: a73cc7df55cc1c2838c450e8844bf2ed3871ad109da58615c901113a6c973ffd
       Parent: 6376a06a9474b910b2d9c025a4def1b789dff2f78560702b4fd453ea56edb376
       Transform:
-        Translation: [0.100107916, -3.3792996e-10, -2.1225051e-07]
-        Rotation: [0.99153453, 0.01867092, -0.041429367, -0.121631734]
-        Scale: [0.9999999, 0.9999998, 0.9999998]
+        Translation: [0.10010799, 9.256379e-09, -2.0514301e-07]
+        Rotation: [0.993471, 0.014973647, -0.003008678, -0.11305783]
+        Scale: [1, 0.9999999, 0.99999994]
       Joint:
         JointIndex: 135
     - Name: Ctr_R_Belt_07
       Id: 0f424944877ff2c14d4151b80dba937241e476e465d5522b62804ab181d33b86
       Parent: a73cc7df55cc1c2838c450e8844bf2ed3871ad109da58615c901113a6c973ffd
       Transform:
-        Translation: [0.13721268, 1.0572987e-07, -3.4313825e-09]
-        Rotation: [1, -2.753528e-07, -8.706628e-08, 3.7130167e-08]
+        Translation: [0.13721265, 9.911428e-08, 9.790089e-10]
+        Rotation: [1, -2.77558e-07, -9.037407e-08, 4.2275627e-08]
         Scale: [1, 1, 0.9999999]
       Joint:
         JointIndex: 136
@@ -1883,17 +1883,17 @@ Scene:
       Id: a287239cc151b3a72e61feaed66898d127afddfadca1706fbae2a838d5e20b94
       Parent: 65e53f9fbbd72d4954ae2cfecbbb5a7080ea2046a395b1d5977715dc12920096
       Transform:
-        Translation: [0.049344163, 0.024533365, 0.042299956]
-        Rotation: [0.04675925, -0.53402305, -0.8409594, -0.07362252]
-        Scale: [0.99999994, 1.0000001, 0.9999998]
+        Translation: [0.049344204, 0.024533387, 0.042299956]
+        Rotation: [0.052324586, -0.5338312, -0.8399461, -0.08232248]
+        Scale: [1, 1.0000001, 0.9999999]
       Joint:
         JointIndex: 137
     - Name: Skn_R_Chest
       Id: 9ffdca379a194bb6ec18fb6095c23ef8fedf1062edb0db63c237f5fb3400c0bb
       Parent: 65e53f9fbbd72d4954ae2cfecbbb5a7080ea2046a395b1d5977715dc12920096
       Transform:
-        Translation: [0.049344078, 0.02453348, -0.042299986]
-        Rotation: [0.044544384, 0.53407425, 0.84134036, -0.07019217]
+        Translation: [0.049344085, 0.024533477, -0.042299986]
+        Rotation: [0.0389986, 0.5342838, 0.8421657, -0.061454963]
         Scale: [0.9999998, 1, 0.9999998]
       Joint:
         JointIndex: 138
@@ -1901,8 +1901,8 @@ Scene:
       Id: 0372da326ac2236722a5b570c10298d08c9feca6626fe0139ed5a2c76a9b48e6
       Parent: 004036e6c7b7f4a444ecc3d6cf2fd3ecc070227994386420efd3a85e88c6f986
       Transform:
-        Translation: [-0.045528878, -0.13049726, 0.0002099364]
-        Rotation: [0.319371, -0.012410741, -0.0034181057, -0.94754225]
+        Translation: [-0.045528878, -0.13049726, 0.00020993935]
+        Rotation: [0.30276296, -6.4934226e-05, -0.000291103, -0.95306575]
         Scale: [1.0000001, 1, 0.99999994]
       Joint:
         JointIndex: 139
@@ -1910,8 +1910,8 @@ Scene:
       Id: be17efd8e62b48437c3d1f93c6a603a0d8f1213b29d3e3cb282197ebb8ebba25
       Parent: 0372da326ac2236722a5b570c10298d08c9feca6626fe0139ed5a2c76a9b48e6
       Transform:
-        Translation: [0.06288825, -7.1685406e-07, 2.1467469e-07]
-        Rotation: [0.98435223, -0.006961253, -0.0008904943, -0.17607199]
+        Translation: [0.062888265, -7.2094656e-07, 2.2349548e-07]
+        Rotation: [0.98327315, -0.0047357883, 0.005975416, -0.18197748]
         Scale: [0.99999994, 0.9999999, 0.99999994]
       Joint:
         JointIndex: 140
@@ -1919,17 +1919,17 @@ Scene:
       Id: 87a9051220d04ab51f711797fb41e4edb4ae05f3915d6f19a7dabedd4408b11d
       Parent: be17efd8e62b48437c3d1f93c6a603a0d8f1213b29d3e3cb282197ebb8ebba25
       Transform:
-        Translation: [0.07893341, 4.0826555e-07, -4.2126736e-08]
-        Rotation: [0.994803, 0.014055549, 0.0035158512, -0.10078247]
-        Scale: [0.9999999, 0.99999976, 0.99999994]
+        Translation: [0.07893342, 4.079891e-07, -3.330595e-08]
+        Rotation: [0.99250036, 0.017820656, 0.040011376, -0.11412557]
+        Scale: [0.9999999, 0.9999999, 0.99999994]
       Joint:
         JointIndex: 141
     - Name: Ctr_F_Skirt_01
       Id: 188489dccfc962e58dcab8eec69fdce0547f1827cffab6eb9c05fb36ed4fb7a0
       Parent: 004036e6c7b7f4a444ecc3d6cf2fd3ecc070227994386420efd3a85e88c6f986
       Transform:
-        Translation: [0.04586687, 0.06066111, -1.6374337e-07]
-        Rotation: [0.021350002, -0.15219277, -0.98811674, 0.0026340766]
+        Translation: [0.04586687, 0.06066112, -1.5933296e-07]
+        Rotation: [0.021363117, -0.14629176, -0.98900765, 0.0025062205]
         Scale: [0.99999994, 1.0000004, 0.9999998]
       Joint:
         JointIndex: 142
@@ -1937,17 +1937,17 @@ Scene:
       Id: 1c4b40b7fe3d746b1fd792b9165ed7d7808180b1512706b38cb48027e1d818b2
       Parent: 188489dccfc962e58dcab8eec69fdce0547f1827cffab6eb9c05fb36ed4fb7a0
       Transform:
-        Translation: [0.06833179, -9.465095e-07, 1.7198536e-08]
-        Rotation: [0.99952966, 0.005737229, -0.0059160455, -0.029536476]
-        Scale: [0.9999999, 0.9999999, 1]
+        Translation: [0.06833175, -9.40384e-07, 2.4549195e-08]
+        Rotation: [0.99955344, 0.004908904, -0.011457303, -0.027157824]
+        Scale: [0.9999999, 0.99999994, 1]
       Joint:
         JointIndex: 143
     - Name: Ctr_F_Skirt_03
       Id: 377a27bc63be3c2ee789d6f3916369adc37e83d5ac120a8449db854cd6680128
       Parent: 1c4b40b7fe3d746b1fd792b9165ed7d7808180b1512706b38cb48027e1d818b2
       Transform:
-        Translation: [0.08347572, -5.674386e-07, 2.683722e-07]
-        Rotation: [0.9993584, 0.0062314607, -0.01614506, -0.031361192]
+        Translation: [0.083475694, -5.5063555e-07, 2.7131244e-07]
+        Rotation: [0.9994447, 0.004017833, -0.013938424, -0.029998794]
         Scale: [1, 1.0000001, 1]
       Joint:
         JointIndex: 144
@@ -1955,17 +1955,17 @@ Scene:
       Id: d7a88b49385bff09840ab8d6c9873537889fa6b35d689119e6e884bb6f61d144
       Parent: 377a27bc63be3c2ee789d6f3916369adc37e83d5ac120a8449db854cd6680128
       Transform:
-        Translation: [0.09802462, -4.599246e-08, 3.4584468e-07]
-        Rotation: [0.9995703, 0.0066585434, -0.025537621, -0.012751808]
-        Scale: [0.99999994, 1, 0.9999999]
+        Translation: [0.09802458, -3.4614683e-08, 3.4731482e-07]
+        Rotation: [0.99984103, 0.0036021415, -0.017464, -0.00022157031]
+        Scale: [0.9999999, 1, 1]
       Joint:
         JointIndex: 145
     - Name: Ctr_L_Skirt_A_01
       Id: 2221f15cfe173f936d7a6281e6014b0529c8c674bef150492584557b85d08424
       Parent: 004036e6c7b7f4a444ecc3d6cf2fd3ecc070227994386420efd3a85e88c6f986
       Transform:
-        Translation: [0.04575202, 0.037648547, 0.06877047]
-        Rotation: [0.115738705, -0.1604688, -0.9086739, -0.3676497]
+        Translation: [0.045752022, 0.037648555, 0.06877047]
+        Rotation: [0.11350699, -0.15505505, -0.90961576, -0.36833808]
         Scale: [1, 0.9999999, 1]
       Joint:
         JointIndex: 146
@@ -1973,17 +1973,17 @@ Scene:
       Id: 8df2190560796c89f964d2befb3a1750cad0fa53c4d57b3de2efb49366a2264e
       Parent: 2221f15cfe173f936d7a6281e6014b0529c8c674bef150492584557b85d08424
       Transform:
-        Translation: [0.06829335, 7.083431e-07, 2.0386575e-07]
-        Rotation: [0.99989647, 0.0059951944, -0.0063557173, -0.011433649]
-        Scale: [0.9999998, 1, 1]
+        Translation: [0.0682933, 7.0611003e-07, 2.1121642e-07]
+        Rotation: [0.99972224, 0.0049393107, -0.013587986, -0.018610688]
+        Scale: [0.9999999, 0.99999994, 1]
       Joint:
         JointIndex: 147
     - Name: Ctr_L_Skirt_A_03
       Id: f831ad6e39ead71f7bcebe39efa48e985122c920bfcfc8eeb54ffc488ad07ab4
       Parent: 8df2190560796c89f964d2befb3a1750cad0fa53c4d57b3de2efb49366a2264e
       Transform:
-        Translation: [0.08210025, 1.9773006e-07, -1.7953978e-07]
-        Rotation: [0.9995884, 0.006555412, -0.018676382, -0.020769713]
+        Translation: [0.08210024, 2.0759379e-07, -1.751294e-07]
+        Rotation: [0.99953544, 0.004024828, -0.01678452, -0.025117645]
         Scale: [1, 0.99999994, 0.99999994]
       Joint:
         JointIndex: 148
@@ -1991,17 +1991,17 @@ Scene:
       Id: 27b19ba11a73b5ff2efd3e0456415787945c2ab9bd51da9e47cade82d6dd5b88
       Parent: f831ad6e39ead71f7bcebe39efa48e985122c920bfcfc8eeb54ffc488ad07ab4
       Transform:
-        Translation: [0.09705171, -3.8953896e-08, 1.2193846e-06]
-        Rotation: [0.9991146, 0.0067326725, -0.036491126, -0.019826984]
-        Scale: [0.9999999, 0.9999998, 0.9999998]
+        Translation: [0.09705171, -4.9977935e-08, 1.2179145e-06]
+        Rotation: [0.9993174, 0.0033075884, -0.025213381, -0.026794283]
+        Scale: [0.9999999, 0.9999999, 0.9999998]
       Joint:
         JointIndex: 149
     - Name: Ctr_L_Skirt_B_01
       Id: 3c4a80e5b5b7a8dd314e0658e784d3c062c4315a5767c01b4d7d21778586f866
       Parent: 004036e6c7b7f4a444ecc3d6cf2fd3ecc070227994386420efd3a85e88c6f986
       Transform:
-        Translation: [0.045458637, -0.022918884, 0.08115759]
-        Rotation: [0.18553893, -0.17818941, -0.68128717, -0.68532604]
+        Translation: [0.045458626, -0.022918884, 0.0811576]
+        Rotation: [0.18142347, -0.17412557, -0.6823427, -0.6864212]
         Scale: [0.99999994, 0.99999976, 0.99999994]
       Joint:
         JointIndex: 150
@@ -2009,8 +2009,8 @@ Scene:
       Id: d678a8cedf376ebb0819e3054fd8ba7e90b564f0ce4b1900a2f60bd6f052ed20
       Parent: 3c4a80e5b5b7a8dd314e0658e784d3c062c4315a5767c01b4d7d21778586f866
       Transform:
-        Translation: [0.07570462, 9.894172e-07, 2.457232e-07]
-        Rotation: [0.99978757, 0.00550616, -0.008700412, -0.017859329]
+        Translation: [0.07570459, 1.0081084e-06, 2.479284e-07]
+        Rotation: [0.99938416, 0.004690859, -0.011192297, -0.03292351]
         Scale: [1, 1, 0.99999994]
       Joint:
         JointIndex: 151
@@ -2018,8 +2018,8 @@ Scene:
       Id: 326401e28d09d271856b62732ea34016efef21845959ce926e3db7f6e26a897d
       Parent: d678a8cedf376ebb0819e3054fd8ba7e90b564f0ce4b1900a2f60bd6f052ed20
       Transform:
-        Translation: [0.091294944, 7.668181e-07, -2.744207e-07]
-        Rotation: [0.9989731, 0.006000983, -0.017802464, -0.04122994]
+        Translation: [0.09129493, 7.398893e-07, -2.6559985e-07]
+        Rotation: [0.9986438, 0.0037353789, -0.014018729, -0.05000272]
         Scale: [1, 1, 0.99999994]
       Joint:
         JointIndex: 152
@@ -2027,17 +2027,17 @@ Scene:
       Id: abf60da1ff45ad11610e265cb067a0fbea77d4e5f9ce35e57f28faaad5179446
       Parent: 326401e28d09d271856b62732ea34016efef21845959ce926e3db7f6e26a897d
       Transform:
-        Translation: [0.10482762, 1.6707173e-06, 3.711831e-08]
-        Rotation: [0.9987933, 0.0064016175, -0.036569398, -0.032150548]
-        Scale: [0.99999994, 0.9999999, 1]
+        Translation: [0.10482755, 1.6830302e-06, 3.7118234e-08]
+        Rotation: [0.9985312, 0.0031539788, -0.015300063, -0.051879235]
+        Scale: [0.9999999, 0.9999999, 1]
       Joint:
         JointIndex: 153
     - Name: Ctr_L_Skirt_C_01
       Id: 97e498ca594b5ee1c0c2afa60c83dab227db8f6f77cf40c5f260fedb29cc3458
       Parent: 004036e6c7b7f4a444ecc3d6cf2fd3ecc070227994386420efd3a85e88c6f986
       Transform:
-        Translation: [0.045274623, -0.062033586, 0.056170084]
-        Rotation: [0.21518534, -0.06081044, -0.36660635, -0.9031041]
+        Translation: [0.04527463, -0.062033586, 0.056170095]
+        Rotation: [0.20912279, -0.058519613, -0.36637607, -0.9047716]
         Scale: [1.0000001, 1.0000002, 1.0000001]
       Joint:
         JointIndex: 154
@@ -2045,8 +2045,8 @@ Scene:
       Id: 08273f7d3c63b6ead38bcc8e1f7f5d55bfc4eafeb9fa1feb0d7c2a9878812f6c
       Parent: 97e498ca594b5ee1c0c2afa60c83dab227db8f6f77cf40c5f260fedb29cc3458
       Transform:
-        Translation: [0.06306435, -1.1816451e-06, -2.4978778e-08]
-        Rotation: [0.9998997, 0.00457071, -0.011569882, -0.006762771]
+        Translation: [0.06306438, -1.1811796e-06, -1.9098263e-08]
+        Rotation: [0.9996704, 0.004826439, -0.0074139745, -0.02410022]
         Scale: [0.99999994, 0.99999994, 0.99999994]
       Joint:
         JointIndex: 155
@@ -2054,17 +2054,17 @@ Scene:
       Id: 8edac35694b5c5d0f93d252365784a280788e5bcfdcfd051cbb8a118517796f9
       Parent: 08273f7d3c63b6ead38bcc8e1f7f5d55bfc4eafeb9fa1feb0d7c2a9878812f6c
       Transform:
-        Translation: [0.07865807, -2.2438381e-07, 4.743092e-07]
-        Rotation: [0.9998596, 0.0055817515, -0.015737385, -0.0013992571]
-        Scale: [1, 1, 1]
+        Translation: [0.07865807, -2.2512185e-07, 4.698988e-07]
+        Rotation: [0.99988157, 0.004308389, -0.0082897, -0.012222255]
+        Scale: [0.99999994, 1, 1]
       Joint:
         JointIndex: 156
     - Name: Ctr_L_Skirt_C_04
       Id: e1702357ece72ad8049c82a6c10c0054228699c733299d6020ebc0f0530c8ead
       Parent: 8edac35694b5c5d0f93d252365784a280788e5bcfdcfd051cbb8a118517796f9
       Transform:
-        Translation: [0.09396655, 9.485144e-07, 3.6655092e-07]
-        Rotation: [0.99960357, 0.0060836514, -0.026518859, -0.007237895]
+        Translation: [0.09396657, 9.4625e-07, 3.5773013e-07]
+        Rotation: [0.9995613, 0.003476299, 0.004220721, -0.029108597]
         Scale: [1, 0.9999999, 1.0000001]
       Joint:
         JointIndex: 157
@@ -2072,8 +2072,8 @@ Scene:
       Id: 7d00b439df811cbd66946484978751a1e9f2c10e1f6a865ff9e218ad583879e7
       Parent: 004036e6c7b7f4a444ecc3d6cf2fd3ecc070227994386420efd3a85e88c6f986
       Transform:
-        Translation: [0.045752294, 0.0376489, -0.06877067]
-        Rotation: [0.07635464, 0.1446602, 0.9132839, -0.3730362]
+        Translation: [0.045752317, 0.037648894, -0.06877066]
+        Rotation: [0.07412889, 0.1392082, 0.9141302, -0.37348592]
         Scale: [0.99999994, 1.0000004, 0.99999994]
       Joint:
         JointIndex: 158
@@ -2081,8 +2081,8 @@ Scene:
       Id: ac5d169ca718ccbe6e4ea37aad7a30eefc7c5b7d479b35a47a5c417589e6fbf7
       Parent: 7d00b439df811cbd66946484978751a1e9f2c10e1f6a865ff9e218ad583879e7
       Transform:
-        Translation: [0.06828743, 2.1249807e-06, -7.115662e-07]
-        Rotation: [0.99965173, 0.004983125, -0.010761015, -0.02357263]
+        Translation: [0.06828743, 2.1339933e-06, -7.049506e-07]
+        Rotation: [0.99981284, 0.0048498446, -0.009575874, -0.016092248]
         Scale: [1, 0.9999999, 0.99999994]
       Joint:
         JointIndex: 159
@@ -2090,26 +2090,26 @@ Scene:
       Id: e774c5b76a16c7675274e9737c3e24d1fc2da184f7f35b64eb13b99de3013dff
       Parent: ac5d169ca718ccbe6e4ea37aad7a30eefc7c5b7d479b35a47a5c417589e6fbf7
       Transform:
-        Translation: [0.08210735, -1.387521e-06, 6.968264e-07]
-        Rotation: [0.99969065, 0.005648219, -0.011680583, -0.021220256]
-        Scale: [0.99999994, 1.0000001, 1.0000001]
+        Translation: [0.08210732, -1.435107e-06, 7.0270687e-07]
+        Rotation: [0.9997803, 0.004167871, -0.007399202, -0.019160751]
+        Scale: [0.9999999, 1, 1]
       Joint:
         JointIndex: 160
     - Name: Ctr_R_Skirt_A_04
       Id: c849cb5bb7e7d8de7362ad2268a4da3963d64bf351cba847e460a8f58d24be8a
       Parent: e774c5b76a16c7675274e9737c3e24d1fc2da184f7f35b64eb13b99de3013dff
       Transform:
-        Translation: [0.09705341, -5.465008e-07, -5.361143e-07]
-        Rotation: [0.9997722, 0.005886022, -0.017760705, -0.010280646]
-        Scale: [0.99999994, 1, 1]
+        Translation: [0.097053364, -5.5750183e-07, -5.302338e-07]
+        Rotation: [0.99996144, 0.0035288357, -0.0075278333, -0.0028251316]
+        Scale: [0.9999999, 0.99999994, 1]
       Joint:
         JointIndex: 161
     - Name: Ctr_R_Skirt_B_01
       Id: 052f90f815b3cb85ebe6922868e14d0188c8fca2e4a41599bfeb632c71e5c648
       Parent: 004036e6c7b7f4a444ecc3d6cf2fd3ecc070227994386420efd3a85e88c6f986
       Transform:
-        Translation: [0.045566596, -0.022884367, -0.081475936]
-        Rotation: [0.15546493, 0.08480255, 0.72695494, -0.6634575]
+        Translation: [0.04615464, -0.022723058, -0.082774565]
+        Rotation: [0.17966251, 0.11871821, 0.71742564, -0.6625164]
         Scale: [1, 0.9999998, 0.99999994]
       Joint:
         JointIndex: 162
@@ -2117,26 +2117,26 @@ Scene:
       Id: 8d6a416719ac2eea94e8b1c2c71143e8833fd006143419239075c4f87bcfd966
       Parent: 052f90f815b3cb85ebe6922868e14d0188c8fca2e4a41599bfeb632c71e5c648
       Transform:
-        Translation: [0.07571305, -2.5259255e-06, -8.8628965e-08]
-        Rotation: [0.99927545, 0.0040093004, -0.013251713, -0.03545396]
-        Scale: [0.9999999, 0.99999976, 1]
+        Translation: [0.075712964, -2.486307e-06, -8.6423746e-08]
+        Rotation: [0.99910945, 0.00040783966, -0.0009909046, -0.042179868]
+        Scale: [0.9999999, 0.9999999, 1]
       Joint:
         JointIndex: 163
     - Name: Ctr_R_Skirt_B_03
       Id: 604c8d8260d3fd9dba040eb028aed83a1f66947711ab6ac776171411899f43fd
       Parent: 8d6a416719ac2eea94e8b1c2c71143e8833fd006143419239075c4f87bcfd966
       Transform:
-        Translation: [0.09128934, -5.0729915e-07, -1.0693096e-07]
-        Rotation: [0.99891585, 0.0047059814, -0.016183708, -0.043392766]
-        Scale: [0.99999976, 0.9999999, 0.99999994]
+        Translation: [0.09128936, -5.278923e-07, -1.08401146e-07]
+        Rotation: [0.99760854, 0.004282772, -0.0054996233, -0.068764664]
+        Scale: [0.99999976, 0.9999998, 0.99999994]
       Joint:
         JointIndex: 164
     - Name: Ctr_R_Skirt_B_04
       Id: 077860ba16c2ea2134242388242334122142ba1c982acb24800267c8e32e3374
       Parent: 604c8d8260d3fd9dba040eb028aed83a1f66947711ab6ac776171411899f43fd
       Transform:
-        Translation: [0.10483314, 1.2111486e-06, -6.0421075e-07]
-        Rotation: [0.99923295, 0.005281563, -0.026950855, -0.027915787]
+        Translation: [0.10483314, 1.2288062e-06, -5.9980016e-07]
+        Rotation: [0.99946445, 0.0033373572, 0.012505976, -0.030055285]
         Scale: [0.99999994, 1, 1]
       Joint:
         JointIndex: 165
@@ -2144,8 +2144,8 @@ Scene:
       Id: 8f74c1785a6f0ef9681557729f3134ee0566900c33a628ac5379f86747fd4fe8
       Parent: 004036e6c7b7f4a444ecc3d6cf2fd3ecc070227994386420efd3a85e88c6f986
       Transform:
-        Translation: [0.04527622, -0.0620333, -0.056171313]
-        Rotation: [0.15843606, 0.023604322, 0.33629552, -0.9280335]
+        Translation: [0.04527622, -0.062033296, -0.056171313]
+        Rotation: [0.17736337, 0.030481784, 0.33575338, -0.9245987]
         Scale: [1.0000001, 1.0000002, 1.0000002]
       Joint:
         JointIndex: 166
@@ -2153,17 +2153,17 @@ Scene:
       Id: ad2447fe958c05557966139bffc20246f5855bcea7e6a8f5dbd90bb099b10d91
       Parent: 8f74c1785a6f0ef9681557729f3134ee0566900c33a628ac5379f86747fd4fe8
       Transform:
-        Translation: [0.06306555, -2.5419108e-06, -2.3022162e-07]
-        Rotation: [0.99974513, 0.004211502, -0.015320601, -0.016033757]
-        Scale: [1, 1, 0.99999994]
+        Translation: [0.06306553, -2.5525528e-06, -2.324268e-07]
+        Rotation: [0.9998139, 0.0049899598, -0.0024570124, -0.018474193]
+        Scale: [1, 1, 1]
       Joint:
         JointIndex: 167
     - Name: Ctr_R_Skirt_C_03
       Id: 2c7edb024e2244d328ff4b7e16e044c6fff85ae645e7c76f3d4cc2cfe5045528
       Parent: ad2447fe958c05557966139bffc20246f5855bcea7e6a8f5dbd90bb099b10d91
       Transform:
-        Translation: [0.078660406, -6.905797e-07, -5.561357e-07]
-        Rotation: [0.99989563, 0.005197663, -0.013458992, 0.0006826691]
+        Translation: [0.07866041, -6.787949e-07, -5.487851e-07]
+        Rotation: [0.99998075, 0.0044047735, -0.0010313392, -0.004246588]
         Scale: [1, 1.0000001, 1]
       Joint:
         JointIndex: 168
@@ -2171,8 +2171,8 @@ Scene:
       Id: 5e9e1339fba2e495e2541b83271f515984e55a49b91bd54e30032f26bde1f56a
       Parent: 2c7edb024e2244d328ff4b7e16e044c6fff85ae645e7c76f3d4cc2cfe5045528
       Transform:
-        Translation: [0.09395765, -2.9173307e-07, -9.959814e-07]
-        Rotation: [0.99981177, 0.0056069484, -0.018546542, -0.0009877327]
+        Translation: [0.09395766, -2.8477248e-07, -9.901008e-07]
+        Rotation: [0.99971974, 0.0034727985, 0.023303056, -0.0022697218]
         Scale: [1, 0.9999999, 1]
       Joint:
         JointIndex: 169
@@ -2180,53 +2180,53 @@ Scene:
       Id: 2dab8baac81e4858879963a57755bcbea67ed525d10ede1189d1c4b875ac0b79
       Parent: 004036e6c7b7f4a444ecc3d6cf2fd3ecc070227994386420efd3a85e88c6f986
       Transform:
-        Translation: [0.04653028, 0.021596981, 0.084028475]
-        Rotation: [0.34367898, -0.16374715, -0.7459724, -0.5464402]
-        Scale: [0.9999998, 0.9999988, 1]
+        Translation: [0.046530284, 0.021596987, 0.08402848]
+        Rotation: [0.38809466, -0.22954014, -0.69011843, -0.5660658]
+        Scale: [0.9999999, 0.99999875, 0.99999994]
       Joint:
         JointIndex: 170
     - Name: Skn_L_BeltA_02
       Id: ab491b17f363e3865c94f43d6b65c8319d8e0096d7c73a43967fb059cfbe80d1
       Parent: 2dab8baac81e4858879963a57755bcbea67ed525d10ede1189d1c4b875ac0b79
       Transform:
-        Translation: [0.03381223, 1.2459039e-07, 4.466831e-08]
-        Rotation: [0.94944966, 0.032137793, 0.29845157, -0.091865346]
-        Scale: [1, 1, 1.0000001]
+        Translation: [0.033812203, 1.02255484e-07, 6.8006344e-08]
+        Rotation: [0.9378143, 0.03737919, 0.2858183, -0.19342962]
+        Scale: [1, 0.99999994, 1.0000001]
       Joint:
         JointIndex: 171
     - Name: Skn_L_BeltA_03
       Id: 187ebd3e18812111486ecf66a74ac89b80c24c7dc48c673ee0a1d2d84801d2de
       Parent: ab491b17f363e3865c94f43d6b65c8319d8e0096d7c73a43967fb059cfbe80d1
       Transform:
-        Translation: [0.031567343, 4.4075307e-08, 2.7127564e-08]
-        Rotation: [0.85616916, -0.074337125, 0.49424052, -0.13105199]
-        Scale: [1.0000001, 0.9999998, 0.9999999]
+        Translation: [0.031567283, 1.558252e-08, -1.3659712e-08]
+        Rotation: [0.85655457, -0.05688213, 0.50139725, -0.10807171]
+        Scale: [1, 0.99999976, 0.9999999]
       Joint:
         JointIndex: 172
     - Name: Skn_L_BeltB_01
       Id: a1d52316c3661baf158b8d01945b8b64d1bd685edb4144f7c96795d80593060c
       Parent: 004036e6c7b7f4a444ecc3d6cf2fd3ecc070227994386420efd3a85e88c6f986
       Transform:
-        Translation: [0.07953415, -0.06669076, 0.05784279]
-        Rotation: [0.09098966, -0.271927, -0.53439, -0.7951125]
-        Scale: [0.999999, 1.0000005, 1.0000002]
+        Translation: [0.07953416, -0.06669075, 0.05784279]
+        Rotation: [0.115509786, -0.29049397, -0.52442694, -0.79198927]
+        Scale: [0.99999905, 1.0000005, 1.0000002]
       Joint:
         JointIndex: 173
     - Name: Skn_L_BeltB_02
       Id: af4ef0c33b4275df1fcf3c84418b4bedaac22408710fa0adb0842b86accfdee6
       Parent: a1d52316c3661baf158b8d01945b8b64d1bd685edb4144f7c96795d80593060c
       Transform:
-        Translation: [0.033185277, -1.00129036e-07, 1.7702163e-08]
-        Rotation: [0.9901287, 0.07979068, -0.036231514, 0.109388426]
-        Scale: [0.99999976, 0.9999999, 0.99999994]
+        Translation: [0.033185344, -1.2723373e-07, 1.544297e-08]
+        Rotation: [0.99879766, 0.021401145, -0.034337893, 0.027679631]
+        Scale: [0.9999999, 0.9999999, 0.99999994]
       Joint:
         JointIndex: 174
     - Name: Skn_L_BeltB_03
       Id: 805425c2c39a9ec5b7501880151036b047141130f26b432a69996fd954a52665
       Parent: af4ef0c33b4275df1fcf3c84418b4bedaac22408710fa0adb0842b86accfdee6
       Transform:
-        Translation: [0.03176808, 6.64536e-08, 1.02724506e-07]
-        Rotation: [0.97032756, 0.0007278973, -0.24074537, 0.022484915]
+        Translation: [0.031768054, 3.067485e-08, 4.1469363e-08]
+        Rotation: [0.9676141, -0.02702655, -0.25035056, -0.017810024]
         Scale: [0.99999976, 0.99999994, 1.0000001]
       Joint:
         JointIndex: 175
@@ -2235,7 +2235,7 @@ Scene:
       Parent: 004036e6c7b7f4a444ecc3d6cf2fd3ecc070227994386420efd3a85e88c6f986
       Transform:
         Translation: [0.046530206, 0.021597128, -0.08402997]
-        Rotation: [0.28740436, 0.14664413, 0.7563001, -0.56912595]
+        Rotation: [0.248699, 0.20584857, 0.7393578, -0.59086806]
         Scale: [0.99999994, 1.0000002, 0.99999976]
       Joint:
         JointIndex: 176
@@ -2243,8 +2243,8 @@ Scene:
       Id: 26df877efbc099a9fdcc2eeb7649794c351219e35f3463ae22ffc36c40d7b471
       Parent: 080b50874e612124cc0c29d9864d5b511bda3696265deab9e434d8aecfb760ba
       Transform:
-        Translation: [0.033811983, -1.1687024e-08, -1.722276e-07]
-        Rotation: [0.9490995, -0.02449997, -0.29651776, -0.10337809]
+        Translation: [0.03381197, -2.0629676e-08, -1.7409971e-07]
+        Rotation: [0.9096235, -0.081839055, -0.40033847, -0.07494344]
         Scale: [0.9999999, 0.9999999, 0.9999999]
       Joint:
         JointIndex: 177
@@ -2252,8 +2252,8 @@ Scene:
       Id: d91c5f321e9654222ef6d0cd31f0a7d4df2bc829e1d03ed6015a5ca3d1a61350
       Parent: 26df877efbc099a9fdcc2eeb7649794c351219e35f3463ae22ffc36c40d7b471
       Transform:
-        Translation: [0.031567443, 1.8663273e-07, 6.970566e-08]
-        Rotation: [0.8519095, 0.07876453, -0.49590456, -0.14874394]
+        Translation: [0.031567484, 1.586555e-07, 5.881123e-08]
+        Rotation: [0.8856545, 0.03577714, -0.45047617, -0.10680555]
         Scale: [1.0000001, 0.99999994, 0.99999994]
       Joint:
         JointIndex: 178
@@ -2261,8 +2261,8 @@ Scene:
       Id: 6b0f9aab8b3e56a5b5ebab60c9b25fa3e421633abe4147867d0a9fe1ccaf3bad
       Parent: 004036e6c7b7f4a444ecc3d6cf2fd3ecc070227994386420efd3a85e88c6f986
       Transform:
-        Translation: [0.079533815, -0.06669051, -0.057840202]
-        Rotation: [0.04574778, 0.23270047, 0.5365037, -0.80988985]
+        Translation: [0.07953381, -0.0666905, -0.057840183]
+        Rotation: [0.025420213, 0.2466552, 0.47845313, -0.8423762]
         Scale: [1, 1.0000001, 1.0000001]
       Joint:
         JointIndex: 179
@@ -2270,8 +2270,8 @@ Scene:
       Id: 93c95b88ee2b84e3df1aecfbcdfccb0740153f92d7183b064dace08b60c9dfc0
       Parent: 6b0f9aab8b3e56a5b5ebab60c9b25fa3e421633abe4147867d0a9fe1ccaf3bad
       Transform:
-        Translation: [0.033185292, 9.006906e-12, -3.4804465e-08]
-        Rotation: [0.9912308, -0.0745771, 0.035156958, 0.103265196]
+        Translation: [0.033185292, 1.9503574e-08, -3.197171e-08]
+        Rotation: [0.9861227, -0.094914, 0.03666927, 0.13118182]
         Scale: [0.9999999, 0.99999994, 0.9999999]
       Joint:
         JointIndex: 180
@@ -2279,17 +2279,17 @@ Scene:
       Id: 0912a5e5f2da7b81115385fe839fa70284cb77046693ea64e52dd9e3c604d656
       Parent: 93c95b88ee2b84e3df1aecfbcdfccb0740153f92d7183b064dace08b60c9dfc0
       Transform:
-        Translation: [0.03176802, 7.386241e-08, -1.7044464e-07]
-        Rotation: [0.97037303, -0.0011056359, 0.2411789, 0.01440726]
-        Scale: [0.99999994, 0.9999998, 1]
+        Translation: [0.031768028, 5.6442587e-08, -1.6669885e-07]
+        Rotation: [0.9613554, -0.013669386, 0.27495798, -0.0026471068]
+        Scale: [0.9999999, 0.9999999, 1]
       Joint:
         JointIndex: 181
     - Name: Skn_Tail_00
       Id: 321c5f6b27bb11d21aed1c13392bcadebb7298b238d1bf990d1562dff1941ecf
       Parent: 004036e6c7b7f4a444ecc3d6cf2fd3ecc070227994386420efd3a85e88c6f986
       Transform:
-        Translation: [0.010267159, -0.08752755, -0.003824584]
-        Rotation: [0.58492017, 0.024914857, -0.09336834, -0.8053136]
+        Translation: [0.011867305, -0.08791773, -0.0008618897]
+        Rotation: [0.579246, 0.05230309, -0.11679266, -0.8050453]
         Scale: [1, 1, 0.99999994]
       Joint:
         JointIndex: 182
@@ -2297,17 +2297,17 @@ Scene:
       Id: fa9a3627d37aed90ba1492538bc3f96a762dc91c8df2d6c1b4a97fb62b923998
       Parent: 004036e6c7b7f4a444ecc3d6cf2fd3ecc070227994386420efd3a85e88c6f986
       Transform:
-        Translation: [-0.01949399, -0.17717603, 0.0026982175]
-        Rotation: [0.44802302, -0.08194377, 0.008055212, -0.8902223]
-        Scale: [0.999999, 0.99999905, 0.99999976]
+        Translation: [-0.018744003, -0.17732269, 0.003917289]
+        Rotation: [0.4399604, -0.06251824, 0.024078535, -0.89551467]
+        Scale: [0.99999905, 0.99999905, 0.99999976]
       Joint:
         JointIndex: 183
     - Name: Skn_Tail_02
       Id: 7c3325351e904fa9fdb3e8b26b2acc9b973ccaace77c7e9126534c2c163db15e
       Parent: 004036e6c7b7f4a444ecc3d6cf2fd3ecc070227994386420efd3a85e88c6f986
       Transform:
-        Translation: [-0.107883036, -0.29780847, 0.023623904]
-        Rotation: [0.36624908, -0.11737743, -0.011723859, -0.9230096]
+        Translation: [-0.110083014, -0.296722, 0.017693164]
+        Rotation: [0.34693983, -0.01185568, 0.046666484, -0.93665063]
         Scale: [0.99999917, 0.9999989, 0.9999998]
       Joint:
         JointIndex: 184
@@ -2315,35 +2315,35 @@ Scene:
       Id: 7a79c9e3602ec5ff789ba7b8114210c1d02429f5fa636e74a485348cc031e937
       Parent: 004036e6c7b7f4a444ecc3d6cf2fd3ecc070227994386420efd3a85e88c6f986
       Transform:
-        Translation: [-0.2107316, -0.39617148, 0.056547724]
-        Rotation: [0.43523014, -0.1647062, -0.023762845, -0.884806]
-        Scale: [0.99999964, 0.99999934, 0.9999998]
+        Translation: [-0.22087637, -0.39175186, 0.016194735]
+        Rotation: [0.4032958, 0.07329491, 0.0836488, -0.908286]
+        Scale: [0.99999964, 0.9999994, 0.99999976]
       Joint:
         JointIndex: 185
     - Name: Skn_Tail_04
       Id: 14b59226ffdac8ffdee8c5b43dfa001236eeda1f45bdbf20ed4a1ab1a12dcab5
       Parent: 004036e6c7b7f4a444ecc3d6cf2fd3ecc070227994386420efd3a85e88c6f986
       Transform:
-        Translation: [-0.2989192, -0.5148028, 0.105105855]
-        Rotation: [0.49886647, -0.17891793, -0.01608763, -0.8478573]
-        Scale: [0.9999988, 0.999999, 0.9999988]
+        Translation: [-0.3240959, -0.50372314, -0.015043648]
+        Rotation: [0.45294082, 0.15896077, 0.11682271, -0.86944157]
+        Scale: [0.9999989, 0.99999905, 0.9999988]
       Joint:
         JointIndex: 186
     - Name: Skn_Tail_05
       Id: 396f4f8b156f7ead800c6e0d897ea42886a6634d62d2d79e3200d67c2bab57e1
       Parent: 004036e6c7b7f4a444ecc3d6cf2fd3ecc070227994386420efd3a85e88c6f986
       Transform:
-        Translation: [-0.36561877, -0.64262867, 0.153744]
-        Rotation: [0.5469635, -0.12824821, 0.025010329, -0.8268965]
-        Scale: [0.999999, 0.99999887, 0.99999875]
+        Translation: [-0.4061004, -0.6178824, -0.07313437]
+        Rotation: [0.5055748, 0.18373786, 0.1135616, -0.83530724]
+        Scale: [0.99999905, 0.99999905, 0.9999987]
       Joint:
         JointIndex: 187
     - Name: Skn_Tail_06
       Id: fee576f0784246f86cdf9fce0bdab0c1ca4346893da378e627ab71562204154e
       Parent: 004036e6c7b7f4a444ecc3d6cf2fd3ecc070227994386420efd3a85e88c6f986
       Transform:
-        Translation: [-0.42982745, -0.80127877, 0.18591386]
-        Rotation: [0.5877068, -0.0049277544, 0.11075856, -0.8014418]
+        Translation: [-0.47960716, -0.75799394, -0.1467278]
+        Rotation: [0.58848184, 0.12857683, 0.056800757, -0.7961977]
         Scale: [0.9999989, 0.9999989, 0.99999887]
       Joint:
         JointIndex: 188
@@ -2351,33 +2351,33 @@ Scene:
       Id: c98816637a0074869d582bf8ec9bd9d024a54f31334c97f1706a0a67903a4b04
       Parent: fee576f0784246f86cdf9fce0bdab0c1ca4346893da378e627ab71562204154e
       Transform:
-        Translation: [0.13694736, 0.112348035, 2.1263186e-06]
-        Rotation: [0.9411708, -0.027175194, 0.16391875, 0.29426128]
-        Scale: [0.9999999, 0.9999998, 0.99999994]
+        Translation: [0.13689278, 0.11235075, 2.176745e-06]
+        Rotation: [0.9261411, 0.0150625305, -0.114247866, 0.3591422]
+        Scale: [0.99999994, 0.9999998, 0.99999994]
       Joint:
         JointIndex: 189
     - Name: Ctr_Tail_08
       Id: 0998e3f38326d2329b5a1e33b88142284077cba53606543ddffb488705560c03
       Parent: fee576f0784246f86cdf9fce0bdab0c1ca4346893da378e627ab71562204154e
       Transform:
-        Translation: [0.051867433, -0.030439537, -2.091408e-06]
-        Rotation: [0.08032804, -0.8744301, 0.42976403, 0.21029106]
-        Scale: [0.99999976, 0.9999997, 0.99999994]
+        Translation: [0.05180746, -0.030435529, 1.5779501e-06]
+        Rotation: [0.031411365, 0.90911824, -0.39770252, 0.119792506]
+        Scale: [0.99999976, 0.99999976, 0.9999999]
       Joint:
         JointIndex: 190
     - Name: Set_Tail_End
       Id: 5a1ae498838626e7f3790288646d715834bed05a18fc0b6880655120e162ce22
       Parent: 004036e6c7b7f4a444ecc3d6cf2fd3ecc070227994386420efd3a85e88c6f986
       Transform:
-        Translation: [-0.053235836, -1.0323979, -1.2326545e-06]
+        Translation: [-0.05323585, -1.0323979, -1.2366378e-06]
         Rotation: [0.4946947, 0.48267922, -0.50471205, -0.5172656]
-        Scale: [1.0000011, 1.000001, 1.000001]
+        Scale: [1.000001, 1.000001, 1.000001]
     - Name: Skn_L_PelvisBD_Fix
       Id: 63c8034b136bd1283cd9b41916dde09cb05726ec72fae9d90a4762e4e4ac5616
       Parent: d0158446df8fd4f3db8c4060fc6181a738c30c09d7043861b1071882b1290f6c
       Transform:
-        Translation: [-0.053402465, -0.05825676, 0.07464475]
-        Rotation: [0.0018226899, 0.705511, -0.70869434, -0.0017932816]
+        Translation: [-0.05372889, -0.058099218, 0.074646026]
+        Rotation: [0.0022715183, 0.7041234, -0.71007025, -0.0022892246]
         Scale: [0.9999999, 0.9999996, 1]
       Joint:
         JointIndex: 191
@@ -2386,7 +2386,7 @@ Scene:
       Parent: d0158446df8fd4f3db8c4060fc6181a738c30c09d7043861b1071882b1290f6c
       Transform:
         Translation: [0.010292055, -0.07645337, 0.067875065]
-        Rotation: [0.8600112, -7.788949e-07, -1.2092189e-06, -0.510275]
+        Rotation: [0.8599526, -7.7687025e-07, -1.2068841e-06, -0.5103739]
         Scale: [1, 1, 1]
       Joint:
         JointIndex: 192
@@ -2394,8 +2394,8 @@ Scene:
       Id: 96a99a5ff9d1a5a2d2282bde42489b7137043489e10ff1b18aa8412a5b6f0e0f
       Parent: d0158446df8fd4f3db8c4060fc6181a738c30c09d7043861b1071882b1290f6c
       Transform:
-        Translation: [-0.054418158, -0.05779184, -0.0746299]
-        Rotation: [0.00020609591, 0.7021817, -0.7119977, 8.0467294e-07]
+        Translation: [-0.054418158, -0.057791844, -0.0746299]
+        Rotation: [9.331859e-07, 0.7010209, -0.7131407, 8.0090047e-07]
         Scale: [0.99999994, 1, 1]
       Joint:
         JointIndex: 193
@@ -2403,8 +2403,8 @@ Scene:
       Id: aba35a390e8927da98b596b39b31f3be776b306221a5370fcbaf69ab6d429a7b
       Parent: d0158446df8fd4f3db8c4060fc6181a738c30c09d7043861b1071882b1290f6c
       Transform:
-        Translation: [0.010010364, -0.07649008, -0.06789981]
-        Rotation: [0.8598521, -7.940373e-07, -1.2191148e-06, -0.5105433]
+        Translation: [0.01001036, -0.07649007, -0.06789981]
+        Rotation: [0.85980344, -7.7814184e-07, -1.1993516e-06, -0.5106252]
         Scale: [1, 0.9999999, 1]
       Joint:
         JointIndex: 194
@@ -2412,8 +2412,8 @@ Scene:
       Id: 554401d1b9c83b7f447cdd52f7d77c47ccfb5b04ef030d375dd408d43e8833b5
       Parent: b5086e2d388db45d973ac3d2803290a5c78bb366410c63273ebb104ad89d6cf1
       Transform:
-        Translation: [-1.6036354e-08, 0.05956545, 2.66061e-08]
-        Rotation: [0.7071067, 0.7071069, 1.5078069e-08, 2.0631635e-08]
+        Translation: [-2.076642e-08, 0.059565455, 8.743885e-09]
+        Rotation: [0.70710665, 0.7071069, 7.860643e-09, 2.4856469e-08]
         Scale: [1, 0.99999994, 1]
     - Name: Ellen_Weapon_1
       Id: 75fc88eec5aa7e0da589e0b23ccf890cdc1bc9dd97e6d65a53a61b18eeca20b1
@@ -2439,7 +2439,7 @@ Scene:
         Rotation: [1, 0, 0, -0]
         Scale: [1, 1, 1]
   Skins:
-    - Id: dabac10bacdc0d2aa52adf311de278f1463b84f9cf3b3f8ee8bc006c89d20169
+    - Id: 33c432735e31996166d1b2426a13b24714b591aa0b31b66527e522aaa7874d14
       Joints: [b5086e2d388db45d973ac3d2803290a5c78bb366410c63273ebb104ad89d6cf1, d0158446df8fd4f3db8c4060fc6181a738c30c09d7043861b1071882b1290f6c, 2d41e76bbc5f8bc6281cf3415bce1e7f904e2a46bbc7f49decac5d7cf30e4358, 47d4aca2dd124d22cf27787ae201913511d257ac196e360b54282d1b9e9a0091, 79f95bfa13d92f45cecabbc633423c9f8a716e032b84beef42a29e13464d4b1c, bd4cfdd650e0529579d8b4b8c133dad029e9a7b8c809d92dbffd3d443b5d3d0a, 47d2e4fab23634708833f7b96288be202610e5274e34b264616bdb0f6a2a8d81, 89887c5a82e7cf95099a99daa745d49477925caf8996fa6d2b263063acbb1fdf, ccd88980a8b2073ec353d92b2bc8e85d909602d894ad4fba6738b5ede99d9503, 99923c484242a727af5f31c8ebdcd193469fda379c62f4f4a99a9ab17ffffd74, a354fcd70bd1097b3367b04eed9f19bc3e7c0e627a54796b54b8dc0da6493672, ef48ea457bbe228bc12cba9d6b3046829ea9d3d548d7a50f300978725cfb3d88, 60fbd05ee6fdc470111383cb8ce022ec6a1d1908e843b988230674eec7702420, cce5fb3cfa319bf43ce638bc2b707d4c7a6d00aa945b74b00fed5d6a1ffbd067, 20313e118e1e9fbe47834249be7e33cc53f1db065c1eda98ff77bd2d593cbf96, 730b52fd1aecbc1ec220019f44d5840dcb75351bc75c73ccd60f366df36fefb4, bc36070a4e362ef0b3c8b3339bc919c553ccc656f2cf9f47011e02b0b7b2e02d, f714345338f0f58ee86a3353262f8a614ff4a54f5786ade902cf815ffd105a21, ab8914cfa97acf851a76bea1907ebe1c4fc5858c7578d6287088e4c1feac7499, 0e6998941c1ace7987b24b102cda4c693184dfad3c3fd0fafb3aa50519815062, 125e41f11165ff135399f16f8169f7e12c810b5cf9bd948611abeae88d7d48b1, 3ce6face98a8bb6e43a3f5cb66247ecd635d0ddeaaea1072890297bda3f5833a, 4120ce360a7493626efd71f31edc1d9086656e56c1909ca5a502c65b01c7616f, 004036e6c7b7f4a444ecc3d6cf2fd3ecc070227994386420efd3a85e88c6f986, 65e53f9fbbd72d4954ae2cfecbbb5a7080ea2046a395b1d5977715dc12920096, 2179e7898b47f10fd55715a94f10d3188aafe4e69f8c1491656c552df0559771, 59f50a20d31f49800dde46c4c90d2520f33204d058d2fd17ac5de3ae628da457, bcc3de10b8504fcaec3bc5fbadcf2aa5189471b3978328de0bea7aa209601b31, cd2172711f9bdb21e56e74a160c11d724a60cb80ec2ab8f3388cae2ff12cc3eb, 6ef251e6be2152fd3858dec1b34bf814c455997f6df811cb432756ebdda1928f, a2d585bb9e37fd5d37577831e8f2b6b258ac43204622df85e951bcb5c5af82a7, 19a8054d0859488aaf1e3eb81600c01c6fb6f778081d9f2732a8905219285c68, df1f9e8ed1b7f16a35788a8f0269eca85004e07de3bfd468e48da2f6292f8448, 59a2718df4356ffa704c5f1caa0073b4e83592023c3ade561fed374380562fa0, cf357857347adcb11e491430ae75e033d80919c74bbaca115441ed455bd24d91, 4f3da58c1d34ad5168f470e46f857dbd8e4b0affd7f933a4366a17065bed8ed7, 70108403b87a4da5f2066aec4f805b0b30a65f6b50410ceec81c9ad00cc15d24, 5c03fb861647bb116c75f9a17d0bda0798db25ae557deef6fd28dfd96b52a293, b2cc47155cf7166165a7b3a59d83e17cd25642b519e4e8006de1471c08195586, d2b4b4cc850ed905f0958d85ca2214ce7f1fe12debf9a4c7b83263513c793a24, e06d160ce156914071784add3da3d201bc4d5a47df8b82534d86d01d25baedd8, 6e41eba09d1b7422935524b2bbe112a85ada34f753fdadf259a4b462c5542c4b, 23a3e11ad55e1ae68cccf42910a8c966d9c2922e432ad278d647b0c8cb98fae9, 1281c86b0f42de895448b1cce5e5c05a8757fb8344a62532faa11c5ae8ccc80c, 187fd408ee704cd0dc76cce9fd58f669a78e1845250289a3d424917a3134d631, 17ffca3a0eeb12f7fb8849273af79d84acb043faade8f6f5b4b6a1d74c8baca2, b07ba736ba37ccb1f422e02b2a856d8f4b387d5e533e30f53e6a29cb9a1b69c6, a4d9cf49c8dae403e52fff4477783f9d669e14dd57b67917b2c08a844ed7d8a7, b7f7bbefafa8b4de1a348d9d557ffb46ec423d6040e973467943657e49b95581, 661fc3f1e9760e1f0c97001ccce5abf3054fcdbe9a3ce98e1d40ba88aa7437a9, 619b8b31ee39c43b19d8e233bb4e57d0e0cd56fa95f61b12de7c0cf016fd51d0, cbd4601b3115e3714bbeb6a822f43dcc7e2086c85564a0458f906a8449308017, 3fdbef170b0e299cbba6445bf97b5a9198e217088ee05f537ef5c6a8e9616735, 952d0ee5b17d060ad42a2dbe8c1c6d696c30c394ca14c8c169c63db4c00958e9, 4733270ed294f761b2de8fade2e039f9eba83d132b31349354d236524776d4ec, 3542a9c33295b142857d8e06ec1a0a51f5dd24fdce61b73274392355a74932ce, 8e3410f2aaf826a9b7517d27b59756ffb3c7baac31afe5187f1a8188f12ae7dd, dfe985a57b9d4a9dd1f880c1724a8b4ba858545526618774d488ccc7cca5a753, 32e73b6a9af630ddcb342e6865ccd53507caae4cc7a23e600b985e287ad83d51, 5fdfe1ad75c4adb1f37570c206707a857833cf370ef710bbec945f6ad00f6568, 0b03710ae57dec7c98e08b918c1d55d34cd7cb538dcd4e9e7562c600391d4ac6, f3bb89a566ef12d52c6792a0a32b727226c82ebfd588f880ea08cf49f578fdea, 194fc48c418b3c5b2585148ef496751fc5ba51264a923af48451f72b7dd02c69, 51e7a6fa51f857ddcbfb21d7b8622f298eb2aeffd98b97409a41c544decab1e6, 1075c8ed074b905ee12dc28d987e2294d8b1c5ef7b2dc90630377e5bcec8ef03, 3bca344e90edd6851ff305d3658d0915b47ebec3ea2e644b118dccc4fce4b831, b0483f20f21db599de08ba6ea362e042c7fe0e84a3045fc6f9b2ca68a0e19678, cb9a3b0d68c2cc6d243f66829eb7b0fbeb1712adea01cad2dd72708022edc4e0, 1f2bf591cb53b1e3b69f057ac17594b26b777cc2efbb7934459197294b6343b1, 9ea36ad8135cffd5b7a655431bce21df6d514eb74c75d99b90d2bf6adb9959e8, e19a626b329447b33ff291fe86ef27cc2e2906ffc9b0fa0b216f6fe251c85889, 789054ce50f5fab353fdf0ff56fea19b7cdc1bb9121acb267a8734ef864ad72c, c748b1776d0f10a3d08c0e61e4d11f6507bc28e64e82471a0b4a4ee5c10e43ec, 9e0a4ac6213d7d7fdba4c5fa03d5a971eae337632c95a573784f0c01124cc8c1, 862d3c6f12e64ac01497581e2c23ce0b20549b2dd5917f5d6c3c5fe0890feed3, f4f818ab798fc74aed3286fb0293f23b1ae641ddfa3608d4621ac4338f8d6a04, aabf6c598c76ac7dae81045deedcf76985ed9b224e371edbde708e972cee47c3, e19ebdb771dbb582a9a1f83a1309f3b6d97752612f5fe7bc7075388e020b952b, a30e0391c640ccb1de98a16aa3ba34ef805507fa2f2616dfa04de24dff09057c, 9a757c45d0c5e680f24c4a8599682879dad1b53e94405d13bd16d8c499e9c69b, 1058f754a117ef0319e8c8deb3b818316c8a1d8a85ba6e86246f8d92f6169078, 229d762e5048fb949a39cdfb45337aabf3b0fca5b919129f793489e68d6dad69, 64ad1df298296040d2952d89e19705af5eee98b50c61d734a934c514acedd368, 3f0ff6b231ad35f24302053c558ef75dc57677bae79b70034dd12876010fc16a, 693da5f41153e767409790b3eb3232522461cb1753a7a931d653f22a6ec9de79, 97cd6348eb2f556ab95bc857d014b5ecf7c279dccc58b19ef5af8b45bde5417e, e31f033d39d739d5fb1ab328fac90a09b745c12515ecf5999adc0e60e148a489, 6a982f5787a84e88cc96578e18ef8aadad55da9bd575792d7a38ea9d611b2547, 0360adcdcdfb4640707fa3c633285a238b0c101356cbee44828b2ec008a41512, 7cbd81ade6df1a35361552992c89d286f5db26da5192f067de78629c5125d4bb, f5d5629b66e4e01fb66553c42fd6625fac0b7820d90b84d9a61ab766602d0552, 586c80331376a453a8e2008537debc010b1a7f666a1cb81bb7516934287592bb, 4151b2ffa2d91613778df6078d18f35022447739f531b4e58c1f8cb6eee6531b, f4b345ec713febdb8a3672f9172726145ad0c63532cb21ad96d63133e3866cd5, 802679c8a8a7c29ff5506dab4d5b7856fe4d49c1326b887ff187b32f1b557e20, 3df915dbdf34bfafd44354fc877c426baaab82e94d6d0a23a155435e57f83f11, d3053dee1b5cf93140b95476626884196aedc324b813d6b2ca2a9a5020cbc8ee, 3aaad8096fc3d8d4515214abc2eeb4bda312f63565d461450626630493569a75, fb0a0af2f8f08c8c759b21a3f00098f123a42534b0f32858697f6b143ab30fc7, aa8a55c8cfee2782b81ebca5c5c3c003acd973e01b995baf0651469dc36cc6b7, 840ba1340c1974253afb108211c4e3e35e53e57b777d5dec400a084ecd46b732, 0773bf013ae428ec05a2b73a4bc6b4d6e4b54108f3ae563c2d7f2aa572731180, fe144e7bb3068b1512bc71bb185b656a8e9e63b1750745ccfff439ae580f4677, 96d08e1da2be89e63e10ee7b4fbb9261cf4282a0415f7b9b348f97c0af1eaf37, b232c6120dfd85c83d69e39df3912d1c1e560365d93f7eb925621d4c262715dd, cf4d675440c74325940838a524aee49eb6ab66c62988d6c89655ef6d5db44530, 5472ccb8d10ce652807916243c962381ea06f3239f6292d6d1f35ea365e6b9f3, 11fa02c0d0d1c09420901edb57d4af7d94f3bb917d8fcaf626af7b15b2149018, c59a25abca5594e7e3986389406a3d61c3517b91613e4e91e62e69935ef86cc5, 6fa6b8e0eff4760638d1379eacefcc375a99c3474181e715c02eff26e5c43e32, 7cd823e53f58155393adbda2184088c12f3cf480ad81dadbdb461085623bac99, 51ff610ea47536410e34720fdde7af14a31caf6500c2e93b96e7a79b5a2591ff, 0ad5d63ec3204623ddbcf8bd612e276f04502234da3d3875efe239d95e95b7c5, 4d9846716c2e3f0dbb727773b9ce75a46d3aee4b9b8230e66b5a5500a2f3fdb3, 44d6b0be65798b1fbe0c52129cb6b7b979fde369e731058868bd681fc0414404, 0f8fb44d4f4730550c3c6eaa5043e73d4a24a4a8c95f0664e194f77ba19374ac, f94a21907f527bbb997cf258fcb063991fc0ef1ce712f3de1c74855e3f87b2bd, c4d407c9028d24603f08908694556cb8cf9806999dbf1bd940a64e118a8366fb, 09f64c36cb167f9056102ae1697c6f9cd10584e2f6337924a599335d8d32ec70, a45104435ebaed4666dc33eeb0d530294b881a981d73acd86ec5dadc730ec5b4, 22aa9db6de316e20b74cd8af390a29b8911cc15a8b279859f4b22df501ca210b, 6859f778649c5330462fcfa33ff51d779e8a7bf2d381b2a756ef6aca5c8367f9, 3709be2ca2e12f9f7cd4e4ae4fa3d4d482440a3636696e82276486066d7a6e89, 956d65e1d6ef31a7ba23d722cfb28ad577b007029799bfe80d7fcfe59ac62f7d, f9c73e414884ae6f34f69d2bbec4dd8e7b93dacc0c43ae7909a58d6786127634, 59731ef9acb4d8bd787edc17c554c3182cf4a7d73f6b2a0b43f34504ee5d783b, 442afa009a2e7c3ab20dd6997d946dc925f21aa4152891be2e9432113cc00a3d, 311d41c6e9039949595eb312a2d8ee5608472d3e9123926c161d767730636183, fc918fcfc23ccc9aabbe6f270423041522f4c8fa06105bfc8c7877d680922a84, 8f5d2f9dafba416680fbbec9ba8a70c592bb945b21305399d3cc3a7a12325424, 92ffb86dd3c9907320e2b9621ba7e5aa0dbf24ffea3dceaa12619d34bf5cde9a, f866e2057b3b806f0f01201447dde62aa27431156c9eec30b56370d88fa9f370, 1169d717f17308c5290392a69c20ad5afc24b56aea57593ec0a5c15ca3acf6cd, b5ad307a5092b71442b081fe6c305db29969fff6d2b90261f90092e43c74395e, 6376a06a9474b910b2d9c025a4def1b789dff2f78560702b4fd453ea56edb376, a73cc7df55cc1c2838c450e8844bf2ed3871ad109da58615c901113a6c973ffd, 0f424944877ff2c14d4151b80dba937241e476e465d5522b62804ab181d33b86, a287239cc151b3a72e61feaed66898d127afddfadca1706fbae2a838d5e20b94, 9ffdca379a194bb6ec18fb6095c23ef8fedf1062edb0db63c237f5fb3400c0bb, 0372da326ac2236722a5b570c10298d08c9feca6626fe0139ed5a2c76a9b48e6, be17efd8e62b48437c3d1f93c6a603a0d8f1213b29d3e3cb282197ebb8ebba25, 87a9051220d04ab51f711797fb41e4edb4ae05f3915d6f19a7dabedd4408b11d, 188489dccfc962e58dcab8eec69fdce0547f1827cffab6eb9c05fb36ed4fb7a0, 1c4b40b7fe3d746b1fd792b9165ed7d7808180b1512706b38cb48027e1d818b2, 377a27bc63be3c2ee789d6f3916369adc37e83d5ac120a8449db854cd6680128, d7a88b49385bff09840ab8d6c9873537889fa6b35d689119e6e884bb6f61d144, 2221f15cfe173f936d7a6281e6014b0529c8c674bef150492584557b85d08424, 8df2190560796c89f964d2befb3a1750cad0fa53c4d57b3de2efb49366a2264e, f831ad6e39ead71f7bcebe39efa48e985122c920bfcfc8eeb54ffc488ad07ab4, 27b19ba11a73b5ff2efd3e0456415787945c2ab9bd51da9e47cade82d6dd5b88, 3c4a80e5b5b7a8dd314e0658e784d3c062c4315a5767c01b4d7d21778586f866, d678a8cedf376ebb0819e3054fd8ba7e90b564f0ce4b1900a2f60bd6f052ed20, 326401e28d09d271856b62732ea34016efef21845959ce926e3db7f6e26a897d, abf60da1ff45ad11610e265cb067a0fbea77d4e5f9ce35e57f28faaad5179446, 97e498ca594b5ee1c0c2afa60c83dab227db8f6f77cf40c5f260fedb29cc3458, 08273f7d3c63b6ead38bcc8e1f7f5d55bfc4eafeb9fa1feb0d7c2a9878812f6c, 8edac35694b5c5d0f93d252365784a280788e5bcfdcfd051cbb8a118517796f9, e1702357ece72ad8049c82a6c10c0054228699c733299d6020ebc0f0530c8ead, 7d00b439df811cbd66946484978751a1e9f2c10e1f6a865ff9e218ad583879e7, ac5d169ca718ccbe6e4ea37aad7a30eefc7c5b7d479b35a47a5c417589e6fbf7, e774c5b76a16c7675274e9737c3e24d1fc2da184f7f35b64eb13b99de3013dff, c849cb5bb7e7d8de7362ad2268a4da3963d64bf351cba847e460a8f58d24be8a, 052f90f815b3cb85ebe6922868e14d0188c8fca2e4a41599bfeb632c71e5c648, 8d6a416719ac2eea94e8b1c2c71143e8833fd006143419239075c4f87bcfd966, 604c8d8260d3fd9dba040eb028aed83a1f66947711ab6ac776171411899f43fd, 077860ba16c2ea2134242388242334122142ba1c982acb24800267c8e32e3374, 8f74c1785a6f0ef9681557729f3134ee0566900c33a628ac5379f86747fd4fe8, ad2447fe958c05557966139bffc20246f5855bcea7e6a8f5dbd90bb099b10d91, 2c7edb024e2244d328ff4b7e16e044c6fff85ae645e7c76f3d4cc2cfe5045528, 5e9e1339fba2e495e2541b83271f515984e55a49b91bd54e30032f26bde1f56a, 2dab8baac81e4858879963a57755bcbea67ed525d10ede1189d1c4b875ac0b79, ab491b17f363e3865c94f43d6b65c8319d8e0096d7c73a43967fb059cfbe80d1, 187ebd3e18812111486ecf66a74ac89b80c24c7dc48c673ee0a1d2d84801d2de, a1d52316c3661baf158b8d01945b8b64d1bd685edb4144f7c96795d80593060c, af4ef0c33b4275df1fcf3c84418b4bedaac22408710fa0adb0842b86accfdee6, 805425c2c39a9ec5b7501880151036b047141130f26b432a69996fd954a52665, 080b50874e612124cc0c29d9864d5b511bda3696265deab9e434d8aecfb760ba, 26df877efbc099a9fdcc2eeb7649794c351219e35f3463ae22ffc36c40d7b471, d91c5f321e9654222ef6d0cd31f0a7d4df2bc829e1d03ed6015a5ca3d1a61350, 6b0f9aab8b3e56a5b5ebab60c9b25fa3e421633abe4147867d0a9fe1ccaf3bad, 93c95b88ee2b84e3df1aecfbcdfccb0740153f92d7183b064dace08b60c9dfc0, 0912a5e5f2da7b81115385fe839fa70284cb77046693ea64e52dd9e3c604d656, 321c5f6b27bb11d21aed1c13392bcadebb7298b238d1bf990d1562dff1941ecf, fa9a3627d37aed90ba1492538bc3f96a762dc91c8df2d6c1b4a97fb62b923998, 7c3325351e904fa9fdb3e8b26b2acc9b973ccaace77c7e9126534c2c163db15e, 7a79c9e3602ec5ff789ba7b8114210c1d02429f5fa636e74a485348cc031e937, 14b59226ffdac8ffdee8c5b43dfa001236eeda1f45bdbf20ed4a1ab1a12dcab5, 396f4f8b156f7ead800c6e0d897ea42886a6634d62d2d79e3200d67c2bab57e1, fee576f0784246f86cdf9fce0bdab0c1ca4346893da378e627ab71562204154e, c98816637a0074869d582bf8ec9bd9d024a54f31334c97f1706a0a67903a4b04, 0998e3f38326d2329b5a1e33b88142284077cba53606543ddffb488705560c03, 63c8034b136bd1283cd9b41916dde09cb05726ec72fae9d90a4762e4e4ac5616, 184b1ea884c66d2327d589c72fb9bb1edd9e2f05f3a89f96ed5dc6cc0c61f7db, 96a99a5ff9d1a5a2d2282bde42489b7137043489e10ff1b18aa8412a5b6f0e0f, aba35a390e8927da98b596b39b31f3be776b306221a5370fcbaf69ab6d429a7b, 75fc88eec5aa7e0da589e0b23ccf890cdc1bc9dd97e6d65a53a61b18eeca20b1]
       InverseBindMatrices:
         - [-0.43471116, 0.89885086, 0.055618934, -0, -0.4462783, -0.26865348, 0.8536163, 0, 0.7822159, 0.346255, 0.5179243, -0, 0.36894968, 0.20698579, -0.6956, 1]

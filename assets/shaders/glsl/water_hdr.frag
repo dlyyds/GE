@@ -36,7 +36,7 @@ layout(set = 0, binding = 2, std140) uniform WaterUBO
     vec4 foamParams;
     vec4 waves[4];
     vec4 waveSpeeds[4];
-    vec4 colorParams;// x=色彩平铺, y=色彩强度
+    vec4 colorParams;// x=色彩平铺, y=色彩强度, z=表面覆盖, w=焦散强度
     mat4 invProj;// inverse projection for SceneDepth reconstruction
 } water;
 
@@ -58,6 +58,8 @@ const float PI = 3.14159265359;
 // 影响反射清晰观感的还有：视角掠射角（Fresnel）、Roughness（越低反射越锐）、
 // 环境组件 IBL 强度。反射总亮度 = 预滤波 × IBL强度 × 反射强度 × 本系数。
 const float kReflectionGain = 1.6;
+// 段 A 焦散强度（水上俯视水底）：透射光被水面微法线聚焦的加亮幅度。
+const float kCausticStrength = 0.35;
 
 float distributionGGX(vec3 N, vec3 H, float roughness)
 {
@@ -224,8 +226,8 @@ void main()
         // 不能把它当成 0.001 米来算，否则水会瞬间吸成深水色，折射再调都看不见。
         float absDepth = max(water.foamParams.z, 0.0);
         float absorption = absDepth > 1e-4
-            ? 1.0 - exp(-waterThickness / absDepth)
-            : 0.0;
+        ? 1.0 - exp(-waterThickness / absDepth)
+        : 0.0;
         vec3 waterBody = mix(water.shallowColor.rgb, water.deepColor.rgb, absorption);
         // Keep more of the transmitted underwater scene visible so refraction is obvious.
         vec3 transmitted = mix(sceneCol, waterBody, absorption * 0.55);
@@ -233,6 +235,19 @@ void main()
         // 也不能直接给 0（水面不透明时会变黑色边框）。这里用“未折射的原始画面”
         // 作为兜底，只有真正位于水面以下的内容才用折射+水色混合。
         refrCol = mix(directSceneCol, transmitted, underwaterContent);
+
+        // —— 段 A 焦散（水上俯视）——透射光被水面微法线聚焦 → 水底更亮。
+        // N 已是波+细节合成法线，L 是阳光方向；滚动细网纹消除静止感。
+        // 只对真正水下内容（underwaterContent）生效，非水下采样保持原样。
+        float causticFocus = smoothstep(0.0, 1.0, dot(N, L));
+        vec2 causticUV = inWorldPos.xz * 0.6
+        + vec2(water.timeParams.x * 0.25, water.timeParams.x * 0.35);
+        float causticGrid = 0.5 + 0.5 * sin(causticUV.x * 2.0 + sin(causticUV.y * 2.3) * 1.5);
+        causticGrid *= 0.5 + 0.5 * sin(causticUV.y * 3.0 + cos(causticUV.x * 1.7) * 1.5);
+        float causticPattern = 0.25 + 0.75 * causticGrid;
+        float caustic = 1.0 + kCausticStrength * max(water.colorParams.w, 0.0)
+                              * causticFocus * causticPattern;
+        refrCol *= mix(1.0, caustic, underwaterContent);
 
         foam = smoothstep(0.0, water.foamParams.x, water.foamParams.x - waterThickness)
         * water.foamParams.y * underwaterContent;

@@ -502,6 +502,18 @@ void SceneHierarchyPanel::DrawWaterComponent(WaterComponent &component) {
         ImGui::DragFloat("泡沫强度", &component.FoamIntensity, 0.01f, 0.0f, 2.0f, "%.2f");
         ImGui::TextDisabled("需要阶段 2 场景深度后才生效");
     }
+
+    if (ImGui::CollapsingHeader("水下后处理（UnderwaterFX）", ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::DragFloat("雾密度倍率", &component.FogDensity, 0.01f, 0.05f, 8.0f, "%.2f");
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("水下全屏雾密度倍率；越小越亮（1.0 = 维持当前可见度）");
+        }
+        ImGui::Checkbox("焦散（水上透射 + 水下全屏）", &component.CausticsEnabled);
+        ImGui::DragFloat("焦散强度", &component.CausticsIntensity, 0.01f, 0.0f, 2.0f, "%.2f");
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("乘在段 A / 段 B 焦散上的总强度（1.0 = 默认）");
+        }
+    }
 }
 
 // ============================================================

@@ -987,6 +987,9 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
             waterNode["AbsorptionDepth"] = wc.AbsorptionDepth;
             waterNode["FoamDistance"] = wc.FoamDistance;
             waterNode["FoamIntensity"] = wc.FoamIntensity;
+            waterNode["FogDensity"] = wc.FogDensity;
+            waterNode["CausticsEnabled"] = wc.CausticsEnabled;
+            waterNode["CausticsIntensity"] = wc.CausticsIntensity;
             for (int i = 0; i < 4; ++i) {
                 const auto &w = wc.Waves[i];
                 YAML::Node waveNode = waterNode["Waves"][std::to_string(i)];
@@ -1626,6 +1629,9 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
             wc.AbsorptionDepth = wn["AbsorptionDepth"] ? wn["AbsorptionDepth"].as<float>(2.0f) : 2.0f;
             wc.FoamDistance = wn["FoamDistance"] ? wn["FoamDistance"].as<float>(0.8f) : 0.8f;
             wc.FoamIntensity = wn["FoamIntensity"] ? wn["FoamIntensity"].as<float>(0.9f) : 0.9f;
+            wc.FogDensity = wn["FogDensity"] ? wn["FogDensity"].as<float>(1.0f) : 1.0f;
+            wc.CausticsEnabled = wn["CausticsEnabled"] ? wn["CausticsEnabled"].as<bool>(true) : true;
+            wc.CausticsIntensity = wn["CausticsIntensity"] ? wn["CausticsIntensity"].as<float>(1.0f) : 1.0f;
             if (wn["NormalMap"]) {
                 const std::string texPath = wn["NormalMap"].as<std::string>("");
                 if (!texPath.empty()) {

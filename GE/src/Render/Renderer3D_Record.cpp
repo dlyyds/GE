@@ -540,7 +540,8 @@ void Renderer3D::DrawWaterBatches(VulkanCommandBuffer &cmd, VulkanRenderFrame &f
         // 未绑/未就绪色彩贴图时强度强制 0 → mix 结果 = 纯深水色，老场景视觉不变。
         ubo.colorParams = glm::vec4(batch.colorTiling,
                                     colorReady ? batch.colorStrength : 0.0f,
-                                    batch.alphaCoverage, 0.0f);
+                                    batch.alphaCoverage,
+                                    batch.causticsEnabled ? batch.causticsIntensity : 0.0f);
         for (int i = 0; i < 4; ++i) {
             const auto &w = batch.waves[i];
             ubo.waves[i] = glm::vec4(w.direction.x, w.direction.y,

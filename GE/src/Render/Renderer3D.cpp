@@ -139,6 +139,9 @@ void Renderer3D::DrawWater(const glm::mat4 &transform,
     batch.absorptionDepth = water.AbsorptionDepth;
     batch.foamDistance = water.FoamDistance;
     batch.foamIntensity = water.FoamIntensity;
+    batch.fogDensity = water.FogDensity;
+    batch.causticsEnabled = water.CausticsEnabled;
+    batch.causticsIntensity = water.CausticsIntensity;
     for (int i = 0; i < 4; ++i) {
         const auto &w = water.Waves[i];
         batch.waves[i] = {glm::normalize(w.Direction), w.Amplitude, w.Wavelength, w.Speed};
@@ -299,6 +302,9 @@ void Renderer3D::UpdateWaterSubmersion() {
     glm::vec3 deepColor{0.012f, 0.055f, 0.09f};
     float absorption = 2.0f;
     float planeY = 0.0f;
+    float fogDensity = 1.0f;
+    bool causticsEnabled = true;
+    float causticsIntensity = 1.0f;
 
     for (const auto &batch : m_WaterBatches) {
         const glm::vec3 center = glm::vec3(batch.transform[3]);
@@ -328,6 +334,9 @@ void Renderer3D::UpdateWaterSubmersion() {
             planeY = surfaceY;
             deepColor = batch.deepColor;
             absorption = batch.absorptionDepth;
+            fogDensity = batch.fogDensity;
+            causticsEnabled = batch.causticsEnabled;
+            causticsIntensity = batch.causticsIntensity;
         }
     }
 
@@ -336,6 +345,9 @@ void Renderer3D::UpdateWaterSubmersion() {
     m_WaterPlaneY = planeY;
     m_WaterDeepColor = deepColor;
     m_WaterAbsorption = absorption;
+    m_WaterFogDensity = fogDensity;
+    m_WaterCausticsEnabled = causticsEnabled;
+    m_WaterCausticsIntensity = causticsIntensity;
 }
 
 void Renderer3D::EndScene() {

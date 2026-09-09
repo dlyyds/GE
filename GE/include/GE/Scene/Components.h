@@ -368,6 +368,11 @@ struct WaterComponent {
     float FoamDistance  = 0.8f;
     float FoamIntensity = 0.9f;
 
+    // —— 水下后处理（UnderwaterFX：段 A / 段 B 焦散）——
+    float FogDensity = 1.0f;        ///< 水下雾密度倍率（1.0 = 维持当前可见度）
+    bool CausticsEnabled = true;    ///< 焦散总开关（水上透射 + 水下全屏）
+    float CausticsIntensity = 1.0f; ///< 焦散强度倍率
+
     WaterComponent() {
         // 默认四层波：方向各不同的简单组合，保证开箱即有起伏
         const glm::vec2 dirs[4] = {

@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <bit>
 #include <chrono>
 #include <filesystem>
@@ -281,6 +282,62 @@ Renderer3D::SortKey Renderer3D::ComputeSortKey(const Material *material, const M
 
     return key;
 }
+void Renderer3D::UpdateWaterSubmersion() {
+    // 在 EndScene 采集末尾刷新入水判定：m_WaterBatches / m_WaterTime / m_ViewPos 均已就位，
+    // 算出的 m_WaterSubmersion 供 RecordScenePasses 决定是否声明 UnderwaterFX。
+    float dt = 0.0f;
+    if (m_LastSubmersionTime >= 0.0f) {
+        dt = std::max(0.0f, m_WaterTime - m_LastSubmersionTime);
+    }
+    m_LastSubmersionTime = m_WaterTime;
+
+    constexpr float kPi = 3.14159265358979323846f;
+    constexpr float kSubmersionBand = 0.5f;   // 0.5m 过渡带：深度 0→1 连续渐变
+    constexpr float kSmoothK = 8.0f;          // 指数平滑速率（越大跟手越快）
+
+    float target = 0.0f;
+    glm::vec3 deepColor{0.012f, 0.055f, 0.09f};
+    float absorption = 2.0f;
+    float planeY = 0.0f;
+
+    for (const auto &batch : m_WaterBatches) {
+        const glm::vec3 center = glm::vec3(batch.transform[3]);
+        const glm::vec2 viewXZ = glm::vec2(m_ViewPos.x, m_ViewPos.z);
+        const glm::vec2 local = viewXZ - glm::vec2(center.x, center.z);
+        if (std::abs(local.x) > batch.size.x * 0.5f ||
+            std::abs(local.y) > batch.size.y * 0.5f) {
+            continue; // 相机在该水面 XZ 范围之外：不算入水
+        }
+
+        // 相机处波面高度，与 water.vert Gerstner 累加同式（世界 XZ + 同相速度）。
+        float surfaceY = center.y;
+        for (int i = 0; i < 4; ++i) {
+            const auto &w = batch.waves[i];
+            if (w.wavelength <= 0.0f) continue;
+            const float k = 2.0f * kPi / w.wavelength;
+            const float f = k * glm::dot(glm::normalize(w.direction), viewXZ)
+                            - k * w.speed * (m_WaterTime * batch.timeScale);
+            surfaceY -= w.amplitude * std::sin(f);
+        }
+
+        const float depth = surfaceY - m_ViewPos.y; // >0 才入水
+        const float sm = std::clamp(depth / kSubmersionBand, 0.0f, 1.0f);
+        if (sm > target) {
+            // 取淹没最重的那个水体：它的波面 / 颜色 / 吸收深度整组作为全屏介质参数。
+            target = sm;
+            planeY = surfaceY;
+            deepColor = batch.deepColor;
+            absorption = batch.absorptionDepth;
+        }
+    }
+
+    const float blend = 1.0f - std::exp(-kSmoothK * dt);
+    m_WaterSubmersion = m_WaterSubmersion + (target - m_WaterSubmersion) * blend;
+    m_WaterPlaneY = planeY;
+    m_WaterDeepColor = deepColor;
+    m_WaterAbsorption = absorption;
+}
+
 void Renderer3D::EndScene() {
     GE_PROFILE_SCOPE("Renderer3D::EndScene");
 
@@ -289,5 +346,6 @@ void Renderer3D::EndScene() {
 
     // 恒为"采集器"形态：只结束采集，批次保留在 m_Meshes。命令录制延后到本帧
     // Scene3D pass 的 execute 回调里调用 FlushScene 完成（动态渲染已由图打开）。
+    UpdateWaterSubmersion();
 }
 } // namespace GE

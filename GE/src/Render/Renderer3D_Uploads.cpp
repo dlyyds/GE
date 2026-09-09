@@ -186,4 +186,26 @@ BufferAllocation Renderer3D::UploadBloomUBO(VulkanRenderFrame &frame, vk::Extent
     alloc.update(ubo);
     return alloc;
 }
+BufferAllocation Renderer3D::UploadUnderwaterUBO(VulkanRenderFrame &frame) {
+    // UnderwaterFX：淹没量 / 雾密度（吸收深度的倒数）/ 雾色 / 预留焦散字段。
+    // 阶段 0 只消费 submersion + fogDensity + deepColor，其余字段为后续阶段预留。
+    UnderwaterUBO ubo{};
+    ubo.invProj = glm::inverse(m_Projection);
+    ubo.params = glm::vec4(
+        m_WaterSubmersion,
+        1.0f / std::max(m_WaterAbsorption * 3.0f, 0.25f),
+        0.25f,   // desaturate (lightened: keep more scene color)
+        0.15f);  // vignette (lightened)
+    ubo.deepColor = glm::vec4(m_WaterDeepColor, 1.0f);
+    ubo.caustics = glm::vec4(0.0f);
+    ubo.sunDir = glm::vec4(m_LightParams.dirLightDirection, 0.0f);
+    ubo.waterPlane = glm::vec4(m_WaterPlaneY, 0.0f, 0.0f, 0.0f);
+    ubo.timeParams = glm::vec4(m_WaterTime, 0.0f, 0.0f, 0.0f);
+    ubo.viewPos = glm::vec4(m_ViewPos, 1.0f);
+
+    BufferAllocation alloc = frame.AllocateBuffer(
+        vk::BufferUsageFlagBits::eUniformBuffer, sizeof(UnderwaterUBO));
+    alloc.update(ubo);
+    return alloc;
+}
 } // namespace GE

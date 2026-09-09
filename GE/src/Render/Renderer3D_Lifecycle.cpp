@@ -326,6 +326,19 @@ Renderer3D::Renderer3D() {
         {m_BloomVert, m_BloomCompositeFrag});
     m_BloomCompositeLayout->SetDebugName("Bloom_Composite_PipelineLayout");
 
+    // ── UnderwaterFX 全屏后处理（延迟 HDR 链：Transparent → UnderwaterFX → Bloom → Tonemap）──
+    // 阶段 0：只做水雾 + 去饱和 + 暗角，alpha 直传；顶点阶段复用 m_LightingVert 全屏三角形。
+    m_UnderwaterFrag = &cache.RequestShaderModule(
+        vk::ShaderStageFlagBits::eFragment,
+        ShaderSource(Renderer::GetAssetManager()
+            .ResolvePath(std::string(AssetPaths::Shaders) + "/underwater.frag.spv")
+            .string()),
+        "main", ShaderVariant{});
+
+    m_UnderwaterLayout = &cache.RequestPipelineLayout(
+        {m_LightingVert, m_UnderwaterFrag});
+    m_UnderwaterLayout->SetDebugName("UnderwaterFX_PipelineLayout");
+
     // ── 2b. 天空盒着色器 + 管线布局 ─────────────────────────────────
     //    等距柱状投影天空盒：全屏三角形 + 反投影重建视线 + 采样全景图。
     //    管线布局由着色器反射自动构建（set 0 binding 0 = SkyboxUBO，binding 1 = sampler2D）。

@@ -449,6 +449,33 @@ void SceneLayer::RecordScenePasses(RenderTarget &viewportRT, const glm::vec4 &cl
             Renderer::Get3DRenderer().FlushTransparent(ctx);
         };
 
+        // Pass2b+ "UnderwaterFX"：Transparent 之后、Bloom 之前读 Scene_HDR + SceneDepth，
+        // 写独立的 Underwater_HDR（RGBA16F）。alpha 哨兵原样直传，下游 Bloom/Tonemap 语义不变。
+        // 仅当有水面批次 && 平滑淹没量 > 阈值 && 总开关打开时声明；否则保持 hHDR 直通。
+        const bool underwaterEnabled = Renderer::Get3DRenderer().ShouldRunUnderwaterFx();
+        ResourceHandle hPostProcessSource = hHDR;
+        if (underwaterEnabled) {
+            RenderGraphResourceDesc uwDesc = hdrDesc;
+            ResourceHandle hUnderwater = b.CreateVirtualResource(uwDesc, "Underwater_HDR");
+            RenderPassDesc &uwPass = b.AddPass("UnderwaterFX");
+            uwPass.renderArea = renderArea;
+            uwPass.readImages.push_back(
+                {hHDR, ResourceUsage::ShaderRead, vk::ImageLayout::eShaderReadOnlyOptimal});
+            uwPass.readImages.push_back(
+                {hSceneDepth, ResourceUsage::ShaderRead, vk::ImageLayout::eShaderReadOnlyOptimal});
+            AttachmentDesc uwColor;
+            uwColor.resource = hUnderwater;
+            uwColor.usage = ResourceUsage::ColorAttachment;
+            uwColor.loadOp = vk::AttachmentLoadOp::eClear;
+            uwColor.storeOp = vk::AttachmentStoreOp::eStore;
+            uwColor.clearValue.color = {0.0f, 0.0f, 0.0f, 0.0f};
+            uwPass.colorAttachments.push_back(uwColor);
+            uwPass.execute = [](PassExecuteContext &ctx) {
+                Renderer::Get3DRenderer().FlushUnderwaterFX(ctx);
+            };
+            hPostProcessSource = hUnderwater;
+        }
+
         // Pass2b+ "Bloom"：Transparent 之后、Tonemap 之前读/写 Scene_HDR。
         // 只对几何像素（hdr.a>=0.5）提取高光，做 N 级降采样 → 升采样 → 加回 HDR。
         // 天空不参与 bloom，避免环境图被错误放大。
@@ -457,7 +484,7 @@ void SceneLayer::RecordScenePasses(RenderTarget &viewportRT, const glm::vec4 &cl
             1u, Renderer3D::kMaxBloomMipLevels);
         const bool bloomEnabled = Renderer::Get3DRenderer().IsBloomEnabled();
         // Bloom 开启时用一个独立合成缓冲，避免在同一个 pass 内既采样又写入 Scene_HDR。
-        ResourceHandle hHDRFinal = hHDR;
+        ResourceHandle hHDRFinal = hPostProcessSource;
         if (bloomEnabled && bloomLevels > 0) {
             // 全分辨率提取高光，随后从半分辨率开始逐级 1/2；格式与 Scene_HDR 对齐（RGBA16F）。
             RenderGraphResourceDesc bloomDesc;
@@ -500,7 +527,7 @@ void SceneLayer::RecordScenePasses(RenderTarget &viewportRT, const glm::vec4 &cl
             RenderPassDesc &bloomExtractPass = b.AddPass("BloomExtract");
             bloomExtractPass.renderArea = renderArea;
             bloomExtractPass.readImages.push_back(
-                {hHDR, ResourceUsage::ShaderRead, vk::ImageLayout::eShaderReadOnlyOptimal});
+                {hPostProcessSource, ResourceUsage::ShaderRead, vk::ImageLayout::eShaderReadOnlyOptimal});
             AttachmentDesc bloomExtractColor;
             bloomExtractColor.resource = hBloomFull;
             bloomExtractColor.usage = ResourceUsage::ColorAttachment;
@@ -588,7 +615,7 @@ void SceneLayer::RecordScenePasses(RenderTarget &viewportRT, const glm::vec4 &cl
             RenderPassDesc &bloomCompositePass = b.AddPass("BloomComposite");
             bloomCompositePass.renderArea = renderArea;
             bloomCompositePass.readImages.push_back(
-                {hHDR, ResourceUsage::ShaderRead, vk::ImageLayout::eShaderReadOnlyOptimal});
+                {hPostProcessSource, ResourceUsage::ShaderRead, vk::ImageLayout::eShaderReadOnlyOptimal});
             bloomCompositePass.readImages.push_back(
                 {finalBloom, ResourceUsage::ShaderRead, vk::ImageLayout::eShaderReadOnlyOptimal});
             AttachmentDesc bloomCompositeColor;

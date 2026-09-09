@@ -473,6 +473,25 @@ public:
     /// 当前 Bloom mip 级数。
     uint32_t GetBloomMipLevels() const { return m_BloomMipLevels; }
 
+    // ========================================================================
+    // UnderwaterFX（延迟 HDR 链：Transparent → UnderwaterFX → Bloom → Tonemap）
+    // ========================================================================
+
+    /// 开关 UnderwaterFX（仅延迟 HDR 链生效；false 时不声明附加 pass）。
+    void SetUnderwaterFxEnabled(bool enabled) { m_UnderwaterFxEnabled = enabled; }
+    bool IsUnderwaterFxEnabled() const { return m_UnderwaterFxEnabled; }
+
+    /// 当前帧是否应声明 UnderwaterFX（有水面批次、平滑淹没量超过阈值且总开关打开）。
+    bool ShouldRunUnderwaterFx() const {
+        return m_UnderwaterFxEnabled && !m_WaterBatches.empty() && m_WaterSubmersion > 0.001f;
+    }
+
+    /// 平滑后入水淹没量（0..1），供 UnderwaterFX 声明与未来音频消费。
+    float GetWaterSubmersion() const { return m_WaterSubmersion; }
+
+    /// 被淹没水体的波面 Y（UnderwaterFX 内部/调试使用）。
+    float GetWaterPlaneY() const { return m_WaterPlaneY; }
+
     /// 录制某级 ShadowMap pass（只画该级体积内的不透明段深度，零颜色附件 + 深度附件）。
     /// cascade 指定级号：画 m_ShadowBatches[cascade] + m_ShadowInstanceBuffer[cascade]，
     /// FrameUBO.view = cascadeViewProj[cascade]；视口 = 该级深度图尺寸（pass renderArea）。
@@ -507,6 +526,9 @@ public:
 
     /// 录制 Transparent pass（透明对象仍走前向 alpha 混合）。
     void FlushTransparent(PassExecuteContext &ctx);
+
+    /// 录制 UnderwaterFX pass（读 Scene_HDR + SceneDepth，写 Underwater_HDR；alpha 直传）。
+    void FlushUnderwaterFX(PassExecuteContext &ctx);
 
 private:
     // ========================================================================
@@ -570,6 +592,20 @@ private:
     };
 
     static_assert(sizeof(BloomUBO) % 16 == 0, "BloomUBO 必须 16 字节对齐");
+
+    /// UnderwaterFX UBO（std140 布局，set 0 binding 0；字段预留后续焦散/光照增强）。
+    /// params.x = submersion(0..1), y = fogDensity(每米), z = desaturate, w = vignette。
+    struct UnderwaterUBO {
+        glm::mat4 invProj;   ///< SceneDepth → 视空间重建
+        glm::vec4 params;    ///< x=submersion, y=fogDensity, z=desaturate, w=vignette
+        glm::vec4 deepColor; ///< 水下雾色（取自被淹没水体 DeepColor）
+        glm::vec4 caustics;  ///< 预留：x=strength, y=scale, z=enable, w=时光滑
+        glm::vec4 sunDir;    ///< 预留：段 B 焦散投影方向
+        glm::vec4 waterPlane;///< x=planeY(判水下几何)，yzw 预留
+        glm::vec4 timeParams;///< x=time, y=dt
+        glm::vec4 viewPos;   ///< 相机世界位置
+    };
+    static_assert(sizeof(UnderwaterUBO) % 16 == 0, "UnderwaterUBO 必须 16 字节对齐");
 
     /// per-instance 数据（阶段3，存入 SSBO，std430 布局）
     /// 必须与 GLSL InstanceData 块一致：mat4(64B) + vec4(16B) = 80B。
@@ -733,6 +769,9 @@ private:
     /// 分配并上传 Bloom UBO（阈值 / 强度 / 开关 / mip texel 尺寸）
     BufferAllocation UploadBloomUBO(VulkanRenderFrame &frame, vk::Extent2D extent);
 
+    /// 分配并上传 UnderwaterFX UBO（淹没量 / 雾密度 / 雾色等本帧状态）。
+    BufferAllocation UploadUnderwaterUBO(VulkanRenderFrame &frame);
+
     /**
      * @brief 计算并缓存本帧延迟链批次（幂等）：排序 + 切不透明段 + 上传缓冲。
      *
@@ -845,6 +884,10 @@ private:
     VulkanPipelineLayout *ResolveMeshLayout(bool shadow, bool gbuffer,
                                             bool pbr, bool useIbl, bool skinned,
                                             bool hdrTransparent = false);
+    /// 每帧 EndScene 采集末尾计算相机淹没量（m_WaterBatches + m_ViewPos + m_WaterTime），
+    /// 输出平滑后的 m_WaterSubmersion 供 UnderwaterFX 声明与 shader 使用。
+    void UpdateWaterSubmersion();
+
     /// 录制水面批次（阶段 1：逐水格单 draw）。在网格透明段之后、Tonemap 前调用，
     /// hdrTransparent 为 true 时写 Scene_HDR（water_hdr.frag），否则写前向帧缓冲（water.frag）。
     void DrawWaterBatches(VulkanCommandBuffer &cmd, VulkanRenderFrame &frame,
@@ -1049,6 +1092,10 @@ private:
     VulkanPipelineLayout *m_BloomUpsampleLayout = nullptr;
     VulkanPipelineLayout *m_BloomCompositeLayout = nullptr;
 
+    /// UnderwaterFX 全屏三角形片元着色器 + 管线布局（读 Scene_HDR + SceneDepth）。
+    VulkanShaderModule *m_UnderwaterFrag = nullptr;
+    VulkanPipelineLayout *m_UnderwaterLayout = nullptr;
+
     /// 天空盒顶点着色器（由全局资源缓存管理，不拥有）
     VulkanShaderModule *m_SkyboxVert = nullptr;
 
@@ -1147,6 +1194,14 @@ private:
 
     /// 水面动画时间（秒，每帧 BeginScene 用 steady_clock 刷新）
     float m_WaterTime = 0.0f;
+
+    /// UnderwaterFX 按帧状态（EndScene 采集时由 m_WaterBatches 计算 + 指数平滑）。
+    bool m_UnderwaterFxEnabled = true;
+    float m_WaterSubmersion = 0.0f;      ///< 平滑后淹没量 0..1
+    float m_WaterPlaneY = 0.0f;          ///< 被淹没水体波面 Y
+    float m_WaterAbsorption = 2.0f;      ///< 被淹没水体吸收深度（雾密度 = 1/深度）
+    glm::vec3 m_WaterDeepColor{0.012f, 0.055f, 0.09f}; ///< 被淹没水体 DeepColor
+    float m_LastSubmersionTime = -1.0f;  ///< 上一帧 EndScene 的 m_WaterTime（用于平滑 dt）
 
     /// 每级阴影专用网格列表（Scene 逐级遍历按该级阴影世界 AABB 剔除后提交，FlushShadow
     /// 逐级单独成批；BeginScene 清空，阴影剔除计划书 §4.4 / CSM 计划书 §4.3）。

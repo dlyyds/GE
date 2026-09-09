@@ -443,4 +443,34 @@ void Renderer3D::FlushTransparent(PassExecuteContext &ctx) {
         shadowMeshes.clear();
     }
 }
+void Renderer3D::FlushUnderwaterFX(PassExecuteContext &ctx) {
+    GE_PROFILE_SCOPE("Renderer3D::FlushUnderwaterFX");
+
+    GE_CORE_ASSERT(ctx.colorAttachmentView, "UnderwaterFX pass 必须声明颜色附件");
+    const vk::Format colorFormat = ctx.colorAttachmentView->get_format();
+    const BufferAllocation uboAlloc = UploadUnderwaterUBO(*ctx.frame);
+
+    // 全屏三角形，与 Bloom/SceneDepthCopy 共用配置流程；顶点阶段复用 m_LightingVert。
+    ConfigureBloomFullscreenPipeline(*ctx.cmd, m_UnderwaterLayout, m_LightingVert,
+                                     colorFormat, ctx.renderArea.extent);
+
+    auto &cmd = *ctx.cmd;
+    cmd.BindBuffer(uboAlloc.get_buffer(), uboAlloc.get_offset(),
+                   uboAlloc.get_size(), 0, 0);
+
+    // readImageViews[0] = Scene_HDR（线性采样），readImageViews[1] = SceneDepth（最近邻）。
+    if (m_DefaultWhiteTexture && !ctx.readImageViews.empty()) {
+        cmd.BindImage(*ctx.readImageViews[0], m_DefaultWhiteTexture->GetSampler(), 0, 1);
+    }
+    VulkanSampler *sceneDepthSampler = m_ShadowSampler
+                                           ? m_ShadowSampler
+                                           : (m_DefaultWhiteTexture
+                                                  ? &m_DefaultWhiteTexture->GetSampler()
+                                                  : nullptr);
+    if (sceneDepthSampler && ctx.readImageViews.size() > 1 && ctx.readImageViews[1]) {
+        cmd.BindImage(*ctx.readImageViews[1], *sceneDepthSampler, 0, 2);
+    }
+
+    cmd.Draw(3, 1, 0, 0);
+}
 } // namespace GE

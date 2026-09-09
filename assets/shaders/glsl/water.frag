@@ -177,7 +177,16 @@ void main()
     // 轮廓钳到 [0.12,1] 后抬升为 0.25+0.75×轮廓，让垂直视角也有基础实度，
     // 再乘整体不透明度（编辑器「不透明度」）——滑条 0→1 全角度线性响应。
     float fresnelProfile = clamp(fresnel + 0.1, 0.0, 1.0);
-    float alpha = clamp(water.deepColor.a * (0.25 + 0.75 * fresnelProfile), 0.0, 1.0);
+    float alpha;
+    if (underwater) {
+        // 水下表面保持半透明、透出背后内容：掠射方向若按 Fresnel 抬 alpha，
+        // 而该处又没有透射天空（全内反射），会变成近黑的实心带。故水下统一
+        // 低覆盖（随视角轻微加浓但仍远不到实心），让上方天空/场景透进来，
+        // 只留一层淡淡的"水膜"质感。
+        alpha = clamp(water.deepColor.a * (0.15 + 0.2 * fresnelProfile), 0.0, 1.0);
+    } else {
+        alpha = clamp(water.deepColor.a * (0.25 + 0.75 * fresnelProfile), 0.0, 1.0);
+    }
 
     // 前向路径：ACES 色调映射后再输出（由 sRGB swapchain 硬件编码）
     outFragColor = vec4(acesToneMap(result), alpha);

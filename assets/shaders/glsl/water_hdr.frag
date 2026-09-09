@@ -173,6 +173,15 @@ void main()
     // 底下是不透明几何 → 收敛到 1（Tonemap 当几何、正常曝光），底下是天空 →
     // 保留片元 alpha，透到只剩天空时被 Tonemap 当天空直出（语义一致）。
     float fresnelProfile = clamp(fresnel + 0.1, 0.0, 1.0);
-    float alpha = clamp(water.deepColor.a * (0.25 + 0.75 * fresnelProfile), 0.0, 1.0);
+    float alpha;
+    if (underwater) {
+        // 水下表面保持半透明、透出背后内容：掠射方向若按 Fresnel 抬 alpha，
+        // 而该处又没有透射天空（全内反射），会变成近黑的实心带。故水下统一
+        // 低覆盖（随视角轻微加浓但仍远不到实心），让上方天空/场景透进来，
+        // 只留一层淡淡的"水膜"质感。
+        alpha = clamp(water.deepColor.a * (0.15 + 0.2 * fresnelProfile), 0.0, 1.0);
+    } else {
+        alpha = clamp(water.deepColor.a * (0.25 + 0.75 * fresnelProfile), 0.0, 1.0);
+    }
     outFragColor = vec4(result, alpha);
 }

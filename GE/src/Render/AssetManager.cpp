@@ -96,10 +96,12 @@ Texture *AssetManager::LoadTexture(const std::string &path) {
     return GetTextureManager().Load(resolved.string());
 }
 
-Texture *AssetManager::LoadTextureAsync(const std::string &path) {
+Texture *AssetManager::LoadTextureAsync(const std::string &path, vk::Format format) {
     const std::filesystem::path resolved = ResolvePath(path);
-    // 使用 TextureManager::LoadAsync 的默认格式 eR8G8B8A8Unorm 与线性采样
-    return GetTextureManager().LoadAsync(resolved.string());
+    // 格式必须由调用方按贴图语义给：颜色贴图 sRGB、数据贴图 Unorm。
+    // TextureManager::LoadAsync 按路径缓存，格式不一致的第二次请求会被忽略，
+    // 于是"谁先加载谁定格式"——不一致就会让另一边拿到错误解码的颜色。
+    return GetTextureManager().LoadAsync(resolved.string(), format);
 }
 
 Mesh *AssetManager::LoadMesh(const std::string &path) {

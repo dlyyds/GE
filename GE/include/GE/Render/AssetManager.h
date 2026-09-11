@@ -158,10 +158,15 @@ public:
      * 同 LoadTexture，但解码 + GPU 上传在后台线程，返回未就绪的空壳纹理，
      * 渲染端经 IsReady() 降级默认纹理，就绪后自动亮相。同路径只异步加载一次。
      *
-     * @param path  纹理路径（相对资源根或绝对路径）
+     * @param path   纹理路径（相对资源根或绝对路径）
+     * @param format 纹理格式。**颜色类贴图（albedo / emissive）必须显式传
+     *               eR8G8B8A8Srgb**：TextureManager::LoadAsync 按**路径**缓存，
+     *               同一张图被两个调用方以不同格式请求时，先到者的格式生效。
+     *               默认 Unorm 只适合数据类贴图（法线 / 金属粗糙度）。
      * @return 纹理指针（未就绪的空壳），加载失败返回 nullptr
      */
-    Texture *LoadTextureAsync(const std::string &path);
+    Texture *LoadTextureAsync(const std::string &path,
+                              vk::Format format = vk::Format::eR8G8B8A8Unorm);
 
     /**
      * @brief 加载网格（自动解析路径）。

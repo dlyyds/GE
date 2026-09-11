@@ -53,6 +53,14 @@ Application::Application(const std::string &name, ApplicationCommandLineArgs arg
         assetRoot = ec ? std::filesystem::path("assets") : cwd / "assets";
     }
 
+    // 根不存在时**必须**显式报错。此时相对资源引用（纹理/网格/材质/音频）会全部
+    // 解析到不存在的路径而加载失败，表现为"模型全白、贴图面板里换贴图没反应"，
+    // 而绝对路径引用却因绕过根而照旧可用——现象极具误导性，故在启动时就点明。
+    if (!std::filesystem::exists(assetRoot, ec)) {
+        GE_CORE_ERROR("Application: 资源根不存在：{0}（相对资源引用将全部加载失败）",
+                      assetRoot.string());
+    }
+
     // 初始化渲染器（内部完成 VulkanContext → RenderContext → Prepare → ImGui 初始化）
     m_Renderer = std::make_unique<Renderer>(*m_Window, assetRoot);
 

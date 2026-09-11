@@ -217,9 +217,15 @@ void ApplyMaterialNode(Material &mat, const YAML::Node &node) {    // 类型：S
         const std::string texKey = std::string(kTextureSlotNames[s]) + "Texture";
         if (node[texKey]) {
             const std::string path = node[texKey].as<std::string>("");
+            // 格式必须与 MeshManager::ApplyMaterialData 的约定一致：颜色贴图（albedo）
+            // 以 sRGB 存储、硬件采样时解码回线性；法线/金属粗糙度是数据，保持 Unorm。
+            // TextureManager 按路径缓存，两边格式不一致时先到者生效，会有一方颜色错。
+            const vk::Format format = (slot == Material::Albedo)
+                                          ? vk::Format::eR8G8B8A8Srgb
+                                          : vk::Format::eR8G8B8A8Unorm;
             // 异步加载：返回未就绪空壳，渲染端 IsReady() 门控降级默认纹理，
             // 就绪后自动亮相，避免反序列化时主线程阻塞在纹理解码/上传
-            if (Texture *tex = assetMgr.LoadTextureAsync(path)) {
+            if (Texture *tex = assetMgr.LoadTextureAsync(path, format)) {
                 ApplySamplerNode(tex, node[texKey + "Sampler"]);
                 mat.SetTexture(slot, tex);
             } else {

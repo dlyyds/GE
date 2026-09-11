@@ -294,6 +294,53 @@ void SerializeMaterialNode(YAML::Node &matNode, Material *mat) {
 }
 
 /**
+ * @brief 把材质 YAML 节点的内容铺到一个 Material 上（类型 / 纹理 / 标量参数 / 自发光）。
+ *
+ * 新建材质与"内容去重命中已有实例"两条路径共用。命中路径必须复铺一遍：
+ * 材质注册后仍可被编辑器改（改类型、换贴图、调参数），此时内容已与注册 key
+ * 脱节，若直接把旧实例当文件里的材质返回，就会出现"改了 PBR/Blinn-Phong
+ * 并存了盘，重载却回到旧类型"。
+ *
+ * @param mat     目标材质（内容整体按节点重写）
+ * @param matNode 材质节点
+ */
+void ApplyMaterialNode(Material &mat, const YAML::Node &matNode) {
+    mat.SetType(matNode["Type"] && matNode["Type"].as<std::string>() == "PBR"
+                    ? Material::Type::PBR
+                    : Material::Type::BlinnPhong);
+
+    for (auto name : kTextureSlotNames) {
+        std::string texKey = std::string(name) + "Texture";
+        Material::TextureSlot slot = TextureSlotFromName(name);
+        if (matNode[texKey]) {
+            std::string path = matNode[texKey].as<std::string>("");
+            // 异步加载：返回未就绪空壳，渲染端 IsReady() 门控降级默认纹理，
+            // 就绪后自动亮相，避免反序列化场景时主线程阻塞在纹理解码/上传
+            if (Texture *tex = Renderer::GetAssetManager().LoadTextureAsync(path)) {
+                ApplySamplerParams(tex, matNode[texKey + "Sampler"]);
+                mat.SetTexture(slot, tex);
+            } else {
+                GE_CORE_WARN("SceneSerializer: 材质纹理异步加载失败: {0}", path);
+                mat.SetTexture(slot, nullptr);
+            }
+        } else {
+            mat.SetTexture(slot, nullptr);  // 文件里没有该槽 = 该材质无此贴图
+        }
+    }
+
+    if (matNode["FloatParams"]) {
+        for (const auto &it : matNode["FloatParams"]) {
+            mat.SetFloat(it.first.as<std::string>(), it.second.as<float>());
+        }
+    }
+
+    // 自发光颜色因子（缺省 [0,0,0] = 不发光）
+    mat.SetEmissiveFactor(matNode["EmissiveFactor"]
+                              ? DeserializeVec3(matNode["EmissiveFactor"], {0.0f, 0.0f, 0.0f})
+                              : glm::vec3(0.0f));
+}
+
+/**
  * @brief 从材质 YAML 节点创建材质并注册到 MaterialManager。
  *
  * 按内容生成 key（纹理路径 + 类型 + 浮点参数），内容相同的材质复用同一实例。
@@ -305,10 +352,15 @@ void SerializeMaterialNode(YAML::Node &matNode, Material *mat) {
 Material *DeserializeMaterialNode(const YAML::Node &matNode) {
     auto &matMgr = Renderer::GetMaterialManager();
 
-    // 构建内容 key（类型 + 纹理 + 参数拼接），用于去重
+    // 构建内容 key（类型 + 显示名 + 纹理 + 参数拼接），用于去重
     std::string key;
     key += matNode["Type"] ? matNode["Type"].as<std::string>() : "BlinnPhong";
     key += ";";
+    // 显示名参与去重：同名才复用；不同名 = 编辑器里两个材质，不该共享实例
+    // （否则后者的 Name 会覆盖前者的显示名）
+    if (matNode["Name"]) {
+        key += "Name:" + matNode["Name"].as<std::string>() + ";";
+    }
     for (auto name : kTextureSlotNames) {
         std::string texKey = std::string(name) + "Texture";
         if (matNode[texKey]) {
@@ -336,6 +388,12 @@ Material *DeserializeMaterialNode(const YAML::Node &matNode) {
     const std::string fullKey = "scene:" + key;
 
     if (Material *existing = matMgr.Get(fullKey)) {
+        // 命中的实例可能已被编辑器改过（内容与注册 key 脱节），按文件内容复铺，
+        // 保证"拿到的材质 == 文件里写的材质"
+        ApplyMaterialNode(*existing, matNode);
+        if (matNode["Name"]) {
+            existing->SetName(matNode["Name"].as<std::string>());
+        }
         return existing;
     }
 
@@ -347,35 +405,7 @@ Material *DeserializeMaterialNode(const YAML::Node &matNode) {
         mat->SetName(fullKey);
     }
 
-    if (matNode["Type"] && matNode["Type"].as<std::string>() == "PBR") {
-        mat->SetType(Material::Type::PBR);
-    }
-
-    for (auto name : kTextureSlotNames) {
-        std::string texKey = std::string(name) + "Texture";
-        if (matNode[texKey]) {
-            std::string path = matNode[texKey].as<std::string>("");
-            // 异步加载：返回未就绪空壳，渲染端 IsReady() 门控降级默认纹理，
-            // 就绪后自动亮相，避免反序列化场景时主线程阻塞在纹理解码/上传
-            if (Texture *tex = Renderer::GetAssetManager().LoadTextureAsync(path)) {
-                ApplySamplerParams(tex, matNode[texKey + "Sampler"]);
-                mat->SetTexture(TextureSlotFromName(name), tex);
-            } else {
-                GE_CORE_WARN("SceneSerializer: 材质纹理异步加载失败: {0}", path);
-            }
-        }
-    }
-
-    if (matNode["FloatParams"]) {
-        for (const auto &it : matNode["FloatParams"]) {
-            mat->SetFloat(it.first.as<std::string>(), it.second.as<float>());
-        }
-    }
-
-    // 自发光颜色因子（缺省 [0,0,0] = 不发光）
-    if (matNode["EmissiveFactor"]) {
-        mat->SetEmissiveFactor(DeserializeVec3(matNode["EmissiveFactor"], {0.0f, 0.0f, 0.0f}));
-    }
+    ApplyMaterialNode(*mat, matNode);
 
     return matMgr.Register(fullKey, std::move(mat));
 }

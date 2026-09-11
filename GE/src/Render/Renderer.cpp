@@ -19,7 +19,7 @@ namespace GE {
 
 Renderer *Renderer::s_Instance = nullptr;
 
-Renderer::Renderer(Window &window)
+Renderer::Renderer(Window &window, const std::filesystem::path &assetRoot)
     : m_Window(window) {
     GE_CORE_ASSERT(!s_Instance, "Renderer already exists!");
     s_Instance = this;
@@ -52,6 +52,9 @@ Renderer::Renderer(Window &window)
     m_AsyncUpload = std::make_unique<AsyncUploadManager>(device);
 
     m_AssetManager = std::make_unique<AssetManager>(device, resCache, *m_AsyncUpload);
+
+    // 4c. 资源根必须在任何资产消费者之前就位：下方 ImGui 初始化会解析字体路径。
+    m_AssetManager->SetAssetRoot(assetRoot);
 
     // 5. 初始化 2D 精灵渲染器
     m_2DRenderer = std::make_unique<Renderer2D>();

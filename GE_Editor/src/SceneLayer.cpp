@@ -1070,7 +1070,11 @@ void SceneLayer::SaveScene() {
         return;
     }
 
-    std::string filepath = FileDialogs::SaveFile("GE Scene (*.scene)\0*.scene\0All Files (*.*)\0*.*\0", "assets/scenes");
+    // 对话框初始目录跟随资源根（不依赖启动时的工作目录）
+    const std::string sceneDir =
+        (Renderer::GetAssetManager().GetAssetRoot() / AssetPaths::Scenes).string();
+    std::string filepath = FileDialogs::SaveFile(
+        "GE Scene (*.scene)\0*.scene\0All Files (*.*)\0*.*\0", sceneDir.c_str());
     if (filepath.empty()) {
         return;
     }
@@ -1193,7 +1197,11 @@ void SceneLayer::RestoreEditorSettings() {
 }
 
 void SceneLayer::LoadScene() {
-    std::string filepath = FileDialogs::OpenFile("GE Scene (*.scene)\0*.scene\0All Files (*.*)\0*.*\0", "assets/scenes");
+    // 对话框初始目录跟随资源根（不依赖启动时的工作目录）
+    const std::string sceneDir =
+        (Renderer::GetAssetManager().GetAssetRoot() / AssetPaths::Scenes).string();
+    std::string filepath = FileDialogs::OpenFile(
+        "GE Scene (*.scene)\0*.scene\0All Files (*.*)\0*.*\0", sceneDir.c_str());
     if (filepath.empty()) {
         return;
     }

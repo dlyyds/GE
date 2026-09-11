@@ -14,9 +14,12 @@
 
 #include <GLFW/glfw3.h>
 #include "Audio/AudioContext.h"
+#include "Utils/PlatformUtils.h"
 #include <chrono>
+#include <filesystem>
 #include <functional>
 #include <memory>
+#include <system_error>
 #include <thread>
 
 namespace GE {
@@ -39,8 +42,19 @@ Application::Application(const std::string &name, ApplicationCommandLineArgs arg
     }
     m_Window->SetEventCallback(GE_BIND_EVENT_FN(Application::OnEvent));
 
+    // 资源根决策：优先 exe 同级 assets（发行版布局，与启动时的工作目录无关），
+    // 不存在则回退 CWD/assets（开发期从仓库根启动）。
+    // 必须在 Renderer 构造之前定好：Renderer 构造尾部会初始化 ImGui 并加载字体。
+    const std::filesystem::path exeDir = PlatformUtils::GetExecutableDirectory();
+    std::error_code ec;
+    std::filesystem::path assetRoot = exeDir / "assets";
+    if (exeDir.empty() || !std::filesystem::exists(assetRoot, ec)) {
+        const std::filesystem::path cwd = std::filesystem::current_path(ec);
+        assetRoot = ec ? std::filesystem::path("assets") : cwd / "assets";
+    }
+
     // 初始化渲染器（内部完成 VulkanContext → RenderContext → Prepare → ImGui 初始化）
-    m_Renderer = std::make_unique<Renderer>(*m_Window);
+    m_Renderer = std::make_unique<Renderer>(*m_Window, assetRoot);
 
     // ImGui 已归并 Renderer：把"遍历各 Layer 的 OnImGuiRender"作为回调注入，
     // 由 Renderer::EndFrame 在 ImGui Begin 之后、上屏之前逐帧调用。

@@ -8,6 +8,8 @@
 #include "Animation/AnimationClipManager.h"
 
 #include "Render/GLTFLoader.h"
+#include "Render/Renderer.h"
+#include "Render/AssetManager.h"
 #include "Animation/AnimationClipLoader.h"
 #include "Core/Log.h"
 
@@ -134,7 +136,9 @@ std::shared_ptr<AnimationClip> AnimationClipManager::LoadByKey(const std::string
     if (!SplitSourceKey(key, filepath, animIdx)) {
         return nullptr;
     }
-    return Load(filepath, animIdx);
+    // 源键是资产引用：场景文件里存的是相对资源根的规范形，而本类直接按文件路径读盘
+    // （GLTF::LoadModel 与 .geanim 烘焙产物的落点），故在此统一解析为绝对路径。
+    return Load(Renderer::GetAssetManager().ResolvePath(filepath).string(), animIdx);
 }
 
 std::shared_ptr<AnimationClip> AnimationClipManager::Reload(const std::string &filepath,

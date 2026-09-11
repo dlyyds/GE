@@ -51,6 +51,7 @@ namespace AssetPaths {
     inline constexpr const char *Models   = "models";         ///< 模型目录
     inline constexpr const char *Shaders  = "shaders/glsl";   ///< 着色器目录
     inline constexpr const char *Scenes   = "scenes";         ///< 场景目录
+    inline constexpr const char *Scripts  = "scripts";        ///< Lua 脚本目录
     inline constexpr const char *Fonts    = "fonts/opensans"; ///< 字体目录
     inline constexpr const char *HDRI     = "HDRI";           ///< HDR 环境贴图目录
     inline constexpr const char *Audio    = "audio";          ///< 音频目录
@@ -87,7 +88,9 @@ public:
     /**
      * @brief 设置资源根目录。
      *
-     * 默认 "assets"。设置后所有相对路径解析都会基于该目录。
+     * 默认 "assets"（相对启动时的工作目录）。应在**任何资产加载之前**调用；
+     * Application 构造时已按"exe 同级 assets → 回退 CWD/assets"决策好并调用，
+     * 发行版因此不依赖启动时的工作目录。
      *
      * @param root 资源根目录路径
      */
@@ -102,10 +105,12 @@ public:
      * 规则：
      * - 空路径 → 返回空
      * - 以 "builtin:" 或 "solid:" 开头（内置几何体 / 纯色纹理伪键）→ 原样返回
-     * - 绝对路径 → 规范化后原样返回
-     * - 已带资源根前缀（如 root="assets"，入参 "assets/textures/foo.png"）→ 规范化后
-     *   原样返回，避免重复拼接
-     * - 其余相对路径 → 拼接到资源根目录后规范化返回
+     * - 绝对路径且落在资源根之下 → 先相对化再拼接（历史场景的绝对路径自愈，
+     *   换机器/换安装目录仍可解析）
+     * - 绝对路径且落在资源根之外 → 打错误日志后原样返回（无法随包分发，
+     *   由打包校验拦下；不静默失败）
+     * - 相对路径 → 剥掉可能的资源根目录名前缀（如入参 "assets/textures/foo.png"）
+     *   后拼接到资源根，避免重复拼接
      *
      * @param path 原始路径
      * @return 解析后的路径

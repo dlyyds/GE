@@ -7,6 +7,7 @@
 #include "Render/AsyncUploadManager.h"
 #include "Render/RenderGraph/RenderGraph.h"
 
+#include <filesystem>
 #include <functional>
 
 namespace GE {
@@ -53,8 +54,10 @@ public:
     /**
      * @brief 构造 Renderer，内部完成 VulkanContext → RenderContext → Prepare 完整初始化链。
      * @param window 主窗口引用（用于创建 surface 和 swapchain）
+     * @param assetRoot 资源根目录。构造尾部会初始化 ImGui 并加载字体（需解析资源路径），
+     *                  故资源根必须在构造时就位，不能构造后再 SetAssetRoot。
      */
-    explicit Renderer(Window &window);
+    explicit Renderer(Window &window, const std::filesystem::path &assetRoot);
 
     ~Renderer();
 

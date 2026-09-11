@@ -5,6 +5,7 @@
 
 #include "Render/AssetManager.h"
 
+#include "Render/AssetPathUtil.h"
 #include "Render/TextureManager.h"
 #include "Render/MeshManager.h"
 #include "Render/MaterialManager.h"
@@ -46,22 +47,30 @@ std::filesystem::path AssetManager::ResolvePath(const std::string &path) const {
     }
 
     // 伪路径（内置几何体 / 纯色纹理键）原样返回，不参与文件解析
-    if (path.rfind("builtin:", 0) == 0 || path.rfind("solid:", 0) == 0) {
+    if (AssetPathUtil::IsPseudoKey(path)) {
         return std::filesystem::path(path);
     }
 
-    std::filesystem::path p(path);
+    const std::filesystem::path p(AssetPathUtil::NormalizeSeparators(path));
+
     if (p.is_absolute()) {
+        // 根内绝对路径 → 相对化后解析：历史场景写过的绝对路径无需改文件即可加载，
+        // 且换机器/换安装目录仍有救（只要资产在包内的相对位置一致）。
+        if (auto rel = AssetPathUtil::ToCanonical(path, m_AssetRoot)) {
+            return (m_AssetRoot / *rel).lexically_normal();
+        }
+        // 根外绝对路径：无法随包分发，打包校验须拦下。此处报错但原样返回，不静默失败。
+        GE_CORE_ERROR("AssetManager: 资产引用落在资源根之外，无法随包分发: {0}（资源根: {1}）",
+                      path, m_AssetRoot.string());
         return p.lexically_normal();
     }
 
-    // 已带资源根前缀则规范化后原样返回，避免重复拼接
-    const std::string rootStr = m_AssetRoot.lexically_normal().string();
-    const std::string pStr    = p.lexically_normal().string();
-    if (!rootStr.empty() && pStr.rfind(rootStr, 0) == 0) {
-        return p.lexically_normal();
+    // 相对路径：归一后拼接。归一同时剥掉可能的资源根目录名前缀（"assets/xxx"），
+    // 避免资源根改为绝对路径后拼成 "assets/assets/xxx"。
+    if (auto rel = AssetPathUtil::ToCanonical(path, m_AssetRoot)) {
+        return (m_AssetRoot / *rel).lexically_normal();
     }
-
+    // 归一失败（如越界 ".."）：保守按原相对路径拼接
     return (m_AssetRoot / p).lexically_normal();
 }
 

@@ -18,6 +18,7 @@
 #include "Render/MeshManager.h"
 #include "Render/MaterialManager.h"
 #include "Render/AssetManager.h"
+#include "Render/AssetPathUtil.h"
 #include "Core/Log.h"
 #include "Render/TextureManager.h"
 #include "Render/GEMeshLoader.h"
@@ -44,6 +45,30 @@
 namespace GE {
 
 namespace {
+
+// ============================================================
+// 资产引用归一
+// ============================================================
+
+/**
+ * @brief 把资产引用归一为规范形后再写入场景（相对资源根、正斜杠）。
+ *
+ * 归一失败（根外绝对路径 / 越界）时原样写入并告警——场景仍可正常保存，
+ * 具体问题留给打包校验显式报错，避免在保存路径上直接失败而丢掉用户改动。
+ *
+ * @param raw 原始引用（"builtin:*" 伪键 / 相对资源根 / 绝对路径）
+ * @return 应写入 YAML 的路径字符串
+ */
+std::string CanonicalAssetRef(const std::string &raw) {
+    if (raw.empty()) {
+        return raw;
+    }
+    if (auto canon = AssetPathUtil::ToCanonical(raw, Renderer::GetAssetManager().GetAssetRoot())) {
+        return *canon;
+    }
+    GE_CORE_WARN("SceneSerializer: 资产引用无法归一为相对资源根路径，原样写入: {0}", raw);
+    return raw;
+}
 
 // ============================================================
 // 采样器参数辅助
@@ -235,9 +260,12 @@ void SerializeMaterialNode(YAML::Node &matNode, Material *mat) {
     // 材质类型（BlinnPhong / PBR），决定渲染管线
     matNode["Type"] = (mat->GetType() == Material::Type::PBR) ? "PBR" : "BlinnPhong";
 
-    // 材质显示名（m_Name），非空才写，保持序列化文件干净
-    if (!mat->GetName().empty()) {
-        matNode["Name"] = mat->GetName();
+    // 材质显示名（m_Name），非空才写，保持序列化文件干净。
+    // 以 "scene:" 开头的是反序列化时按内容生成的去重键（拼接了纹理路径），并非用户命名
+    // 的显示名——写出去只会把机器绝对路径带进场景文件，且下次加载会重新生成，故跳过。
+    const std::string &matName = mat->GetName();
+    if (!matName.empty() && matName.rfind("scene:", 0) != 0) {
+        matNode["Name"] = matName;
     }
 
     // 纹理槽位（仅写有纹理且带文件路径的槽位）
@@ -246,7 +274,7 @@ void SerializeMaterialNode(YAML::Node &matNode, Material *mat) {
         Texture *tex = mat->GetTexture(slot);
         if (tex && !tex->GetFilePath().empty()) {
             std::string texKey = std::string(kTextureSlotNames[s]) + "Texture";
-            matNode[texKey] = tex->GetFilePath();
+            matNode[texKey] = CanonicalAssetRef(tex->GetFilePath());
             YAML::Node samplerNode = matNode[texKey + "Sampler"];
             SerializeSamplerNode(samplerNode, tex);
         }
@@ -757,7 +785,7 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
 
             // 纹理路径 + 采样器参数
             if (src.SpriteTexture && !src.SpriteTexture->GetFilePath().empty()) {
-                spriteNode["Texture"] = src.SpriteTexture->GetFilePath();
+                spriteNode["Texture"] = CanonicalAssetRef(src.SpriteTexture->GetFilePath());
                 // 同时保存采样器参数，供反序列化恢复
                 YAML::Node samplerNode = spriteNode["TextureSampler"];
                 SerializeSamplerNode(samplerNode, src.SpriteTexture);
@@ -775,7 +803,7 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
                 const std::string meshPath =
                     ResolveMeshSerializedPath(mc.MeshPtr->GetFilePath(), bakedGemeshCache);
                 if (!meshPath.empty()) {
-                    meshNode["Mesh"] = meshPath;
+                    meshNode["Mesh"] = CanonicalAssetRef(meshPath);
                 }
             }
 
@@ -867,7 +895,7 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
                 for (const auto &s : as.Sounds) {
                     YAML::Node sn;
                     sn["Name"] = s.Name;
-                    sn["SoundPath"] = s.SoundPath;
+                    sn["SoundPath"] = CanonicalAssetRef(s.SoundPath);
                     sn["PlayOnAwake"] = s.PlayOnAwake;
                     sn["Loop"] = s.Loop;
                     sn["Volume"] = s.Volume;
@@ -970,12 +998,12 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
             waterNode["DeepColor"] = SerializeVec3(wc.DeepColor);
             waterNode["ShallowColor"] = SerializeVec3(wc.ShallowColor);
             if (wc.NormalMap && !wc.NormalMap->GetFilePath().empty()) {
-                waterNode["NormalMap"] = wc.NormalMap->GetFilePath();
+                waterNode["NormalMap"] = CanonicalAssetRef(wc.NormalMap->GetFilePath());
             }
             waterNode["NormalTiling"] = wc.NormalTiling;
             waterNode["NormalStrength"] = wc.NormalStrength;
             if (wc.ColorMap && !wc.ColorMap->GetFilePath().empty()) {
-                waterNode["ColorMap"] = wc.ColorMap->GetFilePath();
+                waterNode["ColorMap"] = CanonicalAssetRef(wc.ColorMap->GetFilePath());
             }
             waterNode["ColorTiling"] = wc.ColorTiling;
             waterNode["ColorStrength"] = wc.ColorStrength;
@@ -1057,7 +1085,7 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
                         const std::string skinMeshPath =
                             ResolveMeshSerializedPath(sc.MeshPtr->GetFilePath(), bakedGemeshCache);
                         if (!skinMeshPath.empty()) {
-                            entityNode["Skin"]["Mesh"] = skinMeshPath;
+                            entityNode["Skin"]["Mesh"] = CanonicalAssetRef(skinMeshPath);
                         }
                     }
                 }
@@ -1113,7 +1141,7 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
                         continue;
                     }
                     YAML::Node clipNode;
-                    clipNode["Clip"] = inst.clip->source;
+                    clipNode["Clip"] = CanonicalAssetRef(inst.clip->source);
                     YAML::Node targetsNode = clipNode["Targets"];
                     targetsNode.SetStyle(YAML::EmitterStyle::Flow);
                     for (entt::entity t : inst.channelTargets) {

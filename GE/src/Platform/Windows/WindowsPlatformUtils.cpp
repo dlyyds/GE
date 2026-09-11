@@ -11,6 +11,24 @@
 
 namespace GE {
 
+std::filesystem::path PlatformUtils::GetExecutableDirectory() {
+    // 走宽字符 API：安装路径含中文时窄字符会截断。
+    // 缓冲区不足时 GetModuleFileNameW 返回 buf.size()（截断信号），翻倍重试。
+    std::wstring buf(MAX_PATH, L'\0');
+    for (;;) {
+        const DWORD n = GetModuleFileNameW(nullptr, buf.data(), static_cast<DWORD>(buf.size()));
+        if (n == 0) {
+            return {};
+        }
+        if (n < buf.size()) {
+            buf.resize(n);
+            break;
+        }
+        buf.resize(buf.size() * 2);
+    }
+    return std::filesystem::path(buf).parent_path();
+}
+
 std::string FileDialogs::OpenFile(const char *filter, const char *initialDir) {
     OPENFILENAMEA ofn;
     CHAR szFile[260] = {0};

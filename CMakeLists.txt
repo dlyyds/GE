@@ -272,5 +272,23 @@ target_include_directories(gemesh PRIVATE
 
 target_link_libraries(gemesh PRIVATE ${GE_NAME})
 
+#GE_Runtime EXE（发行版播放器：无编辑器 UI，场景直画背缓冲）
+# ==============================================
+set(Runtime_NAME GE_Runtime)
+
+set(Runtime_SRC
+        ${CMAKE_SOURCE_DIR}/GE_Runtime/src/RuntimeApp.cpp
+        ${CMAKE_SOURCE_DIR}/GE_Runtime/src/GameLayer.cpp
+        ${CMAKE_SOURCE_DIR}/GE_Runtime/src/GameConfig.cpp
+)
+
+add_executable(${Runtime_NAME} ${Runtime_SRC})
+target_include_directories(${Runtime_NAME} PRIVATE
+        ${CMAKE_SOURCE_DIR}/GE/include
+        ${CMAKE_SOURCE_DIR}/GE_Runtime/src
+)
+
+target_link_libraries(${Runtime_NAME} PRIVATE ${GE_NAME})
+
 #共享着色器（GLSL → SPIR-V），GE_Editor 依赖
 add_subdirectory(assets/shaders/glsl)

@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "Scene/Scene.h"
 #include "Scene/Components.h"
+#include "Scene/SceneSerializer.h"
 #include "Animation/AnimationSystem.h"
 #include "Scene/Entity.h"
 #include "Physics/PhysicsWorld.h"
@@ -296,6 +297,12 @@ Scene::~Scene() {
     // 提前解挂脚本销毁回调并清理，避免注册表析构时 on_destroy 回调碰卸了一半的 Lua/场景
     m_Registry.on_destroy<ScriptComponent>().disconnect<&Scene::OnScriptComponentDestroyed>(this);
     m_ScriptEngine.Shutdown();
+}
+
+bool Scene::LoadFromFile(const std::string &filepath) {
+    // 序列化器无状态、按需创建为局部变量（纹理/材质/网格由全局管理器加载，无需 device）
+    SceneSerializer serializer(this);
+    return serializer.Deserialize(filepath);
 }
 
 Entity Scene::CreateEntity(const std::string &name) {

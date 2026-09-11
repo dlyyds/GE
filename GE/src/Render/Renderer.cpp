@@ -117,6 +117,12 @@ VulkanCommandBuffer &Renderer::BeginFrame() {
     // Execute 统一延后到 EndFrame（ImGui 上屏前）。
     m_FrameGraph.Reset();
 
+    // 3a. Import 一次 swapchain 颜色视图并缓存句柄：EndFrame 的 UIPass 与运行时的
+    //     场景 pass（SetSceneToBackbuffer）共用同一个资源记录。若两处各自 Import，
+    //     同一张图会有两条布局记录，后者会按帧首布局（Undefined）对一个已处于
+    //     ColorAttachmentOptimal 的图插屏障 → 非法旧布局。
+    m_FrameColorHandle = m_FrameBuilder.Import(&GetFrameImageView(), "Swapchain");
+
     return *m_ActiveFrameCmd;
 }
 
@@ -140,11 +146,12 @@ void Renderer::EndFrame() {
         m_ImGuiLayer->EndUI();
     }
 
-    // 2. 注册 UIPass：颜色附件 = swapchain 当前帧 view（eClear 承接原 BeginFrame 手
-    //    工清屏职责，为 UI 画一个干净暗底），execute 内裸录 RenderDrawData，收尾
-    //    finalLayout 转 PresentSrc。无条件注册，保证帧图恒有内容。
+    // 2. 注册 UIPass：颜色附件 = swapchain 当前帧 view（BeginFrame 已 Import 并缓存句柄）。
+    //    默认 eClear 承接清屏职责，为 UI 画一个干净暗底；运行时（场景直画背缓冲）改
+    //    eLoad，保留场景结果。execute 内裸录 RenderDrawData，收尾 finalLayout 转 PresentSrc。
+    //    无条件注册，保证帧图恒有内容。
     auto &b = GetFrameGraphBuilder();
-    ResourceHandle hSwapchain = b.Import(&GetFrameImageView(), "SwapchainUI");
+    ResourceHandle hSwapchain = m_FrameColorHandle;
     m_FrameGraph.SetFrameSwapchain(hSwapchain);
     const auto extent = m_RenderContext->GetSwapchain().GetExtent();
     RenderPassDesc &uiPass = b.AddPass("UIPass");
@@ -152,7 +159,8 @@ void Renderer::EndFrame() {
     AttachmentDesc color;
     color.resource = hSwapchain;
     color.usage = ResourceUsage::ColorAttachment;
-    color.loadOp = vk::AttachmentLoadOp::eClear;
+    color.loadOp = m_SceneToBackbuffer ? vk::AttachmentLoadOp::eLoad
+                                       : vk::AttachmentLoadOp::eClear;
     color.storeOp = vk::AttachmentStoreOp::eStore;
     color.clearValue.color = {0.1f, 0.1f, 0.15f, 1.0f};
     color.finalLayout = vk::ImageLayout::ePresentSrcKHR;
@@ -241,6 +249,10 @@ uint32_t Renderer::GetFrameImageIndex() {
 
 VulkanImageView &Renderer::GetFrameImageView() {
     return GetRenderContext().GetActiveFrame().GetRenderTarget().GetSwapchainView();
+}
+
+VulkanImageView &Renderer::GetFrameDepthView() {
+    return GetRenderContext().GetActiveFrame().GetRenderTarget().GetDepthView();
 }
 
 Renderer2D &Renderer::Get2DRenderer() {

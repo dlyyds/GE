@@ -18,6 +18,25 @@ namespace GE {
 
 static uint8_t s_GLFWWindowCount = 0;
 
+namespace {
+/// 按窗口模式选目标监视器（nullptr = 窗口化：Default / Headless / FullscreenStretch）。
+/// 无边框全屏额外把尺寸对齐到显示器当前视频模式；纯全屏交给 GLFW 挑最接近的视频模式。
+GLFWmonitor *ResolveMonitorForMode(WindowMode mode, Extent &extent) {
+    if (mode == WindowMode::Fullscreen) {
+        return glfwGetPrimaryMonitor();
+    }
+    if (mode == WindowMode::FullscreenBorderless) {
+        GLFWmonitor *monitor = glfwGetPrimaryMonitor();
+        if (const GLFWvidmode *videoMode = glfwGetVideoMode(monitor)) {
+            extent = {static_cast<uint32_t>(videoMode->width),
+                      static_cast<uint32_t>(videoMode->height)};
+        }
+        return monitor;
+    }
+    return nullptr;
+}
+} // namespace
+
 GlfwWindow::GlfwWindow(const WindowProperties &props) {
     GE_PROFILE_FUNCTION();
     Init(props);
@@ -47,16 +66,8 @@ void GlfwWindow::Init(const WindowProperties &props) {
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     glfwWindowHint(GLFW_RESIZABLE, properties.resizable ? GLFW_TRUE : GLFW_FALSE);
 
-    // 全屏模式
-    GLFWmonitor *monitor = nullptr;
-    if (properties.mode == WindowMode::Fullscreen) {
-        monitor = glfwGetPrimaryMonitor();
-    } else if (properties.mode == WindowMode::FullscreenBorderless) {
-        monitor = glfwGetPrimaryMonitor();
-        const GLFWvidmode *mode = glfwGetVideoMode(monitor);
-        properties.extent.width = mode->width;
-        properties.extent.height = mode->height;
-    }
+    // 全屏模式（无边框模式会把尺寸对齐到显示器当前视频模式）
+    GLFWmonitor *monitor = ResolveMonitorForMode(properties.mode, properties.extent);
 
     {
         GE_PROFILE_SCOPE("glfwCreateWindow");
@@ -206,6 +217,46 @@ void GlfwWindow::SetMaximized(bool maximized) {
     } else {
         glfwRestoreWindow(m_Window);
     }
+}
+
+void GlfwWindow::SetTitle(const std::string &title) {
+    properties.title = title;
+    glfwSetWindowTitle(m_Window, title.c_str());
+}
+
+void GlfwWindow::SetWindowMode(WindowMode mode) {
+    if (mode == properties.mode) {
+        return;
+    }
+
+    if (mode == WindowMode::Fullscreen || mode == WindowMode::FullscreenBorderless ||
+        mode == WindowMode::FullscreenStretch) {
+        GLFWmonitor *monitor = glfwGetPrimaryMonitor();
+        if (!monitor) {
+            GE_CORE_WARN("SetWindowMode: 无法获取主显示器，保持窗口化");
+            return;
+        }
+        // 尺寸/刷新率取显示器当前视频模式；GLFW 会自行切到该模式
+        const GLFWvidmode *videoMode = glfwGetVideoMode(monitor);
+        const int width = videoMode ? videoMode->width : static_cast<int>(properties.extent.width);
+        const int height = videoMode ? videoMode->height : static_cast<int>(properties.extent.height);
+        const int refreshRate = videoMode ? videoMode->refreshRate : GLFW_DONT_CARE;
+        glfwSetWindowMonitor(m_Window, monitor, 0, 0, width, height, refreshRate);
+    } else {
+        // 窗口化：沿用当前尺寸（全屏期间 properties.extent 已被显示器尺寸刷新），居中摆放
+        const int width = static_cast<int>(properties.extent.width);
+        const int height = static_cast<int>(properties.extent.height);
+        int x = 0, y = 0;
+        if (GLFWmonitor *monitor = glfwGetPrimaryMonitor()) {
+            if (const GLFWvidmode *videoMode = glfwGetVideoMode(monitor)) {
+                x = (videoMode->width - width) / 2;
+                y = (videoMode->height - height) / 2;
+            }
+        }
+        glfwSetWindowMonitor(m_Window, nullptr, x, y, width, height, GLFW_DONT_CARE);
+    }
+
+    properties.mode = mode;
 }
 
 float GlfwWindow::GetDpiFactor() const {

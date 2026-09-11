@@ -95,6 +95,12 @@ public:
 
     [[nodiscard]] virtual WindowMode GetWindowMode() const = 0;
 
+    /// 设置窗口标题（运行时可改：如运行时按 game.cfg 应用标题）
+    virtual void SetTitle(const std::string &title) = 0;
+
+    /// 切换窗口模式（窗口化 ↔ 全屏）。进入全屏时尺寸对齐主显示器当前视频模式。
+    virtual void SetWindowMode(WindowMode mode) = 0;
+
     /// 尝试调整窗口大小，返回实际尺寸
     virtual Extent Resize(const Extent &new_extent) = 0;
 

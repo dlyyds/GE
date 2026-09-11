@@ -15,7 +15,6 @@
 namespace GE {
 
 class GizmoController; // 前向声明，避免在头文件引入实现
-class RenderTarget;    // 仅用于离屏渲染私有方法签名
 class DebugDrawLayer;  // 调试线框叠加层：Scene 视口内回调其 RenderSceneOverlay
 
 /// 场景层 —— 只负责场景渲染（离屏视口 + 相机）与 文件操作（保存/加载/新建）。
@@ -110,9 +109,6 @@ private:
 
     /// 选择本帧离屏渲染相机并同步宽高比（非固定纵横比的玩法相机）。
     Camera &GetRenderingViewCamera(float aspect);
-
-    /// 向当前帧 RenderGraph 注册场景 3D/2D pass（前向/延迟渲染共用入口）。
-    void RecordScenePasses(RenderTarget &viewportRT, const glm::vec4 &clearColor);
 
     /// 从代码程序化构建默认场景（编译期开关 GE_EDITOR_BUILD_SCENE_FROM_CODE 控制）
     void BuildDefaultSceneFromCode();

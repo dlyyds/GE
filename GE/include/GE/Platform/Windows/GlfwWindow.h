@@ -58,6 +58,10 @@ public:
 
     [[nodiscard]] WindowMode GetWindowMode() const override;
 
+    void SetTitle(const std::string &title) override;
+
+    void SetWindowMode(WindowMode mode) override;
+
     Extent Resize(const Extent &new_extent) override;
 
     void SetMaximized(bool maximized) override;

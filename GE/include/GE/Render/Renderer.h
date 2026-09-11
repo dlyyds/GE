@@ -80,6 +80,31 @@ public:
     void EndFrame();
 
     // ========================================================================
+    // 场景直画背缓冲（运行时播放器用；编辑器不用）
+    // ========================================================================
+
+    /**
+     * @brief 场景 pass 是否直接渲染到 swapchain 背缓冲。
+     *
+     * 默认 false（编辑器）：帧图末尾的 UIPass 用 eClear 清屏，场景画在离屏视口，
+     * 由 UIPass 采样视口图并叠 UI。
+     *
+     * 置 true（运行时，无编辑器 UI）：场景 pass 直接写背缓冲，UIPass 改用 eLoad
+     * 保留场景结果（仅在其上叠 ImGui 内容，通常为空）。须在首帧 EndFrame 之前设置，
+     * 与 GetFrameSwapchainHandle() 配套使用。
+     */
+    void SetSceneToBackbuffer(bool enabled) { m_SceneToBackbuffer = enabled; }
+
+    /// @return 本帧 swapchain 颜色附件资源句柄（BeginFrame 时 Import 并缓存）。
+    /// 需要把场景画进背缓冲的宿主（运行时 GameLayer）应复用它，而非自行再 Import
+    /// 一次同一张视图——否则同一图像会有两个资源记录各自维护布局，产生非法旧布局屏障。
+    [[nodiscard]] ResourceHandle GetFrameSwapchainHandle() const { return m_FrameColorHandle; }
+
+    /// 本帧 swapchain 渲染目标的深度附件视图（随 swapchain 重建）。
+    /// 帧渲染目标以 enable_depth=true 创建，深度图 usage 含 eSampled，当附件或采样源皆可。
+    static VulkanImageView &GetFrameDepthView();
+
+    // ========================================================================
     // ImGui / UI 调度（Renderer 内部集成）
     // ========================================================================
 
@@ -201,6 +226,13 @@ private:
 
     /// 当前帧的 command buffer（每帧由 BeginFrame 设置，EndFrame 后置空；由 RenderContext 所有）。
     VulkanCommandBuffer *m_ActiveFrameCmd = nullptr;
+
+    /// 本帧 swapchain 颜色附件的资源句柄（BeginFrame 里 Import 一次，EndFrame 复用）。
+    /// 缓存而非每处各自 Import：同一张视图只能有一个资源记录，否则布局跟踪会打架。
+    ResourceHandle m_FrameColorHandle = kInvalidResource;
+
+    /// 场景是否直画背缓冲（见 SetSceneToBackbuffer）。false = 编辑器行为（UIPass 清屏）。
+    bool m_SceneToBackbuffer = false;
 
     /// 帧渲染图对象 + 构建器（每帧 BeginFrame 末尾 Reset，EndFrame Execute）。
     /// 宿主（各 Layer）在 OnUpdate 经 GetFrameGraphBuilder() 注册 pass。

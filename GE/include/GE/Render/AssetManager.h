@@ -19,6 +19,8 @@
 
 #pragma once
 
+#include <vulkan/vulkan.hpp>
+
 #include <filesystem>
 #include <memory>
 #include <string>

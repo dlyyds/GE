@@ -33,6 +33,7 @@ class MeshManager;
 class MaterialManager;
 class Texture;
 class Mesh;
+class Material;
 
 namespace Audio {
     class SoundAsset;
@@ -55,6 +56,7 @@ namespace AssetPaths {
     inline constexpr const char *Fonts    = "fonts/opensans"; ///< 字体目录
     inline constexpr const char *HDRI     = "HDRI";           ///< HDR 环境贴图目录
     inline constexpr const char *Audio    = "audio";          ///< 音频目录
+    inline constexpr const char *Materials = "materials";      ///< 材质资产（.gemat）目录
 }
 
 /**
@@ -179,6 +181,27 @@ public:
      * @return 声音资源指针，加载失败返回 nullptr
      */
     Audio::SoundAsset *LoadSound(const std::string &path);
+
+    /**
+     * @brief 加载材质资产（`.gemat`，自动解析路径）。
+     *
+     * 同一文件只加载一次，之后复用同一材质实例（编辑器对它的改动不会被重读覆盖）。
+     *
+     * @param path 材质路径（相对资源根或绝对路径）
+     * @return 材质指针，读取/解析失败返回 nullptr
+     */
+    Material *LoadMaterial(const std::string &path);
+
+    /**
+     * @brief 把材质写入 `.gemat` 文件（自动解析路径；目录不存在时自动创建）。
+     *
+     * 写成功后材质即"文件背书"，场景序列化对它写引用而非内联。
+     *
+     * @param mat  材质
+     * @param path 目标路径（相对资源根或绝对路径）
+     * @return 是否写入成功
+     */
+    bool SaveMaterial(Material &mat, const std::string &path);
 
     /// 直接播放一次（编辑器试听 / 一次性 SFX），自动解析路径。
     bool PlayOneShot(const std::string &path, float volume = 1.0f);

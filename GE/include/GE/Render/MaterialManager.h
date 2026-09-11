@@ -108,9 +108,49 @@ public:
      */
     std::vector<std::string> GetAllNames() const;
 
+    // ========================================================================
+    // `.gemat` 材质资产读写
+    // ========================================================================
+
+    /// 资产注册键前缀。与用户裸名、"scene:<内容>"、"<路径>::<材质名>" 三种
+    /// 既有键空间隔离，避免路径字符串与它们相撞。
+    static constexpr const char *kAssetKeyPrefix = "asset:";
+
+    /**
+     * @brief 从 `.gemat` 文件加载材质（同一路径只加载一次，之后复用实例）。
+     *
+     * @param resolvedPath 已解析的绝对路径（见 AssetManager::ResolvePath）
+     * @return 材质指针，读取/解析失败返回 nullptr
+     */
+    Material *Load(const std::string &resolvedPath);
+
+    /**
+     * @brief 把材质写入 `.gemat` 文件（写后置源文件路径并清脏标记）。
+     *
+     * 目录不存在时自动创建。写成功后该材质即"文件背书"，序列化场景时写引用。
+     *
+     * @param mat          材质（会被更新源路径，故非 const）
+     * @param resolvedPath 目标文件绝对路径
+     * @param assetRoot    资源根（贴图路径归一用）
+     * @return 是否写入成功
+     */
+    bool Save(Material &mat, const std::string &resolvedPath, const std::string &assetRoot);
+
+    /**
+     * @brief 按源文件路径查已加载材质。
+     *
+     * @param resolvedPath 已解析的绝对路径
+     * @return 材质指针，无则 nullptr
+     */
+    Material *GetBySourcePath(const std::string &resolvedPath) const;
+
 private:
     /// 材质缓存：名称 -> material
     std::unordered_map<std::string, std::unique_ptr<Material>> m_Materials;
+
+    /// 源文件路径（绝对）-> 材质，`.gemat` 路径查询与另存为改路径用。
+    /// 值不拥有所有权（所有权在 m_Materials），随 Unload/Clear 一并维护。
+    std::unordered_map<std::string, Material *> m_ByPath;
 };
 
 } // namespace GE

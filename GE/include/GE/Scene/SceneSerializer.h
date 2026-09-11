@@ -21,7 +21,10 @@ class Material;
  *            DirectionalLightComponent、AmbientLightComponent、RigidBodyComponent、
  *            BoxColliderComponent、SphereColliderComponent、CapsuleColliderComponent。
  *
- * 3D 网格材质由子网格绑定（随模型加载），不序列化到场景。
+ * 材质：网格自带的子网格默认材质（随模型加载）不落场景；实体对子网格的材质
+ * 覆写（MeshRendererComponent.materialOverrides）会落盘，两种形态二选一——
+ * 有 `.gemat` 源文件的写引用（`Material: materials/x.gemat`，材质资产独立落盘、
+ * 可跨场景复用），无源文件的写内联内容。形状由 MaterialSerializer 统一提供。
  * SpriteRenderer 的纹理同样保存其采样器参数。
  *
  * ScriptComponent 不参与序列化（运行时行为，无法持久化）。

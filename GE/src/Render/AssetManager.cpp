@@ -116,6 +116,20 @@ Audio::SoundAsset *AssetManager::LoadSound(const std::string &path) {
     return GetSoundManager().Load(resolved.string());
 }
 
+Material *AssetManager::LoadMaterial(const std::string &path) {
+    if (path.empty()) {
+        return nullptr;
+    }
+    return GetMaterialManager().Load(ResolvePath(path).string());
+}
+
+bool AssetManager::SaveMaterial(Material &mat, const std::string &path) {
+    if (path.empty()) {
+        return false;
+    }
+    return GetMaterialManager().Save(mat, ResolvePath(path).string(), GetAssetRoot().string());
+}
+
 bool AssetManager::PlayOneShot(const std::string &path, float volume) {
     const std::filesystem::path resolved = ResolvePath(path);
     return GetSoundManager().PlayOneShot(resolved.string(), volume);

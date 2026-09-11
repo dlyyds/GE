@@ -5,7 +5,13 @@
 
 #include "Render/MaterialManager.h"
 
+#include "Render/MaterialSerializer.h"
 #include "Core/Log.h"
+
+#include <yaml-cpp/yaml.h>
+
+#include <filesystem>
+#include <fstream>
 
 namespace GE {
 
@@ -43,16 +49,26 @@ Material *MaterialManager::Register(const std::string &name,
     if (raw->GetName().empty()) {
         raw->SetName(name);
     }
+    // 同键替换：旧实例已销毁，其反查项必须摘掉，否则留下悬垂指针
+    auto old = m_Materials.find(name);
+    if (old != m_Materials.end()) {
+        m_ByPath.erase(old->second->GetSourcePath());
+    }
     m_Materials[name] = std::move(material);
     return raw;
 }
 
 void MaterialManager::Unload(const std::string &name) {
-    m_Materials.erase(name);
+    auto it = m_Materials.find(name);
+    if (it != m_Materials.end()) {
+        m_ByPath.erase(it->second->GetSourcePath());
+        m_Materials.erase(it);
+    }
 }
 
 void MaterialManager::Clear() {
     m_Materials.clear();
+    m_ByPath.clear();
 }
 
 std::vector<std::string> MaterialManager::GetAllNames() const {
@@ -62,6 +78,104 @@ std::vector<std::string> MaterialManager::GetAllNames() const {
         names.push_back(pair.first);
     }
     return names;
+}
+
+Material *MaterialManager::GetBySourcePath(const std::string &resolvedPath) const {
+    if (resolvedPath.empty()) {
+        return nullptr;
+    }
+    auto it = m_ByPath.find(resolvedPath);
+    return it != m_ByPath.end() ? it->second : nullptr;
+}
+
+Material *MaterialManager::Load(const std::string &resolvedPath) {
+    if (resolvedPath.empty()) {
+        return nullptr;
+    }
+    // 同路径只加载一次：已加载的实例可能被编辑器改过，重新读盘会把改动冲掉
+    if (Material *cached = GetBySourcePath(resolvedPath)) {
+        return cached;
+    }
+
+    YAML::Node root;
+    try {
+        root = YAML::LoadFile(resolvedPath);
+    } catch (const std::exception &e) {
+        GE_CORE_WARN("MaterialManager: 材质文件解析失败 {0}: {1}", resolvedPath, e.what());
+        return nullptr;
+    }
+
+    // 文件根是单一包装键 Material（与 .scene 的 Scene 根同构，便于将来加元信息）
+    YAML::Node node = root["Material"];
+    if (!node) {
+        GE_CORE_WARN("MaterialManager: 材质文件缺少 Material 根节点: {0}", resolvedPath);
+        return nullptr;
+    }
+
+    // 版本前瞻：高版本文件里可能有本版读不懂的字段，读下去不报错会静默丢内容，
+    // 至少留一条可追的日志（缺 Version 视为当前版本）。
+    const int version = node["Version"]
+                            ? node["Version"].as<int>(MaterialSerializer::kFormatVersion)
+                            : MaterialSerializer::kFormatVersion;
+    if (version > MaterialSerializer::kFormatVersion) {
+        GE_CORE_WARN("MaterialManager: 材质文件版本 {0} 高于当前支持 {1}，按 {1} 读取: {2}",
+                     version, MaterialSerializer::kFormatVersion, resolvedPath);
+    }
+
+    auto mat = std::make_unique<Material>();
+    MaterialSerializer::ApplyMaterialNode(*mat, node);
+    // 显示名优先取文件里的 Name，缺省退回文件名（保持非空，UI 才有个可读标签）
+    if (node["Name"]) {
+        mat->SetName(node["Name"].as<std::string>());
+    } else {
+        mat->SetName(std::filesystem::path(resolvedPath).stem().string());
+    }
+    mat->SetSourcePath(resolvedPath);
+
+    const std::string key = std::string(kAssetKeyPrefix) + resolvedPath;
+    Material *raw = Register(key, std::move(mat));
+    m_ByPath[resolvedPath] = raw;
+    raw->ClearDirty();  // 内容刚来自文件，视为已保存
+    return raw;
+}
+
+bool MaterialManager::Save(Material &mat, const std::string &resolvedPath,
+                           const std::string &assetRoot) {
+    if (resolvedPath.empty()) {
+        return false;
+    }
+
+    YAML::Node root;
+    YAML::Node node = root["Material"];
+    node["Version"] = MaterialSerializer::kFormatVersion;
+    MaterialSerializer::WriteMaterialNode(node, mat, assetRoot);
+
+    std::error_code ec;
+    const std::filesystem::path p(resolvedPath);
+    if (!p.parent_path().empty()) {
+        std::filesystem::create_directories(p.parent_path(), ec);  // 首次另存为时目录可能不存在
+    }
+
+    std::ofstream out(resolvedPath);
+    if (!out) {
+        GE_CORE_WARN("MaterialManager: 材质文件写入失败: {0}", resolvedPath);
+        return false;
+    }
+    out << root;
+    out.close();
+    if (!out) {
+        GE_CORE_WARN("MaterialManager: 材质文件写出错: {0}", resolvedPath);
+        return false;
+    }
+
+    // 另存为：旧路径的反查项要摘掉，否则同一材质两个路径都可达
+    if (mat.GetSourcePath() != resolvedPath) {
+        m_ByPath.erase(mat.GetSourcePath());
+    }
+    mat.SetSourcePath(resolvedPath);
+    m_ByPath[resolvedPath] = &mat;
+    mat.ClearDirty();
+    return true;
 }
 
 } // namespace GE

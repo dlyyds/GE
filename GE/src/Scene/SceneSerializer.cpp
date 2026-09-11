@@ -641,12 +641,23 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
                 }
             }
 
-            // 子网格材质覆写表（每实体独立）：<子网格索引, 材质内容>
+            // 子网格材质覆写表（每实体独立）：<子网格索引, 材质>
+            // 文件背书的材质只写引用（`Material: materials/x.gemat`）——材质资产独立
+            // 落盘、可跨场景复用，场景里不必再内联一份副本；没有源文件的临时材质
+            // （网格自带、编辑器里刚建还没落盘的）仍写内联内容。
             if (!mc.materialOverrides.empty()) {
                 YAML::Node overridesNode = meshNode["MaterialOverrides"];
                 for (const auto &kv : mc.materialOverrides) {
+                    Material *mat = kv.second;
+                    if (!mat) {
+                        continue;
+                    }
                     YAML::Node ovNode = overridesNode[std::to_string(kv.first)];
-                    SerializeMaterialNode(ovNode, kv.second);
+                    if (mat->IsFileBacked()) {
+                        ovNode["Material"] = CanonicalAssetRef(mat->GetSourcePath());
+                    } else {
+                        SerializeMaterialNode(ovNode, mat);
+                    }
                 }
             }
         }
@@ -1267,10 +1278,22 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
             }
 
             // 子网格材质覆写表：重建材质并写入组件（每实体独立）
+            // 有 Material 键 = 引用形态（`.gemat` 资产，多实体共享同一实例）；
+            // 否则是内联形态（旧场景，按内容去重）。
             if (meshNode["MaterialOverrides"]) {
                 for (const auto &kv : meshNode["MaterialOverrides"]) {
                     uint32_t index = static_cast<uint32_t>(std::stoul(kv.first.as<std::string>()));
-                    if (Material *mat = DeserializeMaterialNode(kv.second)) {
+                    Material *mat = nullptr;
+                    if (kv.second["Material"]) {
+                        const std::string ref = kv.second["Material"].as<std::string>("");
+                        mat = Renderer::GetAssetManager().LoadMaterial(ref);
+                        if (!mat) {
+                            GE_CORE_WARN("SceneSerializer: 材质资产加载失败，该子网格回退默认材质: {0}", ref);
+                        }
+                    } else {
+                        mat = DeserializeMaterialNode(kv.second);
+                    }
+                    if (mat) {
                         mc.materialOverrides[index] = mat;
                     }
                 }

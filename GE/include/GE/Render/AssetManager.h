@@ -203,6 +203,13 @@ public:
      */
     bool SaveMaterial(Material &mat, const std::string &path);
 
+    /**
+     * @brief 保存所有有未保存改动的材质资产（场景保存时一并调用）。
+     *
+     * @return 实际写出的文件数
+     */
+    int SaveAllDirtyMaterials();
+
     /// 直接播放一次（编辑器试听 / 一次性 SFX），自动解析路径。
     bool PlayOneShot(const std::string &path, float volume = 1.0f);
 

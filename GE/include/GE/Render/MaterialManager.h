@@ -144,6 +144,17 @@ public:
      */
     Material *GetBySourcePath(const std::string &resolvedPath) const;
 
+    /**
+     * @brief 把所有「有源文件且有未保存改动」的材质写回各自的源文件。
+     *
+     * 场景保存时调用：材质资产与场景是两份文件，只存场景而不刷材质的话，重载
+     * 场景时覆写引用到的 `.gemat` 还是旧内容，用户的改动看起来又"没存住"。
+     *
+     * @param assetRoot 资源根（贴图路径归一用）
+     * @return 实际写出的文件数
+     */
+    int SaveAllDirty(const std::string &assetRoot);
+
 private:
     /// 材质缓存：名称 -> material
     std::unordered_map<std::string, std::unique_ptr<Material>> m_Materials;

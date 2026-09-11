@@ -6,7 +6,11 @@
 #include "GE/Render/AssetManager.h"
 #include "GE/Render/TextureManager.h"
 #include "GE/Render/MaterialManager.h"
+#include "GE/Render/MaterialSerializer.h"
 #include "GE/Render/MeshManager.h"
+#include "GE/Render/Mesh.h"
+#include "GE/Scene/Scene.h"
+#include "GE/Scene/Components.h"
 
 #include <backends/imgui_impl_vulkan.h>
 
@@ -15,6 +19,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
+#include <filesystem>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -296,6 +301,172 @@ void ResourcePanel::DrawSamplerControls(Texture *tex) {
     }
 }
 
+namespace {
+/// 把任意字符串清洗成可用作文件名（非字母数字/下划线/短横/点 → 下划线）。
+std::string SanitizeForFileName(const std::string &s) {
+    std::string out;
+    out.reserve(s.size());
+    for (unsigned char c : s) {
+        out.push_back(std::isalnum(c) || c == '_' || c == '-' || c == '.' ? static_cast<char>(c) : '_');
+    }
+    return out.empty() ? "material" : out;
+}
+} // namespace
+
+void ResourcePanel::SetContext(Scene *scene) {
+    m_Context = scene;
+}
+
+Mesh *ResourcePanel::FindMeshUsingMaterial(Material *mat, uint32_t &subMeshIndex) const {
+    if (!mat) {
+        return nullptr;
+    }
+    auto &meshMgr = Renderer::GetMeshManager();
+    for (const auto &key : meshMgr.GetAllKeys()) {
+        Mesh *mesh = meshMgr.Get(key);
+        if (!mesh) {
+            continue;
+        }
+        const auto &subMeshes = mesh->GetSubMeshes();
+        for (size_t i = 0; i < subMeshes.size(); ++i) {
+            if (subMeshes[i].defaultMaterial == mat) {
+                subMeshIndex = static_cast<uint32_t>(i);
+                return mesh;
+            }
+        }
+    }
+    return nullptr;
+}
+
+int ResourcePanel::BindMaterialToEntitiesUsingMesh(Material *mat, Mesh *mesh, uint32_t subMeshIndex) {
+    if (!m_Context || !mat || !mesh) {
+        return 0;
+    }
+
+    int bound = 0;
+    auto &reg = m_Context->Reg();
+    auto view = reg.view<MeshRendererComponent>();
+    for (auto entity : view) {
+        auto &mc = view.get<MeshRendererComponent>(entity);
+        if (mc.MeshPtr != mesh) {
+            continue;
+        }
+        // 该子网格已有显式覆写 = 这个实体本就不看网格默认材质，别覆盖用户的选择
+        if (mc.materialOverrides.find(subMeshIndex) != mc.materialOverrides.end()) {
+            continue;
+        }
+        mc.materialOverrides[subMeshIndex] = mat;
+        ++bound;
+    }
+    return bound;
+}
+
+void ResourcePanel::SaveMaterialAsset(Material *mat, bool saveAs) {
+    if (!mat) {
+        return;
+    }
+    auto &assetMgr = Renderer::GetAssetManager();
+
+    std::string target;
+    if (saveAs || !mat->IsFileBacked()) {
+        // 另存为：初始目录跟随资源根下的材质目录（不依赖启动时的工作目录）
+        const std::string dir =
+            (assetMgr.GetAssetRoot() / AssetPaths::Materials).string();
+        target = FileDialogs::SaveFile(
+            "GE 材质 (*.gemat)\0*.gemat\0All Files (*.*)\0*.*\0", dir.c_str());
+        if (target.empty()) {
+            return;  // 用户取消
+        }
+        // 保存对话框在用户未输入扩展名时是否补全取决于系统设置，主动补一次
+        if (std::filesystem::path(target).extension().empty()) {
+            target += ".gemat";
+        }
+    } else {
+        target = mat->GetSourcePath();
+    }
+
+    if (!assetMgr.SaveMaterial(*mat, target)) {
+        GE_CORE_WARN("ResourcePanel: 材质保存失败: {0}", target);
+        return;
+    }
+    GE_CORE_INFO("ResourcePanel: 材质已保存: {0}", target);
+
+    // 另存为的若是网格自带材质：改的只是本进程内那个对象，网格重载后会按 MTL
+    // 重建，故同样要给使用该网格的实体写覆写，改动才活得下来。
+    uint32_t subIdx = 0;
+    if (Mesh *owner = FindMeshUsingMaterial(mat, subIdx)) {
+        const int bound = BindMaterialToEntitiesUsingMesh(mat, owner, subIdx);
+        GE_CORE_INFO("ResourcePanel: 已为 {0} 个使用该网格的实体挂上材质覆写", bound);
+    }
+}
+
+void ResourcePanel::PromoteIfMeshBuiltInMaterial(Material *mat) {
+    if (!mat) {
+        return;
+    }
+    uint32_t subIdx = 0;
+    Mesh *owner = FindMeshUsingMaterial(mat, subIdx);
+    if (!owner) {
+        return;  // 不是网格自带材质（网格/子网格已不在），无需提升
+    }
+
+    // 资产路径：materials/<网格文件名>_<材质名>.gemat
+    const std::string meshStem =
+        SanitizeForFileName(std::filesystem::path(owner->GetFilePath()).stem().string());
+    const std::string matLabel =
+        SanitizeForFileName(mat->GetName().empty() ? std::string("default") : mat->GetName());
+    const std::string relPath =
+        std::string(AssetPaths::Materials) + "/" + meshStem + "_" + matLabel + ".gemat";
+
+    auto &assetMgr = Renderer::GetAssetManager();
+    if (!assetMgr.SaveMaterial(*mat, relPath)) {
+        GE_CORE_WARN("ResourcePanel: 网格自带材质自动提升失败（写盘失败）: {0}", relPath);
+        return;
+    }
+
+    const int bound = BindMaterialToEntitiesUsingMesh(mat, owner, subIdx);
+    GE_CORE_INFO("ResourcePanel: 网格自带材质已提升为资产 {0}（已挂 {1} 个实体覆写）",
+                 relPath, bound);
+}
+
+void ResourcePanel::DrawMaterialAssetControls(Material *mat, bool isMeshBuiltIn) {
+    if (!mat) {
+        return;
+    }
+    auto &assetMgr = Renderer::GetAssetManager();
+
+    if (mat->IsFileBacked()) {
+        if (mat->IsDirty()) {
+            ImGui::TextColored(ImVec4(1.0f, 0.72f, 0.2f, 1.0f), "未保存");
+        } else {
+            ImGui::TextDisabled("已保存");
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("保存")) {
+            SaveMaterialAsset(mat, false);
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("另存为…")) {
+            SaveMaterialAsset(mat, true);
+        }
+        // 显示相对资源根的短路径（绝对路径会把 UI 撑爆）
+        const std::string shown = MaterialSerializer::CanonicalAssetRef(
+            mat->GetSourcePath(), assetMgr.GetAssetRoot().string());
+        ImGui::TextDisabled("%s", shown.c_str());
+    } else {
+        ImGui::TextDisabled("无源文件（改动不落盘）");
+        ImGui::SameLine();
+        if (ImGui::Button("另存为 .gemat…")) {
+            SaveMaterialAsset(mat, true);
+        }
+        if (isMeshBuiltIn) {
+            ImGui::TextColored(ImVec4(1.0f, 0.72f, 0.2f, 1.0f),
+                               "这是网格自带材质，被所有使用该网格的实体共享；"
+                               "编辑它即自动提升为 .gemat 并写入覆写");
+        }
+    }
+}
+
 void ResourcePanel::DrawMaterialSection() {
     auto &matMgr = Renderer::GetMaterialManager();
     auto &texMgr = Renderer::GetTextureManager();
@@ -324,12 +495,25 @@ void ResourcePanel::DrawMaterialSection() {
         // 标题显示材质的显示名 m_Name，不显示 manager 注册 key
         const char *displayTitle = mat->GetName().empty() ? name.c_str() : mat->GetName().c_str();
         if (ImGui::TreeNodeEx(displayTitle, 0)) {
+            // 网格自带材质没有源文件：直接改它，改动会随网格重载被 MTL 重建覆盖。
+            // 故先记下内容签名，画完若变了就自动提升为 .gemat 资产。
+            // （有源文件的材质不可能"自带"，无需扫描网格表。）
+            uint32_t ownerSubIdx = 0;
+            const bool isMeshBuiltIn = !mat->IsFileBacked() &&
+                                       FindMeshUsingMaterial(mat, ownerSubIdx) != nullptr;
+            const std::string rootStr = Renderer::GetAssetManager().GetAssetRoot().string();
+            const std::string beforeSig =
+                isMeshBuiltIn ? MaterialSerializer::ContentSignature(*mat, rootStr) : std::string();
+
             // 材质显示名（独立字段，不改变 manager 注册 key）
             char nameBuf[128];
             snprintf(nameBuf, sizeof(nameBuf), "%s", mat->GetName().c_str());
             if (ImGui::InputText("名称 (Name)", nameBuf, sizeof(nameBuf))) {
                 mat->SetName(nameBuf);
             }
+
+            // 资产状态（已保存 / 未保存 / 无源文件）与落盘动作（保存 / 另存为）
+            DrawMaterialAssetControls(mat, isMeshBuiltIn);
 
             // 属性表：左列控件（统一宽度），右列右侧对齐标签
             if (ImGui::BeginTable("##Props", 2, ImGuiTableFlags_SizingStretchProp)) {
@@ -430,6 +614,13 @@ void ResourcePanel::DrawMaterialSection() {
                 ImGui::EndTable();
             }
             ImGui::TreePop();
+
+            // 内容变了 → 网格自带材质自动提升（写 .gemat + 给使用该网格的实体挂覆写），
+            // 否则这次编辑会随网格重载被 MTL 重建覆盖掉
+            if (isMeshBuiltIn &&
+                beforeSig != MaterialSerializer::ContentSignature(*mat, rootStr)) {
+                PromoteIfMeshBuiltInMaterial(mat);
+            }
         }
         ImGui::PopID();
     }
@@ -475,8 +666,18 @@ void ResourcePanel::DrawMaterialCreationControls() {
                     mat->SetFloat("metallic", 0.0f);
                     mat->SetFloat("roughness", 0.5f);
                 }
-                matMgr.Register(name, std::move(mat));
-                GE_CORE_INFO("创建材质 [{0}]", name);
+                Material *raw = matMgr.Register(name, std::move(mat));
+
+                // 出生即落盘。材质此前唯一的持久化载体是场景文件、且只认「被实体覆写
+                // 引用」的材质——新建但还没挂到任何实体上的材质没有任何文档跟着动，
+                // 关掉编辑器就没了。故建出来直接写成 .gemat 资产。
+                const std::string relPath =
+                    std::string(AssetPaths::Materials) + "/" + SanitizeForFileName(name) + ".gemat";
+                if (Renderer::GetAssetManager().SaveMaterial(*raw, relPath)) {
+                    GE_CORE_INFO("创建材质 [{0}] → {1}", name, relPath);
+                } else {
+                    GE_CORE_WARN("创建材质 [{0}] 落盘失败，目前只存在于内存中", name);
+                }
             }
         }
 

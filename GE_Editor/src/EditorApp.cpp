@@ -21,7 +21,7 @@ public:
         auto scene_ctx = std::make_shared<EditorContext>();
         auto scene_layer = std::make_shared<SceneLayer>(scene_ctx);
         auto hierarchy_layer = std::make_shared<HierarchyLayer>(scene_ctx);
-        auto resource_layer = std::make_shared<ResourceLayer>();
+        auto resource_layer = std::make_shared<ResourceLayer>(scene_ctx);
         auto asm_graph_layer = std::make_shared<ASMGraphLayer>(scene_ctx, hierarchy_layer.get());
         auto stats_layer = std::make_shared<StatsLayer>();
         auto debug_draw_layer = std::make_shared<DebugDrawLayer>(scene_ctx);

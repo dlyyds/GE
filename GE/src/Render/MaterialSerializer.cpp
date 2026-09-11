@@ -200,8 +200,7 @@ void WriteMaterialNode(YAML::Node &out, const Material &mat, const std::string &
     out["DoubleSided"] = mat.doubleSided;
 }
 
-void ApplyMaterialNode(Material &mat, const YAML::Node &node) {
-    // 类型：SetType 会清掉旧类型的专属标量参数并补齐新类型默认值，
+void ApplyMaterialNode(Material &mat, const YAML::Node &node) {    // 类型：SetType 会清掉旧类型的专属标量参数并补齐新类型默认值，
     // 故必须先于 FloatParams 应用，文件里的实际参数才能覆盖默认值。
     mat.SetType(node["Type"] && node["Type"].as<std::string>() == "PBR"
                     ? Material::Type::PBR
@@ -254,6 +253,20 @@ void ApplyMaterialNode(Material &mat, const YAML::Node &node) {
                         : Material::AlphaMode::Opaque;
     mat.alphaCutoff = node["AlphaCutoff"] ? node["AlphaCutoff"].as<float>(0.5f) : 0.5f;
     mat.doubleSided = node["DoubleSided"] ? node["DoubleSided"].as<bool>(false) : false;
+}
+
+std::string NodeSignature(const YAML::Node &node) {
+    YAML::Emitter emitter;
+    emitter.SetSeqFormat(YAML::Flow);
+    emitter.SetMapFormat(YAML::Flow);
+    emitter << node;
+    return emitter.c_str();
+}
+
+std::string ContentSignature(const Material &mat, const std::string &assetRoot) {
+    YAML::Node node;
+    WriteMaterialNode(node, mat, assetRoot);
+    return NodeSignature(node);
 }
 
 } // namespace GE::MaterialSerializer

@@ -179,15 +179,11 @@ void SerializeMaterialNode(YAML::Node &matNode, Material *mat) {
 Material *DeserializeMaterialNode(const YAML::Node &matNode) {
     auto &matMgr = Renderer::GetMaterialManager();
 
-    // 内容键：直接对**节点内容本身**取键，而不是手写字段清单拼接。
+    // 内容键：直接对**节点内容本身**取签名，而不是手写字段清单拼接。
     // 手写清单每加一个可序列化字段就得记得同步——alphaMode / BaseColor 就因为漏
     // 同步而一度不参与去重（两个只差这两项的材质会被误判成同一实例、互相覆盖）。
-    // 用序列化文本作键，形状改了键自动跟着改。Flow 风格保证键是单行。
-    YAML::Emitter emitter;
-    emitter.SetSeqFormat(YAML::Flow);
-    emitter.SetMapFormat(YAML::Flow);
-    emitter << matNode;
-    const std::string fullKey = "scene:" + std::string(emitter.c_str());
+    // 用签名，形状改了键自动跟着改。
+    const std::string fullKey = "scene:" + MaterialSerializer::NodeSignature(matNode);
 
     if (Material *existing = matMgr.Get(fullKey)) {
         // 命中的实例可能已被编辑器改过（内容与注册 key 脱节），按文件内容复铺，

@@ -641,6 +641,13 @@ void SceneLayer::SaveScene() {
     // 网格/纹理/材质由全局管理器持有，序列化器自身不拥有资源
     SceneSerializer serializer(m_Context->Scene.get());
     serializer.Serialize(filepath);
+
+    // 场景引用的材质资产是**独立文件**：只存场景不刷材质的话，重载时覆写引用的
+    // .gemat 还是旧内容，用户刚改的东西看起来又"没存住"。故一并落盘。
+    const int matSaved = Renderer::GetAssetManager().SaveAllDirtyMaterials();
+    if (matSaved > 0) {
+        GE_CORE_INFO("SceneLayer: 场景引用的材质资产已更新 {0} 个", matSaved);
+    }
 }
 
 bool SceneLayer::LoadSceneFromFile(std::string_view filepath) {

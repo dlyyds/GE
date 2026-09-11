@@ -4,24 +4,32 @@
 
 #include "GE/Render/Material.h"
 
+#include <cstdint>
 #include <unordered_map>
 #include <vector>
 
 namespace GE {
+
+class Scene;
+class Mesh;
 
 /// 资源面板 —— 用 ImGui 展示并调试全局 纹理 / 材质 / 网格 资源。
 ///
 /// 功能：
 /// - 顶部统计条：纹理 / 材质 / 网格 数量总览
 /// - "纹理" 段：缩略图 + 路径 / 尺寸 / 格式，支持按名过滤
-/// - "材质" 段：可实时编辑着色器类型、纹理槽位、标量参数与渲染状态
+/// - "材质" 段：可实时编辑着色器类型、纹理槽位、标量参数与渲染状态；材质可
+///   保存为 `.gemat` 资产，网格自带材质一经编辑会自动提升为资产
 /// - "网格"  段：顶点 / 索引数一览，支持按名过滤
 ///
 /// 数据来源为 Renderer 全局管理器（TextureManager / MaterialManager / MeshManager），
-/// 面板不拥有任何资源，仅做调试展示与参数调整，资源生命周期由各管理器统一管理。
+/// 面板不拥有任何资源。场景上下文（非拥有）仅用于材质提升时遍历实体写覆写。
 class ResourcePanel {
 public:
     ResourcePanel() = default;
+
+    /// 绑定场景（非拥有；传 nullptr 解绑）。场景对象被替换时由 ResourceLayer 重绑定。
+    void SetContext(Scene *scene);
 
     /// 每帧 ImGui 渲染
     void OnImGuiRender();
@@ -41,6 +49,23 @@ private:
 
     /// 绘制「新增材质」表单（命名 + 选择着色器类型）
     void DrawMaterialCreationControls();
+
+    /// 绘制材质的资产状态（未保存 / 无源文件）与落盘动作（保存 / 另存为）。
+    /// isMeshBuiltIn 由调用方先用 FindMeshUsingMaterial 算好，避免重复扫描网格表。
+    void DrawMaterialAssetControls(Material *mat, bool isMeshBuiltIn);
+
+    /// 把材质落盘：saveAs=true 走另存为对话框，否则写回其源文件。
+    void SaveMaterialAsset(Material *mat, bool saveAs);
+
+    /// 若该材质是某网格子网格的默认材质，把它提升为 `.gemat` 资产并给使用该
+    /// 网格的实体写覆写（网格自带材质随网格加载重建，只有覆写能跨加载留住）。
+    void PromoteIfMeshBuiltInMaterial(Material *mat);
+
+    /// 找出把该材质用作子网格默认材质的网格（无则 nullptr），并回填子网格索引。
+    Mesh *FindMeshUsingMaterial(Material *mat, uint32_t &subMeshIndex) const;
+
+    /// 给所有使用该网格的实体写覆写（幂等）。
+    int BindMaterialToEntitiesUsingMesh(Material *mat, Mesh *mesh, uint32_t subMeshIndex);
 
     /// 绘制网格资源列表（过滤）
     void DrawMeshSection();
@@ -62,6 +87,9 @@ private:
     void PruneThumbnails(const std::vector<const Texture *> &live);
 
 private:
+    /// 绑定的场景（非拥有；材质提升时遍历实体用）
+    Scene *m_Context = nullptr;
+
     /// 停靠目标 DockSpace ID（根上下文取 "MainDockspace"，首帧初始化一次）
     ImGuiID m_DockSpaceID = 0;
 

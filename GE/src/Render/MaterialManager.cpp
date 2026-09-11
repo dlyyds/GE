@@ -12,6 +12,8 @@
 
 #include <filesystem>
 #include <fstream>
+#include <utility>
+#include <vector>
 
 namespace GE {
 
@@ -176,6 +178,26 @@ bool MaterialManager::Save(Material &mat, const std::string &resolvedPath,
     m_ByPath[resolvedPath] = &mat;
     mat.ClearDirty();
     return true;
+}
+
+int MaterialManager::SaveAllDirty(const std::string &assetRoot) {
+    // 先收集再写：Save 会回写 m_ByPath，遍历中改容器容易踩坑
+    std::vector<std::pair<std::string, Material *>> pending;
+    pending.reserve(m_ByPath.size());
+    for (const auto &kv : m_ByPath) {
+        if (kv.second && kv.second->IsDirty() && !kv.first.empty()) {
+            pending.emplace_back(kv.first, kv.second);
+        }
+    }
+
+    int written = 0;
+    for (auto &[path, mat] : pending) {
+        if (Save(*mat, path, assetRoot)) {
+            GE_CORE_INFO("MaterialManager: 已保存材质资产 {0}", path);
+            ++written;
+        }
+    }
+    return written;
 }
 
 } // namespace GE

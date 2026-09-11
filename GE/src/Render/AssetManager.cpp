@@ -130,6 +130,10 @@ bool AssetManager::SaveMaterial(Material &mat, const std::string &path) {
     return GetMaterialManager().Save(mat, ResolvePath(path).string(), GetAssetRoot().string());
 }
 
+int AssetManager::SaveAllDirtyMaterials() {
+    return GetMaterialManager().SaveAllDirty(GetAssetRoot().string());
+}
+
 bool AssetManager::PlayOneShot(const std::string &path, float volume) {
     const std::filesystem::path resolved = ResolvePath(path);
     return GetSoundManager().PlayOneShot(resolved.string(), volume);

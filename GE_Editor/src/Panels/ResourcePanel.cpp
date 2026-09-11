@@ -406,6 +406,7 @@ void ResourcePanel::DrawMaterialSection() {
                     if (ImGui::Combo("##alphaMode", &am, kAlphaModes,
                                      IM_ARRAYSIZE(kAlphaModes))) {
                         mat->alphaMode = static_cast<Material::AlphaMode>(am);
+                        mat->MarkDirty();  // 公开字段不经 setter，需显式置脏
                     }
                 }
                 DrawPropertyLabel("Alpha Mode");
@@ -413,13 +414,17 @@ void ResourcePanel::DrawMaterialSection() {
                     ImGui::TableNextRow();
                     ImGui::TableSetColumnIndex(0);
                     ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
-                    ImGui::SliderFloat("##alphaCutoff", &mat->alphaCutoff, 0.0f, 1.0f);
+                    if (ImGui::SliderFloat("##alphaCutoff", &mat->alphaCutoff, 0.0f, 1.0f)) {
+                        mat->MarkDirty();
+                    }
                     DrawPropertyLabel("Alpha Cutoff");
                 }
 
                 ImGui::TableNextRow();
                 ImGui::TableSetColumnIndex(0);
-                ImGui::Checkbox("##double", &mat->doubleSided);
+                if (ImGui::Checkbox("##double", &mat->doubleSided)) {
+                    mat->MarkDirty();
+                }
                 DrawPropertyLabel("双面渲染");
 
                 ImGui::EndTable();

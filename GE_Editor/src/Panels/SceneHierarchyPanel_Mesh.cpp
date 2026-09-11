@@ -198,11 +198,16 @@ static void DrawMaterialEditor(Material *material) {
     if (ImGui::Combo("透明模式", &alphaMode, kAlphaModeNames,
                      IM_ARRAYSIZE(kAlphaModeNames))) {
         material->alphaMode = static_cast<Material::AlphaMode>(alphaMode);
+        material->MarkDirty();  // 公开字段不经 setter，需显式置脏
     }
     if (material->alphaMode == Material::AlphaMode::Mask) {
-        ImGui::SliderFloat("裁剪阈值", &material->alphaCutoff, 0.0f, 1.0f);
+        if (ImGui::SliderFloat("裁剪阈值", &material->alphaCutoff, 0.0f, 1.0f)) {
+            material->MarkDirty();
+        }
     }
-    ImGui::Checkbox("双面渲染", &material->doubleSided);
+    if (ImGui::Checkbox("双面渲染", &material->doubleSided)) {
+        material->MarkDirty();
+    }
 }
 
 /// 绘制子网格材质选择器：选材质即写入 MeshRendererComponent 的覆写表。

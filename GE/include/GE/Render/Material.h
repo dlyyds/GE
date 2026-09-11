@@ -204,6 +204,32 @@ public:
     const glm::vec3 &GetEmissiveFactor() const { return m_EmissiveFactor; }
 
     // ========================================================================
+    // 固有色（无贴图时的 albedo 源头）
+    // ========================================================================
+
+    /**
+     * @brief 设置固有色（RGBA）。
+     *
+     * 仅当 Albedo 槽**没有文件贴图**时使用：加载/反序列化时按此色生成一张
+     * 1×1 纯色 albedo 纹理。存在贴图文件时贴图优先，本字段不参与渲染。
+     *
+     * 存在这个字段的原因：MTL 的 Kd 早先只被烘焙成 solid:RRGGBBAA 内存纹理，
+     * 而内存纹理没有文件路径、无法序列化，导致"非白 Kd 的纯色材质存盘后变白"。
+     * 颜色是材质的语义，不该只活在一张不可持久化的纹理里。
+     *
+     * @param color [R,G,B,A] 固有色（A 即基础不透明度）
+     */
+    void SetBaseColor(const glm::vec4 &color) {
+        m_BaseColor = color;
+        m_Dirty = true;
+    }
+
+    /**
+     * @brief 获取固有色。
+     */
+    const glm::vec4 &GetBaseColor() const { return m_BaseColor; }
+
+    // ========================================================================
     // 材质类型
     // ========================================================================
 
@@ -254,6 +280,27 @@ public:
     }
 
     // ========================================================================
+    // 源文件（`.gemat` 资产身份）
+    // ========================================================================
+
+    /**
+     * @brief 设置材质资产源文件路径（相对资源根的规范形，如 materials/棋盘.gemat）。
+     *
+     * 模式与 Texture::m_FilePath 一致：只有从 `.gemat` 加载、或另存为 `.gemat`
+     * 之后才有值。非空 = 文件背书，序列化时实体覆写写引用而非内联；空 = 临时
+     * 材质（网格自带材质、场景内联去重材质、编辑器里刚建还没落盘的）。
+     */
+    void SetSourcePath(const std::string &path) { m_SourcePath = path; }
+
+    /**
+     * @brief 获取材质资产源文件路径（空 = 无文件背书）。
+     */
+    const std::string &GetSourcePath() const { return m_SourcePath; }
+
+    /// 是否文件背书（有 `.gemat` 源文件）。
+    bool IsFileBacked() const { return !m_SourcePath.empty(); }
+
+    // ========================================================================
     // 渲染状态（公开字段，直接修改）
     // ========================================================================
 
@@ -271,8 +318,13 @@ public:
 
     /**
      * @brief 设置材质显示名（独立于管理器的注册 key，可自由改名不改动 manager）。
+     *
+     * 显示名会落盘（材质节点的 Name 字段），故改名同样置脏。
      */
-    void SetName(const std::string &name) { m_Name = name; }
+    void SetName(const std::string &name) {
+        m_Name = name;
+        m_Dirty = true;
+    }
 
     /**
      * @brief 获取材质显示名。
@@ -291,6 +343,15 @@ public:
      */
     void ClearDirty() { m_Dirty = false; }
 
+    /**
+     * @brief 手动置脏标记。
+     *
+     * 给直接改公开字段（alphaMode / alphaCutoff / doubleSided）的编辑路径用——
+     * 这些字段不经 setter，改它们不会自动置脏，不显式调用的话「未保存」标记
+     * 会漏报这三项。
+     */
+    void MarkDirty() { m_Dirty = true; }
+
 private:
     // ========================================================================
     // 成员
@@ -307,7 +368,11 @@ private:
     /// 自发光颜色因子 [R,G,B]（glTF emissiveFactor，默认 [0,0,0] = 不发光）
     glm::vec3 m_EmissiveFactor{0.0f, 0.0f, 0.0f};
 
+    /// 固有色 [R,G,B,A]（仅 Albedo 槽无贴图文件时用于生成纯色纹理；白 = 无着色）
+    glm::vec4 m_BaseColor{1.0f, 1.0f, 1.0f, 1.0f};
+
     std::string m_Name;        ///< 材质显示名（独立字段，默认 = 注册名，可自由改名）
+    std::string m_SourcePath;  ///< `.gemat` 资产源文件（相对资源根规范形，空 = 无文件背书）
     bool        m_Dirty = true; ///< 脏标记（构造时默认为脏，首次使用前需处理）
 };
 

@@ -13,12 +13,12 @@
 #include "Scene/Components.h"
 #include "Render/Texture.h"
 #include "Render/Material.h"
+#include "Render/MaterialSerializer.h"
 #include "Render/Mesh.h"
 #include "Render/Renderer.h"
 #include "Render/MeshManager.h"
 #include "Render/MaterialManager.h"
 #include "Render/AssetManager.h"
-#include "Render/AssetPathUtil.h"
 #include "Core/Log.h"
 #include "Render/TextureManager.h"
 #include "Render/GEMeshLoader.h"
@@ -60,46 +60,10 @@ namespace {
  * @return 应写入 YAML 的路径字符串
  */
 std::string CanonicalAssetRef(const std::string &raw) {
-    if (raw.empty()) {
-        return raw;
-    }
-    if (auto canon = AssetPathUtil::ToCanonical(raw, Renderer::GetAssetManager().GetAssetRoot())) {
-        return *canon;
-    }
-    GE_CORE_WARN("SceneSerializer: 资产引用无法归一为相对资源根路径，原样写入: {0}", raw);
-    return raw;
-}
-
-// ============================================================
-// 采样器参数辅助
-// ============================================================
-
-/// 采样器寻址模式 → 字符串
-const char *AddressModeToString(vk::SamplerAddressMode mode) {
-    switch (mode) {
-    case vk::SamplerAddressMode::eMirroredRepeat: return "MirroredRepeat";
-    case vk::SamplerAddressMode::eClampToEdge:    return "ClampToEdge";
-    case vk::SamplerAddressMode::eClampToBorder:  return "ClampToBorder";
-    default:                                      return "Repeat";
-    }
-}
-
-/// 字符串 → 采样器寻址模式
-vk::SamplerAddressMode AddressModeFromString(const std::string &s) {
-    if (s == "MirroredRepeat") return vk::SamplerAddressMode::eMirroredRepeat;
-    if (s == "ClampToEdge")    return vk::SamplerAddressMode::eClampToEdge;
-    if (s == "ClampToBorder")  return vk::SamplerAddressMode::eClampToBorder;
-    return vk::SamplerAddressMode::eRepeat;
-}
-
-/// 纹素过滤器 → 字符串
-const char *FilterToString(vk::Filter f) {
-    return (f == vk::Filter::eNearest) ? "Nearest" : "Linear";
-}
-
-/// 字符串 → 纹素过滤器
-vk::Filter FilterFromString(const std::string &s) {
-    return (s == "Nearest") ? vk::Filter::eNearest : vk::Filter::eLinear;
+    // 形状实现在 MaterialSerializer（`.gemat` 资产与场景内联材质共用），
+    // 此处只负责补上资源根——场景里网格/精灵/音频/水面等引用也走它。
+    return MaterialSerializer::CanonicalAssetRef(
+        raw, Renderer::GetAssetManager().GetAssetRoot().string());
 }
 
 // ============================================================
@@ -185,166 +149,29 @@ AnimCondition::Cmp AnimConditionCmpFromName(const std::string &name) {
     return AnimCondition::Cmp::Greater;
 }
 
-/**
- * @brief 将纹理采样器参数写入 YAML 节点。
- *
- * 保存过滤方式（Mag/MinFilter）、寻址模式（AddressMode）和各向异性开关，
- * 供反序列化时恢复。纹理指针为空时为空操作。
- */
-void SerializeSamplerNode(YAML::Node &samplerNode, Texture *tex) {
-    if (!tex) {
-        return;
-    }
-    samplerNode["MagFilter"]   = FilterToString(tex->GetMagFilter());
-    samplerNode["MinFilter"]   = FilterToString(tex->GetMinFilter());
-    samplerNode["AddressMode"] = AddressModeToString(tex->GetAddressMode());
-    samplerNode["Anisotropy"]  = tex->GetAnisotropyEnabled();
-}
-
-/**
- * @brief 将采样器参数应用到纹理（反序列化恢复）。
- *
- * 纹理通过 TextureManager 按路径加载，默认采样参数为线性过滤 + 重复寻址；
- * 这里按 YAML 中保存的参数调用 Set* 便捷方法重建采样器。
- * 纹理指针为空或节点缺失时为空操作。
- */
-void ApplySamplerParams(Texture *tex, const YAML::Node &samplerNode) {
-    if (!tex || !samplerNode) {
-        return;
-    }
-
-    if (samplerNode["MagFilter"] && samplerNode["MinFilter"]) {
-        vk::Filter mag = FilterFromString(samplerNode["MagFilter"].as<std::string>("Linear"));
-        vk::Filter min = FilterFromString(samplerNode["MinFilter"].as<std::string>("Linear"));
-        tex->SetFilter(mag, min);
-    }
-    if (samplerNode["AddressMode"]) {
-        tex->SetAddressMode(AddressModeFromString(samplerNode["AddressMode"].as<std::string>("Repeat")));
-    }
-    if (samplerNode["Anisotropy"]) {
-        tex->SetAnisotropy(samplerNode["Anisotropy"].as<bool>(false));
-    }
-}
-
 // ============================================================
 // 材质辅助（MeshRenderer 子网格材质覆写序列化）
 // ============================================================
-
-// 前向声明：SerializeVec3 / DeserializeVec3 定义在本文件下方的
-// "YAML 转换辅助函数"区，材质序列化函数先于其定义使用，需在此声明。
-// （不带默认实参，定义处的默认值在调用点不可见，调用时显式传参。）
-YAML::Node SerializeVec3(const glm::vec3 &v);
-glm::vec3 DeserializeVec3(const YAML::Node &node, const glm::vec3 &def);
-
-/// 材质纹理槽位名（与 Material::TextureSlot 顺序一一对应）
-const char *kTextureSlotNames[] = {"Albedo", "Normal", "Emissive", "MetallicRoughness"};
-
-/// 材质纹理槽位名 → 槽位枚举（用于反序列化）
-Material::TextureSlot TextureSlotFromName(const std::string &name) {
-    if (name == "Normal") return Material::Normal;
-    if (name == "Emissive") return Material::Emissive;
-    if (name == "MetallicRoughness") return Material::MetallicRoughness;
-    return Material::Albedo;
-}
+// 材质的 YAML 形状由 MaterialSerializer 统一提供（`.gemat` 资产与场景内联节点
+// 共用一份实现）。本节只保留场景特有的「内容去重」：同一场景内内容相同的内联
+// 材质复用同一实例，避免同一材质在场景文件里存 N 份。
 
 /**
- * @brief 将材质写入 YAML 节点（纹理槽位 + 浮点参数）。
- *
- * 纹理以文件路径写入；浮点参数以 name → value 的 map 写入 FloatParams 节点。
+ * @brief 把材质写进场景的覆写节点（形状见 MaterialSerializer）。
  */
 void SerializeMaterialNode(YAML::Node &matNode, Material *mat) {
     if (!mat) {
         return;
     }
-
-    // 材质类型（BlinnPhong / PBR），决定渲染管线
-    matNode["Type"] = (mat->GetType() == Material::Type::PBR) ? "PBR" : "BlinnPhong";
-
-    // 材质显示名（m_Name），非空才写，保持序列化文件干净。
-    // 以 "scene:" 开头的是反序列化时按内容生成的去重键（拼接了纹理路径），并非用户命名
-    // 的显示名——写出去只会把机器绝对路径带进场景文件，且下次加载会重新生成，故跳过。
-    const std::string &matName = mat->GetName();
-    if (!matName.empty() && matName.rfind("scene:", 0) != 0) {
-        matNode["Name"] = matName;
-    }
-
-    // 纹理槽位（仅写有纹理且带文件路径的槽位）
-    for (int s = 0; s < Material::Count; ++s) {
-        auto slot = static_cast<Material::TextureSlot>(s);
-        Texture *tex = mat->GetTexture(slot);
-        if (tex && !tex->GetFilePath().empty()) {
-            std::string texKey = std::string(kTextureSlotNames[s]) + "Texture";
-            matNode[texKey] = CanonicalAssetRef(tex->GetFilePath());
-            YAML::Node samplerNode = matNode[texKey + "Sampler"];
-            SerializeSamplerNode(samplerNode, tex);
-        }
-    }
-
-    // 浮点参数（如 shininess、specularStrength、pbr 系数）
-    const auto &params = mat->GetFloatParams();
-    if (!params.empty()) {
-        YAML::Node fp = matNode["FloatParams"];
-        for (const auto &kv : params) {
-            fp[kv.first] = kv.second;
-        }
-    }
-
-    // 自发光颜色因子（glTF emissiveFactor，乘自发光贴图颜色，两类型共用）
-    matNode["EmissiveFactor"] = SerializeVec3(mat->GetEmissiveFactor());
+    MaterialSerializer::WriteMaterialNode(
+        matNode, *mat, Renderer::GetAssetManager().GetAssetRoot().string());
 }
 
 /**
- * @brief 把材质 YAML 节点的内容铺到一个 Material 上（类型 / 纹理 / 标量参数 / 自发光）。
+ * @brief 从材质 YAML 节点创建材质并注册到 MaterialManager（场景**内联**覆写形态）。
  *
- * 新建材质与"内容去重命中已有实例"两条路径共用。命中路径必须复铺一遍：
- * 材质注册后仍可被编辑器改（改类型、换贴图、调参数），此时内容已与注册 key
- * 脱节，若直接把旧实例当文件里的材质返回，就会出现"改了 PBR/Blinn-Phong
- * 并存了盘，重载却回到旧类型"。
- *
- * @param mat     目标材质（内容整体按节点重写）
- * @param matNode 材质节点
- */
-void ApplyMaterialNode(Material &mat, const YAML::Node &matNode) {
-    mat.SetType(matNode["Type"] && matNode["Type"].as<std::string>() == "PBR"
-                    ? Material::Type::PBR
-                    : Material::Type::BlinnPhong);
-
-    for (auto name : kTextureSlotNames) {
-        std::string texKey = std::string(name) + "Texture";
-        Material::TextureSlot slot = TextureSlotFromName(name);
-        if (matNode[texKey]) {
-            std::string path = matNode[texKey].as<std::string>("");
-            // 异步加载：返回未就绪空壳，渲染端 IsReady() 门控降级默认纹理，
-            // 就绪后自动亮相，避免反序列化场景时主线程阻塞在纹理解码/上传
-            if (Texture *tex = Renderer::GetAssetManager().LoadTextureAsync(path)) {
-                ApplySamplerParams(tex, matNode[texKey + "Sampler"]);
-                mat.SetTexture(slot, tex);
-            } else {
-                GE_CORE_WARN("SceneSerializer: 材质纹理异步加载失败: {0}", path);
-                mat.SetTexture(slot, nullptr);
-            }
-        } else {
-            mat.SetTexture(slot, nullptr);  // 文件里没有该槽 = 该材质无此贴图
-        }
-    }
-
-    if (matNode["FloatParams"]) {
-        for (const auto &it : matNode["FloatParams"]) {
-            mat.SetFloat(it.first.as<std::string>(), it.second.as<float>());
-        }
-    }
-
-    // 自发光颜色因子（缺省 [0,0,0] = 不发光）
-    mat.SetEmissiveFactor(matNode["EmissiveFactor"]
-                              ? DeserializeVec3(matNode["EmissiveFactor"], {0.0f, 0.0f, 0.0f})
-                              : glm::vec3(0.0f));
-}
-
-/**
- * @brief 从材质 YAML 节点创建材质并注册到 MaterialManager。
- *
- * 按内容生成 key（纹理路径 + 类型 + 浮点参数），内容相同的材质复用同一实例。
- * 用于 MeshRenderer 子网格材质覆写的反序列化。
+ * 按节点内容去重：内容完全相同的内联材质复用同一实例，避免同一材质在场景文件里
+ * 存 N 份。文件背书的材质不走这里（覆写节点只写路径，见覆写读入端）。
  *
  * @param matNode 材质节点
  * @return 材质指针
@@ -352,48 +179,24 @@ void ApplyMaterialNode(Material &mat, const YAML::Node &matNode) {
 Material *DeserializeMaterialNode(const YAML::Node &matNode) {
     auto &matMgr = Renderer::GetMaterialManager();
 
-    // 构建内容 key（类型 + 显示名 + 纹理 + 参数拼接），用于去重
-    std::string key;
-    key += matNode["Type"] ? matNode["Type"].as<std::string>() : "BlinnPhong";
-    key += ";";
-    // 显示名参与去重：同名才复用；不同名 = 编辑器里两个材质，不该共享实例
-    // （否则后者的 Name 会覆盖前者的显示名）
-    if (matNode["Name"]) {
-        key += "Name:" + matNode["Name"].as<std::string>() + ";";
-    }
-    for (auto name : kTextureSlotNames) {
-        std::string texKey = std::string(name) + "Texture";
-        if (matNode[texKey]) {
-            key += std::string(name) + ":" + matNode[texKey].as<std::string>() + ";";
-        }
-    }
-    if (matNode["FloatParams"]) {
-        std::vector<std::string> names;
-        for (const auto &it : matNode["FloatParams"]) {
-            names.push_back(it.first.as<std::string>());
-        }
-        std::sort(names.begin(), names.end());
-        for (const auto &n : names) {
-            key += n + "=" + matNode["FloatParams"][n].as<std::string>() + ";";
-        }
-    }
-    // 自发光颜色因子参与去重：因子不同的材质不复用同一实例
-    if (matNode["EmissiveFactor"]) {
-        key += "EmissiveFactor:";
-        for (const auto &v : matNode["EmissiveFactor"]) {
-            key += v.as<std::string>() + ",";
-        }
-        key += ";";
-    }
-    const std::string fullKey = "scene:" + key;
+    // 内容键：直接对**节点内容本身**取键，而不是手写字段清单拼接。
+    // 手写清单每加一个可序列化字段就得记得同步——alphaMode / BaseColor 就因为漏
+    // 同步而一度不参与去重（两个只差这两项的材质会被误判成同一实例、互相覆盖）。
+    // 用序列化文本作键，形状改了键自动跟着改。Flow 风格保证键是单行。
+    YAML::Emitter emitter;
+    emitter.SetSeqFormat(YAML::Flow);
+    emitter.SetMapFormat(YAML::Flow);
+    emitter << matNode;
+    const std::string fullKey = "scene:" + std::string(emitter.c_str());
 
     if (Material *existing = matMgr.Get(fullKey)) {
         // 命中的实例可能已被编辑器改过（内容与注册 key 脱节），按文件内容复铺，
         // 保证"拿到的材质 == 文件里写的材质"
-        ApplyMaterialNode(*existing, matNode);
+        MaterialSerializer::ApplyMaterialNode(*existing, matNode);
         if (matNode["Name"]) {
             existing->SetName(matNode["Name"].as<std::string>());
         }
+        existing->ClearDirty();  // 内容已与节点一致
         return existing;
     }
 
@@ -405,7 +208,8 @@ Material *DeserializeMaterialNode(const YAML::Node &matNode) {
         mat->SetName(fullKey);
     }
 
-    ApplyMaterialNode(*mat, matNode);
+    MaterialSerializer::ApplyMaterialNode(*mat, matNode);
+    mat->ClearDirty();  // 内容已与节点一致
 
     return matMgr.Register(fullKey, std::move(mat));
 }
@@ -818,7 +622,7 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
                 spriteNode["Texture"] = CanonicalAssetRef(src.SpriteTexture->GetFilePath());
                 // 同时保存采样器参数，供反序列化恢复
                 YAML::Node samplerNode = spriteNode["TextureSampler"];
-                SerializeSamplerNode(samplerNode, src.SpriteTexture);
+                MaterialSerializer::WriteSamplerNode(samplerNode, src.SpriteTexture);
             }
         }
 
@@ -1445,7 +1249,7 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
                 // 异步加载：未就绪前渲染器降级默认纹理，就绪后自动亮相
                 src.SpriteTexture = Renderer::GetAssetManager().LoadTextureAsync(texPath);
                 // 恢复采样器参数（若保存了）
-                ApplySamplerParams(src.SpriteTexture, spriteNode["TextureSampler"]);
+                MaterialSerializer::ApplySamplerNode(src.SpriteTexture, spriteNode["TextureSampler"]);
             }
         }
 

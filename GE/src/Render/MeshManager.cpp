@@ -102,6 +102,11 @@ static void ApplyMaterialData(Material &mat, const MaterialData &md,
     mat.doubleSided = md.doubleSided;
     mat.SetFloat("baseAlpha", md.dissolve);
 
+    // 固有色：把 MTL 的 Kd 连同 dissolve 记进材质字段。这不是渲染用的第二个真相——
+    // 无贴图时渲染仍读下面生成的纯色纹理，但内存纹理没有文件路径、无法序列化，
+    // 只有落到本字段上，非白 Kd 的纯色材质才能在存盘后不变白。
+    mat.SetBaseColor(glm::vec4(md.baseColor, md.dissolve));
+
     // 漫反射贴图：有 map_Kd 则加载；否则用漫反射颜色的纯色纹理（非白色时）。
     // 颜色贴图以 sRGB 格式加载，硬件采样时自动解码到线性空间（与输出侧
     // sRGB swapchain 的硬件编码配对成标准线性管线）。法线/金属度/粗糙度是

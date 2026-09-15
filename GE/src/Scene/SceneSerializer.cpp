@@ -442,6 +442,12 @@ bool BakeSourceToGemesh(const std::string &srcKey, const std::string &outPath,
     }
     meta.sourceAsset = srcKey;
 
+    // 内嵌路径归一：.gemesh 把贴图路径与 sourceAsset 当字符串存盘，运行期直接拿去加载贴图，
+    // 残留开发机绝对路径的产物换台机器必断。烘焙源通常是 LoadMesh 解析后的绝对路径，
+    // 故此处必须显式压回相对资源根的规范形。
+    CanonicalizeGEMeshEmbeddedRefs(data, meta,
+                                   Renderer::GetAssetManager().GetAssetRoot());
+
     return SerializeGEMesh(outPath, data, meta, &err);
 }
 
@@ -615,6 +621,7 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
 
             // 纹理路径 + 采样器参数
             if (src.SpriteTexture && !src.SpriteTexture->GetFilePath().empty()) {
+                // 资产字段——改名请同步 Scene/SceneAssetScanner.cpp
                 spriteNode["Texture"] = CanonicalAssetRef(src.SpriteTexture->GetFilePath());
                 // 同时保存采样器参数，供反序列化恢复
                 YAML::Node samplerNode = spriteNode["TextureSampler"];
@@ -633,6 +640,7 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
                 const std::string meshPath =
                     ResolveMeshSerializedPath(mc.MeshPtr->GetFilePath(), bakedGemeshCache);
                 if (!meshPath.empty()) {
+                    // 资产字段——改名请同步 Scene/SceneAssetScanner.cpp
                     meshNode["Mesh"] = CanonicalAssetRef(meshPath);
                 }
             }
@@ -717,6 +725,7 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
         if (entity.HasComponent<EnvironmentComponent>()) {
             const auto &ec = entity.GetComponent<EnvironmentComponent>();
             YAML::Node envNode = entityNode["Environment"];
+            // 资产字段（环境目录名，不是路径）——改名请同步 Scene/SceneAssetScanner.cpp
             envNode["Name"] = ec.Name;
             envNode["Enabled"] = ec.Enabled;
             envNode["SkyboxEnabled"] = ec.SkyboxEnabled;
@@ -736,6 +745,7 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
                 for (const auto &s : as.Sounds) {
                     YAML::Node sn;
                     sn["Name"] = s.Name;
+                    // 资产字段——改名请同步 Scene/SceneAssetScanner.cpp
                     sn["SoundPath"] = CanonicalAssetRef(s.SoundPath);
                     sn["PlayOnAwake"] = s.PlayOnAwake;
                     sn["Loop"] = s.Loop;
@@ -839,11 +849,13 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
             waterNode["DeepColor"] = SerializeVec3(wc.DeepColor);
             waterNode["ShallowColor"] = SerializeVec3(wc.ShallowColor);
             if (wc.NormalMap && !wc.NormalMap->GetFilePath().empty()) {
+                // 资产字段——改名请同步 Scene/SceneAssetScanner.cpp
                 waterNode["NormalMap"] = CanonicalAssetRef(wc.NormalMap->GetFilePath());
             }
             waterNode["NormalTiling"] = wc.NormalTiling;
             waterNode["NormalStrength"] = wc.NormalStrength;
             if (wc.ColorMap && !wc.ColorMap->GetFilePath().empty()) {
+                // 资产字段——改名请同步 Scene/SceneAssetScanner.cpp
                 waterNode["ColorMap"] = CanonicalAssetRef(wc.ColorMap->GetFilePath());
             }
             waterNode["ColorTiling"] = wc.ColorTiling;
@@ -926,6 +938,7 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
                         const std::string skinMeshPath =
                             ResolveMeshSerializedPath(sc.MeshPtr->GetFilePath(), bakedGemeshCache);
                         if (!skinMeshPath.empty()) {
+                            // 资产字段——改名请同步 Scene/SceneAssetScanner.cpp
                             entityNode["Skin"]["Mesh"] = CanonicalAssetRef(skinMeshPath);
                         }
                     }
@@ -940,6 +953,7 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
             const auto &sc = entity.GetComponent<ScriptComponent>();
             if (!sc.ScriptPath.empty()) {
                 YAML::Node scriptNode = entityNode["Script"];
+                // 资产字段（基准是 assets/scripts，不是资源根）——改名请同步 SceneAssetScanner.cpp
                 scriptNode["ScriptPath"] = sc.ScriptPath;
                 scriptNode["Enabled"] = sc.Enabled;
                 // public 字段值：<名, {Type, Value}>（随实体各存一份，面板编辑 → 落盘）
@@ -982,6 +996,7 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
                         continue;
                     }
                     YAML::Node clipNode;
+                    // 资产字段（"path#N" 源键，运行期读派生的 .geanim）——同步 SceneAssetScanner.cpp
                     clipNode["Clip"] = CanonicalAssetRef(inst.clip->source);
                     YAML::Node targetsNode = clipNode["Targets"];
                     targetsNode.SetStyle(YAML::EmitterStyle::Flow);

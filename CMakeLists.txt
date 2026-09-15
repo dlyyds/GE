@@ -272,6 +272,23 @@ target_include_directories(gemesh PRIVATE
 
 target_link_libraries(gemesh PRIVATE ${GE_NAME})
 
+#gepack CLI（依赖收集 + 打包：场景 → 资产清单 → 校验 → dist/）
+# ==============================================
+set(GEpackTools_SRC
+        ${CMAKE_SOURCE_DIR}/tools/gepack/gepack_main.cpp
+        ${CMAKE_SOURCE_DIR}/tools/gepack/PackRules.cpp
+        ${CMAKE_SOURCE_DIR}/tools/gepack/AssetDependencyGraph.cpp
+        ${CMAKE_SOURCE_DIR}/tools/gepack/Packager.cpp
+)
+
+add_executable(gepack ${GEpackTools_SRC})
+target_include_directories(gepack PRIVATE
+        ${CMAKE_SOURCE_DIR}/GE/include
+        ${CMAKE_SOURCE_DIR}/tools/gepack
+)
+
+target_link_libraries(gepack PRIVATE ${GE_NAME})
+
 #GE_Runtime EXE（发行版播放器：无编辑器 UI，场景直画背缓冲）
 # ==============================================
 set(Runtime_NAME GE_Runtime)

@@ -167,6 +167,7 @@ void WriteMaterialNode(YAML::Node &out, const Material &mat, const std::string &
         const Texture *tex = mat.GetTexture(slot);
         if (tex && !tex->GetFilePath().empty()) {
             std::string texKey = std::string(kTextureSlotNames[s]) + "Texture";
+            // 资产字段（内联材质覆写的四个贴图槽）——改名请同步 Scene/SceneAssetScanner.cpp
             out[texKey] = CanonicalAssetRef(tex->GetFilePath(), assetRoot);
             YAML::Node samplerNode = out[texKey + "Sampler"];
             WriteSamplerNode(samplerNode, tex);

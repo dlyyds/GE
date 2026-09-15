@@ -1,0 +1,26 @@
+# gepack 打包规则
+#
+# 只放「策略」：哪些文件不进发行目录。字段名知识（场景里哪些字段是资产引用）在
+# GE/src/Scene/SceneAssetScanner.cpp，归一口径在 GE/include/GE/Render/AssetPathUtil.h。
+#
+# 模式语法（相对资源根，'/' 分隔）：'**' 跨目录、'*' 段内任意、'?' 单字符。
+# 命中即不收（对固定集合与「未引用资产」统计同时生效）。
+
+exclude:
+  # 编辑器产物 / 空壳目录：assets/cache/ 是零代码引用的空壳，不是可用缓存
+  - "Screenshot/**"
+  - "cache/**"
+
+  # 环境：运行时只要 skybox.ktx2 与 prefilter.ktx；source.exr / preview.png 是编辑期资产
+  - "environments/**/source.exr"
+  - "environments/**/preview.png"
+
+  # 调试符号（若误拷进 assets/ 也一并滤掉）
+  - "**/*.ilk"
+  - "**/*.pdb"
+
+  # 着色器：运行期只读 .spv（源文件在 GLSL 编译期才有用）
+  - "shaders/glsl/**/*.vert"
+  - "shaders/glsl/**/*.frag"
+  - "shaders/glsl/**/*.glsl"
+  - "shaders/glsl/**/*.comp"

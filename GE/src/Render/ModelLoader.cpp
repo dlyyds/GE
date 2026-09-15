@@ -106,9 +106,20 @@ bool ModelLoader::Parse(const std::string &filepath, MeshData &out) {
 // ============================================================================
 
 bool ModelLoader::ConvertToGEMesh(const std::string &srcPath, const std::string &outPath,
-                                  std::string *err) {
+                                  std::string *err, const std::filesystem::path &assetRoot,
+                                  size_t meshIndex) {
+    // glTF 走带 mesh 索引的解析（一个 glTF 可导出多个 .gemesh，场景里写作 foo.gltf#N）；
+    // 其余格式按扩展名分派，索引无意义。
+    std::string ext = std::filesystem::path(srcPath).extension().string();
+    for (char &c : ext) {
+        if (c >= 'A' && c <= 'Z') {
+            c += static_cast<char>('a' - 'A');
+        }
+    }
+    const bool isGltf = (ext == ".gltf" || ext == ".glb");
+
     MeshData data;
-    if (!Parse(srcPath, data)) {
+    if (!(isGltf ? ParseGLTF(srcPath, meshIndex, data) : Parse(srcPath, data))) {
         if (err) {
             *err = "源模型解析失败: " + srcPath;
         }
@@ -128,6 +139,12 @@ bool ModelLoader::ConvertToGEMesh(const std::string &srcPath, const std::string 
         }
     }
     meta.sourceAsset = srcPath;
+
+    if (assetRoot.empty()) {
+        GE_CORE_WARN("[gemesh] 未提供资源根，跳过内嵌路径归一：产物可能含开发机绝对路径");
+    } else {
+        CanonicalizeGEMeshEmbeddedRefs(data, meta, assetRoot);
+    }
 
     return SerializeGEMesh(outPath, data, meta, err);
 }

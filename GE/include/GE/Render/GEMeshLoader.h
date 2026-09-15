@@ -25,6 +25,7 @@
 #include <glm/glm.hpp>
 
 #include <cstdint>
+#include <filesystem>
 #include <string>
 
 namespace GE {
@@ -65,5 +66,22 @@ bool ParseGEMesh(const std::string &filepath, MeshData &out, GEMeshMeta *outMeta
  */
 bool SerializeGEMesh(const std::string &outPath, const MeshData &data,
                      const GEMeshMeta &meta, std::string *err = nullptr);
+
+/**
+ * @brief 把待写入 .gemesh 的内嵌资产引用压成相对资源根的规范形。
+ *
+ * .gemesh 不是自包含格式：材质贴图槽与 META.sourceAsset 以字符串存盘，运行期由
+ * MeshManager 直接拿这些串去加载贴图。烘焙时若残留开发机绝对路径，产物换一台机器
+ * 或换一个资源根就必断——所以归一必须发生在写盘之前，而不是等打包时再补救。
+ *
+ * 归一失败的引用（根外路径 / ".." 逃出根）保留原串并打告警：烘焙期不做取舍判断，
+ * 由打包侧（gepack --strict）报 Error 拦下。
+ *
+ * @param data      待序列化的 MeshData（就地修改各材质贴图槽）
+ * @param meta      META 元信息（就地修改 sourceAsset）
+ * @param assetRoot 资源根目录；传空则跳过归一
+ */
+void CanonicalizeGEMeshEmbeddedRefs(MeshData &data, GEMeshMeta &meta,
+                                    const std::filesystem::path &assetRoot);
 
 } // namespace GE

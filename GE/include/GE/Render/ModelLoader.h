@@ -18,6 +18,9 @@
 
 #include "Render/Mesh.h"
 
+#include <cstddef>
+#include <filesystem>
+
 namespace GE {
 
 /**
@@ -74,18 +77,28 @@ public:
     static size_t GetGLTFMeshCount(const std::string &filepath);
 
     /**
-     * @brief 把源模型（当前支持 .obj）离线烘焙为 .gemesh（导出工具）。
+     * @brief 把源模型（.obj / .gltf）离线烘焙为 .gemesh（导出工具）。
      *
-     * 流程：Parse 解析源 → ComputeTangents 计算切线 → 计算包围盒 → SerializeGEMesh。
-     * 产物可直接被 LoadMesh("x.gemesh") 加载（需 .gemesh 已接入 ModelLoader::Parse）。
+     * 流程：解析源 → ComputeTangents 计算切线 → 包围盒 → 内嵌路径归一 → SerializeGEMesh。
+     * 产物可直接被 LoadMesh("x.gemesh") 加载（.gemesh 已接入 ModelLoader::Parse）。
      *
-     * @param srcPath  源模型路径（.obj）
-     * @param outPath  输出 .gemesh 路径
-     * @param err      非空时回填错误描述
+     * 内嵌路径归一：.gemesh 不是自包含格式——材质贴图槽与 GEMeshMeta::sourceAsset 以字符串
+     * 存盘，运行期直接拿去加载贴图，残留开发机绝对路径的产物换台机器必断。故写盘前会用
+     * CanonicalizeGEMeshEmbeddedRefs 压成相对 assetRoot 的规范形。
+     * 注意：各解析器按「源文件所在目录」拼贴图路径，故 srcPath 传绝对路径最稳——传相对路径
+     * 时拼出的相对串缺少锚点，归一只会原样放行。
+     *
+     * @param srcPath   源模型路径（.obj / .gltf / .glb）
+     * @param outPath   输出 .gemesh 路径
+     * @param err       非空时回填错误描述
+     * @param assetRoot 资源根目录，用于内嵌路径归一；传空则跳过（并告警）
+     * @param meshIndex glTF 的 mesh 索引（.obj 忽略）
      * @return 转换成功返回 true
      */
     static bool ConvertToGEMesh(const std::string &srcPath, const std::string &outPath,
-                                std::string *err = nullptr);
+                                std::string *err = nullptr,
+                                const std::filesystem::path &assetRoot = {},
+                                size_t meshIndex = 0);
 
 private:
     /**

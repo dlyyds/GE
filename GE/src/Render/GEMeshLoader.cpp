@@ -5,6 +5,7 @@
 
 #include "Render/GEMeshLoader.h"
 
+#include "Render/AssetPathUtil.h"
 #include "Core/Log.h"
 
 #include <filesystem>
@@ -627,6 +628,39 @@ bool ParseGEMesh(const std::string &filepath, MeshData &out, GEMeshMeta *outMeta
                   filepath, out.vertices.size(), out.indices.size(),
                   out.subMeshes.size(), out.materialData.size());
     return true;
+}
+
+// ============================================================================
+// 内嵌资产引用的规范化
+// ============================================================================
+
+void CanonicalizeGEMeshEmbeddedRefs(MeshData &data, GEMeshMeta &meta,
+                                    const std::filesystem::path &assetRoot) {
+    if (assetRoot.empty()) {
+        return;
+    }
+
+    auto canon = [&assetRoot](std::string &ref, const char *what) {
+        if (ref.empty() || AssetPathUtil::IsPseudoKey(ref)) {
+            return;
+        }
+        if (auto rel = AssetPathUtil::ToCanonical(ref, assetRoot)) {
+            ref = *rel;
+            return;
+        }
+        // 根外引用：不在烘焙期悄悄丢弃，也不改写成别的路径——留给打包校验报错
+        GE_CORE_WARN("[GEMesh] 内嵌 {0} 无法归一到资源根，保留原串: {1}", what, ref);
+    };
+
+    for (auto &md : data.materialData) {
+        canon(md.albedoMap, "albedoMap");
+        canon(md.normalMap, "normalMap");
+        canon(md.emissiveMap, "emissiveMap");
+        canon(md.metallicMap, "metallicMap");
+        canon(md.roughnessMap, "roughnessMap");
+        canon(md.metallicRoughnessMap, "metallicRoughnessMap");
+    }
+    canon(meta.sourceAsset, "sourceAsset");
 }
 
 } // namespace GE

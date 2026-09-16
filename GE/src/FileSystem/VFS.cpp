@@ -97,13 +97,21 @@ bool ReadAllAndroid(const std::string &canonical, std::vector<uint8_t> &out) {
     }
 
     std::vector<uint8_t> buf(static_cast<size_t>(size));
-    const int read = AAsset_read(asset, buf.data(), buf.size());
+
+    // 循环读满：AAsset_read 单次不保证填满整个缓冲（尤其对 APK 内被压缩的资产），
+    // 一次读就比对长度会在真机上误判成"文件损坏"。192MB 的 skybox 尤其吃这条。
+    size_t total = 0;
+    while (total < buf.size()) {
+        const int got = AAsset_read(asset, buf.data() + total, buf.size() - total);
+        if (got <= 0) {
+            break; // -1 = 错误，0 = 提前结束
+        }
+        total += static_cast<size_t>(got);
+    }
     AAsset_close(asset);
 
-    if (read != static_cast<int>(buf.size())) {
-        // 短读：压缩资产被流式解压时理论上不该发生，但真机上出现过就说明读法有问题，
-        // 与其把半截缓冲喂给解析器（会表现为"文件损坏"），不如在这里失败。
-        GE_CORE_ERROR("VFS: 资产短读 {0}（期望 {1} 字节，实得 {2}）", canonical, buf.size(), read);
+    if (total != buf.size()) {
+        GE_CORE_ERROR("VFS: 资产短读 {0}（期望 {1} 字节，实得 {2}）", canonical, buf.size(), total);
         return false;
     }
 
@@ -185,9 +193,12 @@ std::vector<uint8_t> ReadAll(const std::string &canonical) {
 }
 
 std::string ReadText(const std::string &canonical) {
+    // 失败**刻意不打日志**：读不到的语义由各调用方按自己的上下文表述（YAML 解析
+    // 失败 / 着色器读不到 / 材质缺失…），这里再打一条只是重复。更要紧的是
+    // Lua 的 `package.searchers` 会对每个 require 逐个试探，探测失败是**正常路径**，
+    // 在这里打错误会把日志刷满。
     std::vector<uint8_t> bytes;
     if (!ReadAll(canonical, bytes)) {
-        GE_CORE_ERROR("VFS: 读不到文本资产 {0}", canonical);
         return {};
     }
     return std::string(reinterpret_cast<const char *>(bytes.data()), bytes.size());

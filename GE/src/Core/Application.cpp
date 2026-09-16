@@ -44,7 +44,6 @@ Application::Application(const std::string &name, ApplicationCommandLineArgs arg
 
     // 资源根决策。必须在 Renderer 构造之前定好：Renderer 构造尾部会初始化 ImGui
     // 并加载字体与内置着色器。
-    std::error_code ec;
 #ifdef GE_PLATFORM_ANDROID
     // Android：资产在 APK 内，没有"exe 同级 / CWD 下的 assets"这回事，也无法用
     // std::filesystem 判存在性。assetRoot 退化为一个**虚拟根名** —— 只为
@@ -59,6 +58,7 @@ Application::Application(const std::string &name, ApplicationCommandLineArgs arg
 #else
     // 桌面：优先 exe 同级 assets（发行版布局，与启动时的工作目录无关），
     // 不存在则回退 CWD/assets（开发期从仓库根启动）。
+    std::error_code ec;
     const std::filesystem::path exeDir = PlatformUtils::GetExecutableDirectory();
     std::filesystem::path assetRoot = exeDir / "assets";
     if (exeDir.empty() || !std::filesystem::exists(assetRoot, ec)) {

@@ -1,6 +1,7 @@
 #include "pch.h"
 
 #include "Utils/PlatformUtils.h"
+#include "Core/Log.h"
 
 #include <SDL3/SDL.h>
 

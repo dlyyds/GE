@@ -625,6 +625,7 @@ externalNativeBuild ──► CMake → libGE_Runtime.so → APK 的 lib/arm64-v
 14. **APK 体积 —— 已有实测，比预估更严峻**：打包系统首次实跑（见 `游戏打包系统计划书.md` §5.7）得到 `2.scene` 的完整资产树为 **216 MB**，其中**单个 `environments/DaySkyHDRI065B/skybox.ktx2` 就占 192 MB（80%）**。加上已产出的 39 MB APK（`libGE_Runtime.so` 38.8 MB），**APK 会到 ~250 MB**。
     - 这对于 Google Play 是超限风险（常规 APK 上限 150 MB，超出需走 Asset Delivery / 分包），且 `assets/` 在 APK 内默认为压缩存储，**安装后解压 + 首次加载都会明显变慢**。
     - **主因是资产本身**（6.5K 级 HDRI 用在天空盒上属过采样），不是引擎或打包流程。**建议在开阶段 G 之前先处理**：降分辨率重烘（体积可掉一个数量级、肉眼几乎无差）→ 必要时再上 ASTC 压缩（引擎已链 KTX + astcenc）→ 最后才考虑 Play Asset Delivery 分包。
+    - **【M2.5 追加】真机首跑还会撞上内存峰值，不只是体积**：VFS 的读取路径是"整份读进内存 → 交给 libktx `CreateFromMemory`"，而 libktx 会**再拷一份**图像数据，所以这 192 MB 的 skybox 在加载瞬间占用约 **2× ≈ 400 MB** 原生内存（走文件路径时 libktx 自读只需一份）。这在手机上可能直接 OOM，而症状是"环境贴图加载失败 / 进程被杀"，与体积问题同一根因。**这给"先降分辨率"又加了一条独立理由 —— 而且它比体积更早、更硬地挡住 M2.5 的画面**。（若首跑真撞上，退路是给 `CreateKtxFromVfs` 加桌面 `CreateFromNamedFile` 分支，但那会让 Android 的内存路径在桌面上失去唯一可测环境，需权衡。）
     - 这条与 `游戏打包系统计划书.md` §9.12 是同一条，两边都要盯。
 
 15. **`ImGui` 在 Android 上是否必要**：`ImGuiLayer.cpp:33-34` 已把 `ViewportsEnable` 注释掉、只开 docking，所以没有多视口问题。但 `GE_Runtime` 本来不带编辑器 UI，**运行时几乎用不到 ImGui**——可考虑 Android 上直接关掉，省一大块复杂度和启动耗时。**值得评估**（若 `GameLayer` 依赖 ImGui 做调试面板则不能关）。

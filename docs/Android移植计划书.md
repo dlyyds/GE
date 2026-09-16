@@ -348,16 +348,22 @@ Windows-only 目标在 Android 下必须整体跳过：
 两件必须做对的事：
 
 1. **键码**：SDL scancode 直映射（阶段 A 已重编号，本阶段零额外映射表）。Windows 上 `SDL_EVENT_KEY_DOWN` 给的是 scancode，Android 上 SDL 已经帮你把 `AKEYCODE_*` 归一成同一套 scancode —— **这正是换 SDL 省下的那层别扭间接层**。软键盘不出键码而是走 IME：用 `SDL_StartTextInput` + `SDL_EVENT_TEXT_INPUT`（SDL 已处理 JNI 细节）。
-2. **触摸 → 鼠标合成**：`Scene` 与 `InputState` 的交互模型是鼠标（`MouseMovedEvent` / `MouseButtonPressed` / `MouseScrolled`）。开 `SDL_HINT_TOUCH_MOUSE_EVENTS` 让 SDL 自动合成单指触摸为鼠标事件；双指捏合需自己从 `SDL_EVENT_FINGER_*` 合成为 `MouseScrolledEvent`。
+2. **触摸：自己处理 `SDL_EVENT_FINGER_*`，并显式关掉"触摸→鼠标合成"**（~~开 `SDL_HINT_TOUCH_MOUSE_EVENTS` 让 SDL 自动合成~~ **该方案已实测否决**）：
+   - 否决理由：该 hint **默认为开**（`SDL_mouse.c` 里 `SDL_GetStringBoolean(hint, true)`），而它只合成**一个**鼠标指针（事件里以 `which == SDL_TOUCH_MOUSEID` 标记）——"左拇指按摇杆 + 右拇指拖视角"这类同时操作在合成路径上不可能成立，另一根手指会被抢走；且每根手指都会被同时翻译成 FINGER 事件与合成鼠标事件（双投递），与自有仲裁必然打架。
+   - 落地：`SdlWindow` 在 `SDL_Init` **之前** `SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0")`（hint 在鼠标子系统初始化时读一次），并把 `FINGER_DOWN/MOTION/UP/CANCELED` 翻译成 `TouchPressed/Moved/ReleasedEvent`（新增 `Events/TouchEvent.h`，载荷为 `PointerId` + 归一化的 `x,y`；CANCELED 必须算 release，否则卡键）。
+   - 操控方案（**产品层决策，已定**）：左半屏**浮动摇杆**（落点即圆心）合成 WASD 键事件 → 复用全部现成 Lua 角色脚本、零脚本改动；右半屏拖拽合成**纯 `MouseMovedEvent` 增量**转视角；右侧**轻点**（抬起时位移小于阈值）合成一次左键点击 → 触发脚本里的攻击绑定。实现在 `GE_Runtime/src/TouchControls.{h,cpp}`，摇杆用 ImGui `ImDrawList` 叠加绘制。
+   - 两个不能省的细节：**视角不能合成左键**（跟随相机读 `GetMouseDelta`、主相机的 `Camera::OnMouseMove` 在左键按下时也转 → 灵敏度翻倍；只有"无主相机"的自由视角兜底路径才需要左键）；**虚拟鼠标位置要用 `InputState::GetMousePos()` 播种**，否则接实体鼠标时首帧 delta 甩飞。
+   - 代价：ImGui 的 SDL3 后端只认 `MOUSE_*`、不读 `FINGER_*`，关掉合成后 ImGui 收不到触摸。运行时没有可交互 UI，暂无影响；日后要加就改回 `"1"` 并补下面的门闸。
 
 **双投递顺序**：SDL 事件要**同时**喂给两条通路——ImGui（UI 优先吃掉）和引擎事件系统。ImGui 的 `WantCaptureMouse` / `WantCaptureKeyboard` 作为「是否继续投递给引擎」的门闸，否则点 UI 会同时转相机。
+**现状（2026-09-16）**：`SetRawPlatformEventHook` 让 ImGui 先于引擎翻译拿到每个事件（这条早已就位）；**门闸仍未实现**，且触摸路径上它恒为假 —— 关掉合成后 ImGui 根本收不到触摸（见上条），而运行时也没有可交互的 ImGui 窗口（摇杆是 `ImDrawList` 直画、不参与命中测试）。等运行时真加了 UI 再补这一层。
 
 ### 5.3 验收
 
-- [ ] Android 上能创建 SDL 窗口 + Vulkan surface，`SDL_Vulkan_CreateSurface` 不报错
-- [ ] 触摸拖拽能驱动 `InputState`（用日志或 ImGui 面板观测），点 UI 不穿透到相机
-- [ ] 软键盘弹出能输入文本（ImGui 输入框）
-- [ ] 桌面输入零回归（阶段 A 已覆盖）
+- [x] Android 上能创建 SDL 窗口 + Vulkan surface，`SDL_Vulkan_CreateSurface` 不报错
+- [x] 触摸驱动：左半屏摇杆能移动角色、右半屏拖拽能转视角、右侧轻点能触发攻击（在 `medium_phone` 模拟器上实跑）
+- [x] 桌面输入零回归（阶段 A 已覆盖；触摸代码在桌面上不产生任何事件，`OnImGuiRender` 也恒不画）
+- [ ] **软键盘 IME：明确不做**（原列表里这一项）—— `GE_Runtime` 没有任何文本输入 UI，编辑器又不上 Android，做了无处可用。`SDL_EVENT_TEXT_INPUT → KeyTypedEvent` 的翻译早已存在，等真有输入框时只需 `SDL_StartTextInput` + 该通路
 
 ---
 

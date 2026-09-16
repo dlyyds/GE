@@ -1,6 +1,6 @@
 # Android 移植计划书
 
-> 状态：**阶段 A（桌面 GLFW→SDL3）代码完成、构建通过，待用户跑完 `GE_Runtime` 的转向/相机回归；阶段 B（构建骨架）完成 —— 已产出可安装 APK 并逐项验证产物；阶段 C–G 未开工**
+> 状态：**阶段 A（桌面 GLFW→SDL3）代码完成、构建通过，待用户跑完 `GE_Runtime` 的转向/相机回归；阶段 B（构建骨架）完成 —— 已产出可安装 APK 并逐项验证产物；阶段 D 的运行时部分 + 阶段 G 的资产入包已落地（M2.5，代码完成待真机验证，见 §6.0.1）；阶段 C / E / F 未开工**
 > 目标：让 `GE_Runtime`（发行版播放器）能作为 APK 装在 Android 设备上运行。
 > **窗口库决策（2026-09-16 定）：换掉 GLFW，桌面与 Android 统一走 SDL3。** 理由见 §1.3。原「保留 GLFW + 手写 Android 后端」方案已否决——它把 Android 特有的 glue / 生命周期 / 触摸 / IME 全部留给手写，那部分是写一次、无人测、会腐烂的代码；SDL3 直接提供。
 > 范围（已定）：**只移 `GE_Runtime`**。`GE_Editor` 不上 Android（依赖 ImGuizmo / node-editor / 多视口停靠 / `FileDialogs`），但它必须跟着走完 SDL3 迁移。
@@ -372,6 +372,32 @@ Windows-only 目标在 Android 下必须整体跳过：
 - 打包计划书阶段 D 从「可选」变成被 Android 需求倒逼落地，顺带把 `.gepak` 单文件分发能力铺好
 - 打包计划书 §9.2 警告的「Lua `require` 绕过 VFS 直接命中真实文件系统」是**同一个坑**，一次修好两处受益
 
+### 6.0.1 M2.5 落地记录（2026-09-16，`41648f33` + `c1aa0c6c` + `bbaf48e6`）
+
+**这是 M2.5（可启动 + 有画面）的代码部分。** 覆盖的是阶段 D 的**运行时读取侧**，外加阶段 G 里"资产入包"那一环；阶段 D 的其余部分（可写目录 overlay、`.gepak` 单文件包）仍未做。**待用户构建 + 真机验证。**
+
+做的四件事：
+
+| 项 | 落点 |
+|---|---|
+| 日志不再写 CWD | `Log::Init` 永不抛出 + `PlatformUtils::GetUserDataDirectory()`（Android 走 `SDL_GetPrefPath`）+ `android_sink`（tag `GE`） |
+| 只读 VFS | 新增 `GE/{include/GE,src}/FileSystem/VFS.*`，`DiskVFS` / `AndroidAssetVFS` 两个后端，三个函数 `ReadAll` / `ReadText` / `Exists` |
+| 路径语义翻转 | `AssetManager::ResolvePath` → `ResolveCanonical`（规范形，读）+ `ResolveWritePath`（绝对路径，写）。调用面约 44 处 |
+| 资产入包 | `platform/android/app/build.gradle` 的 `copyGameAssets`：`dist/assets/**` + `dist/game.cfg` → `build/generated/gepackAssets`（注册进 `sourceSets.main.assets`） |
+
+**接进 VFS 的读取点共 20 处**，覆盖运行时全部资产 I/O：二进制（`GEMeshLoader` / `AnimationClipLoader` / `VulkanShaderModule` / `FileSystem`）、YAML（`MaterialManager` / `SceneSerializer` / `GameConfig`）、贴图（`stbi_load_from_memory` + `ktxTexture_CreateFromMemory`）、tinyobj（istream 重载 + 自定义 `MaterialReader`）、tinygltf（`LoadBinaryFromMemory` / `LoadASCIIFromString`）、Lua。
+
+**三个只有换平台才会暴露的缺陷，本轮一并修掉**（都已写进 §10）：
+
+1. **`.gemesh` 内嵌贴图槽是开发机绝对路径**。实测 `dist/assets/models/shayv/未命名.gemesh` 里是 `F:\yxy\project\GameEngine\assets\models\shayv\Ellen_Body_Map1_D.png`。`CanonicalizeGEMeshEmbeddedRefs` 只在**烘焙**路径被调用（`ModelLoader::ConvertToGEMesh`、`SceneSerializer::BakeSourceToGemesh`），运行期从不调用；而它依赖资源根的**绝对形**，Android 上不存在 → 归一必然失败 → 贴图全丢且**不报错**（模型发白）。修法见 §10 第 19 条。
+2. **`AssetPaths::Fonts` 大小写与磁盘不符**（`fonts/opensans` vs `assets/fonts/OpenSans`）+ **`AddFontFromFileTTF` 失败即 abort**。两者叠加使字体加载从"降级"变成"崩溃"，故字体现经 VFS 读进内存走 `AddFontFromMemoryTTF`。见 §10 第 20 条。
+3. **`std::filesystem::path::string()` 在 Windows 上产出反斜杠**，而规范形一律正斜杠。凡是"路径写进场景 / 交给 VFS"的地方都改用 `generic_string()`。这条**不经真机测不出来**（Windows 上反斜杠照样能打开文件），性质与 §3.0.1 那三类同族。见 §10 第 21 条。
+
+**实施中的两处判断**（有意为之，不是遗漏）：
+
+- **不做 VFS 流式 `Reader` 接口、不做 `ma_vfs`**。首版"看到画面"的路径上没有任何东西需要流式；音频用 `VFS::ReadAll` + 内存解码即可（计划书风险 11 也是这么建议的）。等真要做音频流式再补，那时它是**第一次**被需要，而不是现在为想象中的调用方预留。
+- **不做"启动期零尺寸窗口"的提前等待**。`SDLActivity` 只在 Surface 就绪且 Activity 已 resumed 时才启动 native main 线程（`SDLActivity.java:858-866`），窗口尺寸理应为非零；而提前 `SDL_PumpEvents` 会在 `Application` 装好事件回调**之前**派发事件（`SdlWindow::HandleEvent` 里 `m_EventCallback` 没有空值守卫），为一个小概率问题引入一个真实崩溃点不划算。改为在 `SyncExtentFromWindow` 里对 0 尺寸打**错误日志**，真机上若真发生能一眼看到根因。
+
 ### 6.1 VFS 接口
 
 现在唯一候选缝是 `FileSystem::ReadBinaryU32`（`FileSystem.h:11`）——太窄（只有读、无 stat、无 open/seek）。扩成最小的只读接口：
@@ -391,6 +417,8 @@ VFS::OpenRead(path) -> std::unique_ptr<Reader>    // 流式读（音频用）
 
 ### 6.2 需要改造的读取点
 
+> **本节已落地（M2.5 的代码部分），见 §6.0.1。** 实际改动面比下表略大：除下表所列，还包含 `AnimationClipLoader`、`ScriptEngine` 的文件读取与 Lua `package.searchers`、以及 `FileSystem::ReadBinaryU32`（已收编为 VFS 之上的 SPIR-V 取 uint32_t 视图，不再是独立的 ifstream 包装）。
+
 | 类别 | 位置 | 改法 |
 |---|---|---|
 | 二进制整读 | `FileSystem.cpp:10`、`VulkanShaderModule.cpp:43`、`GEMeshLoader.cpp:417` | `VFS::ReadAll` |
@@ -403,6 +431,8 @@ VFS::OpenRead(path) -> std::unique_ptr<Reader>    // 流式读（音频用）
 | 环境贴图 | `EnvironmentMap.cpp:29-35`（3 个散文件 cubemap + BRDF LUT） | 走现有 `Texture::LoadFromFile*Async`，底层换 VFS |
 
 ### 6.3 可写目录（必须与 VFS 分开的第二概念）
+
+> **已落地部分（M2.5，见 §6.0.1）**：新增 `PlatformUtils::GetUserDataDirectory()`（桌面 = CWD，保持原行为；Android = `SDL_GetPrefPath`）；`GE.log` 与 `imgui.ini` 落到该目录；`game.cfg` 在 Android 上按「用户目录 → APK 资产根」读取。**未做**：烘焙产物到用户目录的 overlay —— 按下面自己的建议，首版**禁掉 Android 运行期烘焙**（`PlatformUtils::IsAssetRootWritable()` 为假时 5 处写入点安静跳过），要求资产在打包前烘好。
 
 **只读资产根**与**可写用户目录**是两回事，Android 上后者只能是 `app->activity->internalDataPath`。新增 `PlatformUtils::GetUserDataDirectory()`：
 
@@ -422,10 +452,15 @@ VFS::OpenRead(path) -> std::unique_ptr<Reader>    // 流式读（音频用）
 
 ### 6.4 验收
 
-- [ ] Android 上能完整加载场景：`.scene` + `.gemesh` + `.ktx2` + `.geanim` + `.gemat` + `.spv` + 音频 + Lua 脚本，全部从 APK 内读出
-- [ ] `GE.log` / `imgui.ini` / `game.cfg` 落在用户目录，重启后配置保持
-- [ ] 桌面端行为零回归（VFS 走 Disk 后端）
+**代码已就绪（§6.0.1），以下全部待跑。** 前三条按 `no-auto-build` 惯例由用户构建 + 真机验证：
+
+- [ ] **桌面零回归**：`build.bat` 四目标全绿；仓库根启动 `GE_Runtime` 能加载 `2.scene`（贴图/网格/动画/音频/Lua 全在位）；编辑器三场景 + 材质另存为正常
+- [ ] **桌面 dist 隔离**（打包计划书一直没做的判据，也是风险 19 的直接验证）：把 `dist/` 整个拷到无关目录再启动 `dist/GE_Runtime.exe` —— 修好前会因内嵌绝对路径而"读开发机上的那份资产"，看起来正常但实际没走包
+- [ ] Android 上能完整加载场景：`.scene` + `.gemesh` + `.ktx2` + `.geanim` + `.gemat` + `.spv` + 音频 + Lua 脚本，全部从 APK 内读出（`unzip -l app-debug.apk` 先确认 62 个资产与 `game.cfg` 确实在包里）
+- [ ] `adb logcat -s GE` 能看到 VFS 后端与资源根两行启动横幅，且**无 abort**（abort 的第一嫌疑是字形加载，见风险 20）
+- [ ] `GE.log` / `imgui.ini` 落在用户目录（`adb shell run-as com.ge.runtime ls files/`），重启后配置保持
 - [ ] Lua `require` 在 VFS 下可用（自定义 searcher 生效）
+- [ ] `game.cfg` 的读取顺序生效：用户目录优先，回退 APK 内的资产根
 
 ---
 
@@ -538,7 +573,9 @@ Gradle 任务 ──────────► 拷贝 dist/assets → APK 的 s
 externalNativeBuild ──► CMake → libGE_Runtime.so → APK 的 lib/arm64-v8a/
 ```
 
-`gepack` 产出的是**散目录树**（`Packager.cpp:157-170` 按规范形拷到 `staging/assets/<canonical>`，`:285` 提交为 `dist/`），**正好可以直接喂给 APK 的 `assets/`**，无需额外解包。等打包计划书阶段 D 的 `.gepak` 落地后，也可改成打一个 `.gepak` 进 assets，由 VFS 的 AAsset 后端再套一层 pak 后端（两层 VFS 组合）。
+`gepack` 产出的是**散目录树**（`Packager.cpp:157-170` 按规范形拷到 `staging/assets/<canonical>`，`:285` 提交为 `dist/`），**正好可以直接喂给 APK 的 `assets/`**，无需额外解包。等打包计划书阶段 D 的 `.gepak` 落地后，也可改成打一个 `.gepak` 进 assets，由 VFS 的 AAsset backend 再套一层 pak 后端（两层 VFS 组合）。
+
+> **已落地（M2.5，见 §6.0.1）**：Gradle 侧新增 `copyGameAssets` 任务，把 `dist/assets/**` 与 `dist/game.cfg` 拷到 `build/generated/gepackAssets`，该目录注册进 `sourceSets.main.assets`，并挂在 `merge*Assets.dependsOn` 上（与 `externalNativeBuild` 一同先于资产合并完成）。用生成目录而非 `src/main/assets`：不污染源码树。`dist/` 缺失时**明确报错**并给出 gepack 命令 —— 不静默产出空 assets 的 APK，因为"APK 出来了"与"能出画面"是两回事。`dist/` 仍待在**真机验证通过后**才从 `.gitignore` 里解除（APK 体积问题见 §10 风险 14）。
 
 **需要新增 Gradle task 做拷贝**，并让它依赖 `gepack` 与着色器编译产物，保证顺序。
 
@@ -603,6 +640,19 @@ externalNativeBuild ──► CMake → libGE_Runtime.so → APK 的 lib/arm64-v
     - **事件是回调还是轮询**？GLFW 回调 / SDL 轮询，决定了事件泵放在哪一层。
     - **键码/按钮编号的基准**是否与既有持久化数据一致（见风险 1）。
 
+19. **【M2.5 发现并已修】`.gemesh` 内嵌贴图槽可能是开发机绝对路径 —— 桌面 `dist/` 隔离跑同样复现**：`.gemesh` 不是自包含格式，材质贴图槽以字符串存盘。`CanonicalizeGEMeshEmbeddedRefs`（`GEMeshLoader.cpp:637`）**只在烘焙路径被调用**（`ModelLoader::ConvertToGEMesh`、`SceneSerializer::BakeSourceToGemesh`），运行期从不调用；而它依赖资源根的**绝对形**（`AssetPathUtil::IsUnderRoot` 要求入参是绝对路径且落在根下），Android 上不存在这个锚点 → 归一失败 → 贴图槽保持绝对路径 → VFS 读不到 → **模型发白且不报错**。实测 `dist/assets/models/shayv/未命名.gemesh` 内的 `albedoMap` 就是 `F:\yxy\project\GameEngine\assets\models\shayv\Ellen_Body_Map1_D.png`，说明这 7 个网格是在归一代码落地之前烘的。
+    - **修法**：新增 `AssetPathUtil::CanonicalCandidates`（**根无关**，按 `/<资源根名>/` 段切出候选，不碰文件系统），由 `ModelLoader::CanonicalizeAssetRef` 用 `VFS::Exists` 定夺（能否读到是地面真值，不是"取第一个还是最后一个"的启发式）。并在 `MeshManager` 的异步 decode 与 `FinalizeGLTFMesh` 里收口 —— 这是运行期唯一把引用交给 `TextureManager` 的地方。
+    - **注意这条在桌面也复现**：把 `dist/` 整个拷到无关目录再启动 `dist/GE_Runtime.exe`，精确判定会失败（绝对路径指向开发机而不是当前包），旧代码会**静默去读开发机上的那份资产**、看起来"正常"。这正是打包计划书里一直没做的「dist 隔离验证」会抓到的 bug，**它同时也是 M2.5 的地面判据之一**。
+    - **建议的彻底修法（未做）**：用 `bin/gemesh.exe` 重烘那 7 个 `.gemesh`，让包内数据本身干净。代码侧的兜底仍应保留 —— 第三方/用户自烘的网格同样会带绝对路径。
+
+20. **【M2.5 发现并已修】字体大小写不符 + `AddFontFromFileTTF` 失败是 abort 不是降级**：两件事叠加才致命。
+    - `AssetPaths::Fonts` 是 `"fonts/opensans"`，磁盘上是 `assets/fonts/OpenSans`。Windows 大小写不敏感把它藏住了；Android 的 AAssetManager **大小写敏感**，直接查不到。这是全仓库**唯一**一处大小写不符（已用脚本核对 `AssetPaths` 全部常量与磁盘目录）。三个消费者同源：`ImGuiLayer.cpp`、`tools/gepack/AssetDependencyGraph.cpp:452`（固定集合），以及 gepack 产出的包内布局。
+    - ImGui 的 `AddFontFromFileTTF` 在文件缺失时走 `IM_ASSERT_USER_ERROR(0, "Could not load font file!")`（`imgui_draw.cpp:3205`），而 `IM_ASSERT` 就是 `assert`（`imgui.h:98`），`GE_DEBUG` 在 `CMakeLists.txt:197` **无条件定义** —— 所以 Android Debug 构建下**字体加载失败会把进程 abort**，不是"UI 用小字号兜底"。
+    - **修法**：`AssetPaths::Fonts` 改为 `"fonts/OpenSans"`；字体改用 `VFS::ReadAll` + `AddFontFromMemoryTTF`（缓冲区交给 atlas 托管），彻底不依赖路径能被 stdio 打开。
+    - **一般教训**：换到大小写敏感的文件系统时，"从常量拼路径"的地方要逐个与磁盘比对，而不是等真机报"文件不存在" —— 这里连"文件不存在"都报不出来，是 abort。
+
+21. **【M2.5 发现并已修】`std::filesystem::path::string()` 在 Windows 上产出反斜杠**：规范形一律正斜杠，凡是"路径会写进场景文件 / 交给 VFS"的地方都必须用 `generic_string()`。改动点：`DeriveAnimationBakePath`（`AnimationClipLoader.cpp`）、`DeriveGemeshOutPath` 与碰撞兜底（`SceneSerializer.cpp`）、OBJ 的 MTL 贴图解析、glTF 的 image uri 解析。**这条在 Windows 上永远测不出来**（反斜杠照样能打开文件），但会让 Android 上的资产查询全部落空 —— 与风险 19/20 同属"桌面测不出、真机才暴露"的语义差异类，也和 §3.0.1 那三类同族。**日后凡是"拼路径"的代码，先问一句：这个字符串会离开 Windows 吗？**
+
 ---
 
 ## 11. 里程碑
@@ -611,7 +661,7 @@ externalNativeBuild ──► CMake → libGE_Runtime.so → APK 的 lib/arm64-v
 |---|---|---|---|
 | **M1** | 阶段 A：桌面 GLFW → SDL3 —— **代码完成、构建通过（四目标零错零警告），待跑完 §3.5 回归清单** | — | 编辑器 + `GE_Runtime` 在 SDL3 下**全量回归通过**（§3.5 清单）；GLFW 从依赖中移除 ✅；**此时仍未碰 Android** ✅ |
 | **M2** | 阶段 B：构建骨架 —— **完成（`0953972b`）** | M1 | Gradle 产出可安装 APK ✅；`.so` 导出 `SDL_main` ✅；manifest 声明 Vulkan 1.3 ✅；**但装上必崩**（§4.0 尾部的两道坎） |
-| **M2.5** | **【新增】可启动 + 有画面** —— 这是原 M2 里「真机能出画面」的真实依赖 | M2 + 阶段 D/G | 修 `Log::Init` 崩溃 → 真有资产可加载（VFS + 入包）→ 真机启动看到场景 |
+| **M2.5** | **【新增】可启动 + 有画面** —— 这是原 M2 里「真机能出画面」的真实依赖。**代码完成（`41648f33` + `c1aa0c6c` + `bbaf48e6`），待真机验证** | M2 + 阶段 D/G | 修 `Log::Init` 崩溃 → 真有资产可加载（VFS + 入包）→ 真机启动看到场景 |
 | **M2b** | 阶段 C 剩余：触摸 / 软键盘 IME | M2.5 | 真机可触摸操作，软键盘能输入 |
 | **M3** | 阶段 D：VFS + 可写目录 | M2 | 真机能完整加载并渲染一个场景（含贴图/网格/动画/音频/Lua）；桌面零回归 |
 | **M4** | 阶段 E：生命周期与 Surface 重建 | M3 | 切后台/切回/旋转/锁屏均不崩，连续 20 次无泄漏 |

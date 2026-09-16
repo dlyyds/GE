@@ -7,7 +7,13 @@
 #include "Core/Log.h"
 #include "Platform/SdlWindow.h"
 
+// SDL.h 不含 SDL_vulkan.h —— 后者是 opt-in 的（与 SDL_main.h 同理），必须单独引入。
+// ⚠️ 顺序有约束：必须在 vulkan_core.h 之后。SDL_vulkan.h 靠 `VULKAN_CORE_H_` 判断
+//    要不要自己 typedef 一遍 Vulkan 句柄；若它先于 vulkan.h 被引入，会先定义一遍、
+//    随后 vulkan_core.h 再定义一遍 → 重复定义。上面 "Platform/SdlWindow.h" →
+//    "Core/GEWindow.h" 已经引入了 <Vulkan/vulkan.h>，故此处安全。
 #include <SDL3/SDL.h>
+#include <SDL3/SDL_vulkan.h>
 
 #include "Debug/Assert.h"
 

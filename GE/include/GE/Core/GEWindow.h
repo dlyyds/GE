@@ -4,7 +4,7 @@
 #include "Events/Event.h"
 
 #include <optional>
-#include <Vulkan/vulkan.h>
+#include <vulkan/vulkan.h>
 #include <glm/glm.hpp>
 
 

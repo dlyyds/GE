@@ -247,20 +247,28 @@ void SceneLayer::OnUpdate(Timestep &ts) {
     // Play 态跟随相机：锁定鼠标（否则无法持续转向）
     UpdateMouseCapture();
 
+    // 视口准备独立成块：内层埋点若与函数级埋点同处一个作用域，会重复声明 Tracy 的
+    // ___tracy_scoped_zone（C2374）。vpWidth/vpHeight 仍在外层声明，块内 return
+    // 由 RAII 正常收尾。
     uint32_t vpWidth = 0, vpHeight = 0;
-    if (!EnsureViewport(ts, vpWidth, vpHeight)) {
-        return;
+    {
+        GE_PROFILE_SCOPE("ViewportPrepare");
+        if (!EnsureViewport(ts, vpWidth, vpHeight)) {
+            return;
+        }
+        // 同步场景视口尺寸
+        m_Context->Scene->OnViewportResize(vpWidth, vpHeight);
     }
 
     const float aspect = static_cast<float>(vpWidth) / static_cast<float>(vpHeight);
 
-    // 同步场景视口尺寸
-    m_Context->Scene->OnViewportResize(vpWidth, vpHeight);
-
     // ── 仿真推进（不含渲染）：脚本 / 物理 / 跟随相机 / 动画 / 世界矩阵 / 蒙皮 ──
     // 必须在取渲染相机矩阵之前调用，保证本帧 view / viewPos 与仿真后的游戏相机同帧，
     // 避免第三人称相机落后一帧造成的跟随抖动。
-    m_Context->Scene->OnUpdate3DSimulation(ts);
+    {
+        GE_PROFILE_SCOPE("Scene::OnUpdate3DSimulation");
+        m_Context->Scene->OnUpdate3DSimulation(ts);
+    }
 
     Camera &activeCam = GetRenderingViewCamera(aspect);
     const glm::mat4 view = activeCam.GetView();
@@ -273,16 +281,22 @@ void SceneLayer::OnUpdate(Timestep &ts) {
     Renderer::Get3DRenderer().SetExposure(activeCam.GetExposure());
 
     // 场景只做渲染采集（3D/2D 批次经 EndScene 延迟快照，不录制命令）
-    m_Context->Scene->Render3D(view, projection, cameraPos, clearColor);
+    {
+        GE_PROFILE_SCOPE("Scene::Render3D");
+        m_Context->Scene->Render3D(view, projection, cameraPos, clearColor);
+    }
 
     // 向本帧渲染图注册场景 pass。颜色/深度取离屏视口目标（RenderTarget 不拥有，
     // 图只编排同步）；颜色收尾转 ShaderReadOnly 供 ImGui 视口窗口采样。
-    auto &builder = Renderer::Get().GetFrameGraphBuilder();
-    RenderTarget &viewportRT = *m_Viewport->GetRenderTarget();
-    ResourceHandle hColor = builder.Import(&viewportRT.GetColorView(), "ViewportColor");
-    ResourceHandle hDepth = builder.Import(&viewportRT.GetDepthView(), "ViewportDepth");
-    GE::RecordScenePasses(builder, hColor, hDepth, viewportRT.GetExtent(),
-                          vk::ImageLayout::eShaderReadOnlyOptimal, clearColor);
+    {
+        GE_PROFILE_SCOPE("RecordScenePasses");
+        auto &builder = Renderer::Get().GetFrameGraphBuilder();
+        RenderTarget &viewportRT = *m_Viewport->GetRenderTarget();
+        ResourceHandle hColor = builder.Import(&viewportRT.GetColorView(), "ViewportColor");
+        ResourceHandle hDepth = builder.Import(&viewportRT.GetDepthView(), "ViewportDepth");
+        GE::RecordScenePasses(builder, hColor, hDepth, viewportRT.GetExtent(),
+                              vk::ImageLayout::eShaderReadOnlyOptimal, clearColor);
+    }
 }
 
 void SceneLayer::OnEvent(Event &event) {

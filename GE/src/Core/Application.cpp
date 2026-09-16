@@ -12,7 +12,6 @@
 
 #include <Events/ApplicationEvent.h>
 
-#include <GLFW/glfw3.h>
 #include "Audio/AudioContext.h"
 #include "Utils/PlatformUtils.h"
 #include <chrono>
@@ -98,7 +97,12 @@ void Application::Run() {
     while (m_Running) {
         GE_PROFILE_SCOPE("MainLoop");
         const auto frameStart = std::chrono::steady_clock::now();
-        const auto time = static_cast<float>(glfwGetTime());
+        // 主循环墙钟原先取 glfwGetTime()。主循环不该依赖窗口库（换 SDL 后也没这个
+        // 函数了），改用 std::chrono —— 上面这行本来就取了一次 steady_clock，直接
+        // 复用同一个时钟。函数内静态常量充当时间原点，使 m_LastFrameTime 保持
+        // "自启动起的秒数"这一原有语义。
+        static const auto s_AppStartTime = frameStart;
+        const auto time = std::chrono::duration<float>(frameStart - s_AppStartTime).count();
         Timestep timestep = time - m_LastFrameTime;
 
         // 帧率计算

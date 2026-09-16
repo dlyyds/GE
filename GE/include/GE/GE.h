@@ -21,6 +21,5 @@
 #include "Debug/Profiler.h"
 #include "Debug/Assert.h"
 
-#include "Platform/Windows/GlfwWindow.h"
 #include "Utils/PlatformUtils.h"
 #include "FileSystem/FileSystem.h"

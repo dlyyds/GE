@@ -5,6 +5,7 @@
 
 #include <optional>
 #include <Vulkan/vulkan.h>
+#include <glm/glm.hpp>
 
 
 namespace GE {
@@ -30,6 +31,18 @@ enum class VsyncMode {
     OFF,
     ON,
     Default
+};
+
+/**
+ * 光标模式。
+ *
+ * `Disabled` 对应「锁定并隐藏」：光标从窗口坐标中脱离、只上报相对位移，用于自由
+ * 视角相机持续转向。原先两层各自直接调 GLFW 的 `glfwSetInputMode(GLFW_CURSOR, …)`
+ * 与 `glfwGetCursorPos`（GameLayer / SceneLayer 各一份），现收编到窗口接口。
+ */
+enum class CursorMode {
+    Normal, ///< 光标可见、可自由移动
+    Disabled ///< 光标隐藏并锁定（相对位移模式）
 };
 
 // 窗口完整属性
@@ -85,6 +98,22 @@ public:
     // 窗口属性
     virtual void SetEventCallback(const EventCallbackFn &callback) = 0;
 
+    /**
+     * 原始平台事件观察者（可选）。
+     *
+     * ImGui 的 SDL3 后端**没有** GLFW 后端那种「自己装回调」的机制 —— 原先用的是
+     * `ImGui_ImplGlfw_InitForOther(window, true)`，由浮后端接管回调链。SDL 是轮询模型，
+     * 必须逐事件喂 `ImGui_ImplSDL3_ProcessEvent`。为了不让窗口层反向依赖 ImGui，
+     * 这里开一个通用钩子：实参是 `const SDL_Event *`，以 `const void *` 传递，
+     * 避免把平台类型写进这个平台无关的接口（与 `GetNativeWindow()` 返回 `void *` 同风格）。
+     *
+     * 钩子在**引擎自身的事件翻译之前**调用，与 GLFW 版的先后顺序一致：ImGui 先据此
+     * 算出 WantCaptureMouse / WantCaptureKeyboard，引擎再照常收到全部事件。
+     */
+    using RawPlatformEventHook = std::function<void(const void *)>;
+
+    virtual void SetRawPlatformEventHook(RawPlatformEventHook hook) = 0;
+
     virtual void SetVSync(VsyncMode mode) = 0;
 
     [[nodiscard]] virtual VsyncMode GetVSync() const = 0;
@@ -107,17 +136,22 @@ public:
     /// 设置窗口最大化状态（true 最大化，false 恢复）
     virtual void SetMaximized(bool maximized) = 0;
 
+    /// 底层原生窗口句柄。SDL 侧一律是 `SDL_Window*`（桌面与 Android 一致）。
+    /// 需要更深层的句柄（如 Win32 HWND、Android ANativeWindow）请自行用
+    /// `SDL_GetWindowWMInfo` / `SDL_GetWindowProperties` 转换。
     [[nodiscard]] virtual void *GetNativeWindow() const = 0;
 
-    [[nodiscard]] virtual void *GetGlfwWindow() const = 0;
+    /// 设置光标模式：Normal 释放、Disabled 锁定并隐藏（自由视角相机用）
+    virtual void SetCursorMode(CursorMode mode) = 0;
+
+    /// 当前光标在窗口坐标中的位置（像素）。
+    /// 注意 CursorMode::Disabled 下绝对坐标不再有意义，此时应改用 InputState 的鼠标增量。
+    [[nodiscard]] virtual glm::vec2 GetCursorPosition() const = 0;
 
     /// 创建 Vulkan 表面
     virtual VkSurfaceKHR CreateVulkanSurface(VkInstance instance) = 0;
 
     virtual VkSurfaceKHR CreateVulkanSurface(VkInstance instance, VkPhysicalDevice physical_device) = 0;
-
-    /// 获取窗口所需的 Vulkan 表面扩展名列表
-    [[nodiscard]] virtual std::vector<const char *> GetRequiredSurfaceExtensions() const = 0;
 
     /// DPI 缩放因子
     [[nodiscard]] virtual float GetDpiFactor() const = 0;

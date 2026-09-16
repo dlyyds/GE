@@ -180,10 +180,10 @@ void SceneHierarchyPanel::DrawFollowCameraComponent(FollowCameraComponent &compo
     }
     ImGui::Checkbox("允许切换", &component.ToggleEnabled);
     int toggleKey = static_cast<int>(component.ToggleKey);
-    if (ImGui::InputInt("切换键（GLFW）", &toggleKey)) {
+    if (ImGui::InputInt("切换键（SDL scancode）", &toggleKey)) {
         component.ToggleKey = static_cast<KeyCode>(toggleKey & 0xFFFF);
     }
-    ImGui::TextDisabled("默认 V = 86；运行时按此键在第一/第三人称之间切换");
+    ImGui::TextDisabled("默认 V = 25；运行时按此键在第一/第三人称之间切换");
     if (m_Context && m_Context->IsPlaying()) {
         const char *currentMode = component.CurrentMode == FollowCameraViewMode::ThirdPerson
                                       ? "Third Person" : "First Person";

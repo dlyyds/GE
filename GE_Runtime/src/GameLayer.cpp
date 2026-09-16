@@ -15,7 +15,6 @@
 #include "GE/Scene/Entity.h"
 #include "GE/Scene/Scene.h"
 
-#include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
 
 #include <string>
@@ -67,9 +66,7 @@ void GameLayer::OnDetach() {
 
     // 退出时恢复光标，否则锁定的鼠标会留给下一次启动 / 其它程序
     if (m_MouseCaptured) {
-        if (auto *window = static_cast<GLFWwindow *>(Application::Get().GetWindow().GetGlfwWindow())) {
-            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
-        }
+        Application::Get().GetWindow().SetCursorMode(CursorMode::Normal);
         m_MouseCaptured = false;
     }
 }
@@ -118,8 +115,8 @@ void GameLayer::ApplyRenderingConfig() {
 }
 
 void GameLayer::UpdateMouseCapture() {
-    auto *window = static_cast<GLFWwindow *>(Application::Get().GetWindow().GetGlfwWindow());
-    if (!window || !m_Scene) {
+    Window &window = Application::Get().GetWindow();
+    if (!window.GetNativeWindow() || !m_Scene) {
         return;
     }
 
@@ -130,16 +127,12 @@ void GameLayer::UpdateMouseCapture() {
 
     if (hasFollowCam && !m_MouseCaptured) {
         // 锁定瞬间：光标被锁到窗口中心、位置跳变 → 重置增量基准，防首帧 delta 爆值
-        double cx = 0.0, cy = 0.0;
-        glfwGetCursorPos(window, &cx, &cy);
-        m_Scene->GetMutableInputState().ResetMouseBaseline({(float) cx, (float) cy});
-        glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+        m_Scene->GetMutableInputState().ResetMouseBaseline(window.GetCursorPosition());
+        window.SetCursorMode(CursorMode::Disabled);
         m_MouseCaptured = true;
     } else if (!hasFollowCam && m_MouseCaptured) {
-        double cx = 0.0, cy = 0.0;
-        glfwGetCursorPos(window, &cx, &cy);
-        m_Scene->GetMutableInputState().ResetMouseBaseline({(float) cx, (float) cy});
-        glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+        m_Scene->GetMutableInputState().ResetMouseBaseline(window.GetCursorPosition());
+        window.SetCursorMode(CursorMode::Normal);
         m_MouseCaptured = false;
     }
 }

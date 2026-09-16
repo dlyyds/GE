@@ -9,9 +9,9 @@
 #include "Render/VulkanBase/VulkanCommandBuffer.h"
 #include "Render/VulkanBase/VulkanContext.h"
 
-#include "GLFW/glfw3.h"
+#include <SDL3/SDL.h>
 
-#include <backends/imgui_impl_glfw.h>
+#include <backends/imgui_impl_sdl3.h>
 #include <backends/imgui_impl_vulkan.h>
 
 #include "imgui.h"
@@ -51,8 +51,16 @@ void ImGuiLayer::OnAttach() {
         0xFF00, 0xFFEF, // 全角/半角形式
         0
     };
+    // 中文字体仍取系统字体，**这是已知的不可移植点**：路径写死了 Windows。
+    // 换成随包字体是计划书阶段 D 的作业（届时经 VFS 读，并需先决定是否接受
+    // 十兆级的 CJK 字体进 APK）。此处只加平台守卫，让它在非 Windows 上安静跳过
+    // 而不是硬失败 —— 桌面行为一字未变。
+#ifdef GE_PLATFORM_WINDOWS
     io.Fonts->AddFontFromFileTTF(
         "C:\\Windows\\Fonts\\msyh.ttc", fontSize, &cfg, cjkRanges);
+#else
+    GE_CORE_WARN("ImGuiLayer: 中文字体未随包，非 Windows 平台跳过 CJK 字体合并（界面中文将显示为方块）");
+#endif
 
     ImGui::StyleColorsDark();
 
@@ -63,9 +71,15 @@ void ImGuiLayer::OnAttach() {
     }
     SetDarkThemeColors();
 
-    // ---- GLFW platform backend ----
-    auto *window = static_cast<GLFWwindow *>(m_Renderer.GetWindowRef().GetGlfwWindow());
-    ImGui_ImplGlfw_InitForOther(window, true);
+    // ---- SDL3 platform backend ----
+    // 与 GLFW 版的关键差异：SDL 后端没有"自己装回调"的模式，输入必须逐事件投递。
+    // 这里挂到窗口的原始事件钩子上（见 Window::SetRawPlatformEventHook），由
+    // SdlWindow 在翻译引擎事件之前回调过来，顺序与 GLFW 版 ImGui 回调链一致。
+    auto *window = static_cast<SDL_Window *>(m_Renderer.GetWindowRef().GetNativeWindow());
+    ImGui_ImplSDL3_InitForVulkan(window);
+    m_Renderer.GetWindowRef().SetRawPlatformEventHook([](const void *raw_event) {
+        ImGui_ImplSDL3_ProcessEvent(static_cast<const SDL_Event *>(raw_event));
+    });
 
     // ---- Vulkan renderer backend ----
     auto &swapchain = Renderer::GetSwapchain();
@@ -124,14 +138,17 @@ void ImGuiLayer::OnAttach() {
 
 void ImGuiLayer::OnDetach() {
     GE_CORE_INFO("ImGui Shutdown");
+    // 先摘掉原始事件钩子再关后端：否则关停后若仍有事件轮询，会投递到已销毁的
+    // ImGui 上下文。窗口在 ImGuiLayer 之前构造、之后析构，故这一步是必要的。
+    m_Renderer.GetWindowRef().SetRawPlatformEventHook(nullptr);
     ImGui_ImplVulkan_Shutdown();
-    ImGui_ImplGlfw_Shutdown();
+    ImGui_ImplSDL3_Shutdown();
     ImGui::DestroyContext();
 }
 
 void ImGuiLayer::Begin() {
     ImGui_ImplVulkan_NewFrame();
-    ImGui_ImplGlfw_NewFrame();
+    ImGui_ImplSDL3_NewFrame();
     ImGui::NewFrame();
 }
 

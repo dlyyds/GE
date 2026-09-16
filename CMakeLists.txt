@@ -121,7 +121,7 @@ add_subdirectory(GE/third_party/KTX-Software-4.4.2 KTX-Software EXCLUDE_FROM_ALL
 # ==============================================
 file(GLOB GE_SRC CONFIGURE_DEPENDS
         ${CMAKE_SOURCE_DIR}/GE/src/*.cpp
-        ${CMAKE_SOURCE_DIR}/GE/src/Platform/Windows/*.cpp
+        ${CMAKE_SOURCE_DIR}/GE/src/Platform/*.cpp
         ${CMAKE_SOURCE_DIR}/GE/src/Core/*.cpp
         ${CMAKE_SOURCE_DIR}/GE/src/FileSystem/*.cpp
         ${CMAKE_SOURCE_DIR}/GE/src/Render/*.cpp

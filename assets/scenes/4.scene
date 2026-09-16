@@ -109,7 +109,7 @@ Scene:
         Enabled: true
         StartMode: Third
         ToggleEnabled: true
-        ToggleKey: 86
+        ToggleKey: 25
         EyeOffset: [0, 26.15, 22.3]
         YawSpeed: 0.1
         PitchSpeed: 0.1

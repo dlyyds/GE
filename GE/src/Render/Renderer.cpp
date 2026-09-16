@@ -76,7 +76,7 @@ Renderer::~Renderer() {
 
     // 1a. 先销毁 ImGui（其 DescriptorPool / backend 依赖 device，须先于 VulkanContext）
     if (m_ImGuiLayer) {
-        m_ImGuiLayer->OnDetach(); // 关闭 ImGui Vulkan/GLFW backend 并销毁 context
+        m_ImGuiLayer->OnDetach(); // 关闭 ImGui Vulkan/SDL3 backend 并销毁 context
         m_ImGuiLayer.reset();
     }
 

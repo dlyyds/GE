@@ -933,7 +933,7 @@ void Scene::UpdateFollowCamera(Timestep ts) {
     }
 
     // 5. 鼠标视角 → yaw/pitch（读本帧输入快照的鼠标增量；灵敏度单位 = 度/像素）
-    //    GLFW 窗口坐标 y 向下为正，鼠标上移 → mouseDelta.y 为负；减号让上移 → pitch 增大 → 抬头。
+    //    窗口坐标 y 向下为正（SDL 与 GLFW 同），鼠标上移 → mouseDelta.y 为负；减号让上移 → pitch 增大 → 抬头。
     const glm::vec2 mouseDelta = m_InputState.GetMouseDelta();
     const float yawSign = (fc.InvertY ? -1.0f : 1.0f);
     float yaw = cam.GetYaw() - mouseDelta.x * fc.YawSpeed;

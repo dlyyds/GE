@@ -30,7 +30,7 @@ public:
     ImGuiLayer(const ImGuiLayer &) = delete;
     ImGuiLayer &operator=(const ImGuiLayer &) = delete;
 
-    /// 创建 ImGui 上下文 + 字体 + Vulkan/GLFW backend。Renderer 构造尾部调用。
+    /// 创建 ImGui 上下文 + 字体 + Vulkan/SDL3 backend。Renderer 构造尾部调用。
     void OnAttach();
 
     /// 销毁 ImGui context 与 backend。Renderer 析构（WaitIdle 后）调用。

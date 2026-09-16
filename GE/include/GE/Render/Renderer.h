@@ -161,7 +161,7 @@ public:
     /// 获取全局单例。
     static Renderer &Get();
 
-    /// 访问主窗口（ImGuiLayer 初始化/上屏需取 GLFW window 与尺寸）。
+    /// 访问主窗口（ImGuiLayer 初始化/上屏需取原生 window 与尺寸）。
     /// 常规业务方优先走 Window 引用，勿经此访问。
     [[nodiscard]] static Window &GetWindowRef();
 
@@ -256,7 +256,7 @@ private:
 
     // -- ImGui 集成（归并后由 Renderer 持有并驱动）--
 
-    /// ImGui 运行时组件（Vulkan/GLFW backend + UI 上下文）。
+    /// ImGui 运行时组件（Vulkan/SDL3 backend + UI 上下文）。
     std::unique_ptr<ImGuiLayer> m_ImGuiLayer;
 
     /// 每帧 UI 提交回调（宿主注入：遍历各 Layer 的 OnImGuiRender）。

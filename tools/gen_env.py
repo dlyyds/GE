@@ -6,6 +6,7 @@
 从源 HDRI 全景图生成一个完整环境所需的 IBL 资产，输出到 assets/environments/<环境名>/：
 
     skybox.ktx2    天空盒 cubemap（RGBA16F KTX2，cmgen 解 6 面 + ktx 打包）
+                   单面尺寸默认 = 源宽/4（原生角度分辨率，见 native_face_size）
     prefilter.ktx  IBL 预滤波镜面图（cmgen --ibl-ld 直接输出的 KTX1，加载已兼容）
     brdf_lut.png   BRDF LUT（共享一份，与环境无关，仅首次生成）
     preview.png    预览缩略图（从源 HDRI 同目录的 .png 复制而来，编辑器下拉框用）
@@ -15,15 +16,18 @@
     ktx     KTX-Software 统一 CLI
 
 用法：
-    python gen_env.py <环境名> <源HDRI路径> [--size 256]
+    python gen_env.py <环境名> <源HDRI路径> [--size 256] [--skybox-size N]
 
 示例：
     python gen_env.py DaySkyHDRI065B assets/environments/DaySkyHDRI065B/source.exr --size 256
+
+注意：已存在的产物会**跳过**，要重新生成需先手动删除对应文件。
 """
 
 import argparse
 import pathlib
 import shutil
+import struct
 import subprocess
 import sys
 import tempfile
@@ -40,6 +44,62 @@ ENVIRONMENTS_DIR = ASSETS_ROOT / "environments"
 
 # ktx create 的 cubemap 面顺序 = Vulkan (+X, -X, +Y, -Y, +Z, -Z)
 FACE_ORDER = ["px", "nx", "py", "ny", "pz", "nz"]
+
+
+def exr_width(path):
+    """只读 OpenEXR 头部取 dataWindow 宽度（不依赖 OpenEXR 模块）。
+
+    EXR 头部是一串 name/type/size/value 属性，直到空 name 结束。dataWindow 的
+    值是 4 个 int32（xMin, yMin, xMax, yMax），相减即得分辨率。
+    读失败返回 None（此时由调用方退回显式值）。
+    """
+    try:
+        with open(path, "rb") as f:
+            if f.read(4) != b"\x76\x2f\x31\x01":  # 0x76 0x2f 0x31 0x01
+                return None
+            f.read(4)  # version + flags
+            while True:
+                name = b""
+                while True:
+                    c = f.read(1)
+                    if not c or c == b"\x00":
+                        break
+                    name += c
+                if not name:
+                    return None
+                while True:
+                    c = f.read(1)
+                    if not c or c == b"\x00":
+                        break
+                (ln,) = struct.unpack("<I", f.read(4))
+                val = f.read(ln)
+                if name == b"dataWindow":
+                    x0, _, x1, _ = struct.unpack("<4i", val[:16])
+                    return x1 - x0 + 1
+    except OSError:
+        return None
+
+
+def native_face_size(source):
+    """由源全景图推出天空盒单面的**原生**尺寸 = 源宽 / 4。
+
+    等距柱状全景的横向是 360°，而一个立方体面覆盖 90°，所以单面边长取
+    源宽/4 时角度分辨率正好与原图一致。**超过它就是纯插值放大**，文件体积按
+    边长平方涨，一个真实像素都不多。
+
+    代价是实打实的：本仓库默认 2048 配 4096×2048 的源，等于 2× 过采样 ——
+    单个 skybox.ktx2 因此有 192 MB（占整个资产树 80%），APK 被顶到 245 MB，
+    运行期加载还有约 2× 的内存峰值。详见 Android 移植计划书 §10 风险 14。
+    """
+    w = exr_width(source)
+    if not w:
+        return None
+    n = w // 4
+    # 归到 2 的幂并夹在合理区间内（块尺寸/硬件限制都要求 2 的幂）
+    p = 1
+    while p * 2 <= n:
+        p *= 2
+    return max(256, min(2048, p))
 
 
 def run(cmd):
@@ -60,12 +120,13 @@ def run(cmd):
 def generate_skybox(env_root, source, tmp, skybox_size):
     """cmgen 解 6 面 + ktx 打包成 RGBA16F cubemap，输出 skybox.ktx2。
 
-    skybox_size 需足够大：天空盒作为背景整屏显示，过小会糊。
-    默认 2048（源 8K 全景 → 2048 单面），与 IBL 预滤波的 --size 分开。
+    skybox_size 默认取源的**原生**分辨率（源宽 / 4，见 native_face_size）——
+    再多只是插值放大，体积按平方涨而细节不增。可用 --skybox-size 覆盖。
     """
     out = env_root / "skybox.ktx2"
     if out.exists():
-        print(f"  [跳过] 已存在 {out.relative_to(ASSETS_ROOT)}")
+        print(f"  [跳过] 已存在 {out.relative_to(ASSETS_ROOT)}"
+              f"（要重新生成请先删掉它）")
         return
 
     faces_dir = tmp / "faces"
@@ -143,13 +204,23 @@ def main():
     parser.add_argument("source", help="源 HDRI 全景图路径（.exr）")
     parser.add_argument("--size", type=int, default=256,
                         help="IBL 预滤波尺寸（默认 256，低频，够用就行）")
-    parser.add_argument("--skybox-size", type=int, default=2048,
-                        help="天空盒 cubemap 单面尺寸（默认 2048，背景整屏显示需高分辨率）")
+    parser.add_argument("--skybox-size", type=int, default=None,
+                        help="天空盒 cubemap 单面尺寸（默认按源宽/4 推原生尺寸，"
+                             "即角度分辨率与原图一致；超过它只是插值放大）")
     args = parser.parse_args()
 
     source = pathlib.Path(args.source).resolve()
     if not source.exists():
         sys.exit(f"错误: 源文件不存在: {source}")
+
+    skybox_size = args.skybox_size
+    if skybox_size is None:
+        skybox_size = native_face_size(source)
+        if skybox_size is None:
+            print("  [提示] 读不出源的 EXR 分辨率，天空盒退回 --skybox-size 1024")
+            skybox_size = 1024
+        else:
+            print(f"  [推导] 源宽 {exr_width(source)} → 天空盒原生单面 {skybox_size}")
 
     env_root = ENVIRONMENTS_DIR / args.env_name
     env_root.mkdir(parents=True, exist_ok=True)
@@ -157,7 +228,7 @@ def main():
     print(f"== 生成环境 {args.env_name} -> {env_root.relative_to(ASSETS_ROOT)} ==")
     tmp = pathlib.Path(tempfile.mkdtemp(prefix="env_gen_"))
     try:
-        generate_skybox(env_root, source, tmp, args.skybox_size)
+        generate_skybox(env_root, source, tmp, skybox_size)
         generate_prefilter(env_root, source, tmp, args.size)
         generate_preview(env_root, source)
         generate_brdf_lut()

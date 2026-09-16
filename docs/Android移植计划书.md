@@ -1,6 +1,6 @@
 # Android 移植计划书
 
-> 状态：**阶段 A 代码已落地（`e9b8c305` + `213b14b6`），待构建与实机验证；阶段 B–G 未开工**
+> 状态：**阶段 A 代码已完成并构建通过（`build.bat` 四目标全绿：`GE_Editor` / `GE_Runtime` / `gemesh` / `gepack`，零错零警告）；待用户跑完 `GE_Runtime` 的转向/相机回归；阶段 B–G 未开工**
 > 目标：让 `GE_Runtime`（发行版播放器）能作为 APK 装在 Android 设备上运行。
 > **窗口库决策（2026-09-16 定）：换掉 GLFW，桌面与 Android 统一走 SDL3。** 理由见 §1.3。原「保留 GLFW + 手写 Android 后端」方案已否决——它把 Android 特有的 glue / 生命周期 / 触摸 / IME 全部留给手写，那部分是写一次、无人测、会腐烂的代码；SDL3 直接提供。
 > 范围（已定）：**只移 `GE_Runtime`**。`GE_Editor` 不上 Android（依赖 ImGuizmo / node-editor / 多视口停靠 / `FileDialogs`），但它必须跟着走完 SDL3 迁移。
@@ -162,6 +162,16 @@ GLFW 泄漏到抽象层外的位置**有限且已知**，共 5 处。阶段 A �
 | 顺带删除 | `Window::GetRequiredSurfaceExtensions()` —— 已核实全代码库无调用者 |
 | ImGui 输入 | SDL3 后端没有 GLFW 那种「自己装回调」的模式，必须逐事件喂 `ProcessEvent`。为此在 `Window` 上开了 `SetRawPlatformEventHook`（`const void*` 转交，避免窗口层反向依赖 ImGui），钩子在引擎事件翻译**之前**调用以复刻 GLFW 回调链的先后 |
 
+### 3.0.1 构建与实测暴露的三处问题（均已修）
+
+| 症状 | 根因 | 修法 |
+|---|---|---|
+| C2248「`Run` 是 private」 | `Application.h` 用 `friend int ::main(...)` 给入口开 `Run()` 的私有权，而 SDL 的 `#define main SDL_main` 会**改名**入口函数 —— 友元按名字绑定，于是对不上。且入口 TU 都是先包含 `Application.h`，靠调 include 顺序救不了 | 改为与入口名无关的公开转发点 `Application::Main`（`3d76dbd8`） |
+| C3861「找不到 `SDL_Vulkan_CreateSurface`」 | `SDL.h` **不含** `SDL_vulkan.h`（与 `SDL_main.h` 同理是 opt-in，因它依赖 Vulkan 类型） | 补 `#include <SDL3/SDL_vulkan.h>`，并注明必须排在 `vulkan.h` 之后（该头靠 `VULKAN_CORE_H_` 判断要不要自己 typedef Vulkan 句柄）（`c8d9a2af`） |
+| **转向到边缘停住** | **锁定态光标的坐标语义与 GLFW 相反**：GLFW `GLFW_CURSOR_DISABLED` 是 *unbounded*（坐标无限增长），SDL 相对模式是 *constrained to the window*（钳制在窗口内）。引擎用逐帧坐标差算鼠标增量，坐标停住则差值为 0 | 相对模式改用 `event.motion.xrel/yrel` 累加出虚拟坐标复刻 GLFW 语义（`0480cd2c`） |
+
+**另一处顺带修的既有 bug（与 SDL 无关）**：`tools/gepack/PackRules.h` 的 `GlobMatch` 文档注释里写了示例模式 `` `**/*.pdb` ``，其中 `**/` 含 `*/` 提前终止了块注释，后面整行被当代码解析（C2018/C3872/C2059，编译器另给 C4138 佐证）。改成行注释。**此错自打包阶段 C 起就存在，只因 `gepack` 从未被构建过而没暴露**（`4eeb1331`）。
+
 ### 3.1 引入 SDL3
 
 **`SDL3` 尚未 vendored，且仓库的 submodule 机制已经腐烂**——`.gitmodules` 里的路径是 `engin/vendor/*`（指向不存在的目录），而实际第三方在 `GE/third_party/`，导致 `git submodule status` 直接报错：
@@ -229,6 +239,7 @@ fatal: no submodule mapping found in .gitmodules for path 'GE/third_party/tracy'
 - [ ] **【新增】中文输入**：软键盘之外的 `SDL_EVENT_TEXT_INPUT` 路径（SDL 一次给整串 UTF-8，翻译层逐码点拆发）在中文输入法下确实生效，且 ImGui 输入框与脚本 `KeyTypedEvent` 都收到
 - [ ] **【新增】鼠标按键语义**：左/中/右键在编辑器与 `GE_Runtime` 下都对应正确（SDL 是 左=1/中=2/右=3，与 GLFW 不同）。这是本轮唯一静默的语义变化
 - [ ] **【新增】跟随相机切换键**：`2/3/4.scene` 已把 `ToggleKey` 从 86 改为 25，运行时应能按 **V** 在第一/第三人称间切换（若按不出来说明该字段没生效）
+- [ ] **【新增】自由视角连续转向**：Play 态锁定鼠标后，朝一个方向持续拖拽必须能**一直转**、推到窗口边缘也不停（这是 SDL 相对模式坐标被钳制导致过的 bug，见 §3.0.1）；另留意解锁瞬间是否视角跳变
 - [ ] 窗口缩放、最大化、DPI 缩放（多显示器不同 DPI 下 UI 尺寸正确）。**注意 `GetWidth/GetHeight` 已改为像素尺寸**，高 DPI 下与换库前不同，重点看视口宽高比与 ImGui UI 缩放是否仍正确
 - [ ] `GE.log` / `imgui.ini` / `game.cfg` 行为不变（`game.cfg` 里的窗口宽高现在是逻辑尺寸、实际按像素创建，确认无明显偏差）
 - [ ] GLFW 已从 `CMakeLists.txt` 移除且一方代码零残留引用（已静态核对通过，构建后复查警告）
@@ -545,13 +556,20 @@ externalNativeBuild ──► CMake → libGE_Runtime.so → APK 的 lib/arm64-v
 
 17. **桌面回归风险**：本计划全程要求桌面零回归。最大风险点是阶段 A（换窗口库，动 `Application` / `ImGuiLayer` / `GameLayer` / `SceneLayer`）与阶段 D（VFS，动所有 loader）。**阶段 A 结束必须完整跑一遍编辑器 + `GE_Runtime`**。
 
+18. **换平台输入后端时的核对清单（阶段 A 实测教训）**：这次「转向到边缘停住」的 bug 不是编译期能发现的，是**语义差异**类的。日后 阶段 E 再动输入路径时，逐条核对：
+
+    - **锁定/相对态的坐标是否有界**？GLFW 无界（`GLFW_CURSOR_DISABLED`）、SDL 钳制在窗口内（`SDL_SetWindowRelativeMouseMode`）。引擎是用逐帧坐标差算增量的，**坐标一停增量就归零** —— 这是最容易漏且症状最迷惑的一项。
+    - **模式切换瞬间的坐标来源是否突变**？切换前后的增量基准必须与首个增量同源，否则 delta 爆值。SDL 侧已在 `SetCursorMode` 里对齐累加器；但 `GameLayer` / `SceneLayer` 是**先** `ResetMouseBaseline(GetCursorPosition())` **再** `SetCursorMode`，跨越了来源切换 —— 当前未观察到问题故未改，若解锁时视角跳变，调换这两步顺序即可。
+    - **事件是回调还是轮询**？GLFW 回调 / SDL 轮询，决定了事件泵放在哪一层。
+    - **键码/按钮编号的基准**是否与既有持久化数据一致（见风险 1）。
+
 ---
 
 ## 11. 里程碑
 
 | 里程碑 | 内容 | 依赖 | 交付判据 |
 |---|---|---|---|
-| **M1** | 阶段 A：桌面 GLFW → SDL3 —— **代码已完成（`213b14b6`），待验证** | — | 编辑器 + `GE_Runtime` 在 SDL3 下**全量回归通过**（§3.5 清单）；GLFW 从依赖中移除 ✅；**此时仍未碰 Android** ✅ |
+| **M1** | 阶段 A：桌面 GLFW → SDL3 —— **代码完成、构建通过（四目标零错零警告），待跑完 §3.5 回归清单** | — | 编辑器 + `GE_Runtime` 在 SDL3 下**全量回归通过**（§3.5 清单）；GLFW 从依赖中移除 ✅；**此时仍未碰 Android** ✅ |
 | **M2** | 阶段 B + C：构建骨架 + Android 平台后端 | M1 | Gradle 产出可安装 APK；真机能出画面（纯色清屏即可）；触摸/软键盘可用 |
 | **M3** | 阶段 D：VFS + 可写目录 | M2 | 真机能完整加载并渲染一个场景（含贴图/网格/动画/音频/Lua）；桌面零回归 |
 | **M4** | 阶段 E：生命周期与 Surface 重建 | M3 | 切后台/切回/旋转/锁屏均不崩，连续 20 次无泄漏 |

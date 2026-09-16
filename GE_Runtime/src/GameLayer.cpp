@@ -1,6 +1,7 @@
 #include "GameLayer.h"
 
 #include "GE/Core/Application.h"
+#include "GE/Core/Base.h"
 #include "GE/Core/GEWindow.h"
 #include "GE/Core/KeyCodes.h"
 #include "GE/Core/Log.h"
@@ -16,6 +17,7 @@
 #include "GE/Scene/Scene.h"
 
 #include <glm/glm.hpp>
+#include <imgui.h>
 
 #include <string>
 #include <utility>
@@ -55,9 +57,26 @@ void GameLayer::OnAttach() {
 
     // 进入运行时模拟：脚本 / 物理 / 跟随相机的总开关（Edit 态下这些一律不跑）
     m_Scene->Play();
+
+    // 触屏控制。合成的事件经 DispatchInputToScene 走与真实输入完全相同的那条路径，
+    // 所以它必须晚于场景创建（要拿 InputState），且早于第一帧事件处理。
+    m_Touch = std::make_unique<TouchControls>(
+        [this](Event &e) { DispatchInputToScene(e); },
+        m_Scene->GetMutableInputState());
+    {
+        const Window &window = Application::Get().GetWindow();
+        m_Touch->SetViewport(window.GetWidth(), window.GetHeight());
+    }
 }
 
 void GameLayer::OnDetach() {
+    // 先撤销触摸合成的按键/左键（还在按住的状态会导致场景 Stop 后仍有键被记为 held；
+    // 且必须在 m_Scene 仍存活时做 —— 合成事件要经过场景）
+    if (m_Touch) {
+        m_Touch->ReleaseAll();
+        m_Touch.reset();
+    }
+
     // 先回滚到摆放姿态（停音频/物理），再释放场景；GPU 资源由全局管理器持有、随 Renderer 释放
     if (m_Scene) {
         m_Scene->Stop();
@@ -115,6 +134,15 @@ void GameLayer::ApplyRenderingConfig() {
 }
 
 void GameLayer::UpdateMouseCapture() {
+#ifdef GE_PLATFORM_ANDROID
+    // 触屏设备上整段跳过。两个理由：
+    //   1. 没有光标可锁/可恢复，SDL 的相对鼠标模式在这里没有意义；
+    //   2. 更实际的是 ResetMouseBaseline —— 它把增量基准设成 SDL 的真实光标位置，
+    //      而触屏下这个值恒为 (0,0)，与 TouchControls 自己维护的虚拟鼠标位置不是一回事，
+    //      反而会在第一次拖视角时造出一次跳变。而它原本要防的"锁定瞬间坐标跳变"在触屏上
+    //      根本不存在。
+    return;
+#else
     Window &window = Application::Get().GetWindow();
     if (!window.GetNativeWindow() || !m_Scene) {
         return;
@@ -135,6 +163,7 @@ void GameLayer::UpdateMouseCapture() {
         window.SetCursorMode(CursorMode::Normal);
         m_MouseCaptured = false;
     }
+#endif
 }
 
 Camera &GameLayer::ActiveCamera(float aspect) {
@@ -167,6 +196,14 @@ void GameLayer::OnUpdate(Timestep &ts) {
     const uint32_t height = window.GetHeight();
     if (width == 0 || height == 0) {
         return;   // 最小化：跳过本帧
+    }
+
+    // 触屏：先同步视口与视角策略，再把摇杆结算成键事件。必须排在仿真推进**之前** ——
+    // 键事件由 Scene::OnUpdate3DSimulation 里的 BeginFrameInput 结算，晚一步就慢一帧。
+    if (m_Touch) {
+        m_Touch->SetViewport(width, height);
+        m_Touch->SetLookEmitsLeftButton(UsesFallbackCamera());
+        m_Touch->Update();
     }
 
     const float aspect = static_cast<float>(width) / static_cast<float>(height);
@@ -202,6 +239,12 @@ void GameLayer::OnEvent(Event &event) {
         return;
     }
 
+    // 触屏事件先由触屏控制层仲裁（它合成的键/鼠标事件会经 DispatchInputToScene 回到
+    // 下面这条路径，即"合成输入与真实输入走同一条路"）。触摸事件一律被消费
+    if (m_Touch && m_Touch->OnEvent(event)) {
+        return;
+    }
+
     // ESC 退出：全屏下没有窗口边框，这是唯一出口
     EventDispatcher escDispatcher(event);
     bool escPressed = false;
@@ -217,14 +260,46 @@ void GameLayer::OnEvent(Event &event) {
         return;
     }
 
+    DispatchInputToScene(event);
+}
+
+void GameLayer::DispatchInputToScene(Event &event) {
     // 运行时整窗即视口（等价编辑器「Play + 视口悬停」）：场景主相机收相机导航输入
     m_Scene->SetProcessCameraInput(true);
     m_Scene->OnEvent(event);
 
     // 场景没有主相机（或强制 --free-camera）时，内置自由视角接管导航
-    if (m_Config.freeCamera || !m_Scene->GetPrimaryCameraEntity()) {
+    if (UsesFallbackCamera()) {
         m_FallbackCamera.OnEvent(event);
     }
+}
+
+bool GameLayer::UsesFallbackCamera() {
+    // 必须与 ActiveCamera 的选择保持一致：那边也是"非 freeCamera 且有主相机"才用场景相机
+    return m_Config.freeCamera || !m_Scene->GetPrimaryCameraEntity();
+}
+
+void GameLayer::OnImGuiRender() {
+    DrawTouchOverlay();
+}
+
+void GameLayer::DrawTouchOverlay() {
+    if (!m_Touch || !m_Touch->IsStickActive()) {
+        return;
+    }
+
+    // 用 foreground draw list 直接画，**不创建 ImGui 窗口** —— 窗口会参与命中测试、
+    // 声称捕获鼠标，而这里画的只是个指示器，不需要也不应该拦截输入。
+    ImDrawList *drawList = ImGui::GetForegroundDrawList();
+    const glm::vec2 center = m_Touch->GetStickCenterPx();
+    const float radius = m_Touch->GetStickRadiusPx();
+
+    const ImVec2 c(center.x, center.y);
+    drawList->AddCircleFilled(c, radius, IM_COL32(255, 255, 255, 28), 48);
+    drawList->AddCircle(c, radius, IM_COL32(255, 255, 255, 90), 48, 2.0f);
+
+    const glm::vec2 knob = m_Touch->GetStickKnobPx();
+    drawList->AddCircleFilled(ImVec2(knob.x, knob.y), radius * 0.4f, IM_COL32(255, 255, 255, 110), 32);
 }
 
 } // namespace GE

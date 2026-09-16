@@ -215,7 +215,7 @@ void AssetDependencyGraph::ExpandEnvironment(const std::string &folderName,
     }
 
     if (!std::filesystem::is_regular_file(FullPath(prefilter))) {
-        // _default_cube 这类只有天空盒的环境没有预过滤，属正常
+        // DefaultCube 这类只有天空盒的环境没有预过滤，属正常
         AddProblem(ProblemLevel::Warn, "环境 " + folderName + " 缺 prefilter.ktx（无 IBL 预过滤）");
     } else {
         EnqueueCanonical(prefilter, AssetKind::Environment, from);
@@ -454,7 +454,7 @@ void AssetDependencyGraph::CollectFixedSets() {
                      AssetKind::Font, "固定集合：ImGui 默认字体");
 
     // 场景没有 EnvironmentComponent 时渲染器兜底用它，另有一份全局共享的 BRDF LUT
-    EnqueueCanonical("environments/_default_cube/skybox.ktx2", AssetKind::Environment,
+    EnqueueCanonical("environments/DefaultCube/skybox.ktx2", AssetKind::Environment,
                      "固定集合：环境兜底");
     EnqueueCanonical("environments/brdf_lut.png", AssetKind::Texture,
                      "固定集合：共享 BRDF LUT");

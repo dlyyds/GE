@@ -396,7 +396,7 @@ Renderer3D::Renderer3D() {
     //    保证 shader 的 samplerCube 始终可绑定。
     m_DefaultSkyboxTexture = Texture::LoadCubeMapFromFile(
         device, cache,
-        Renderer::GetAssetManager().ResolveCanonical("environments/_default_cube/skybox.ktx2"));
+        Renderer::GetAssetManager().ResolveCanonical("environments/DefaultCube/skybox.ktx2"));
     if (m_DefaultSkyboxTexture) {
         m_DefaultSkyboxTexture->SetDebugName("DefaultSkyboxTexture");
     } else {

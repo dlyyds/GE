@@ -13,7 +13,7 @@
  *   环境     → environments/<Name>/skybox.ktx2 + prefilter.ktx
  *
  * 固定集合（场景看不见的依赖）：shaders/glsl 下全部 .spv、scripts/ 整目录、
- * ImGui 字体、默认环境 _default_cube + 共享 brdf_lut.png。
+ * ImGui 字体、默认环境 DefaultCube + 共享 brdf_lut.png。
  */
 
 #pragma once

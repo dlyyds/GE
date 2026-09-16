@@ -129,6 +129,7 @@ popd
 if not "%PACK_RC%"=="0" (
     echo.
     echo [错误] gepack 失败（退出码 %PACK_RC%）—— 资产没变的话可以加 nopack 跳过
+    echo        常见原因：改过 tools/gepack 或资产目录名后没重编主机工具，先跑一次 build.bat
     goto :fail
 )
 

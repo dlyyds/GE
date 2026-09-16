@@ -107,6 +107,20 @@ private:
     /// 原始 SDL 事件观察者（供 ImGui 平台后端取用），见 Window::SetRawPlatformEventHook
     RawPlatformEventHook m_RawEventHook;
 
+    /// 是否处于相对鼠标模式（CursorMode::Disabled）
+    bool m_RelativeMouseMode = false;
+
+    /**
+     * 光标坐标累加器。
+     *
+     * 绝对模式下它就是事件里的真实窗口坐标；**相对模式下它是用 `xrel/yrel`
+     * 累加出来的「虚拟坐标」**，可无限增长 —— 这是刻意为复刻 GLFW 的
+     * `GLFW_CURSOR_DISABLED` 语义（其文档明确说 cursor position is *unbounded*）。
+     * 原因见 `HandleEvent` 里 MOUSE_MOTION 分支的注释：SDL 反过来会把相对模式下的
+     * 光标**约束在窗口内**，直接透传绝对坐标会让引擎的逐帧差值到边缘归零。
+     */
+    glm::vec2 m_CursorPosition{0.0f, 0.0f};
+
     /// SDL 的 ShouldClose 语义需自己维护（GLFW 有 glfwWindowShouldClose）
     bool m_ShouldClose = false;
 };

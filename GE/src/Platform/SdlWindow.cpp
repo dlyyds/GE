@@ -211,7 +211,20 @@ void SdlWindow::HandleEvent(const SDL_Event &event) {
     }
 
     case SDL_EVENT_MOUSE_MOTION: {
-        MouseMovedEvent e(event.motion.x, event.motion.y);
+        // ⚠️ 相对模式（CursorMode::Disabled）下**不能**透传 event.motion.x/y。
+        // SDL 文档原话：相对模式下 "the mouse position is constrained to the
+        // window"，即 x/y 是**被钳制在窗口内**的绝对坐标 —— 鼠标推到边缘后就
+        // 不再变化。而引擎（Scene 的自由视角相机）是用**逐帧坐标差**算鼠标增量
+        // 的，于是转向到边缘就停住、没法一直朝一个方向转。
+        // GLFW 的 GLFW_CURSOR_DISABLED 语义相反：坐标无界、可无限增长，原代码
+        // 依赖的正是那个行为。故这里用 xrel/yrel 累加出虚拟坐标来复刻它。
+        if (m_RelativeMouseMode) {
+            m_CursorPosition.x += event.motion.xrel;
+            m_CursorPosition.y += event.motion.yrel;
+        } else {
+            m_CursorPosition = {event.motion.x, event.motion.y};
+        }
+        MouseMovedEvent e(m_CursorPosition.x, m_CursorPosition.y);
         m_EventCallback(e);
         break;
     }
@@ -320,17 +333,40 @@ void SdlWindow::SetCursorMode(CursorMode mode) {
     if (!m_Window) {
         return;
     }
+
+    const bool want_relative = mode == CursorMode::Disabled;
+    if (want_relative == m_RelativeMouseMode) {
+        return;
+    }
+
+    // 切换前把虚拟坐标对齐到当前真实坐标：两种模式下的坐标来源不同（见
+    // HandleEvent 的 MOUSE_MOTION 分支），不对齐会让切换瞬间出现一个巨大的坐标
+    // 跳变，而引擎正是在切换前后调 ResetMouseBaseline 来防这个跳变的 —— 基准与
+    // 随后的首个增量必须同源。
+    float x = 0.0f, y = 0.0f;
+    SDL_GetMouseState(&x, &y);
+    m_CursorPosition = {x, y};
+
     // relative 模式 = 隐藏光标 + 只上报相对位移，正是 FreeLook 相机要的语义
-    SDL_SetWindowRelativeMouseMode(m_Window, mode == CursorMode::Disabled);
+    if (!SDL_SetWindowRelativeMouseMode(m_Window, want_relative)) {
+        GE_CORE_WARN("SetCursorMode: SDL_SetWindowRelativeMouseMode 失败：{0}", SDL_GetError());
+        return;
+    }
+    m_RelativeMouseMode = want_relative;
 }
 
 glm::vec2 SdlWindow::GetCursorPosition() const {
     if (!m_Window) {
         return {0.0f, 0.0f};
     }
-    float x = 0.0f, y = 0.0f;
-    SDL_GetMouseState(&x, &y);
-    return {x, y};
+    if (!m_RelativeMouseMode) {
+        // 绝对模式：查实时坐标（与 MouseMovedEvent 的取值同源）
+        float x = 0.0f, y = 0.0f;
+        SDL_GetMouseState(&x, &y);
+        return {x, y};
+    }
+    // 相对模式：窗口坐标被 SDL 钳制在窗口内、失去意义，只能返回累加出的虚拟坐标
+    return m_CursorPosition;
 }
 
 float SdlWindow::GetDpiFactor() const {

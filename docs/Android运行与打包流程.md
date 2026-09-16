@@ -341,6 +341,13 @@ llvm-nm -C --defined-only libmain.so | grep -w SDL_main        # 应导出（T�
 llvm-nm -C --undefined-only libmain.so | grep AAssetManager_fromJava   # 应有引用（U，证明链了 libandroid）
 ```
 
+**静默漏收坑（写 build_android.bat 的对账时当场抓到）**：**AGP 的资源合并会忽略下划线开头的
+目录** —— `environments/_default_cube/` 整目录被丢，构建照样成功，APK 里就是少一个文件。
+已做对照实验确定规则边界：下划线开头的**文件**（`_topfile.txt`）**不受影响**，只有**目录**被忽略；
+同一个 280 字节的文件改名为 `default_cube/` 后立刻入包（APK 条目 62 → 63）。
+症状极具误导性：运行期日志只有一条 `Renderer3D: 加载默认天空盒纹理失败`，很容易被当成
+VFS/路径问题去查 —— 而真因是那个文件**根本不在包里**。**结论：资产目录名一律不要以下划线开头。**
+
 **孤儿字节坑**：`packageDebug` 是增量打包，**某个条目体积缩小时不回收旧空间、也不截断文件**。
 把 192 MB 的 skybox 换成 48 MB 后，APK 实测仍是 245 MB，其中 **144 MB 是孤儿字节**。
 做法：**改动会显著缩小资产时，先删掉旧 APK 再构建**（或 `gradlew clean`）。

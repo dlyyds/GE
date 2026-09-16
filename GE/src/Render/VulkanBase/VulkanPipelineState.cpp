@@ -496,17 +496,27 @@ void VulkanPipelineState::flushDynamicStates(vk::CommandBuffer cmd) const {
         cmd.setDepthBiasEnable(m_Rasterization.depthBiasEnable);
 
     // ---- 深度/模板 ----
-    // 优先使用 VK_EXT_extended_dynamic_state 扩展（Vulkan 1.3 core）
+    // **一律用核心 1.3 入口点（不带 EXT 后缀）**。这一组在 1.3 里已从
+    // VK_EXT_extended_dynamic_state 提升为核心，且没有对应的核心特性位
+    // （VkPhysicalDeviceVulkan13Features 里就没有 extendedDynamicState），
+    // 而引擎硬性要求 1.3（SelectPhysicalDevice 不达标即抛），故核心入口点必然可用。
+    //
+    // 反面教材：这里原本调 setDepthTestEnableEXT 等 EXT 后缀，桌面跑得好好的包
+    // 送到 Android 上**一帧内即崩**（SIGSEGV、rip=0，调用跳到地址 0）。因为 EXT
+    // 名字的入口点只在 VK_EXT_extended_dynamic_state **被启用**时才由
+    // vkGetDeviceProcAddr 加载，而扩展被提升进核心后驱动**可以合法地不再列出它**
+    // —— 实测 Android 模拟器（host 直通 RTX 4060，1.3）就不列出，于是指针为 null。
+    // 桌面永远测不出：桌面列出了该扩展，指针恰好是好的。
     if (m_DynamicStateSet.contains(vk::DynamicState::eDepthTestEnable))
-        cmd.setDepthTestEnableEXT(m_DepthStencil.depthTestEnable);
+        cmd.setDepthTestEnable(m_DepthStencil.depthTestEnable);
     if (m_DynamicStateSet.contains(vk::DynamicState::eDepthWriteEnable))
-        cmd.setDepthWriteEnableEXT(m_DepthStencil.depthWriteEnable);
+        cmd.setDepthWriteEnable(m_DepthStencil.depthWriteEnable);
     if (m_DynamicStateSet.contains(vk::DynamicState::eDepthCompareOp))
-        cmd.setDepthCompareOpEXT(m_DepthStencil.depthCompareOp);
+        cmd.setDepthCompareOp(m_DepthStencil.depthCompareOp);
     if (m_DynamicStateSet.contains(vk::DynamicState::eDepthBoundsTestEnable))
         cmd.setDepthBoundsTestEnable(m_DepthStencil.depthBoundsTestEnable);
     if (m_DynamicStateSet.contains(vk::DynamicState::eStencilTestEnable))
-        cmd.setStencilTestEnableEXT(m_DepthStencil.stencilTestEnable);
+        cmd.setStencilTestEnable(m_DepthStencil.stencilTestEnable);
     if (m_DynamicStateSet.contains(vk::DynamicState::eStencilOp)) {
         cmd.setStencilOp(vk::StencilFaceFlagBits::eFront,
                          m_DepthStencil.front.failOp,

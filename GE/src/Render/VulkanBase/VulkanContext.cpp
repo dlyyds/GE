@@ -237,16 +237,13 @@ std::unique_ptr<VulkanDevice> VulkanContext::CreateDevice() {
             vulkan13.synchronization2 = true;
             vulkan13.dynamicRendering = true;
 
-            // 启用 Extended Dynamic State：只有**走扩展路径**时才需要填特性结构。
-            // 1.3 把它提升为核心功能，但**没有对应的核心特性位** ——
-            // VkPhysicalDeviceVulkan13Features 里就没有 extendedDynamicState 这个成员，
-            // 那些动态状态在 1.3 设备上默认可用。所以 1.3 核心路径什么都不用启用。
-            // 反过来，扩展未启用时把它挂进 pNext 是非法用法（校验层会报 VUID），
-            // 故这里必须按扩展是否可用二选一，不能无条件填。
-            if (gpu.IsExtensionSupported(VK_EXT_EXTENDED_DYNAMIC_STATE_EXTENSION_NAME)) {
-                auto &ext_dyn_state = gpu.AddExtensionFeatures<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>();
-                ext_dyn_state.extendedDynamicState = true;
-            }
+            // Extended Dynamic State **不需要启用任何特性结构**：它被提升进 1.3 时
+            // 没有留下核心特性位（VkPhysicalDeviceVulkan13Features 里就没有
+            // extendedDynamicState 这个成员），1.3 设备上那组动态状态默认可用 ——
+            // 这正是 VulkanPipelineState::flushDynamicStates 能直接调核心入口点的前提。
+            // 此前这里会在扩展名可用时填 VkPhysicalDeviceExtendedDynamicStateFeaturesEXT，
+            // 那是"走扩展路径"的遗留：该路径已随那次崩溃（EXT 入口点在 1.3 设备上为 null）
+            // 一并取消，见 flushDynamicStates 的注释。
 
             // 启用采样器数组非均匀索引（CSM C3）：Lighting 逐片元选片后按动态索引采样
             // samplerShadowDepth[cascade]，片元间索引不一致（非均匀），需此特性。现代

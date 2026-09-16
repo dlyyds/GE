@@ -1,6 +1,6 @@
 # Android 移植计划书
 
-> 状态：**阶段 A（桌面 GLFW→SDL3）代码完成、构建通过，待用户跑完 `GE_Runtime` 的转向/相机回归；阶段 B（构建骨架）完成 —— 已产出可安装 APK 并逐项验证产物；阶段 D 的运行时部分 + 阶段 G 的资产入包已落地（M2.5，代码完成待真机验证，见 §6.0.1）；阶段 C / E / F 未开工**
+> 状态：**阶段 A（桌面 GLFW→SDL3）代码完成、构建通过，待用户跑完 `GE_Runtime` 的转向/相机回归；阶段 B（构建骨架）完成；阶段 D 的运行时部分 + 阶段 G 的资产入包已落地（M2.5）—— 桌面侧与构建产物已实跑验证通过（见 §6.0.2），**真机未验**，245 MB APK 已备好；阶段 C / E / F 未开工**
 > 目标：让 `GE_Runtime`（发行版播放器）能作为 APK 装在 Android 设备上运行。
 > **窗口库决策（2026-09-16 定）：换掉 GLFW，桌面与 Android 统一走 SDL3。** 理由见 §1.3。原「保留 GLFW + 手写 Android 后端」方案已否决——它把 Android 特有的 glue / 生命周期 / 触摸 / IME 全部留给手写，那部分是写一次、无人测、会腐烂的代码；SDL3 直接提供。
 > 范围（已定）：**只移 `GE_Runtime`**。`GE_Editor` 不上 Android（依赖 ImGuizmo / node-editor / 多视口停靠 / `FileDialogs`），但它必须跟着走完 SDL3 迁移。
@@ -393,6 +393,30 @@ Windows-only 目标在 Android 下必须整体跳过：
 2. **`AssetPaths::Fonts` 大小写与磁盘不符**（`fonts/opensans` vs `assets/fonts/OpenSans`）+ **`AddFontFromFileTTF` 失败即 abort**。两者叠加使字体加载从"降级"变成"崩溃"，故字体现经 VFS 读进内存走 `AddFontFromMemoryTTF`。见 §10 第 20 条。
 3. **`std::filesystem::path::string()` 在 Windows 上产出反斜杠**，而规范形一律正斜杠。凡是"路径写进场景 / 交给 VFS"的地方都改用 `generic_string()`。这条**不经真机测不出来**（Windows 上反斜杠照样能打开文件），性质与 §3.0.1 那三类同族。见 §10 第 21 条。
 
+**实施中踩到并修掉的一处回归（`53075559`）**：把读取搬到**进程级单例 VFS** 之后，**宿主 CLI 工具也是它的调用方**，而 `gepack` / `gemesh` 不走 `Application` 构造、从不初始化 VFS —— 实测 `gepack` 因此把 7 个完好的 `.gemesh` 全报成「格式版本不符或已损坏」（真实原因是读不到）。两处修：工具启动时 `VFS::Init(assetRoot)`；`AssetDependencyGraph::ExpandMesh` 改为传**规范形**给 `ParseGEMesh`（它此前传的是 `FullPath(canonical)`，即已拼上资源根的路径，而现在解析器把入参当规范形，于是变成 `<root>/<root>/...`）。**教训**：引入全局单例状态时，要数清**所有**入口点，而不是只数"游戏/编辑器"。另：那条错误消息原本写成「格式版本不符或已损坏」，把方向指偏了 —— **报错措辞要能区分"读不到"与"读到了但格式不对"**，否则排查会先怀疑格式。
+
+**真机构建与解包又揪出两个错（`b25d3e45`）**，都是"构建成功 ≠ 产物正确"那一类：
+
+1. `PlatformUtils.h` 用了 `GE_PLATFORM_ANDROID` 却没引定义它的头 → 条件声明被编掉、定义还在，clang 报 `out-of-line definition ... does not match any declaration`。**桌面构建永远看不见**（两边 `#ifdef` 同为假）。
+2. Gradle 的 `copyGameAssets` 多套了一层 `assets/`：**注册进 `sourceSets` 的那个目录本身就是 APK 的 assets 根**，再 `into 'assets'` 就成了 `assets/assets/**`。构建照样"成功"，只有解包才看得出。顺带把任务从 `Copy` 换成 **`Sync`** —— `Copy` 不 prune 目标目录，改过结构后旧产物会继续留着（实测 APK 里同时存在两套布局、体积近乎翻倍，外加 216 MB 中央目录未索引的孤儿字节）。
+
+#### 6.0.2 验证记录（2026-09-16，桌面与构建产物已实跑；真机未验）
+
+**桌面（`build.bat` 两侧都验过：MSVC 目标与 Android/Clang 目标）**
+
+- `build.bat` 四目标零错零警告（`GE_Editor` / `GE_Runtime` / `gemesh` / `gepack`）；新增的 `VFS.cpp` 被 `GE/src/FileSystem/*.cpp` 的 glob 自动收进，无需改 CMake。
+- 仓库根跑 `GE_Runtime`：**0 error**，7 个 `.gemesh` 全部就绪（含 `未命名.gemesh` 12786 顶点），6 张 PNG + `brdf_lut.png` + 2 张环境图解码成功。
+- **桌面 `dist/` 隔离验证通过（首次做）**：把 `dist/` 拷到 `F:\yxy\tmp_dist_isolated\` 再跑，资产根正确识别为隔离目录，且 `Ellen_Body_Map1_D.png` 被解析为**规范形** `models/shayv/Ellen_Body_Map1_D.png` 而非内嵌的 `F:\yxy\...` 绝对路径 —— 根无关兜底生效，即 §10 风险 19 的修复得到证实。
+- **画面已确认**（不是只看日志）：截图与"关掉游戏"的基线对比 —— 关掉时屏幕中央是暗色桌面（263 种颜色，均值 RGB 33/36/38），运行时变成明亮天空场景（1288 种颜色，均值 RGB 153/163/169）。
+
+**构建产物**
+
+- `gepack` 恢复 62 资产 / 216,242,087 字节 / **0 错误**（与换 VFS 之前一致）。
+- `gradlew assembleDebug` 干净重建产出 **245.0 MB** APK：62 个资产 / 206.0 MB 压缩后、**0 孤儿字节**；`assets/game.cfg` 在 assets 根；`assets/fonts/OpenSans/OpenSans-Regular.ttf` **大小写正确**；`lib/arm64-v8a/libGE_Runtime.so` 导出 `SDL_main`（`T`）且引用 `AAssetManager_fromJava`（`U`，证明 libandroid 已链）；新增的 `GE::VFS::InitAndroid` 与 `GE::PlatformUtils::GetAndroidAssetManager` 均在符号表内。
+- **好消息：非 ASCII 资产名经 aapt2/AGP 逐字节保留**（`models/shayv/未命名.gemesh`、中文 `.wav` 全部原样）。侦查时担心 aapt2 会改写这类名字，实测不会 —— 这条开放问题关闭。
+
+**仍未验（无设备连接，只能真机做）**：`Log::Init` 与 `AAssetManager` 的**运行期**路径、Vulkan 1.3 覆盖率、192 MB skybox 的加载内存峰值（§10 风险 14）、以及全部交互类回归（§3.5）。**APK 245 MB 已备好，接上设备 `adb install -r` 即可。**
+
 **实施中的两处判断**（有意为之，不是遗漏）：
 
 - **不做 VFS 流式 `Reader` 接口、不做 `ma_vfs`**。首版"看到画面"的路径上没有任何东西需要流式；音频用 `VFS::ReadAll` + 内存解码即可（计划书风险 11 也是这么建议的）。等真要做音频流式再补，那时它是**第一次**被需要，而不是现在为想象中的调用方预留。
@@ -452,15 +476,17 @@ VFS::OpenRead(path) -> std::unique_ptr<Reader>    // 流式读（音频用）
 
 ### 6.4 验收
 
-**代码已就绪（§6.0.1），以下全部待跑。** 前三条按 `no-auto-build` 惯例由用户构建 + 真机验证：
+**代码已就绪，桌面与构建产物已实跑（见 §6.0.2），真机项待跑。** 按 `no-auto-build` 惯例由用户构建 + 真机验证：
 
-- [ ] **桌面零回归**：`build.bat` 四目标全绿；仓库根启动 `GE_Runtime` 能加载 `2.scene`（贴图/网格/动画/音频/Lua 全在位）；编辑器三场景 + 材质另存为正常
-- [ ] **桌面 dist 隔离**（打包计划书一直没做的判据，也是风险 19 的直接验证）：把 `dist/` 整个拷到无关目录再启动 `dist/GE_Runtime.exe` —— 修好前会因内嵌绝对路径而"读开发机上的那份资产"，看起来正常但实际没走包
-- [ ] Android 上能完整加载场景：`.scene` + `.gemesh` + `.ktx2` + `.geanim` + `.gemat` + `.spv` + 音频 + Lua 脚本，全部从 APK 内读出（`unzip -l app-debug.apk` 先确认 62 个资产与 `game.cfg` 确实在包里）
-- [ ] `adb logcat -s GE` 能看到 VFS 后端与资源根两行启动横幅，且**无 abort**（abort 的第一嫌疑是字形加载，见风险 20）
+- [x] **桌面零回归**：`build.bat` 四目标全绿零警告；仓库根启动 `GE_Runtime` 能加载 `2.scene`（贴图/网格/动画/音频/Lua 全在位，0 error）
+- [x] **桌面 dist 隔离**（打包计划书一直没做的判据，也是风险 19 的直接验证）：把 `dist/` 拷到无关目录再启动 —— 内嵌绝对路径被正确归一为规范形。**修好前它会"读开发机上的那份资产"，看起来正常但实际没走包**
+- [x] `unzip` 确认 62 个资产与 `game.cfg` 确实在 APK 里，且 `fonts/OpenSans` 大小写正确、非 ASCII 名逐字节保留
+- [ ] `adb install -r` 后 `adb logcat -s GE` 能看到 VFS 后端与资源根两行启动横幅，且**无 abort**（abort 的第一嫌疑是字形加载，见风险 20）
+- [ ] 真机看到场景画面（模型有贴图而非白模）
 - [ ] `GE.log` / `imgui.ini` 落在用户目录（`adb shell run-as com.ge.runtime ls files/`），重启后配置保持
 - [ ] Lua `require` 在 VFS 下可用（自定义 searcher 生效）
 - [ ] `game.cfg` 的读取顺序生效：用户目录优先，回退 APK 内的资产根
+- [ ] 编辑器完整回归（`GE_Editor` 三场景 + 材质另存为）—— 本次未跑编辑器
 
 ---
 
@@ -624,8 +650,9 @@ externalNativeBuild ──► CMake → libGE_Runtime.so → APK 的 lib/arm64-v
 
 14. **APK 体积 —— 已有实测，比预估更严峻**：打包系统首次实跑（见 `游戏打包系统计划书.md` §5.7）得到 `2.scene` 的完整资产树为 **216 MB**，其中**单个 `environments/DaySkyHDRI065B/skybox.ktx2` 就占 192 MB（80%）**。加上已产出的 39 MB APK（`libGE_Runtime.so` 38.8 MB），**APK 会到 ~250 MB**。
     - 这对于 Google Play 是超限风险（常规 APK 上限 150 MB，超出需走 Asset Delivery / 分包），且 `assets/` 在 APK 内默认为压缩存储，**安装后解压 + 首次加载都会明显变慢**。
-    - **主因是资产本身**（6.5K 级 HDRI 用在天空盒上属过采样），不是引擎或打包流程。**建议在开阶段 G 之前先处理**：降分辨率重烘（体积可掉一个数量级、肉眼几乎无差）→ 必要时再上 ASTC 压缩（引擎已链 KTX + astcenc）→ 最后才考虑 Play Asset Delivery 分包。
-    - **【M2.5 追加】真机首跑还会撞上内存峰值，不只是体积**：VFS 的读取路径是"整份读进内存 → 交给 libktx `CreateFromMemory`"，而 libktx 会**再拷一份**图像数据，所以这 192 MB 的 skybox 在加载瞬间占用约 **2× ≈ 400 MB** 原生内存（走文件路径时 libktx 自读只需一份）。这在手机上可能直接 OOM，而症状是"环境贴图加载失败 / 进程被杀"，与体积问题同一根因。**这给"先降分辨率"又加了一条独立理由 —— 而且它比体积更早、更硬地挡住 M2.5 的画面**。（若首跑真撞上，退路是给 `CreateKtxFromVfs` 加桌面 `CreateFromNamedFile` 分支，但那会让 Android 的内存路径在桌面上失去唯一可测环境，需权衡。）
+    - ~~**主因是资产本身**（6.5K 级 HDRI 用在天空盒上属过采样），不是引擎或打包流程。建议降分辨率重烘（体积可掉一个数量级）~~ —— **这个诊断是错的，M2.5 实跑测出了真因**。运行日志给出 `cubemap 异步解码完成: environments/DaySkyHDRI065B/skybox.ktx2 (2048x2048 mip=1)` + `纹理异步就绪: … 格式=R16G16B16A16Sfloat`：它是 **2048² 的 6 面 cubemap、16 位浮点、未压缩、且没有 mip 链**。算一遍正好对上：2048×2048×8 字节×6 面 = 201,326,592 B，清单里的 201,326,848 B 就是它加文件头。所以**问题不是分辨率过采样（2K 对天空盒是合理值），而是格式没压缩**。
+    - **修正后的方向**（代价从低到高）：① **BC6H 压缩**（`BC6H_UF16` 就是为 HDR 设计的，8 位/像素 → 2048²×1×6 ≈ **25 MB，约 8:1**；引擎已链 KTX，且 `PrepareKtxForUpload` 里已有 BC7 的能力探测可照搬）—— 这才是对症的一刀；② 降分辨率到 1K（201→50 MB，4:1，但会真的损失天空细节）；③ Play Asset Delivery 分包。**先做 ①**。另注意它**没有 mip 链**（`mip=1`），对天空盒不算致命但采样质量与带宽都不理想，重烘时一并补上。
+    - **【M2.5 追加】真机首跑还会撞上内存峰值，不只是体积**：VFS 的读取路径是"整份读进内存 → 交给 libktx `CreateFromMemory`"，而 libktx 会**再拷一份**图像数据，所以这 192 MB 的 skybox 在加载瞬间占用约 **2× ≈ 400 MB** 原生内存（走文件路径时 libktx 自读只需一份）。这在手机上可能直接 OOM，而症状是"环境贴图加载失败 / 进程被杀"，与体积问题同一根因。**这给"先压缩"又加了一条独立理由 —— 而且它比体积更早、更硬地挡住 M2.5 的画面**。（若首跑真撞上，退路是给 `CreateKtxFromVfs` 加桌面 `CreateFromNamedFile` 分支，但那会让 Android 的内存路径在桌面上失去唯一可测环境，需权衡。桌面实测 192 MB 的 skybox 能正常加载到 `R16G16B16A16Sfloat`。）
     - 这条与 `游戏打包系统计划书.md` §9.12 是同一条，两边都要盯。
 
 15. **`ImGui` 在 Android 上是否必要**：`ImGuiLayer.cpp:33-34` 已把 `ViewportsEnable` 注释掉、只开 docking，所以没有多视口问题。但 `GE_Runtime` 本来不带编辑器 UI，**运行时几乎用不到 ImGui**——可考虑 Android 上直接关掉，省一大块复杂度和启动耗时。**值得评估**（若 `GameLayer` 依赖 ImGui 做调试面板则不能关）。

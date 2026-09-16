@@ -42,11 +42,24 @@ Application::Application(const std::string &name, ApplicationCommandLineArgs arg
     }
     m_Window->SetEventCallback(GE_BIND_EVENT_FN(Application::OnEvent));
 
-    // 资源根决策：优先 exe 同级 assets（发行版布局，与启动时的工作目录无关），
-    // 不存在则回退 CWD/assets（开发期从仓库根启动）。
-    // 必须在 Renderer 构造之前定好：Renderer 构造尾部会初始化 ImGui 并加载字体。
-    const std::filesystem::path exeDir = PlatformUtils::GetExecutableDirectory();
+    // 资源根决策。必须在 Renderer 构造之前定好：Renderer 构造尾部会初始化 ImGui
+    // 并加载字体与内置着色器。
     std::error_code ec;
+#ifdef GE_PLATFORM_ANDROID
+    // Android：资产在 APK 内，没有"exe 同级 / CWD 下的 assets"这回事，也无法用
+    // std::filesystem 判存在性。assetRoot 退化为一个**虚拟根名** —— 只为
+    // ToCanonical 里"剥掉资源根目录名前缀"那一支服务，不参与任何文件访问。
+    // 真正的资产访问是 AAssetManager，经 VFS::InitAndroid 接进来。
+    const std::filesystem::path assetRoot{"assets"};
+
+    VFS::InitAndroid(PlatformUtils::GetAndroidAssetManager());
+    if (!VFS::IsInitialized()) {
+        GE_CORE_ERROR("Application: 拿不到 AAssetManager，APK 内资产将全部读取失败");
+    }
+#else
+    // 桌面：优先 exe 同级 assets（发行版布局，与启动时的工作目录无关），
+    // 不存在则回退 CWD/assets（开发期从仓库根启动）。
+    const std::filesystem::path exeDir = PlatformUtils::GetExecutableDirectory();
     std::filesystem::path assetRoot = exeDir / "assets";
     if (exeDir.empty() || !std::filesystem::exists(assetRoot, ec)) {
         const std::filesystem::path cwd = std::filesystem::current_path(ec);
@@ -61,9 +74,9 @@ Application::Application(const std::string &name, ApplicationCommandLineArgs arg
                       assetRoot.string());
     }
 
-    // 资产读取统一走 VFS（只读）。必须在**任何资产读取之前**初始化 —— Renderer 构造
-    // 尾部就会加载 ImGui 字体与内置着色器。
+    // 资产读取统一走 VFS（只读）。
     VFS::Init(assetRoot);
+#endif
 
     // 初始化渲染器（内部完成 VulkanContext → RenderContext → Prepare → ImGui 初始化）
     m_Renderer = std::make_unique<Renderer>(*m_Window, assetRoot);

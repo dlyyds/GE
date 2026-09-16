@@ -47,11 +47,8 @@ android {
         }
     }
 
-    // 原生构建要先于资源合并完成 —— 阶段 G 会把 gepack 产出的 assets 拷进 APK，
-    // 那条路径依赖这个顺序。现在留着，免得日后加资产时踩顺序问题。
-    applicationVariants.all { variant ->
-        tasks["merge${variant.name.capitalize()}Assets"]
-            .dependsOn("externalNativeBuild${variant.name.capitalize()}")
+    lint {
+        abortOnError = false
     }
 
     sourceSets.main {
@@ -69,8 +66,59 @@ android {
         }
     }
 
-    lint {
-        abortOnError = false
+    // 已经在 APK 里压过一遍的格式不再二次压缩：省体积，也让将来做"流式读取"
+    // （AAsset_seek 只对未压缩资产有效）不必回头改这里。
+    androidResources {
+        noCompress.addAll(['ktx', 'ktx2', 'png', 'jpg', 'jpeg', 'wav',
+                           'gemesh', 'geanim', 'spv', 'ttf'])
+    }
+}
+
+// ============================================================
+// gepack 资产入包
+// ============================================================
+// 引擎在 Android 上只能从 APK 内的 assets/ 读资产（经 AAssetManager，见 VFS）。
+// 这里把主机侧 `bin/gepack.exe` 产出的 dist/ 树接进 AGP 的资产合并流程。
+//
+// 拷到 build/ 下的**生成目录**而不是 src/main/assets：
+//   - 不污染源码树（216MB 的资产不该出现在 git status 里）
+//   - dist/ 本身已在 .gitignore 中（可重新生成）
+def gepackDistDir = file('../../../dist')
+def generatedAssetsDir = layout.buildDirectory.dir('generated/gepackAssets')
+
+tasks.register('copyGameAssets', Copy) {
+    description = '把 gepack 的 dist/ 接成 APK 的 assets/（assets/** + game.cfg）'
+    group = 'ge'
+
+    doFirst {
+        if (!new File(gepackDistDir, 'assets').isDirectory()) {
+            throw new GradleException(
+                """找不到 ${gepackDistDir}/assets —— 先产出发行包再构建 APK：
+                     bin/gepack.exe --scene assets/scenes/2.scene --out dist
+                   注意仓库不含 models/materal/audio/environments/HDRI 等大资产
+                   （.gitignore 已排除），需本机备齐后 gepack 才能收全。""".stripIndent())
+        }
+        if (!new File(gepackDistDir, 'game.cfg').isFile()) {
+            logger.warn("WARNING: ${gepackDistDir}/game.cfg 不存在，APK 里将没有发行配置，" +
+                        "运行时回退内置默认值（场景为 scenes/2.scene）")
+        }
+    }
+
+    // dist/assets/** → APK 的 assets/**（生成目录下的 assets/ 子目录即 APK 的 assets/）
+    from(new File(gepackDistDir, 'assets')) { into 'assets' }
+    // dist/game.cfg → APK assets 根（GameConfig 在 Android 上回退到这里读）
+    from(new File(gepackDistDir, 'game.cfg'))
+    into generatedAssetsDir
+}
+
+android {
+    sourceSets.main.assets.srcDir(generatedAssetsDir.get().asFile)
+
+    // 原生构建要先于资源合并完成；资产生成同样要在合并前完成。
+    applicationVariants.all { variant ->
+        def cap = variant.name.capitalize()
+        tasks["merge${cap}Assets"].dependsOn("externalNativeBuild${cap}")
+        tasks["merge${cap}Assets"].dependsOn("copyGameAssets")
     }
 }
 

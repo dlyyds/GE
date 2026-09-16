@@ -4,6 +4,11 @@
 
 #include <SDL3/SDL.h>
 
+#ifdef GE_PLATFORM_ANDROID
+#include <jni.h>
+#include <android/asset_manager_jni.h>
+#endif
+
 namespace GE {
 
 /**
@@ -74,5 +79,54 @@ bool PlatformUtils::IsAssetRootWritable() {
     return true;
 #endif
 }
+
+#ifdef GE_PLATFORM_ANDROID
+
+void *PlatformUtils::GetAndroidAssetManager() {
+    // SDL 把 `void*` 当 JNIEnv / jobject 传，头文件刻意不引 jni.h（见 SDL_system.h 注释）
+    JNIEnv *env = static_cast<JNIEnv *>(SDL_GetAndroidJNIEnv());
+    if (!env) {
+        GE_CORE_ERROR("PlatformUtils: 取不到 JNIEnv，无法访问 APK 资产");
+        return nullptr;
+    }
+
+    // 注意：SDL_GetAndroidActivity 返回的是**局部引用**，用完必须 DeleteLocalRef
+    jobject activity = static_cast<jobject>(SDL_GetAndroidActivity());
+    if (!activity) {
+        GE_CORE_ERROR("PlatformUtils: 取不到 Android Activity，无法访问 APK 资产");
+        return nullptr;
+    }
+
+    void *assetManager = nullptr;
+
+    jclass activityClass = env->GetObjectClass(activity);
+    if (activityClass) {
+        // Activity.getAssets() → android.content.res.AssetManager
+        if (const jmethodID getAssets = env->GetMethodID(
+                activityClass, "getAssets", "()Landroid/content/res/AssetManager;");
+            getAssets != nullptr) {
+            if (jobject localManager = env->CallObjectMethod(activity, getAssets);
+                localManager != nullptr) {
+                // AAssetManager_fromJava 内部持全局引用，生命周期到进程结束，
+                // 所以这里把局部引用删掉即可，返回的指针不需要（也不能）释放。
+                assetManager = AAssetManager_fromJava(env, localManager);
+                env->DeleteLocalRef(localManager);
+            }
+        }
+        env->DeleteLocalRef(activityClass);
+    }
+    env->DeleteLocalRef(activity);
+
+    // 反射调用可能抛出（方法签名变动 / 类被混淆），必须清掉挂起的异常，
+    // 否则下一次 JNI 调用会连带失败，症状与本次无关而更难查
+    if (env->ExceptionCheck()) {
+        env->ExceptionDescribe();
+        env->ExceptionClear();
+    }
+
+    return assetManager;
+}
+
+#endif // GE_PLATFORM_ANDROID
 
 } // namespace GE

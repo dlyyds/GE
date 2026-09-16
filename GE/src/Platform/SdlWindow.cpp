@@ -121,6 +121,15 @@ void SdlWindow::SyncExtentFromWindow() {
     SDL_GetWindowSizeInPixels(m_Window, &w, &h);
     properties.extent.width = static_cast<uint32_t>(w);
     properties.extent.height = static_cast<uint32_t>(h);
+
+    // 零尺寸是**硬错误**而不是"稍后再说"：Renderer 构造里创建的**首个** swapchain
+    // 直接拿这个值当 extent，0 会被 Vulkan 拒绝（Application::RecreateSwapchain 的
+    // 0 守卫在首帧之后才生效）。Android 上此值应为非零 —— SDLActivity 只在 Surface
+    // 就绪且 Activity 已 resumed 时才启动 native main 线程（SDLActivity.java:858-866）。
+    // 留着这条日志是为了万一真机上不是这样，能一眼看到根因，而不是猜 swapchain 为什么建不起来。
+    if (w == 0 || h == 0) {
+        GE_CORE_ERROR("SdlWindow: 窗口像素尺寸为 0（{0}x{1}）—— 随后创建 swapchain 必然失败", w, h);
+    }
 }
 
 void SdlWindow::HandleEvent(const SDL_Event &event) {

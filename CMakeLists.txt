@@ -232,7 +232,9 @@ target_link_libraries(${GE_NAME} PUBLIC
 
 # imguizmo 是编辑器专用目标，Android 下没建（见上面的 add_subdirectory 分区）。
 if (ANDROID)
-    target_link_libraries(${GE_NAME} PUBLIC ${VULKAN_LIB})
+    # android = libandroid.so：AAssetManager_fromJava 在它里面（PlatformUtils 取
+    # APK 资产管理器时用）。NDK 的 sysroot 里自带，find_library 一定能找到。
+    target_link_libraries(${GE_NAME} PUBLIC ${VULKAN_LIB} android)
 else ()
     target_link_libraries(${GE_NAME} PUBLIC imguizmo ${Vulkan_LIBRARIES})
 endif ()

@@ -6,6 +6,7 @@
 #include "SceneLayer.h"
 
 #include "GE/Core/Application.h"
+#include "GE/Debug/Profiler.h"
 #include "GE/Events/KeyEvent.h"
 #include "GE/Events/MouseEvent.h"
 #include "GE/Render/Renderer.h"
@@ -241,6 +242,8 @@ Camera &SceneLayer::GetRenderingViewCamera(float aspect) {
 }
 
 void SceneLayer::OnUpdate(Timestep &ts) {
+    GE_PROFILE_SCOPE("SceneLayer::OnUpdate");
+
     // Play 态跟随相机：锁定鼠标（否则无法持续转向）
     UpdateMouseCapture();
 

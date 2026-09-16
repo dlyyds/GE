@@ -4,6 +4,7 @@
 #include "GE/Core/GEWindow.h"
 #include "GE/Core/KeyCodes.h"
 #include "GE/Core/Log.h"
+#include "GE/Debug/Profiler.h"
 #include "GE/Events/Event.h"
 #include "GE/Events/KeyEvent.h"
 #include "GE/Render/AssetManager.h"
@@ -160,6 +161,8 @@ Camera &GameLayer::ActiveCamera(float aspect) {
 }
 
 void GameLayer::OnUpdate(Timestep &ts) {
+    GE_PROFILE_SCOPE("GameLayer::OnUpdate");
+
     if (!m_Scene) {
         return;
     }

@@ -1,6 +1,6 @@
 # Android 移植计划书
 
-> 状态：**计划中，未开工**
+> 状态：**阶段 A 代码已落地（`e9b8c305` + `213b14b6`），待构建与实机验证；阶段 B–G 未开工**
 > 目标：让 `GE_Runtime`（发行版播放器）能作为 APK 装在 Android 设备上运行。
 > **窗口库决策（2026-09-16 定）：换掉 GLFW，桌面与 Android 统一走 SDL3。** 理由见 §1.3。原「保留 GLFW + 手写 Android 后端」方案已否决——它把 Android 特有的 glue / 生命周期 / 触摸 / IME 全部留给手写，那部分是写一次、无人测、会腐烂的代码；SDL3 直接提供。
 > 范围（已定）：**只移 `GE_Runtime`**。`GE_Editor` 不上 Android（依赖 ImGuizmo / node-editor / 多视口停靠 / `FileDialogs`），但它必须跟着走完 SDL3 迁移。
@@ -146,6 +146,22 @@ GLFW 泄漏到抽象层外的位置**有限且已知**，共 5 处。阶段 A �
 
 **这个阶段不碰 Android，唯一目标是把换库的风险在已知可测的环境里消化掉。** 做完后桌面行为应与现在完全一致。
 
+### 3.0 落地记录（2026-09-16，`e9b8c305` + `213b14b6`）
+
+代码已全部写完，GLFW 已从一方代码与构建中彻底移除。**待用户构建与回归验证**（按 `no-auto-build` 惯例未自行构建）。与计划的偏差及实施中的新发现：
+
+| 项 | 结果 |
+|---|---|
+| SDL 版本 | 取 **3.4.16**（`release-3.4.16`），vendored 到 `GE/third_party/SDL/`，1642 文件入库 |
+| 目录形态 | 新代码放 `GE/src/Platform/`（**不按平台分目录**）；`SdlWindow.h` 按旧 `GlfwWindow.h` 的位置约定放 `GE/include/GE/Platform/`，因为 `Renderer3DInternal.h` 那种同目录裸名 include 无法跨目录 |
+| 入口点 | 已核实 `SDL_main_impl.h` 在 Win32 **同时提供 `main`（控制台）与 `WinMain`（窗口）**，故 `EntryPoint.h` 去掉 `_WIN64` 守卫、写普通 `int main()` 即可两端通吃。**约束：全程序只能有一个 TU include `SDL_main.h`**（定义在头文件里） |
+| 键码 | 已按 `SDL_SCANCODE_*` 重编号，枚举名一字未改。`SDL_SCANCODE_COUNT == 512` 与 `kKeyCapacity = 512` **刚好持平、零余量**，故按键翻译层加了越界丢弃 |
+| 鼠标码 | 编号随 SDL 变为 左=1/中=2/右=3。**这是唯一静默的语义变化**：Lua 里 `Mouse.Button1` 由右键变左键 |
+| `F25` | **已移除**（SDL scancode 集合只有 F1–F24） |
+| 事件类 | `WindowFocusEvent` / `WindowLostFocusEvent` **只有枚举槽位、没有类**（换库前也没有生产者），故焦点事件暂不翻译，留到阶段 E 有真正消费者时再补 |
+| 顺带删除 | `Window::GetRequiredSurfaceExtensions()` —— 已核实全代码库无调用者 |
+| ImGui 输入 | SDL3 后端没有 GLFW 那种「自己装回调」的模式，必须逐事件喂 `ProcessEvent`。为此在 `Window` 上开了 `SetRawPlatformEventHook`（`const void*` 转交，避免窗口层反向依赖 ImGui），钩子在引擎事件翻译**之前**调用以复刻 GLFW 回调链的先后 |
+
 ### 3.1 引入 SDL3
 
 **`SDL3` 尚未 vendored，且仓库的 submodule 机制已经腐烂**——`.gitmodules` 里的路径是 `engin/vendor/*`（指向不存在的目录），而实际第三方在 `GE/third_party/`，导致 `git submodule status` 直接报错：
@@ -205,12 +221,17 @@ fatal: no submodule mapping found in .gitmodules for path 'GE/third_party/tracy'
 
 ### 3.5 验收
 
+**代码已就绪，以下全部待跑。** 除计划中的项外，补三条本轮实施新增的必验项（都在 §10 风险里）：
+
 - [ ] `GE_Editor` 完整回归：三个场景加载、视口、Hierarchy、Gizmo、node-editor、Docking 布局、`editor_settings.cfg` 读写
 - [ ] `GE_Runtime` 回归：`game.cfg` 启动、自由相机鼠标捕获（`GameLayer` 的 cursor lock/unlock）
-- [ ] 键位全量自测：字母数字、方向键、Esc/Enter/Tab/Backspace、F1-F12、Shift/Ctrl/Alt、小键盘
-- [ ] 窗口缩放、最大化、DPI 缩放（多显示器不同 DPI 下 UI 尺寸正确）
-- [ ] `GE.log` / `imgui.ini` / `game.cfg` 行为不变
-- [ ] `CMakeLists.txt:36` 的 GLFW 移除后无残留引用
+- [ ] 键位全量自测：字母数字、方向键、Esc/Enter/Tab/Backspace、F1–F12、Shift/Ctrl/Alt、小键盘
+- [ ] **【新增】中文输入**：软键盘之外的 `SDL_EVENT_TEXT_INPUT` 路径（SDL 一次给整串 UTF-8，翻译层逐码点拆发）在中文输入法下确实生效，且 ImGui 输入框与脚本 `KeyTypedEvent` 都收到
+- [ ] **【新增】鼠标按键语义**：左/中/右键在编辑器与 `GE_Runtime` 下都对应正确（SDL 是 左=1/中=2/右=3，与 GLFW 不同）。这是本轮唯一静默的语义变化
+- [ ] **【新增】跟随相机切换键**：`2/3/4.scene` 已把 `ToggleKey` 从 86 改为 25，运行时应能按 **V** 在第一/第三人称间切换（若按不出来说明该字段没生效）
+- [ ] 窗口缩放、最大化、DPI 缩放（多显示器不同 DPI 下 UI 尺寸正确）。**注意 `GetWidth/GetHeight` 已改为像素尺寸**，高 DPI 下与换库前不同，重点看视口宽高比与 ImGui UI 缩放是否仍正确
+- [ ] `GE.log` / `imgui.ini` / `game.cfg` 行为不变（`game.cfg` 里的窗口宽高现在是逻辑尺寸、实际按像素创建，确认无明显偏差）
+- [ ] GLFW 已从 `CMakeLists.txt` 移除且一方代码零残留引用（已静态核对通过，构建后复查警告）
 
 ---
 
@@ -490,35 +511,39 @@ externalNativeBuild ──► CMake → libGE_Runtime.so → APK 的 lib/arm64-v
 
 ## 10. 风险与开放问题
 
-1. **Vulkan 1.3 设备门槛（最高风险）**：引擎把 `dynamicRendering` / `synchronization2` 当核心 1.3 特性无条件启用，`apiVersion >= 1.3` 是硬门槛（`VulkanContext.cpp:195, 217-222`）。**Android 上的实际覆盖率本轮未能查证（网络受限）**，开工第一步应真机 `vulkaninfo` 验证。若覆盖率不足，需补 `VK_KHR_dynamic_rendering` / `VK_KHR_synchronization2` 扩展回退——**会牵动 `RenderGraph.cpp`（`:41-99`）与 `VulkanImage.cpp`（`:250-291`）里大量 `*FlagBits2` 用法，是独立的一大块，不要与移植混在一个阶段。**
+1. **【阶段 A 已发生】场景文件里的 `ToggleKey` 是 GLFW 键码，无法自动迁移**：`FollowCameraComponent::ToggleKey` 是**唯一**被序列化的键码字段（`SceneSerializer.cpp:822` 写、`:1484` 读），默认 `Key::V` 在 GLFW 是 **86**、在 SDL 是 **25**。场景格式**没有版本号**，故无法在加载时判定"这份场景是换库前还是换库后存的"，也就无法自动重映射。仓库内 `2/3/4.scene` 已就地更新为 25 并随本阶段提交；**仓库外的场景需手工改，或在编辑器检查器里重新设一次切换键**。若日后还想加别的序列化键码字段，先给场景格式加版本号。（不要用启发式猜：86 与 25 都是合法 scancode，猜错会静默绑到错误的键。）
 
-2. **阶段 A 的编辑器回归（SDL 迁移的主要风险）**：editor 的 docking、node-editor、ImGuizmo 全部坐在 ImGui 平台后端上。**缓解手段就是这个风险可以在完全不碰 Android 的情况下独立验证**——所以阶段 A 必须**先独立做完并全量回归**，再开 Android。不要为了"省一个阶段"把换库和上新平台揉在一起。
+2. **【阶段 A 已发生】`GetWidth/GetHeight` 的语义由逻辑尺寸改为像素尺寸**：改用 `SDL_GetWindowSizeInPixels`，因为引擎拿这个值当 swapchain 的 extent（`Application.cpp` 的 `RecreateSwapchain`）。GLFW 的 `glfwGetWindowSize` 返回逻辑尺寸，所以**高 DPI 显示器上现在会按真实像素渲染**——这是修正而非回归，100% 缩放下无差异。回归验证时请在非 100% 缩放的多显示器环境上确认 UI 尺寸与视口仍正确（`GetDpiFactor`/`GetContentScaleFactor` 已改为 `SDL_GetWindowDisplayScale`）。
 
-3. **SDL3 在 Android 上的 surface 归属待真机确认**：窗口销毁/重建时 `VkSurfaceKHR` 是 SDL 自动重建还是需应用显式重建？**我无法离线确认**。见 §7.2，开工时先用最小用例验证。
+3. **Vulkan 1.3 设备门槛（最高风险）**：引擎把 `dynamicRendering` / `synchronization2` 当核心 1.3 特性无条件启用，`apiVersion >= 1.3` 是硬门槛（`VulkanContext.cpp:195, 217-222`）。**Android 上的实际覆盖率本轮未能查证（网络受限）**，开工第一步应真机 `vulkaninfo` 验证。若覆盖率不足，需补 `VK_KHR_dynamic_rendering` / `VK_KHR_synchronization2` 扩展回退——**会牵动 `RenderGraph.cpp`（`:41-99`）与 `VulkanImage.cpp`（`:250-291`）里大量 `*FlagBits2` 用法，是独立的一大块，不要与移植混在一个阶段。**
 
-4. **`InputState` 容量需按 SDL scancode 上界复核**：`InputState.h:25-26` 的 `kKeyCapacity = 512` 是照着 GLFW 的 348 上界留的余量，而 **SDL scancode 的上界可能贴着 512**。越界是静默的（bitset `set()` 会抛 `out_of_range`，但若被简化成数组索引就越界写）。阶段 A 必须实测重算。
+4. **阶段 A 的编辑器回归（SDL 迁移的主要风险）**：editor 的 docking、node-editor、ImGuizmo 全部坐在 ImGui 平台后端上。**缓解手段就是这个风险可以在完全不碰 Android 的情况下独立验证**——所以阶段 A 必须**先独立做完并全量回归**，再开 Android。不要为了"省一个阶段"把换库和上新平台揉在一起。
 
-5. **`.gitmodules` 已腐烂**：路径指向不存在的 `engin/vendor/*`，`git submodule status` 直接报错（`no submodule mapping found ... 'GE/third_party/tracy'`）。**加 SDL 时建议走普通拷贝**（与 imgui/entt 一致）绕开它。修 `.gitmodules` 本身是笔独立小债，**别在阶段 A 顺手修**（会牵连所有第三方目录）。
+5. **SDL3 在 Android 上的 surface 归属待真机确认**：窗口销毁/重建时 `VkSurfaceKHR` 是 SDL 自动重建还是需应用显式重建？**我无法离线确认**。见 §7.2，开工时先用最小用例验证。
 
-6. **Surface 重建的句柄继承陷阱**：`VulkanRenderContext::UpdateSwapchain`（`:380-387`）通过「旧 swapchain 当 `oldSwapchain`」构造新 swapchain，**会继承旧 surface 句柄**。surface 真被销毁后是悬垂。必须加重载，见 §7.2。这是最容易「桌面上永远测不出来、上真机就随机崩」的一类问题。
+6. **【阶段 A 已解决】`InputState` 容量与 SDL scancode 上界**：已核实 `SDL_SCANCODE_COUNT == 512`，合法 scancode 为 0..511，而 `kKeyCapacity = 512` 的位集索引范围正是 0..511 —— **刚好覆盖、零余量**。因零余量且 SDL 的 400..500 是动态键码保留区（Android 软键盘可能落在其中），按键事件翻译层已加越界丢弃（`SdlWindow` 里 `kMaxScancode` 那道判断），`Input::IsKeyPressed` 也做了双重防护。**这是不能动的一处脆弱平衡**：日后若有人改小 `kKeyCapacity` 会静默越界。
 
-7. **`m_FrameActive` 未设置的潜伏断言**（`VulkanRenderContext.cpp:166-170`）：桌面难触发，Android 会变成可复现崩溃。阶段 E 必修。
+7. **`.gitmodules` 已腐烂**：路径指向不存在的 `engin/vendor/*`，`git submodule status` 直接报错（`no submodule mapping found ... 'GE/third_party/tracy'`）。阶段 A 已按计划**走普通拷贝绕开它**（SDL 作为普通文件入库，与 imgui/entt 一致）。修 `.gitmodules` 本身是笔独立小债，**别顺手修**（会牵连所有第三方目录）。另：SDL 上游自带的 `CLAUDE.md` / `AGENTS.md` 已改名 `UPSTREAM-*.disabled` 并忽略 —— 那是 SDL 对「向其上游提交」的贡献政策，对消费方无约束力，但嵌套的 `CLAUDE.md` 会被当作项目指令文件自动加载。
 
-8. **Lua `require` 绕过 VFS**（与打包计划书 §9.2 同一条）：`package.path` 是运行期机制（`ScriptEngine.cpp:921-922`），静态扫描收不全，打进 APK 后 stdio loader 直接失效。**必须补自定义 searcher**（VFS 读 + `luaL_loadbuffer`）。漏了的表现是「脚本静默不执行」，极难定位。
+8. **Surface 重建的句柄继承陷阱**：`VulkanRenderContext::UpdateSwapchain`（`:380-387`）通过「旧 swapchain 当 `oldSwapchain`」构造新 swapchain，**会继承旧 surface 句柄**。surface 真被销毁后是悬垂。必须加重载，见 §7.2。这是最容易「桌面上永远测不出来、上真机就随机崩」的一类问题。
 
-9. **miniaudio 读不到 APK 内资源**：`ma_sound_init_from_file`（`AudioContext.cpp:121`）/ `ma_decoder_init_file`（`SoundAsset.cpp:22`）走 `fopen`。`ma_decoder_init_memory` 最省事但会把整首 BGM 读进内存；要保留流式必须自定义 `ma_vfs`。**建议首版先 memory**，音频资产体积上来了再换 `ma_vfs`。
+9. **`m_FrameActive` 未设置的潜伏断言**（`VulkanRenderContext.cpp:166-170`）：桌面难触发，Android 会变成可复现崩溃。阶段 E 必修。
 
-10. **`assets/` 大部分在 `.gitignore` 里**（打包计划书 §9.1）：`assets/models|materal|audio|environments|HDRI` 均未入库。**克隆下来的仓库没有这些资产**，Android 打包前必须先本地备齐，否则 `gepack` 会如实报「文件不存在」。
+10. **Lua `require` 绕过 VFS**（与打包计划书 §9.2 同一条）：`package.path` 是运行期机制（`ScriptEngine.cpp:921-922`），静态扫描收不全，打进 APK 后 stdio loader 直接失效。**必须补自定义 searcher**（VFS 读 + `luaL_loadbuffer`）。漏了的表现是「脚本静默不执行」，极难定位。
 
-11. **CJK 字体**：`ImGuiLayer.cpp:54-55` 硬编码 `C:\Windows\Fonts\msyh.ttc`，阶段 A 必须换成随包字体（这条**不换 SDL 也得修**）。中文 UI 字体动辄 10MB+，需考虑子集化。
+11. **miniaudio 读不到 APK 内资源**：`ma_sound_init_from_file`（`AudioContext.cpp:121`）/ `ma_decoder_init_file`（`SoundAsset.cpp:22`）走 `fopen`。`ma_decoder_init_memory` 最省事但会把整首 BGM 读进内存；要保留流式必须自定义 `ma_vfs`。**建议首版先 memory**，音频资产体积上来了再换 `ma_vfs`。
 
-12. **APK 体积**：Vulkan 引擎 + 中文字体 + 资产，未优化前轻松几百 MB。分包（Play Asset Delivery）或资产压缩留到后续。
+12. **`assets/` 大部分在 `.gitignore` 里**（打包计划书 §9.1）：`assets/models|materal|audio|environments|HDRI` 均未入库。**克隆下来的仓库没有这些资产**，Android 打包前必须先本地备齐，否则 `gepack` 会如实报「文件不存在」。
 
-13. **`ImGui` 在 Android 上是否必要**：`ImGuiLayer.cpp:33-34` 已把 `ViewportsEnable` 注释掉、只开 docking，所以没有多视口问题。但 `GE_Runtime` 本来不带编辑器 UI，**运行时几乎用不到 ImGui**——可考虑 Android 上直接关掉，省一大块复杂度和启动耗时。**值得评估**（若 `GameLayer` 依赖 ImGui 做调试面板则不能关）。
+13. **CJK 字体仍不可移植（阶段 A 只做了止血）**：`ImGuiLayer.cpp` 硬编码 `C:\Windows\Fonts\msyh.ttc`。阶段 A **没有**换成随包字体 —— 仓库里没有任何 CJK 字体，而选一个随包字体（动辄 10MB+，要子集化、要决定是否接受进 APK）是产品取舍，不该由换库顺手决定。故只加了 `#ifdef GE_PLATFORM_WINDOWS` 守卫：非 Windows 上安静跳过并告警，而不是硬失败。**真正的解法在阶段 D**：字体随包 → 经 VFS 用 `AddFontFromMemoryTTF` 读入。
 
-14. **触摸交互模型**：引擎的相机控制（`GameLayer.cpp` 的鼠标捕获 + `glfwGetCursorPos`）是为鼠标设计的。Android 上自由视角相机需要重做成虚拟摇杆 / 拖拽手势，**这是产品层的设计工作，不是移植工作**，但会挡住「能跑起来之后真的能玩」这一步。
+14. **APK 体积**：Vulkan 引擎 + 中文字体 + 资产，未优化前轻松几百 MB。分包（Play Asset Delivery）或资产压缩留到后续。
 
-15. **桌面回归风险**：本计划全程要求桌面零回归。最大风险点是阶段 A（换窗口库，动 `Application` / `ImGuiLayer` / `GameLayer` / `SceneLayer`）与阶段 D（VFS，动所有 loader）。**阶段 A 结束必须完整跑一遍编辑器 + `GE_Runtime`**。
+15. **`ImGui` 在 Android 上是否必要**：`ImGuiLayer.cpp:33-34` 已把 `ViewportsEnable` 注释掉、只开 docking，所以没有多视口问题。但 `GE_Runtime` 本来不带编辑器 UI，**运行时几乎用不到 ImGui**——可考虑 Android 上直接关掉，省一大块复杂度和启动耗时。**值得评估**（若 `GameLayer` 依赖 ImGui 做调试面板则不能关）。
+
+16. **触摸交互模型**：引擎的相机控制（`GameLayer.cpp` 的鼠标捕获 + `Window::GetCursorPosition`，阶段 A 已从 GLFW 收编到窗口接口）是为鼠标设计的。Android 上自由视角相机需要重做成虚拟摇杆 / 拖拽手势，**这是产品层的设计工作，不是移植工作**，但会挡住「能跑起来之后真的能玩」这一步。
+
+17. **桌面回归风险**：本计划全程要求桌面零回归。最大风险点是阶段 A（换窗口库，动 `Application` / `ImGuiLayer` / `GameLayer` / `SceneLayer`）与阶段 D（VFS，动所有 loader）。**阶段 A 结束必须完整跑一遍编辑器 + `GE_Runtime`**。
 
 ---
 
@@ -526,7 +551,7 @@ externalNativeBuild ──► CMake → libGE_Runtime.so → APK 的 lib/arm64-v
 
 | 里程碑 | 内容 | 依赖 | 交付判据 |
 |---|---|---|---|
-| **M1** | 阶段 A：桌面 GLFW → SDL3 | — | 编辑器 + `GE_Runtime` 在 SDL3 下**全量回归通过**；GLFW 从依赖中移除；**此时仍未碰 Android** |
+| **M1** | 阶段 A：桌面 GLFW → SDL3 —— **代码已完成（`213b14b6`），待验证** | — | 编辑器 + `GE_Runtime` 在 SDL3 下**全量回归通过**（§3.5 清单）；GLFW 从依赖中移除 ✅；**此时仍未碰 Android** ✅ |
 | **M2** | 阶段 B + C：构建骨架 + Android 平台后端 | M1 | Gradle 产出可安装 APK；真机能出画面（纯色清屏即可）；触摸/软键盘可用 |
 | **M3** | 阶段 D：VFS + 可写目录 | M2 | 真机能完整加载并渲染一个场景（含贴图/网格/动画/音频/Lua）；桌面零回归 |
 | **M4** | 阶段 E：生命周期与 Surface 重建 | M3 | 切后台/切回/旋转/锁屏均不崩，连续 20 次无泄漏 |

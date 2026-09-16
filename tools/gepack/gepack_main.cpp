@@ -20,6 +20,7 @@
 #include "Packager.h"
 
 #include "Core/Log.h"
+#include "FileSystem/VFS.h"
 #include "Render/AssetPathUtil.h"
 #include "Utils/PlatformUtils.h"
 
@@ -119,6 +120,12 @@ int main(int argc, char **argv) {
     fs::path assetRoot = assetRootArg.empty()
                              ? (fs::path(projectCfg).parent_path() / "assets")
                              : fs::path(assetRootArg);
+
+    // 初始化 VFS 的**磁盘后端**。这是必需的：gepack 与引擎共用同一批格式解析器
+    // （GEMeshLoader / GLTFLoader / OBJLoader …），它们统一经 VFS 读资产，而 VFS 是
+    // 进程级单例，不初始化则一切读取静默失败 —— 现象是 gepack 把完好的 .gemesh 报成
+    // 「格式版本不符或已损坏」。主机工具同样有真实的磁盘资源根，初始化即可。
+    GE::VFS::Init(assetRoot);
 
     // ---- 入口场景：--scene 覆盖配置；配置缺失退回与 GameConfig 相同的默认值 ----
     std::string rawScene = sceneOverride;

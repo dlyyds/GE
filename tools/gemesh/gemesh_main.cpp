@@ -16,6 +16,7 @@
 
 #include "Render/ModelLoader.h"
 #include "Core/Log.h"
+#include "FileSystem/VFS.h"
 
 #include <cstdlib>
 #include <iostream>
@@ -111,6 +112,11 @@ int main(int argc, char **argv) {
             : p.stem().string();
         out = (p.parent_path() / (stem + ".gemesh")).string();
     }
+
+    // 初始化 VFS 的**磁盘后端**。必需：ConvertToGEMesh 内部的解析器
+    // （GLTFLoader / OBJLoader / ParseGEMesh）统一经 VFS 读资产，而 VFS 是进程级
+    // 单例，不初始化则读取静默失败、表现为「源模型解析失败」。
+    GE::VFS::Init(fs::absolute(assetRoot));
 
     std::string err;
     if (!GE::ModelLoader::ConvertToGEMesh(src, out, &err, assetRoot, meshIndex)) {

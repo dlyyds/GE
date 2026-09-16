@@ -280,15 +280,16 @@ void AssetDependencyGraph::ResolveNode(const Pending &item) {
 }
 
 void AssetDependencyGraph::ExpandMesh(const std::string &canonical) {
-    const auto full = FullPath(canonical);
-
     if (EndsWithLower(canonical, ".gemesh")) {
         // .gemesh 不是自包含格式：材质贴图路径写在字符串池里，运行期直接拿去加载
         GE::MeshData data;
         GE::GEMeshMeta meta;
         std::string err;
-        if (!GE::ParseGEMesh(full.string(), data, &meta)) {
-            AddProblem(ProblemLevel::Error, "无法解析 .gemesh（格式版本不符或已损坏）: " + canonical);
+        // **传 canonical，不是 FullPath**：ParseGEMesh 经 VFS 读盘，入参是规范形。
+        // 传已拼上资源根的 full 会变成 <root>/<root>/... 而读不到 —— 且失败信息是
+        // 「格式版本不符或已损坏」，把方向指偏。
+        if (!GE::ParseGEMesh(canonical, data, &meta)) {
+            AddProblem(ProblemLevel::Error, "无法解析 .gemesh（读不到或格式版本不符）: " + canonical);
             return;
         }
         for (const auto &md : data.materialData) {

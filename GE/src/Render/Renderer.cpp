@@ -172,9 +172,15 @@ void Renderer::EndFrame() {
     // 3. 统一 Execute：声明序即执行序（Scene3D → Scene2D → UIPass）。Scene2D 收尾
     //    把离屏视口图转 ShaderReadOnly，UIPass 采样之并画 UI 到 swapchain，最后
     //    由 UIPass finalLayout 收尾转 PresentSrc（不再有手工 →PresentSrc 段）。
-    GE_PROFILE_SCOPE("FrameGraphExecute");
-    m_FrameGraph.Compile();
-    m_FrameGraph.Execute(*m_ActiveFrameCmd, activeFrame);
+    // 埋点单独立块：Tracy 的 ZoneScopedN 在所在作用域声明固定名局部变量
+    // （___tracy_scoped_zone），本函数开头已有一个 GE_PROFILE_SCOPE，同作用域
+    // 再展开一次即为重定义（C2374）。花括号限定作用域同时也让计时范围恰好落在
+    // Compile + Execute 上。
+    {
+        GE_PROFILE_SCOPE("FrameGraphExecute");
+        m_FrameGraph.Compile();
+        m_FrameGraph.Execute(*m_ActiveFrameCmd, activeFrame);
+    }
 
     // 2. End command buffer
     m_ActiveFrameCmd->End();

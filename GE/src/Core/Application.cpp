@@ -92,6 +92,16 @@ Application::~Application() {
     s_Instance = nullptr;
 }
 
+int Application::Main(int argc, char **argv) {
+    Log::Init();
+
+    auto *app = CreateApplication({argc, argv});
+    app->Run();
+    delete app;
+
+    return 0;
+}
+
 void Application::Run() {
 
     while (m_Running) {

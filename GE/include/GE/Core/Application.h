@@ -14,8 +14,6 @@
 
 #include "Render/Renderer.h"
 
-int main(int argc, char **argv);
-
 namespace GE {
 class Shader;
 namespace Audio { class AudioContext; }
@@ -72,6 +70,21 @@ public:
 
     static Application &Get() { return *s_Instance; }
 
+    /**
+     * @brief 进程入口的转发点：初始化日志 → 创建应用 → 跑主循环 → 收尾。
+     *
+     * 由 `Core/EntryPoint.h` 里的 `main()` 调用。
+     *
+     * 为什么不让 `main()` 直接调私有的 `Run()` 并靠 `friend` 开权限：SDL 会把入口
+     * 函数**重命名**为 `SDL_main`（`SDL_main.h` 里的 `#define main SDL_main`），
+     * 而友元是按**名字**绑定的。那个宏是否已生效取决于各入口 TU 的包含顺序
+     * （`EditorApp.cpp` 是先 `<GE.h>`、`RuntimeApp.cpp` 是先 `Application.h`，
+     * 两者都在 `EntryPoint.h` 之前），于是友元声明会展开成 `::main`，而函数实际
+     * 叫 `SDL_main` → C2248「Run 是 private」。与其去追宏状态，不如给一个与入口名
+     * 无关的转发点 —— 顺带也让这个核心头文件不必知道任何 SDL 的存在。
+     */
+    static int Main(int argc, char **argv);
+
 
     [[nodiscard]] ApplicationCommandLineArgs GetCommandLineArgs() const { return m_CommandLineArgs; }
 
@@ -117,8 +130,6 @@ private:
 
 private:
     static Application *s_Instance;
-
-    friend int ::main(int argc, char **argv);
 };
 
 extern Application *CreateApplication(ApplicationCommandLineArgs args);

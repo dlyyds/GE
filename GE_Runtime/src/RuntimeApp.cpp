@@ -2,6 +2,7 @@
 
 #include "GE/Core/Application.h"
 #include "GE/Core/EntryPoint.h"
+#include "GE/Debug/Profiler.h"
 
 #include <memory>
 

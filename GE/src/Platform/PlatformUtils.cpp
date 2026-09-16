@@ -33,4 +33,36 @@ std::filesystem::path PlatformUtils::GetExecutableDirectory() {
     return std::filesystem::path(base).parent_path();
 }
 
+/**
+ * @brief 可写用户数据目录。
+ *
+ * 桌面端刻意返回**当前工作目录**而不是 exe 目录：`GE.log` / `imgui.ini` 一直是
+ * CWD 相对的（`dist/` 里能看到这两份文件，正是因为发行版从该目录启动），
+ * 改成 exe 目录会是一次静默的桌面行为变更。要改应该单独成 PR。
+ *
+ * Android 端 CWD 是 `/`（不可写），必须换成应用私有目录。用 `SDL_GetPrefPath`
+ * 而不是自己走 JNI：SDL 已封装好 Android 的 `getFilesDir()` 语义。
+ * 注意它**不需要先 `SDL_Init`** —— Android 实现只依赖 `mActivityClass` 与 JavaVM，
+ * 二者由 `nativeSetupJNI` 在 `SDL_main` 之前就设好了（见 SDL_android.c 的
+ * `nativeSetupJNI` / `SDL_GetAndroidInternalStoragePath`）。
+ */
+std::filesystem::path PlatformUtils::GetUserDataDirectory() {
+    std::error_code ec;
+
+#ifdef GE_PLATFORM_ANDROID
+    // 返回值由 SDL 分配、**带尾部分隔符**，调用方负责 SDL_free。
+    // parent_path() 正好去掉尾分隔符（与 GetExecutableDirectory 同一手法）。
+    char *pref = SDL_GetPrefPath("GE", "Runtime");
+    if (!pref) {
+        return {};
+    }
+    const std::filesystem::path dir = std::filesystem::path(pref).parent_path();
+    SDL_free(pref);
+    return dir;
+#else
+    const std::filesystem::path cwd = std::filesystem::current_path(ec);
+    return ec ? std::filesystem::path{} : cwd;
+#endif
+}
+
 } // namespace GE

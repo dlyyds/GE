@@ -8,6 +8,7 @@
 #include "Render/AssetManager.h"
 #include "Render/VulkanBase/VulkanCommandBuffer.h"
 #include "Render/VulkanBase/VulkanContext.h"
+#include "Utils/PlatformUtils.h"
 
 #include <SDL3/SDL.h>
 
@@ -16,7 +17,29 @@
 
 #include "imgui.h"
 
+#include <string>
+
 namespace GE {
+
+namespace {
+/**
+ * @brief ImGui 布局文件（imgui.ini）的绝对路径。
+ *
+ * `io.IniFilename` 只是个 `const char*`，ImGui 不会拷贝它，所以字符串必须活到
+ * ImGui 上下文销毁为止 —— 故用函数内静态量，而不是把临时 `std::string` 交给它。
+ *
+ * 默认行为是"相对当前工作目录"，Android 上 CWD 是 `/`（不可写）→ 布局存不下来。
+ * 桌面端仍然落在 CWD，与改动前逐字一致。
+ */
+const char *IniFilePath() {
+    static const std::string path = [] {
+        const std::filesystem::path dir = PlatformUtils::GetUserDataDirectory();
+        return dir.empty() ? std::string{} : (dir / "imgui.ini").string();
+    }();
+    // 目录取不到时返回 nullptr = 完全不读写布局文件（比写到根目录好）
+    return path.empty() ? nullptr : path.c_str();
+}
+} // namespace
 
 ImGuiLayer::ImGuiLayer(Renderer &renderer) : m_Renderer(renderer) {
 }
@@ -31,6 +54,9 @@ void ImGuiLayer::OnAttach() {
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
     // io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
+
+    // 布局文件落到可写用户目录（Android 的 CWD 不可写，默认行为会静默存不下来）
+    io.IniFilename = IniFilePath();
 
     float fontSize = 24.0f;
 

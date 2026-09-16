@@ -12,7 +12,9 @@
 #ifdef GE_DEBUG
 #if defined(GE_PLATFORM_WINDOWS)
 #define GE_DEBUGBREAK() __debugbreak()
-#elif defined(GE_PLATFORM_LINUX)
+#elif defined(GE_PLATFORM_LINUX) || defined(GE_PLATFORM_ANDROID)
+// Android 走 bionic，与 Linux 同样是 POSIX 信号语义；raise(SIGTRAP) 可被
+// lldb/ndk-stack 接住，也是 Android 上标准的断点方式。
 #include <signal.h>
 #define GE_DEBUGBREAK() raise(SIGTRAP)
 #else

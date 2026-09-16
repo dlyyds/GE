@@ -1,0 +1,21 @@
+# Android/Gradle 构建产物与机器相关文件 —— 一律不入版本库
+
+# Gradle 与 AGP 的产物
+build/
+.gradle/
+app/build/
+app/.cxx/
+
+# 机器相关：SDK 绝对路径由各人自己的 ANDROID_HOME / local.properties 决定
+local.properties
+
+# SDL 模板约定的预编译 .so 放置目录
+libs/
+
+# IDE
+.idea/
+*.iml
+.cxx/
+
+# 日志（根 .gitignore 已有 *.log，这里再写一遍便于本目录独立可读）
+*.log

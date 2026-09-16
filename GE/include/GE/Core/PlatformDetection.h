@@ -30,7 +30,6 @@
  * it has __linux__ defined */
 #elif defined(__ANDROID__)
 #define GE_PLATFORM_ANDROID
-#error "Android is not supported!"
 #elif defined(__linux__)
 #define GE_PLATFORM_LINUX
 #error "Linux is not supported!"

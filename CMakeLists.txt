@@ -12,10 +12,15 @@ set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# 输出目录
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
+# 输出目录（仅桌面）。
+# Android 下**必须不设**：Gradle 的 externalNativeBuild 自己管理中间产物与 .so 的
+# 落点，把 CMAKE_LIBRARY_OUTPUT_DIRECTORY 重定向到仓库根 bin/ 会让 AGP 找不到产物、
+# 打不进 APK（这是 AGP + CMake 的经典坑）。
+if (NOT ANDROID)
+    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
+    set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
+    set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
+endif ()
 
 
 set(GE_NAME GE)
@@ -51,8 +56,13 @@ add_subdirectory(GE/third_party/SDL)
 
 add_subdirectory(GE/third_party/yaml-cpp)
 add_subdirectory(GE/third_party/imgui)
-add_subdirectory(GE/third_party/ImGuizmo)
-add_subdirectory(GE/third_party/imgui-node-editor-0.9.3)
+
+# ImGuizmo 与 imgui-node-editor 是**编辑器专用**（gizmo 操纵柄、ASM 节点图），
+# 只有 GE_Editor 用。Android 只移 GE_Runtime，故跳过，省编译量与 APK 体积。
+if (NOT ANDROID)
+    add_subdirectory(GE/third_party/ImGuizmo)
+    add_subdirectory(GE/third_party/imgui-node-editor-0.9.3)
+endif ()
 
 
 add_subdirectory(GE/third_party/tracy)
@@ -77,7 +87,20 @@ add_subdirectory(GE/third_party/SPIRV-Cross)
 # FORCE：改源码行的值即覆盖缓存，开关以源码行为准。
 set(GE_PROFILE_ENABLE ON CACHE BOOL "Enable GE_PROFILE_* profiling macros" FORCE)
 
-find_package(Vulkan REQUIRED)
+# ==============================================
+# Vulkan
+# ==============================================
+# 桌面：Vulkan SDK 的 find_package 提供头文件目录与 vulkan-1.lib。
+# Android：NDK 的 sysroot 自带 vulkan/vulkan.h（**注意是小写路径**，Windows 不区分
+#          大小写把这一点藏了很久，见 GE/Core/GEWindow.h 的注释），运行时是系统
+#          的 libvulkan.so，用 find_library 取即可 —— NDK 不提供 Vulkan 的 CMake
+#          config 包，find_package(Vulkan) 在 Android 上不可靠。
+if (ANDROID)
+    find_library(VULKAN_LIB vulkan REQUIRED)
+    message(STATUS "Android Vulkan 运行时库: ${VULKAN_LIB}")
+else ()
+    find_package(Vulkan REQUIRED)
+endif ()
 
 # ==============================================
 # Jolt Physics
@@ -172,7 +195,6 @@ target_include_directories(${GE_NAME} PUBLIC
 target_compile_definitions(${GE_NAME} PUBLIC
         NOMINMAX
         GE_DEBUG
-        VK_USE_PLATFORM_WIN32_KHR
         VK_DEBUG
         VK_NO_PROTOTYPES
         VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1
@@ -185,21 +207,35 @@ target_compile_definitions(${GE_NAME} PUBLIC
         GE_PROFILE_ENABLE=$<IF:$<BOOL:${GE_PROFILE_ENABLE}>,1,0>
 )
 
+# 平台 surface 扩展二选一。VulkanContext::ApplyDefaultExtensions 靠这个宏选
+# VK_KHR_win32_surface / VK_KHR_android_surface —— 那个文件里两个分支**早已写好**，
+# 这里选对宏即可，无需改渲染层代码。
+if (ANDROID)
+    target_compile_definitions(${GE_NAME} PUBLIC VK_USE_PLATFORM_ANDROID_KHR)
+else ()
+    target_compile_definitions(${GE_NAME} PUBLIC VK_USE_PLATFORM_WIN32_KHR)
+endif ()
+
 
 target_link_libraries(${GE_NAME} PUBLIC
         spdlog::spdlog
         SDL3::SDL3
         imgui
-        imguizmo
         yaml-cpp::yaml-cpp
         TracyClient
-        ${Vulkan_LIBRARIES}
         Jolt
         ktx
         spirv-cross-glsl
         spirv-cross-core
         ge_lua
 )
+
+# imguizmo 是编辑器专用目标，Android 下没建（见上面的 add_subdirectory 分区）。
+if (ANDROID)
+    target_link_libraries(${GE_NAME} PUBLIC ${VULKAN_LIB})
+else ()
+    target_link_libraries(${GE_NAME} PUBLIC imguizmo ${Vulkan_LIBRARIES})
+endif ()
 
 
 # 开启预编译头 PCH
@@ -233,6 +269,14 @@ else ()
     message(WARNING "glslc not found — engine shaders won't be auto-compiled")
 endif ()
 
+
+# ==============================================
+# 以下三个目标**仅桌面**（Android 只移 GE_Runtime）
+# ==============================================
+# - GE_Editor：依赖 ImGuizmo / imgui-node-editor / Win32 FileDialogs，移动端无意义
+# - gemesh / gepack：主机侧离线 CLI 工具（模型烘焙、依赖收集打包），
+#   它们在开发机上跑，产物（.gemesh / dist）再喂给 Android 构建，不该进 APK
+if (NOT ANDROID)
 
 #GE_Editor EXE（独立编辑器可执行）
 # ==============================================
@@ -302,8 +346,13 @@ target_include_directories(gepack PRIVATE
 
 target_link_libraries(gepack PRIVATE ${GE_NAME})
 
+endif () # NOT ANDROID
+
 #GE_Runtime EXE（发行版播放器：无编辑器 UI，场景直画背缓冲）
 # ==============================================
+# 桌面：可执行文件（.exe）。Android：**共享库** —— APK 里是
+# lib/<abi>/libGE_Runtime.so，由 SDLActivity 经 SDL_main 调起，
+# 所以这里必须产出 SHARED 而不是 executable，否则 AGP 打不进 APK。
 set(Runtime_NAME GE_Runtime)
 
 set(Runtime_SRC
@@ -312,7 +361,12 @@ set(Runtime_SRC
         ${CMAKE_SOURCE_DIR}/GE_Runtime/src/GameConfig.cpp
 )
 
-add_executable(${Runtime_NAME} ${Runtime_SRC})
+if (ANDROID)
+    add_library(${Runtime_NAME} SHARED ${Runtime_SRC})
+else ()
+    add_executable(${Runtime_NAME} ${Runtime_SRC})
+endif ()
+
 target_include_directories(${Runtime_NAME} PRIVATE
         ${CMAKE_SOURCE_DIR}/GE/include
         ${CMAKE_SOURCE_DIR}/GE_Runtime/src

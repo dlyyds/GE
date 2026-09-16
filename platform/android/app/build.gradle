@@ -1,0 +1,79 @@
+// GE_Runtime 的 Android 应用模块。
+//
+// 骨架取自 SDL 自带的 android-project（含 gradle wrapper 与 org.libsdl.app 的 Java 源），
+// 改动集中在：版本号对齐本机工具链、最小 API 提到 Vulkan 1.3 所需的 33、
+// 原生构建指向引擎**仓库根**的 CMakeLists（而非 SDL 模板的 jni/ 示例）。
+
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    // 与 src/main/java/org/libsdl/app 的包名一致。SDLActivity 与 R 类都依赖它，
+    // 改成别的值需要同步改 Java 包名与 manifest 的 activity 名。
+    namespace = "org.libsdl.app"
+
+    compileSdkVersion 36
+    buildToolsVersion "36.0.0"
+    ndkVersion = "27.3.13750724"
+
+    defaultConfig {
+        applicationId "com.ge.runtime"
+
+        // minSdk 33 不是随便定的：引擎对 Vulkan 1.3 是硬要求（apiVersion >= 1.3
+        // 且把 dynamicRendering / synchronization2 当核心 1.3 特性启用，无扩展回退），
+        // 而 Vulkan 1.3 的设备覆盖基本从 Android 13 起。详见 Android移植计划书 §4.4。
+        // ⚠️ 此值待真机 vulkaninfo 核实后可能调整。
+        minSdkVersion 33
+        targetSdkVersion 36
+
+        versionCode 1
+        versionName "1.0"
+
+        externalNativeBuild {
+            cmake {
+                // c++_static：单个 .so，无需往 APK 里塞 libc++_shared.so。
+                // ANDROID_PLATFORM 与上面的 minSdkVersion 保持一致。
+                arguments "-DANDROID_PLATFORM=android-33", "-DANDROID_STL=c++_static"
+                abiFilters 'arm64-v8a'
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    // 原生构建要先于资源合并完成 —— 阶段 G 会把 gepack 产出的 assets 拷进 APK，
+    // 那条路径依赖这个顺序。现在留着，免得日后加资产时踩顺序问题。
+    applicationVariants.all { variant ->
+        tasks["merge${variant.name.capitalize()}Assets"]
+            .dependsOn("externalNativeBuild${variant.name.capitalize()}")
+    }
+
+    sourceSets.main {
+        jniLibs.srcDir 'libs'
+    }
+
+    // 指向**引擎仓库根**的 CMakeLists，而不是 SDL 模板里的 jni/CMakeLists.txt。
+    // 这一点是刻意的：引擎 CMakeLists 里有 70+ 处 ${CMAKE_SOURCE_DIR}，
+    // 只有让仓库根当顶层源目录它们才解析正确 —— 所以不能再套一层
+    // add_subdirectory，只能直接把 Gradle 的 CMake 入口钉在仓库根。
+    // 仓库根内部按 if(ANDROID) 分区，跳过桌面专用目标。
+    externalNativeBuild {
+        cmake {
+            path '../../../CMakeLists.txt'
+        }
+    }
+
+    lint {
+        abortOnError = false
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+}

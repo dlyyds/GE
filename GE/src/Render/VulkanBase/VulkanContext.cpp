@@ -102,10 +102,20 @@ void VulkanContext::ApplyDefaultExtensions() {
 
     // -- Device 默认扩展 --
     m_DeviceExtensions.try_emplace(VK_KHR_SWAPCHAIN_EXTENSION_NAME, RequestMode::Required);
-    m_DeviceExtensions.try_emplace(VK_EXT_EXTENDED_DYNAMIC_STATE_EXTENSION_NAME, RequestMode::Required);
+    // Extended Dynamic State 在 Vulkan 1.3 **已提升为核心**，因此不能在扩展名上硬要求：
+    // 提升之后这个扩展名可以合法地不再出现在设备的扩展列表里（Android 模拟器与部分
+    // 1.3 驱动就是这样），而引擎用到的全是已提升为核心的动态状态（eCullMode /
+    // eFrontFace / ePrimitiveTopology / eDepth*）。把扩展名当硬门槛会让这些设备直接
+    // 启动失败，报错还指向一个"看起来必备"的扩展，很误导。
+    // 真正的判定放到 VulkanDevice —— 那里才拿得到物理设备的 apiVersion，
+    // 规则是「扩展名与 1.3 核心二者取其一」。
+    m_DeviceExtensions.try_emplace(VK_EXT_EXTENDED_DYNAMIC_STATE_EXTENSION_NAME, RequestMode::Optional);
     // 描述符索引（CSM 逐片元选片：Lighting 按片元 viewZ 非均匀索引 samplerShadowDepth 数组，
-    // 需要 shaderSampledImageArrayNonUniformIndexing 特性，见 CreateDevice 特性回调）
-    m_DeviceExtensions.try_emplace(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME, RequestMode::Required);
+    // 需要 shaderSampledImageArrayNonUniformIndexing 特性，见 CreateDevice 特性回调）。
+    // 与上面的 Extended Dynamic State 同理：它在 Vulkan 1.2 **已提升为核心**，扩展名
+    // 合法地可能不出现，故不能按扩展名硬要求；判定在 VulkanDevice，特性在下方回调里
+    // 按"扩展名 or 1.2 核心"二选一启用。
+    m_DeviceExtensions.try_emplace(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME, RequestMode::Optional);
 }
 
 VulkanContext::VulkanContext(Window &window) {
@@ -205,9 +215,16 @@ std::unique_ptr<PhysicalDevice> VulkanContext::SelectPhysicalDevice() {
 
 std::unique_ptr<VulkanDevice> VulkanContext::CreateDevice() {
     GE_PROFILE_FUNCTION();
-    // 组装 DebugUtils（启用 debug utils 扩展时用真实实现，否则用空实现）
+    // 组装 DebugUtils（真实实现 / 空实现）。
     std::unique_ptr<DebugUtils> debug_utils;
-    if (m_Instance->IsExtensionEnabled(VK_EXT_DEBUG_UTILS_EXTENSION_NAME)) {
+    // **除了扩展可用，还要求验证层真的启用了**。理由：debug utils 的用途是①消费
+    // 验证层的消息、②给对象起个名字。没有验证层时①是空的，而②在部分驱动上会崩 ——
+    // 实测 Android 模拟器（gfxstream / vulkan.ranchu.so）在
+    // vkSetDebugUtilsObjectNameEXT 里 SIGSEGV（vk_common_* 空指针解引用，fault addr
+    // 0x40），而 Android 上**根本没有验证层**（`VK_LAYER_KHRONOS_validation` 不可用）。
+    // 对象命名纯属调试便利，不该让它把进程带走；桌面有验证层，行为不变。
+    const bool hasValidationLayer = m_Instance->IsLayerEnabled("VK_LAYER_KHRONOS_validation");
+    if (m_Instance->IsExtensionEnabled(VK_EXT_DEBUG_UTILS_EXTENSION_NAME) && hasValidationLayer) {
         debug_utils = std::make_unique<DebugUtilsExt>();
     } else {
         debug_utils = std::make_unique<DummyDebugUtils>();
@@ -220,15 +237,32 @@ std::unique_ptr<VulkanDevice> VulkanContext::CreateDevice() {
             vulkan13.synchronization2 = true;
             vulkan13.dynamicRendering = true;
 
-            // 启用 Extended Dynamic State
-            auto &ext_dyn_state = gpu.AddExtensionFeatures<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>();
-            ext_dyn_state.extendedDynamicState = true;
+            // 启用 Extended Dynamic State：只有**走扩展路径**时才需要填特性结构。
+            // 1.3 把它提升为核心功能，但**没有对应的核心特性位** ——
+            // VkPhysicalDeviceVulkan13Features 里就没有 extendedDynamicState 这个成员，
+            // 那些动态状态在 1.3 设备上默认可用。所以 1.3 核心路径什么都不用启用。
+            // 反过来，扩展未启用时把它挂进 pNext 是非法用法（校验层会报 VUID），
+            // 故这里必须按扩展是否可用二选一，不能无条件填。
+            if (gpu.IsExtensionSupported(VK_EXT_EXTENDED_DYNAMIC_STATE_EXTENSION_NAME)) {
+                auto &ext_dyn_state = gpu.AddExtensionFeatures<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>();
+                ext_dyn_state.extendedDynamicState = true;
+            }
 
             // 启用采样器数组非均匀索引（CSM C3）：Lighting 逐片元选片后按动态索引采样
             // samplerShadowDepth[cascade]，片元间索引不一致（非均匀），需此特性。现代
             // 桌面 GPU 均支持；不支持则无法运行 CSM（级联数=1 同样走动态索引路径）。
-            REQUEST_REQUIRED_FEATURE(gpu, vk::PhysicalDeviceDescriptorIndexingFeatures,
-                                     shaderSampledImageArrayNonUniformIndexing);
+            //
+            // VK_EXT_descriptor_indexing 在 1.2 已提升为核心，扩展名可能不出现 —— 那时
+            // 必须走核心 1.2 特性结构。两者只能填一个：扩展未启用时把 EXT 结构挂进
+            // pNext 是非法用法。核心路径下 descriptorIndexing 是总开关，子特性依赖它。
+            if (gpu.IsExtensionSupported(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME)) {
+                REQUEST_REQUIRED_FEATURE(gpu, vk::PhysicalDeviceDescriptorIndexingFeatures,
+                                         shaderSampledImageArrayNonUniformIndexing);
+            } else {
+                gpu.AddExtensionFeatures<vk::PhysicalDeviceVulkan12Features>().descriptorIndexing = true;
+                REQUEST_REQUIRED_FEATURE(gpu, vk::PhysicalDeviceVulkan12Features,
+                                         shaderSampledImageArrayNonUniformIndexing);
+            }
 
             // 启用各向异性过滤（所有现代 GPU 均支持，用于提升曲面纹理质量）
             if (gpu.GetFeatures().samplerAnisotropy) {

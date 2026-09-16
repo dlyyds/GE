@@ -92,6 +92,9 @@ public:
     /// 返回已启用的扩展列表。
     [[nodiscard]] std::vector<std::string> const &GetEnabledExtensions() const { return m_EnabledExtensions; }
 
+    /// 检查指定层是否已启用（层都是 Optional 请求的，故启用与否要看实际结果）。
+    [[nodiscard]] bool IsLayerEnabled(char const *layer) const;
+
     /// 默认的 InstanceCreateFlags 回调（返回空 flags）。
     static vk::InstanceCreateFlags DefaultGetCreateFlags(std::vector<std::string> const &);
 
@@ -102,6 +105,10 @@ private:
 
     /// 已启用的扩展名称列表（用于 IsExtensionEnabled 查询）
     std::vector<std::string> m_EnabledExtensions;
+
+    /// 已启用的层名称列表（用于 IsLayerEnabled 查询）。层均为 Optional 请求，
+    /// 所以"请求过"不等于"启用了" —— 例如 Android 上根本没有验证层。
+    std::vector<std::string> m_EnabledLayers;
 
     /// 动态加载器，用于获取 vkGetInstanceProcAddr
     vk::detail::DynamicLoader m_Loader;

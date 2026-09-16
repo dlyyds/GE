@@ -73,14 +73,11 @@
     <uses-permission android:name="android.permission.INTERNET" />
     -->
 
-    <!-- Create a Java class extending SDLActivity and place it in a
-         directory under app/src/main/java matching the package, e.g. app/src/main/java/com/gamemaker/game/MyGame.java
-
-         then replace "SDLActivity" with the name of your class (e.g. "MyGame")
-         in the XML below.
-
-         An example Java class can be found in README-android.md
-    -->
+    <!-- 用本工程自己的 GEActivity（继承 SDLActivity），**不要**直接用 org.libsdl.app.SDLActivity。
+         原因：SDL 是静态链进 libmain.so 的，而 SDLActivity.getLibraries() 的默认值
+         {"SDL3", …, "main"} 会先去 loadLibrary("SDL3") 并抛错，导致循环中断、
+         "main" 永不加载、native main 永不执行（详见 GEActivity.java 的注释）。
+         SDL 模板本身也建议为每个游戏建一个自己的 Activity 子类。 -->
     <application android:label="@string/app_name"
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="true"
@@ -92,7 +89,7 @@
         <meta-data android:name="SDL_ENV.SDL_ANDROID_TRAP_BACK_BUTTON" android:value="0"/>
          -->
 
-        <activity android:name="SDLActivity"
+        <activity android:name="com.ge.runtime.GEActivity"
             android:label="@string/app_name"
             android:alwaysRetainTaskState="true"
             android:launchMode="singleInstance"

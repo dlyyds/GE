@@ -365,6 +365,14 @@ set(Runtime_SRC
 
 if (ANDROID)
     add_library(${Runtime_NAME} SHARED ${Runtime_SRC})
+    # **产物必须叫 libmain.so**，不能叫 libGE_Runtime.so。
+    # SDL 的 Java 启动器按约定找它：SDLActivity.getLibraries() 默认返回
+    # {"SDL3", …, "main"}，而 getMainSharedObject() 取**最后一项**拼成 "libmain.so"，
+    # 再拿它去 dlsym("SDL_main")。名字对不上时 nativeRunMain 直接 dlopen 失败 →
+    # 我们的 main 一次都不执行；而失败是**静默**的：Activity 照常显示、随后自行结束，
+    # 日志里只留一条被 catch 掉的 UnsatisfiedLinkError，极易被当成"启动后自己退了"。
+    # 这是 SDL 静态链接到 Android 的既定约定（其 android-project 模板同样叫 libmain.so）。
+    set_target_properties(${Runtime_NAME} PROPERTIES OUTPUT_NAME main)
 else ()
     add_executable(${Runtime_NAME} ${Runtime_SRC})
 endif ()

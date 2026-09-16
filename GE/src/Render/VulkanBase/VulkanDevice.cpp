@@ -117,17 +117,39 @@ void VulkanDevice::Init(std::unordered_map<std::string, RequestMode> const &requ
     }
 
     // ---- 2. 检查并启用扩展 ----
-    // 2a. 基础必需扩展（Swapchain + ExtendedDynamicState）
-    std::vector<const char *> required_core_extensions = {
-        VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-        VK_EXT_EXTENDED_DYNAMIC_STATE_EXTENSION_NAME,
+    // 2a. Swapchain：无条件必需。
+    if (m_Gpu.IsExtensionSupported(VK_KHR_SWAPCHAIN_EXTENSION_NAME)) {
+        m_EnabledExtensions.emplace_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+    } else {
+        throw std::runtime_error(std::string("Required device extension not available: ") +
+                                 VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+    }
+
+    // 2b. **已提升为核心的扩展**：扩展名与核心版本二者取其一。
+    // Vulkan 把某个扩展提升进核心版本后，**该扩展名可以合法地不再出现在设备的扩展
+    // 列表里**（Android 模拟器与部分 1.3 驱动就是这样）。引擎用到的都只是已提升为
+    // 核心的那部分功能，所以此时按型号版本判定即可；把扩展名当硬门槛会让这些设备
+    // 直接启动失败，而报错还指向一个"看起来必备"的扩展，排查方向被带偏。
+    struct PromotedExtension {
+        const char *name;
+        uint32_t    coreVersion; // 被提升进哪个核心版本
+    };
+    constexpr PromotedExtension kPromotedExtensions[] = {
+        {VK_EXT_EXTENDED_DYNAMIC_STATE_EXTENSION_NAME, VK_API_VERSION_1_3},
+        {VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME,    VK_API_VERSION_1_2},
     };
 
-    for (auto const &ext : required_core_extensions) {
-        if (m_Gpu.IsExtensionSupported(ext)) {
-            m_EnabledExtensions.emplace_back(ext);
+    const uint32_t gpuApiVersion = m_Gpu.GetProperties().apiVersion;
+    for (const auto &pe : kPromotedExtensions) {
+        if (m_Gpu.IsExtensionSupported(pe.name)) {
+            m_EnabledExtensions.emplace_back(pe.name);
+        } else if (gpuApiVersion >= pe.coreVersion) {
+            GE_CORE_INFO("{} 未列出（已提升进 Vulkan {}.{}），走核心路径",
+                         pe.name, VK_API_VERSION_MAJOR(pe.coreVersion),
+                         VK_API_VERSION_MINOR(pe.coreVersion));
         } else {
-            throw std::runtime_error(std::string("Required device extension not available: ") + ext);
+            throw std::runtime_error(
+                std::string("需要 ") + pe.name + "，或能提供同等核心功能的 Vulkan 版本");
         }
     }
 

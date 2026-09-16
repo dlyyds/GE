@@ -178,6 +178,10 @@ VulkanInstance::VulkanInstance(
     }
 
     // ---- 4. 构建 InstanceCreateInfo ----
+    // 记下实际启用的层供后续查询：层是 Optional 请求的，"请求过"≠"启用了"
+    // （Android 上就没有验证层）。DebugUtils 的真实/空实现选择依赖它。
+    m_EnabledLayers = enabled_layers;
+
     vk::ApplicationInfo app_info{
         .pApplicationName = application_name.c_str(),
         .pEngineName      = "Game Engine",
@@ -233,6 +237,12 @@ bool VulkanInstance::IsExtensionEnabled(char const *extension) const
 {
     return std::ranges::any_of(m_EnabledExtensions,
                                [extension](std::string const &enabled) { return enabled == extension; });
+}
+
+bool VulkanInstance::IsLayerEnabled(char const *layer) const
+{
+    return std::ranges::any_of(m_EnabledLayers,
+                               [layer](std::string const &enabled) { return enabled == layer; });
 }
 
 vk::InstanceCreateFlags VulkanInstance::DefaultGetCreateFlags(std::vector<std::string> const &)

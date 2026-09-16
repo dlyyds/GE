@@ -144,3 +144,11 @@ assets/audio/
 # Old/outdated paths (kept for safety)
 # ============================================
 engin/vendor/
+
+# ============================================
+# gepack 的打包产物（gepack --out dist）。
+# 体积可达数百 MB（2.scene 实跑为 242 MB，其中单个 skybox.ktx2 就 192 MB），
+# 且完全可由 bin/gepack.exe 重新生成，不入版本库。
+# ============================================
+dist/
+dist.staging/

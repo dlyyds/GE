@@ -1,6 +1,6 @@
 # Android 移植计划书
 
-> 状态：**阶段 A 代码已完成并构建通过（`build.bat` 四目标全绿：`GE_Editor` / `GE_Runtime` / `gemesh` / `gepack`，零错零警告）；待用户跑完 `GE_Runtime` 的转向/相机回归；阶段 B–G 未开工**
+> 状态：**阶段 A（桌面 GLFW→SDL3）代码完成、构建通过，待用户跑完 `GE_Runtime` 的转向/相机回归；阶段 B（构建骨架）完成 —— 已产出可安装 APK 并逐项验证产物；阶段 C–G 未开工**
 > 目标：让 `GE_Runtime`（发行版播放器）能作为 APK 装在 Android 设备上运行。
 > **窗口库决策（2026-09-16 定）：换掉 GLFW，桌面与 Android 统一走 SDL3。** 理由见 §1.3。原「保留 GLFW + 手写 Android 后端」方案已否决——它把 Android 特有的 glue / 生命周期 / 触摸 / IME 全部留给手写，那部分是写一次、无人测、会腐烂的代码；SDL3 直接提供。
 > 范围（已定）：**只移 `GE_Runtime`**。`GE_Editor` 不上 Android（依赖 ImGuizmo / node-editor / 多视口停靠 / `FileDialogs`），但它必须跟着走完 SDL3 迁移。
@@ -247,6 +247,43 @@ fatal: no submodule mapping found in .gitmodules for path 'GE/third_party/tracy'
 ---
 
 ## 4. 阶段 B：构建骨架
+
+### 4.0 落地记录（2026-09-16，`0953972b`）
+
+**已完成，首次产出可安装 APK。** `gradlew assembleDebug` 通过，产物：
+
+```
+platform/android/app/build/outputs/apk/debug/app-debug.apk   39 MB   仅 arm64-v8a
+  └─ lib/arm64-v8a/libGE_Runtime.so                          40.7 MB  （打包后 strip 到 38.8 MB）
+  └─ classes.dex + classes2.dex                             SDL 的 12 个 Java 类
+  └─ AndroidManifest.xml + res/
+```
+
+**已验证的产物事实**（不是"应该能跑"，是逐项查过）：
+
+| 验证项 | 方法 | 结果 |
+|---|---|---|
+| `SDL_main` 从 .so 导出 | `llvm-nm -D --defined-only` | `T SDL_main`，全局动态符号 —— SDLActivity 找得到 |
+| 引擎确实链进去了 | 在 .so 里找引擎特有字符串 | `shaders/glsl` / `game.cfg` / `GE Runtime` / `scenes/2.scene` 全部命中 |
+| 不依赖外部 libc++ | 查未定义符号 | 无（用了 `ANDROID_STL=c++_static`，APK 里只有一个 .so） |
+| manifest 最终态 | 读 AGP 合并后的 manifest | `package=com.ge.runtime`、`minSdk=33`、`targetSdk=36`、activity=`org.libsdl.app.SDLActivity`、声明 `android.hardware.vulkan.version=0x00403000`(=1.3)、**GLES 声明已移除** |
+
+**工具链版本（实测可用组合）**：AGP 8.13.2 + Gradle 8.14.5 + JDK 17.0.15 + NDK 27.3.13750724 + compileSdk 36 / buildTools 36.0.0。
+
+**工程骨架取自 SDL 自带的 `android-project`**（含 gradle wrapper 与 `org.libsdl.app` 的 12 个 Java 源，后者**逐字节未改**，原作者是 SDL 项目 / Sam Lantinga，zlib 许可）。Gradle 与 manifest 是按本项目重写的，不是模板原样。
+
+**CMake 接线的一个关键决定**：Gradle 的 `externalNativeBuild.cmake.path` 直接指向**仓库根** `CMakeLists.txt`，而不是套一层 `platform/android/app/jni/CMakeLists.txt`。原因是引擎 CMakeLists 里有 73 处 `${CMAKE_SOURCE_DIR}`，只有让仓库根当顶层源目录它们才解析正确。仓库根内部按 `if(ANDROID)` 分区。
+
+**四个阻塞（三个是既有缺陷，非 Android 专有）**：
+
+| 症状 | 根因 | 性质 |
+|---|---|---|
+| `add_dependencies` 报 non-existent target | `assets/shaders/glsl/CMakeLists.txt` 硬挂 `GE_Editor` 依赖，而 Android 下该目标不存在 | 桌面专属假设 |
+| `Base.h: "Platform doesn't support debugbreak yet!"` | `GE_DEBUGBREAK()` 只有 Windows / Linux 分支 | 平台分支缺失 |
+| `vulkan_core.h: 找不到 vk_video/...` | **`GE/third_party/vulkan` 是不完整的 vendor 副本**：只拷了 `include/vulkan/`、漏了兄弟目录 `vk_video/`。Windows 上侥幸通过是因为能回退到 Vulkan SDK 的**同版本**（350）副本；Android 回退到 NDK 的 `vk_video` 却是 **275 版、无 av1**，与 350 版 `vulkan_core.h` 版本错配 | **既有 vendor 缺陷** |
+| `ImGuizmo.h not found` | `ImGuiLayer.cpp` include 了它却全无使用（grep 全仓库仅 1 处 = 那行 include） | **死依赖**，gizmo 本就属编辑器 |
+
+**已知的两道运行时坎（阶段 B 不负责，但装上必崩）**：`Log::Init` 的文件 sink 在 Android 上不可写（见 §10 对应条目），以及 **APK 里 `assets/` 是 0 个文件**（资产入包是阶段 G）。详见下面各节。
 
 ### 4.1 平台检测
 
@@ -548,7 +585,10 @@ externalNativeBuild ──► CMake → libGE_Runtime.so → APK 的 lib/arm64-v
 
 13. **CJK 字体仍不可移植（阶段 A 只做了止血）**：`ImGuiLayer.cpp` 硬编码 `C:\Windows\Fonts\msyh.ttc`。阶段 A **没有**换成随包字体 —— 仓库里没有任何 CJK 字体，而选一个随包字体（动辄 10MB+，要子集化、要决定是否接受进 APK）是产品取舍，不该由换库顺手决定。故只加了 `#ifdef GE_PLATFORM_WINDOWS` 守卫：非 Windows 上安静跳过并告警，而不是硬失败。**真正的解法在阶段 D**：字体随包 → 经 VFS 用 `AddFontFromMemoryTTF` 读入。
 
-14. **APK 体积**：Vulkan 引擎 + 中文字体 + 资产，未优化前轻松几百 MB。分包（Play Asset Delivery）或资产压缩留到后续。
+14. **APK 体积 —— 已有实测，比预估更严峻**：打包系统首次实跑（见 `游戏打包系统计划书.md` §5.7）得到 `2.scene` 的完整资产树为 **216 MB**，其中**单个 `environments/DaySkyHDRI065B/skybox.ktx2` 就占 192 MB（80%）**。加上已产出的 39 MB APK（`libGE_Runtime.so` 38.8 MB），**APK 会到 ~250 MB**。
+    - 这对于 Google Play 是超限风险（常规 APK 上限 150 MB，超出需走 Asset Delivery / 分包），且 `assets/` 在 APK 内默认为压缩存储，**安装后解压 + 首次加载都会明显变慢**。
+    - **主因是资产本身**（6.5K 级 HDRI 用在天空盒上属过采样），不是引擎或打包流程。**建议在开阶段 G 之前先处理**：降分辨率重烘（体积可掉一个数量级、肉眼几乎无差）→ 必要时再上 ASTC 压缩（引擎已链 KTX + astcenc）→ 最后才考虑 Play Asset Delivery 分包。
+    - 这条与 `游戏打包系统计划书.md` §9.12 是同一条，两边都要盯。
 
 15. **`ImGui` 在 Android 上是否必要**：`ImGuiLayer.cpp:33-34` 已把 `ViewportsEnable` 注释掉、只开 docking，所以没有多视口问题。但 `GE_Runtime` 本来不带编辑器 UI，**运行时几乎用不到 ImGui**——可考虑 Android 上直接关掉，省一大块复杂度和启动耗时。**值得评估**（若 `GameLayer` 依赖 ImGui 做调试面板则不能关）。
 
@@ -570,10 +610,14 @@ externalNativeBuild ──► CMake → libGE_Runtime.so → APK 的 lib/arm64-v
 | 里程碑 | 内容 | 依赖 | 交付判据 |
 |---|---|---|---|
 | **M1** | 阶段 A：桌面 GLFW → SDL3 —— **代码完成、构建通过（四目标零错零警告），待跑完 §3.5 回归清单** | — | 编辑器 + `GE_Runtime` 在 SDL3 下**全量回归通过**（§3.5 清单）；GLFW 从依赖中移除 ✅；**此时仍未碰 Android** ✅ |
-| **M2** | 阶段 B + C：构建骨架 + Android 平台后端 | M1 | Gradle 产出可安装 APK；真机能出画面（纯色清屏即可）；触摸/软键盘可用 |
+| **M2** | 阶段 B：构建骨架 —— **完成（`0953972b`）** | M1 | Gradle 产出可安装 APK ✅；`.so` 导出 `SDL_main` ✅；manifest 声明 Vulkan 1.3 ✅；**但装上必崩**（§4.0 尾部的两道坎） |
+| **M2.5** | **【新增】可启动 + 有画面** —— 这是原 M2 里「真机能出画面」的真实依赖 | M2 + 阶段 D/G | 修 `Log::Init` 崩溃 → 真有资产可加载（VFS + 入包）→ 真机启动看到场景 |
+| **M2b** | 阶段 C 剩余：触摸 / 软键盘 IME | M2.5 | 真机可触摸操作，软键盘能输入 |
 | **M3** | 阶段 D：VFS + 可写目录 | M2 | 真机能完整加载并渲染一个场景（含贴图/网格/动画/音频/Lua）；桌面零回归 |
 | **M4** | 阶段 E：生命周期与 Surface 重建 | M3 | 切后台/切回/旋转/锁屏均不崩，连续 20 次无泄漏 |
 | **M5** | 阶段 F + G：特性门槛 + 打包部署 | M4 | 一条命令产出可安装 APK；Tracy 能从桌面连上真机 |
 | **M6** | 触摸交互（产品层） | M5 | 能在触屏上实际操控相机与游戏 |
+
+**里程碑订正说明（2026-09-16）**：原 M2 把「Gradle 产出可安装 APK」与「真机能出画面」并列为同一格的判据，**这是错的**——本轮实测下来，产出 APK 只是构建骨架的事（阶段 B），而「能出画面」还卡在两处**与构建无关**的前提上：`Log::Init` 的启动崩溃（几行就能修）和**资产入包**（要大动 VFS + Gradle 接线）。故拆出 M2.5 作为真实的分界，避免下次又用「APK 出来了」误判成「快能玩了」。
 
 **文档载体自注**：本文是阶段 A–G 的蓝图，开工时每阶段单独细化。**阶段 A（换窗口库）必须独立成 PR**——它是唯一一个在桌面侧横跨 `Application` / `ImGuiLayer` / `GameLayer` / `SceneLayer` 的改动，且与 Android 完全解耦，混在别的改动里回滚成本极高。**阶段 D 必须与打包计划书阶段 D 协同设计**（同一个 VFS，别做两套），建议合并成一个 PR 系列。**阶段 E 建议独立成 PR**（跨平台层与渲染层）。（与 `auto-git-commit` 惯例一致。）

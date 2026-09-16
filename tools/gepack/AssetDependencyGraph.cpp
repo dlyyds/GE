@@ -500,6 +500,14 @@ bool AssetDependencyGraph::Build(const std::string &entrySceneCanonical, std::st
         return false;
     }
 
+    // 把场景里的每条引用喂进依赖图 —— 这一步曾是**缺失**的：AddRef() 定义着却零调用点，
+    // 于是依赖图里永远只有「入口场景 + 固定集合」，场景引用的网格/材质/动画/音频全部
+    // 被静默丢掉，而工具照报成功。表现为 dist 只有 40 个资产、且把一万多个资产误报成
+    // 「未被引用」。对打包工具来说这是最坏的失败模式（产物不完整却校验通过）。
+    for (const GE::AssetRef &ref : scan.refs) {
+        AddRef(ref.kind, ref.raw, ref.location);
+    }
+
     EnqueueCanonical(entrySceneCanonical, AssetKind::Scene, "入口场景");
     CollectFixedSets();
 

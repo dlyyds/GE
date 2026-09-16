@@ -1,6 +1,6 @@
 # Android 移植计划书
 
-> 状态：**阶段 A（桌面 GLFW→SDL3）代码完成、构建通过，待用户跑完 `GE_Runtime` 的转向/相机回归；阶段 B（构建骨架）完成；阶段 D 的运行时部分 + 阶段 G 的资产入包已落地（M2.5）—— 桌面侧与构建产物已实跑验证通过（见 §6.0.2），**真机未验**，245 MB APK 已备好；阶段 C / E / F 未开工**
+> 状态：**阶段 A（桌面 GLFW→SDL3）代码完成、构建通过，待用户跑完 `GE_Runtime` 的转向/相机回归；阶段 B（构建骨架）完成；阶段 D 的运行时部分 + 阶段 G 的资产入包已落地（M2.5）—— 桌面侧与构建产物已实跑验证通过（见 §6.0.2），**真机未验**，101 MB APK 已备好（skybox 已按原生分辨率重烘，见 §10 风险 14）；阶段 C / E / F 未开工**
 > 目标：让 `GE_Runtime`（发行版播放器）能作为 APK 装在 Android 设备上运行。
 > **窗口库决策（2026-09-16 定）：换掉 GLFW，桌面与 Android 统一走 SDL3。** 理由见 §1.3。原「保留 GLFW + 手写 Android 后端」方案已否决——它把 Android 特有的 glue / 生命周期 / 触摸 / IME 全部留给手写，那部分是写一次、无人测、会腐烂的代码；SDL3 直接提供。
 > 范围（已定）：**只移 `GE_Runtime`**。`GE_Editor` 不上 Android（依赖 ImGuizmo / node-editor / 多视口停靠 / `FileDialogs`），但它必须跟着走完 SDL3 迁移。
@@ -400,6 +400,8 @@ Windows-only 目标在 Android 下必须整体跳过：
 1. `PlatformUtils.h` 用了 `GE_PLATFORM_ANDROID` 却没引定义它的头 → 条件声明被编掉、定义还在，clang 报 `out-of-line definition ... does not match any declaration`。**桌面构建永远看不见**（两边 `#ifdef` 同为假）。
 2. Gradle 的 `copyGameAssets` 多套了一层 `assets/`：**注册进 `sourceSets` 的那个目录本身就是 APK 的 assets 根**，再 `into 'assets'` 就成了 `assets/assets/**`。构建照样"成功"，只有解包才看得出。顺带把任务从 `Copy` 换成 **`Sync`** —— `Copy` 不 prune 目标目录，改过结构后旧产物会继续留着（实测 APK 里同时存在两套布局、体积近乎翻倍，外加 216 MB 中央目录未索引的孤儿字节）。
 
+**另有一条只在"资产变小"时才现形的坑（换 skybox 时踩到）**：AGP 的 `packageDebug` 是**增量打包**，当某个条目的体积缩小时**不会回收旧空间**，也没截断文件。把 192 MB 的 skybox 换成 48 MB 后，APK 实测仍是 245 MB，其中 **144 MB 是中央目录根本不索引的孤儿字节**——`unzip -l` 一切正常，只有算 `start_dir - Σcompressed` 才看得出来。之后连跑两次增量构建都保持干净，说明它是"缩小那一次"的一次性问题。**做法：改动会显著缩小资产时，先删掉 `app/build/outputs/apk/debug/*.apk` 再构建**（或 `gradlew clean`）。排查口径：`python -c "import zipfile;z=zipfile.ZipFile(p);print(z.start_dir - sum(i.compress_size for i in z.infolist()))"`，非零即为孤儿字节。
+
 #### 6.0.2 验证记录（2026-09-16，桌面与构建产物已实跑；真机未验）
 
 **桌面（`build.bat` 两侧都验过：MSVC 目标与 Android/Clang 目标）**
@@ -415,7 +417,9 @@ Windows-only 目标在 Android 下必须整体跳过：
 - `gradlew assembleDebug` 干净重建产出 **245.0 MB** APK：62 个资产 / 206.0 MB 压缩后、**0 孤儿字节**；`assets/game.cfg` 在 assets 根；`assets/fonts/OpenSans/OpenSans-Regular.ttf` **大小写正确**；`lib/arm64-v8a/libGE_Runtime.so` 导出 `SDL_main`（`T`）且引用 `AAssetManager_fromJava`（`U`，证明 libandroid 已链）；新增的 `GE::VFS::InitAndroid` 与 `GE::PlatformUtils::GetAndroidAssetManager` 均在符号表内。
 - **好消息：非 ASCII 资产名经 aapt2/AGP 逐字节保留**（`models/shayv/未命名.gemesh`、中文 `.wav` 全部原样）。侦查时担心 aapt2 会改写这类名字，实测不会 —— 这条开放问题关闭。
 
-**仍未验（无设备连接，只能真机做）**：`Log::Init` 与 `AAssetManager` 的**运行期**路径、Vulkan 1.3 覆盖率、192 MB skybox 的加载内存峰值（§10 风险 14）、以及全部交互类回归（§3.5）。**APK 245 MB 已备好，接上设备 `adb install -r` 即可。**
+**仍未验（无设备连接，只能真机做）**：`Log::Init` 与 `AAssetManager` 的**运行期**路径、Vulkan 1.3 覆盖率、以及全部交互类回归（§3.5）。**APK 已备好，接上设备 `adb install -r` 即可。**
+
+> **2026-09-16 续：skybox 按原生分辨率重烘后，上文那组数字已变** —— APK **245.0 → 101.0 MB**、包内资产 **206.0 → 62.0 MB**、运行期峰值工作集 **810 → 524 MB**（实测）。见 §10 风险 14。
 
 **顺带观察到一条对阶段 E 有利的事实**：编辑器与播放器的日志里都有 `VulkanSwapchain: Image extent (0, 0) not supported. Selecting (1600, 900)` —— 说明**引擎的 swapchain 创建路径本来就能容忍"请求的 extent 为 0"并自行回落**。§7.1 担心的"首个 swapchain 拿到 0 尺寸就失败"实际不成立（我加的 0 尺寸诊断日志全程没触发，窗口报出的像素尺寸是非零的）。上真机时这条风险可降级。
 
@@ -650,12 +654,23 @@ externalNativeBuild ──► CMake → libGE_Runtime.so → APK 的 lib/arm64-v
 
 13. **CJK 字体仍不可移植（阶段 A 只做了止血）**：`ImGuiLayer.cpp` 硬编码 `C:\Windows\Fonts\msyh.ttc`。阶段 A **没有**换成随包字体 —— 仓库里没有任何 CJK 字体，而选一个随包字体（动辄 10MB+，要子集化、要决定是否接受进 APK）是产品取舍，不该由换库顺手决定。故只加了 `#ifdef GE_PLATFORM_WINDOWS` 守卫：非 Windows 上安静跳过并告警，而不是硬失败。**真正的解法在阶段 D**：字体随包 → 经 VFS 用 `AddFontFromMemoryTTF` 读入。
 
-14. **APK 体积 —— 已有实测，比预估更严峻**：打包系统首次实跑（见 `游戏打包系统计划书.md` §5.7）得到 `2.scene` 的完整资产树为 **216 MB**，其中**单个 `environments/DaySkyHDRI065B/skybox.ktx2` 就占 192 MB（80%）**。加上已产出的 39 MB APK（`libGE_Runtime.so` 38.8 MB），**APK 会到 ~250 MB**。
-    - 这对于 Google Play 是超限风险（常规 APK 上限 150 MB，超出需走 Asset Delivery / 分包），且 `assets/` 在 APK 内默认为压缩存储，**安装后解压 + 首次加载都会明显变慢**。
-    - ~~**主因是资产本身**（6.5K 级 HDRI 用在天空盒上属过采样），不是引擎或打包流程。建议降分辨率重烘（体积可掉一个数量级）~~ —— **这个诊断是错的，M2.5 实跑测出了真因**。运行日志给出 `cubemap 异步解码完成: environments/DaySkyHDRI065B/skybox.ktx2 (2048x2048 mip=1)` + `纹理异步就绪: … 格式=R16G16B16A16Sfloat`：它是 **2048² 的 6 面 cubemap、16 位浮点、未压缩、且没有 mip 链**。算一遍正好对上：2048×2048×8 字节×6 面 = 201,326,592 B，清单里的 201,326,848 B 就是它加文件头。所以**问题不是分辨率过采样（2K 对天空盒是合理值），而是格式没压缩**。
-    - **修正后的方向**（代价从低到高）：① **BC6H 压缩**（`BC6H_UF16` 就是为 HDR 设计的，8 位/像素 → 2048²×1×6 ≈ **25 MB，约 8:1**；引擎已链 KTX，且 `PrepareKtxForUpload` 里已有 BC7 的能力探测可照搬）—— 这才是对症的一刀；② 降分辨率到 1K（201→50 MB，4:1，但会真的损失天空细节）；③ Play Asset Delivery 分包。**先做 ①**。另注意它**没有 mip 链**（`mip=1`），对天空盒不算致命但采样质量与带宽都不理想，重烘时一并补上。
-    - **【M2.5 追加】真机首跑还会撞上内存峰值，不只是体积**：VFS 的读取路径是"整份读进内存 → 交给 libktx `CreateFromMemory`"，而 libktx 会**再拷一份**图像数据，所以这 192 MB 的 skybox 在加载瞬间占用约 **2× ≈ 400 MB** 原生内存（走文件路径时 libktx 自读只需一份）。这在手机上可能直接 OOM，而症状是"环境贴图加载失败 / 进程被杀"，与体积问题同一根因。**这给"先压缩"又加了一条独立理由 —— 而且它比体积更早、更硬地挡住 M2.5 的画面**。（若首跑真撞上，退路是给 `CreateKtxFromVfs` 加桌面 `CreateFromNamedFile` 分支，但那会让 Android 的内存路径在桌面上失去唯一可测环境，需权衡。桌面实测 192 MB 的 skybox 能正常加载到 `R16G16B16A16Sfloat`。）
-    - 这条与 `游戏打包系统计划书.md` §9.12 是同一条，两边都要盯。
+14. **APK 体积与加载内存 —— 已解决（2026-09-16，`edb9ce17`）**：原先 `2.scene` 的完整资产树 **216 MB**，其中**单个 `environments/DaySkyHDRI065B/skybox.ktx2` 就占 192 MB（80%）**，APK 会到 ~250 MB。
+    - **真因**（M2.5 实跑测出）：`cubemap 异步解码完成 … (2048x2048 mip=1)` + `格式=R16G16B16A16Sfloat` —— 它是 2048² 的 6 面 cubemap、16 位浮点、未压缩、无 mip 链；2048×2048×8×6 = 201,326,592 B 与清单的 201,326,848 B 正好对上。~~"6.5K HDRI 过采样"~~ 是错的。
+    - **更关键的一层：2048 本身就是过采样**。源 `source.exr` 是 **4096×2048 等距柱状全景**，横向 360° 对应 4096 px；一个立方体面覆盖 90°，故单面边长取**源宽/4 = 1024** 时角度分辨率才与源一致。2048 是 **2× 插值放大**，一个真实像素都不多。
+    - **已做的修法**：`tools/gen_env.py` 新增 `native_face_size()`（只读 EXR 头取 `dataWindow` 宽度），把 `--skybox-size` 的默认值改为源宽/4（归 2 的幂、夹在 [256,2048]）。按原生尺寸重烘该环境的 skybox 后：
+
+      | | 之前 | 之后 |
+      |---|---|---|
+      | `skybox.ktx2` | 192 MB | **48 MB** |
+      | gepack 产物 | 206 MB | **62 MB** |
+      | APK | 245 MB | **101 MB** |
+      | 运行期峰值工作集 | **810 MB** | **524 MB** |
+
+    - **峰值那两行是实测**：差值 286 MB ≈ 2×144 MB，正好印证下面那条"VFS 内存翻倍"。**810 MB 的手机进程基本必被系统杀掉，524 MB 才谈得上能跑** —— 所以这一步不是体积优化，是 M2.5 能否成立的前提。
+    - **画质已验证**：截取屏幕中央区域比对，2048 与 1024 两版渲染的**均值 RGB 完全相同（153,163,169）**，颜色数 1288 vs 1248（差异在角色贴图与噪点上，不在天空）。
+    - **格式压缩（BC6H）当前做不了，别再尝试**（本次已逐一验证）：装机的 `ktx` v5 的 `create` **不接受任何块压缩格式**（`BC6H_UF16`/`BC6H_UF16_BLOCK` 均报 invalid），`transcode --target bc6hu` 只能输出 `.raw` 且无工具把它封回 KTX2；而 vendored 的 **libktx 4.4.2 的 `ktx_transcode_fmt_e` 里根本没有 BC6H / HDR 目标**（其 basisu 也不支持 `uastc-hdr`），所以 `ktx encode --encode uastc-hdr-4x4` 产出的文件引擎读不了。要做需要**升级 vendored libktx + basisu 到 v5**，并给 `PrepareKtxForUpload` 加 HDR 转码分支 + `textureCompressionBC` 能力探测（现有代码只探 BC7）。那是独立一块，且升级第三方库的回归面比现在这件事大得多。
+    - **其余环境未处理**：另外 4 个环境（`DayEnvironmentHDRI107_4K` / `_8K` / `NightSkyHDRI008` / `NightSkyHDRI016A`）本地也各有一份 192 MB 的 skybox，共约 960 MB。它们不在包里（场景只用 `DaySkyHDRI065B`），但**一旦切换环境，同一问题立刻复现**。口径已修好，逐个重烘即可（源在 `assets/HDRI/<名>_4K/`，注意 8K 源的原生面尺寸是 2048，脚本会自己算对）。另 `skybox.ktx2` **没有 mip 链**（`mip=1`）——天空盒整屏显示时会有 minification 锯齿，但它不在本次范围内。
+    - 这条与 `游戏打包系统计划书.md` §9.12 是同一条，两边已同步。
 
 15. **`ImGui` 在 Android 上是否必要**：`ImGuiLayer.cpp:33-34` 已把 `ViewportsEnable` 注释掉、只开 docking，所以没有多视口问题。但 `GE_Runtime` 本来不带编辑器 UI，**运行时几乎用不到 ImGui**——可考虑 Android 上直接关掉，省一大块复杂度和启动耗时。**值得评估**（若 `GameLayer` 依赖 ImGui 做调试面板则不能关）。
 

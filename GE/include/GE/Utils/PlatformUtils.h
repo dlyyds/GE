@@ -1,5 +1,11 @@
 #pragma once
 
+// 本头文件用 GE_PLATFORM_ANDROID 做条件声明，**必须**自己引入定义它的头
+// （PlatformDetection.h 经 Core/Base.h 而来）。否则该宏是否可见取决于调用方的
+// include 顺序 —— 后果是声明被编掉、定义还在，报「out-of-line definition does not
+// match any declaration」；而桌面构建因为两边的 #ifdef 同为假，永远看不见这个错。
+#include "Core/Base.h"
+
 #include <filesystem>
 #include <string>
 

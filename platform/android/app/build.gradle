@@ -83,10 +83,19 @@ android {
 // 拷到 build/ 下的**生成目录**而不是 src/main/assets：
 //   - 不污染源码树（216MB 的资产不该出现在 git status 里）
 //   - dist/ 本身已在 .gitignore 中（可重新生成）
+//
+// ⚠️ 目录层级要看清：**注册进 sourceSets 的那个目录本身就是 APK 的 assets 根**，
+// 所以 dist/assets/** 要拷到该目录的**顶层**，不能再套一层 `assets/` —— 否则
+// APK 里会变成 assets/assets/**（实测踩过：构建照样"成功"，只有解包才看得出）。
 def gepackDistDir = file('../../../dist')
 def generatedAssetsDir = layout.buildDirectory.dir('generated/gepackAssets')
 
-tasks.register('copyGameAssets', Copy) {
+// 用 Sync 而不是 Copy：Copy **不会**删除目标目录里已不在源集合中的文件，改过目录
+// 结构后旧产物会继续留着（实测：把多套的一层 assets/ 去掉后，APK 里同时存在
+// assets/models/** 与 assets/assets/**，体积近乎翻倍，而构建照样"成功"）。
+// Sync 会把目标目录对齐成源集合的样子，让这个任务真正幂等。
+// 目标目录整个归本任务所有（在 build/generated/ 下），故可以放心 prune。
+tasks.register('copyGameAssets', Sync) {
     description = '把 gepack 的 dist/ 接成 APK 的 assets/（assets/** + game.cfg）'
     group = 'ge'
 
@@ -104,9 +113,9 @@ tasks.register('copyGameAssets', Copy) {
         }
     }
 
-    // dist/assets/** → APK 的 assets/**（生成目录下的 assets/ 子目录即 APK 的 assets/）
-    from(new File(gepackDistDir, 'assets')) { into 'assets' }
-    // dist/game.cfg → APK assets 根（GameConfig 在 Android 上回退到这里读）
+    // dist/assets/** → 生成目录顶层 → APK 的 assets/**
+    from(new File(gepackDistDir, 'assets'))
+    // dist/game.cfg → 生成目录顶层 → APK 的 assets/game.cfg（GameConfig 在 Android 上回退到这里读）
     from(new File(gepackDistDir, 'game.cfg'))
     into generatedAssetsDir
 }

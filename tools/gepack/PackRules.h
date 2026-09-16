@@ -31,12 +31,13 @@ PackRules LoadPackRules(const std::string &yamlPath, std::string &err);
 /// 内置默认规则（yaml 缺失时的兜底，与 tools/gepack/gepack_rules.yaml 保持一致）
 PackRules DefaultPackRules();
 
-/**
- * @brief glob 匹配（对 '/' 分段的路径，`**` 可跨段）。
- *
- * 全路径与文件名都要能匹配：模式 `shaders/glsl/**` 匹配该目录下一切，
- * `**/*.pdb` 匹配任意层级的 .pdb。
- */
+/// @brief glob 匹配（对 '/' 分段的路径，`**` 可跨段）。
+///
+/// 全路径与文件名都要能匹配：模式 `shaders/glsl/**` 匹配该目录下一切，
+/// `**/*.pdb` 匹配任意层级的 .pdb。
+///
+/// 注意：本段刻意用**行注释**而非块注释 —— 上面模式里的 `**/` 含 `*/`，
+/// 放在块注释里会提前终止注释，后面整行被当代码解析（C2059/C2018/C3872）。
 bool GlobMatch(const std::string &pattern, const std::string &path);
 
 /// 是否被任一排除模式命中

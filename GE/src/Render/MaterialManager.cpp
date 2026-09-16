@@ -6,7 +6,9 @@
 #include "Render/MaterialManager.h"
 
 #include "Render/MaterialSerializer.h"
+#include "FileSystem/VFS.h"
 #include "Core/Log.h"
+#include "Utils/PlatformUtils.h"
 
 #include <yaml-cpp/yaml.h>
 
@@ -101,7 +103,8 @@ Material *MaterialManager::Load(const std::string &resolvedPath) {
 
     YAML::Node root;
     try {
-        root = YAML::LoadFile(resolvedPath);
+        // 经 VFS 读文本再解析：YAML::LoadFile 直接 fopen，在 Android 上读不到 APK 内资产
+        root = YAML::Load(VFS::ReadText(resolvedPath));
     } catch (const std::exception &e) {
         GE_CORE_WARN("MaterialManager: 材质文件解析失败 {0}: {1}", resolvedPath, e.what());
         return nullptr;
@@ -147,26 +150,39 @@ bool MaterialManager::Save(Material &mat, const std::string &resolvedPath,
         return false;
     }
 
+    if (!PlatformUtils::IsAssetRootWritable()) {
+        GE_CORE_WARN("MaterialManager: 资产根只读（Android 上资产在 APK 内），无法保存: {0}",
+                     resolvedPath);
+        return false;
+    }
+
     YAML::Node root;
     YAML::Node node = root["Material"];
     node["Version"] = MaterialSerializer::kFormatVersion;
     MaterialSerializer::WriteMaterialNode(node, mat, assetRoot);
 
+    // resolvedPath 是**规范形**（对内同时充当缓存键与材质反查表键，与 Load 一致），
+    // 要落盘得拼回资源根变成真实文件路径。
+    const std::filesystem::path writePath =
+        assetRoot.empty()
+            ? std::filesystem::path(resolvedPath)
+            : (std::filesystem::path(assetRoot) / std::filesystem::path(resolvedPath))
+                  .lexically_normal();
+
     std::error_code ec;
-    const std::filesystem::path p(resolvedPath);
-    if (!p.parent_path().empty()) {
-        std::filesystem::create_directories(p.parent_path(), ec);  // 首次另存为时目录可能不存在
+    if (!writePath.parent_path().empty()) {
+        std::filesystem::create_directories(writePath.parent_path(), ec); // 首次另存为时目录可能不存在
     }
 
-    std::ofstream out(resolvedPath);
+    std::ofstream out(writePath);
     if (!out) {
-        GE_CORE_WARN("MaterialManager: 材质文件写入失败: {0}", resolvedPath);
+        GE_CORE_WARN("MaterialManager: 材质文件写入失败: {0}", writePath.string());
         return false;
     }
     out << root;
     out.close();
     if (!out) {
-        GE_CORE_WARN("MaterialManager: 材质文件写出错: {0}", resolvedPath);
+        GE_CORE_WARN("MaterialManager: 材质文件写出错: {0}", writePath.string());
         return false;
     }
 

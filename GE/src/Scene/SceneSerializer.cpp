@@ -23,6 +23,8 @@
 #include "Render/TextureManager.h"
 #include "Render/GEMeshLoader.h"
 #include "Render/ModelLoader.h"
+#include "FileSystem/VFS.h"
+#include "Utils/PlatformUtils.h"
 #include "Render/GLTFLoader.h"
 #include "Animation/AnimationClipManager.h"
 
@@ -370,11 +372,13 @@ std::string DeriveGemeshOutPath(const std::string &srcKey) {
     SplitGLTFMeshKey(srcKey, filePath, meshIndex);
 
     const std::filesystem::path src(filePath);
+    // generic_string()：这是**资产的规范形**路径（会写进场景 YAML 并用于 VFS 读取），
+    // .string() 在 Windows 上产出反斜杠，Android 上必然读不到
     if (meshIndex > 0) {
         return (src.parent_path() /
-                (src.stem().string() + "_" + std::to_string(meshIndex) + ".gemesh")).string();
+                (src.stem().string() + "_" + std::to_string(meshIndex) + ".gemesh")).generic_string();
     }
-    return (src.parent_path() / (src.stem().string() + ".gemesh")).string();
+    return (src.parent_path() / (src.stem().string() + ".gemesh")).generic_string();
 }
 
 /**
@@ -392,7 +396,7 @@ std::string DeriveGemeshOutPath(const std::string &srcKey) {
  */
 bool BakeSourceToGemesh(const std::string &srcKey, const std::string &outPath,
                         std::string &err) {
-    if (std::filesystem::exists(outPath)) {
+    if (VFS::Exists(outPath)) {
         return true;
     }
 
@@ -448,7 +452,10 @@ bool BakeSourceToGemesh(const std::string &srcKey, const std::string &outPath,
     CanonicalizeGEMeshEmbeddedRefs(data, meta,
                                    Renderer::GetAssetManager().GetAssetRoot());
 
-    return SerializeGEMesh(outPath, data, meta, &err);
+    // outPath 是规范形（要写进场景 YAML），落盘得拼回资源根变成真实文件路径
+    const std::filesystem::path writePath =
+        Renderer::GetAssetManager().ResolveWritePath(outPath);
+    return SerializeGEMesh(writePath.string(), data, meta, &err);
 }
 
 /**
@@ -501,7 +508,7 @@ std::string ResolveMeshSerializedPath(
         }
         const std::filesystem::path p(outPath);
         outPath = (p.parent_path() /
-                   (p.stem().string() + "_" + std::to_string(n) + ".gemesh")).string();
+                   (p.stem().string() + "_" + std::to_string(n) + ".gemesh")).generic_string();
     }
 
     std::string err;
@@ -1125,7 +1132,14 @@ bool SceneSerializer::Serialize(const std::string &filepath) {
         }
     }
 
-    // 写入文件
+    // 写入文件。filepath 由编辑器经 FileDialogs 给出，是**真实文件系统路径**
+    // （用户可以另存到资源根之外的任何地方），故不走 VFS/规范形。
+    // 资产根只读时（Android）场景保存整体不可用 —— 运行时不保存场景，只影响编辑器。
+    if (!PlatformUtils::IsAssetRootWritable()) {
+        GE_CORE_ERROR("SceneSerializer::Serialize: 资产根只读，无法保存场景: {0}", filepath);
+        return false;
+    }
+
     try {
         std::ofstream fout(filepath);
         if (!fout.is_open()) {
@@ -1157,10 +1171,10 @@ bool SceneSerializer::Deserialize(const std::string &filepath) {
         return false;
     }
 
-    // 读取并解析 YAML
+    // 读取并解析 YAML（经 VFS：YAML::LoadFile 直接 fopen，Android 上读不到 APK 内资产）
     YAML::Node root;
     try {
-        root = YAML::LoadFile(filepath);
+        root = YAML::Load(VFS::ReadText(filepath));
     } catch (const YAML::Exception &e) {
         GE_CORE_ERROR("SceneSerializer::Deserialize: YAML 解析失败 ({0}): {1}", filepath, e.what());
         return false;

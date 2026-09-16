@@ -119,7 +119,8 @@ public:
     /**
      * @brief 从 `.gemat` 文件加载材质（同一路径只加载一次，之后复用实例）。
      *
-     * @param resolvedPath 已解析的绝对路径（见 AssetManager::ResolvePath）
+     * @param resolvedPath **规范形**路径（见 AssetManager::ResolveCanonical）；
+     *                     同时也是缓存键与源路径反查表的键
      * @return 材质指针，读取/解析失败返回 nullptr
      */
     Material *Load(const std::string &resolvedPath);
@@ -128,10 +129,11 @@ public:
      * @brief 把材质写入 `.gemat` 文件（写后置源文件路径并清脏标记）。
      *
      * 目录不存在时自动创建。写成功后该材质即"文件背书"，序列化场景时写引用。
+     * 资产根只读时（Android）直接失败并告警。
      *
      * @param mat          材质（会被更新源路径，故非 const）
-     * @param resolvedPath 目标文件绝对路径
-     * @param assetRoot    资源根（贴图路径归一用）
+     * @param resolvedPath 目标文件的**规范形**路径（落盘时拼在 assetRoot 之下）
+     * @param assetRoot    资源根（拼写盘路径 + 贴图路径归一用）
      * @return 是否写入成功
      */
     bool Save(Material &mat, const std::string &resolvedPath, const std::string &assetRoot);

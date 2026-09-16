@@ -8,6 +8,7 @@
 #include "Render/AssetManager.h"
 #include "Render/VulkanBase/VulkanCommandBuffer.h"
 #include "Render/VulkanBase/VulkanContext.h"
+#include "FileSystem/VFS.h"
 #include "Utils/PlatformUtils.h"
 
 #include <SDL3/SDL.h>
@@ -17,7 +18,11 @@
 
 #include "imgui.h"
 
+#include <cstdint>
+#include <cstring>
+#include <filesystem>
 #include <string>
+#include <vector>
 
 namespace GE {
 
@@ -60,12 +65,32 @@ void ImGuiLayer::OnAttach() {
 
     float fontSize = 24.0f;
 
-    // 加载英文字体（基础字体，包含 ASCII）
+    // 加载英文字体（基础字体，包含 ASCII）。
+    //
+    // **必须经 VFS 读进内存再用 AddFontFromMemoryTTF**：`AddFontFromFileTTF` 走
+    // stdio 路径，Android 上读不到 APK 内的资产，而它失败时走
+    // `IM_ASSERT_USER_ERROR(0, "Could not load font file!")` —— 那就是 `assert`，
+    // 且 GE_DEBUG 无条件定义，所以**字体加载失败是 abort 而不是降级**。
+    // 缓冲区交给 atlas 托管（ImFontConfig::FontDataOwnedByAtlas 默认 true）。
     ImFontConfig cfg;
     cfg.MergeMode = false;
-    io.FontDefault = io.Fonts->AddFontFromFileTTF(
-        Renderer::GetAssetManager().ResolvePath(std::string(AssetPaths::Fonts) + "/OpenSans-Regular.ttf").string().c_str(),
-        fontSize, &cfg);
+
+    const std::string fontCanonical =
+        Renderer::GetAssetManager().ResolveCanonical(std::string(AssetPaths::Fonts) + "/OpenSans-Regular.ttf");
+    const std::vector<uint8_t> fontBytes = VFS::ReadAll(fontCanonical);
+
+    if (!fontBytes.empty()) {
+        // AddFontFromMemoryTTF 会 const_cast 并按 TTF 原地解析，故给一份可写副本
+        void *fontData = IM_ALLOC(fontBytes.size());
+        std::memcpy(fontData, fontBytes.data(), fontBytes.size());
+        io.FontDefault = io.Fonts->AddFontFromMemoryTTF(
+            fontData, static_cast<int>(fontBytes.size()), fontSize, &cfg);
+    }
+    if (!io.FontDefault) {
+        // 不致命：ImGui 会退回内置的 ProggyClean 位图字体（字形少但不会崩）。
+        // 走到这里说明资产里没有字体 —— 画面能看，但 UI 文字是默认小字。
+        GE_CORE_ERROR("ImGuiLayer: 读不到随包字体 {0}，改用 ImGui 内置字体", fontCanonical);
+    }
 
     // 合并中文字体（微软雅黑）— 使中文标点和 CJK 字符能正确显示
     cfg.MergeMode = true;

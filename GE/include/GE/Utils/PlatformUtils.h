@@ -33,6 +33,16 @@ public:
      * 查询失败返回空路径，调用方须容忍（不要拼出 "/GE.log" 这种根目录下的路径）。
      */
     static std::filesystem::path GetUserDataDirectory();
+
+    /**
+     * @brief 资产根是否可写（能否往资源根里落文件）。
+     *
+     * 桌面为 true；**Android 为 false** —— 资产在 APK 内，`AAssetManager` 是只读的。
+     * 所有"往资产根写"的路径（材质另存为、`.gemesh` / `.geanim` 运行期烘焙、场景
+     * 序列化）都必须先问这里，在只读环境下**跳过并告警**，而不是每帧让文件系统
+     * 调用失败刷屏。
+     */
+    static bool IsAssetRootWritable();
 };
 
 }

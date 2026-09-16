@@ -17,6 +17,7 @@
 #include "Core/KeyCodes.h"
 #include "Core/Log.h"
 #include "Core/MouseCodes.h"
+#include "FileSystem/VFS.h"
 
 #include <glm/gtc/quaternion.hpp>
 #include <sol/sol.hpp>
@@ -118,12 +119,9 @@ AnimStateMachineComponent *ActiveAnimStateMachine(Impl &eng) {
 }
 
 std::string ReadFileContents(const std::string &path) {
-    std::ifstream in(path, std::ios::binary);
-    if (!in)
-        return {};
-    std::ostringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
+    // 经 VFS：path 是**规范形**（baseDir + 相对路径）。Android 上资产在 APK 内，
+    // std::ifstream 读不到 —— 且失败是静默的（脚本不执行、不报错）。
+    return VFS::ReadText(path);
 }
 
 // 注入脚本 API：log / input / transform / anim / character / camera / entity / public / Key / Mouse / audio。
@@ -900,6 +898,37 @@ bool CallHookVariadic(InstanceData &id, const char *name, Args &&...args) {
     }
 }
 
+/**
+ * @brief Lua `require` 的 VFS 查找器（挂在 `package.searchers` 末尾）。
+ *
+ * `package.path` 是 **stdio 机制**，打进 APK 后必然失效 —— 而失败是**静默**的
+ * （脚本不执行、不报错），是打包计划书 §9.2 点名的坑。这里补一个查找器：
+ * 按 `baseDir` 拼出规范形路径 → VFS 读 → `luaL_loadbuffer`，桌面与 Android 同一条路。
+ *
+ * searchers 的契约：找到 → 返回 loader 函数；没找到 → 返回一条错误消息字符串
+ * （Lua 会把它拼进 "module not found" 的提示里）。
+ */
+int LuaVfsSearcher(lua_State *L) {
+    const char *baseDir = lua_tostring(L, lua_upvalueindex(1)); // 以 '/' 结尾
+    const char *name = luaL_checkstring(L, 1);
+
+    // Lua 的模块名用 '.' 分层，落盘要换成 '/'
+    std::string rel(name);
+    std::replace(rel.begin(), rel.end(), '.', '/');
+    const std::string path = std::string(baseDir) + rel + ".lua";
+
+    const std::string code = VFS::ReadText(path);
+    if (code.empty()) {
+        lua_pushfstring(L, "\n\tno asset '%s' (VFS)", path.c_str());
+        return 1;
+    }
+
+    if (luaL_loadbuffer(L, code.data(), code.size(), ("@" + path).c_str()) != LUA_OK) {
+        return lua_error(L); // 语法错误：直接抛，与 Lua 自带 searcher 的行为一致
+    }
+    return 1; // 返回 chunk；Lua 负责调用它并把返回值当作模块
+}
+
 } // namespace
 
 
@@ -922,8 +951,19 @@ void ScriptEngine::Init(Scene *scene, const std::string &scriptsBaseDir) {
 
     eng.lua.open_libraries(sol::lib::base, sol::lib::package, sol::lib::string,
                            sol::lib::table, sol::lib::math);
-    const std::string defaultPath = eng.lua["package"]["path"].get_or<std::string>("./?.lua");
-    eng.lua["package"]["path"] = eng.baseDir + "?.lua;" + defaultPath;
+
+    // 不改 package.path：那是 stdio 机制，在 Android 上必然失效。baseDir 现在只是
+    // 一个**规范形前缀**（如 "scripts/"），物理位置由 VFS 决定。脚本加载（EnsureBehavior）
+    // 与 require 都统一走 VFS，两端行为一致。
+    {
+        lua_State *L = eng.lua.lua_state();
+        lua_getglobal(L, "package");
+        lua_getfield(L, -1, "searchers");
+        lua_pushstring(L, eng.baseDir.c_str());
+        lua_pushcclosure(L, LuaVfsSearcher, 1); // baseDir 作 upvalue
+        lua_rawseti(L, -2, static_cast<lua_Integer>(lua_rawlen(L, -2)) + 1);
+        lua_pop(L, 2);
+    }
 
     RegisterApi(eng);
 }

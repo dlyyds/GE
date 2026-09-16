@@ -109,7 +109,7 @@ void SceneLayer::OnAttach() {
 
     // 从文件加载默认场景（网格/纹理/材质由全局管理器加载持有）
     const std::string defaultScenePath =
-        Renderer::GetAssetManager().ResolvePath(kDefaultScene).string();
+        Renderer::GetAssetManager().ResolveCanonical(kDefaultScene);
     if (!LoadSceneFromFile(defaultScenePath)) {
         GE_CORE_WARN("SceneLayer: 启动加载默认场景失败: {0}", defaultScenePath);
     }

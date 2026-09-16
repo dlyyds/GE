@@ -17,6 +17,7 @@
 #include "Render/ModelLoader.h"
 #include "Render/Mesh.h"
 #include "Scene/Components.h"
+#include "FileSystem/VFS.h"
 #include "Core/Log.h"
 
 #include "tinygltf/tiny_gltf.h"
@@ -282,7 +283,8 @@ static bool ReadAnimValues(const tinygltf::Model &m, int accessorIdx,
 /**
  * @brief 把 glTF 某个 material 捕获为 MaterialData 追加到 out（同名去重）。
  *
- * 贴图 URI 相对 glTF 文件所在目录解析为绝对路径；内嵌 bufferView 图像（GLB BIN）
+ * 贴图 URI 相对 glTF 文件所在目录解析（结果是资产的**规范形**路径，正斜杠）；
+ * 内嵌 bufferView 图像（GLB BIN）
  * 无 URI，返回值留空（安全默认，不因贴图缺失崩加载）。metallicRoughnessTexture
  * 与 OBJ 两张灰度图不兼容，暂不加载贴图、仅用标量 metallic/roughness。
  */
@@ -328,11 +330,13 @@ static void AppendGLTFMaterial(const tinygltf::Model &m, int materialIdx,
             return {}; // 内嵌 bufferView 图像无 URI，暂不加载
         }
         std::filesystem::path p(uri);
+        // generic_string()：反斜杠只会在 Windows 上出现，而这里是**资产的规范形**
+        // 路径，必须一律正斜杠（Android 的 AAssetManager 大小写/分隔符都不通融）
         if (p.is_absolute()) {
-            return p.lexically_normal().string();
+            return p.lexically_normal().generic_string();
         }
         return (std::filesystem::path(filepath).parent_path() / uri)
-            .lexically_normal().string();
+            .lexically_normal().generic_string();
     };
     // 贴图索引：优先 Metallic-Roughness 的 baseColorTexture；无效时回退
     // KHR_materials_pbrSpecularGlossiness 扩展的 diffuseTexture（Blender/旧导出器
@@ -384,11 +388,28 @@ bool LoadModel(const std::string &filepath, tinygltf::Model &outModel, std::stri
             c += static_cast<char>('a' - 'A');
         }
     }
+
+    // 整个文件先经 VFS 读进内存，再把内存交给 tinygltf —— 引擎不再有"直接按路径
+    // 打开资产文件"的地方（Android 上资产在 APK 内，tinygltf 的 file API 读不到）。
+    // base_dir 传空：本工程开着 TINYGLTF_NO_EXTERNAL_IMAGE，贴图由纹理子系统单独
+    // 加载，tinygltf 不会去解析外部 .png / .bin。
+    std::vector<uint8_t> bytes;
+    if (!VFS::ReadAll(filepath, bytes)) {
+        if (err) {
+            *err = "读不到文件: " + filepath;
+        }
+        GE_CORE_ERROR("[Mesh] glTF 读不到文件: {}", filepath);
+        return false;
+    }
+
     bool ok = false;
     if (ext == ".glb") {
-        ok = loader.LoadBinaryFromFile(&outModel, &errStr, &warn, filepath);
+        ok = loader.LoadBinaryFromMemory(&outModel, &errStr, &warn, bytes.data(),
+                                         static_cast<unsigned int>(bytes.size()));
     } else {
-        ok = loader.LoadASCIIFromFile(&outModel, &errStr, &warn, filepath);
+        ok = loader.LoadASCIIFromString(&outModel, &errStr, &warn,
+                                        reinterpret_cast<const char *>(bytes.data()),
+                                        static_cast<unsigned int>(bytes.size()), "");
     }
     if (!warn.empty()) {
         GE_CORE_WARN("[Mesh] glTF 警告: {}", warn);

@@ -5,8 +5,10 @@
 
 #include "Render/GEMeshLoader.h"
 
-#include "Render/AssetPathUtil.h"
+#include "Render/ModelLoader.h"
+#include "FileSystem/VFS.h"
 #include "Core/Log.h"
+#include "Utils/PlatformUtils.h"
 
 #include <filesystem>
 #include <fstream>
@@ -391,6 +393,14 @@ bool SerializeGEMesh(const std::string &outPath, const MeshData &data,
 
     std::vector<uint8_t> bytes = BuildFile(data, meta);
 
+    if (!PlatformUtils::IsAssetRootWritable()) {
+        if (err) {
+            *err = "资产根只读（Android 上资产在 APK 内），跳过烘焙";
+        }
+        GE_CORE_WARN("[GEMesh] 资产根只读，跳过写出: {0}", outPath);
+        return false;
+    }
+
     std::ofstream fout(outPath, std::ios::binary | std::ios::trunc);
     if (!fout.is_open()) {
         if (err) {
@@ -413,21 +423,16 @@ bool SerializeGEMesh(const std::string &outPath, const MeshData &data,
 // ============================================================================
 
 bool ParseGEMesh(const std::string &filepath, MeshData &out, GEMeshMeta *outMeta) {
-    // 读入完整文件
-    std::ifstream fin(filepath, std::ios::binary | std::ios::ate);
-    if (!fin.is_open()) {
-        GE_CORE_ERROR("[GEMesh] 无法打开文件: {0}", filepath);
+    // 读入完整文件（走 VFS：桌面读磁盘、Android 读 APK 内 assets）
+    std::vector<uint8_t> buf;
+    if (!VFS::ReadAll(filepath, buf)) {
+        GE_CORE_ERROR("[GEMesh] 读不到文件: {0}", filepath);
         return false;
     }
-    const std::streamsize fileSize = fin.tellg();
-    if (fileSize <= 0) {
+    if (buf.empty()) {
         GE_CORE_ERROR("[GEMesh] 文件为空: {0}", filepath);
         return false;
     }
-    std::vector<uint8_t> buf(static_cast<size_t>(fileSize));
-    fin.seekg(0, std::ios::beg);
-    fin.read(reinterpret_cast<char *>(buf.data()), fileSize);
-    fin.close();
 
     // ---- 头校验：magic + version ----
     if (buf.size() < 8 || std::memcmp(buf.data(), kMagic, 5) != 0) {
@@ -640,27 +645,11 @@ void CanonicalizeGEMeshEmbeddedRefs(MeshData &data, GEMeshMeta &meta,
         return;
     }
 
-    auto canon = [&assetRoot](std::string &ref, const char *what) {
-        if (ref.empty() || AssetPathUtil::IsPseudoKey(ref)) {
-            return;
-        }
-        if (auto rel = AssetPathUtil::ToCanonical(ref, assetRoot)) {
-            ref = *rel;
-            return;
-        }
-        // 根外引用：不在烘焙期悄悄丢弃，也不改写成别的路径——留给打包校验报错
-        GE_CORE_WARN("[GEMesh] 内嵌 {0} 无法归一到资源根，保留原串: {1}", what, ref);
-    };
+    // 贴图槽的归一逻辑与其它格式共用（含"根无关兜底"），见 ModelLoader::CanonicalizeAssetRef
+    ModelLoader::CanonicalizeEmbeddedMaterialRefs(data, assetRoot);
 
-    for (auto &md : data.materialData) {
-        canon(md.albedoMap, "albedoMap");
-        canon(md.normalMap, "normalMap");
-        canon(md.emissiveMap, "emissiveMap");
-        canon(md.metallicMap, "metallicMap");
-        canon(md.roughnessMap, "roughnessMap");
-        canon(md.metallicRoughnessMap, "metallicRoughnessMap");
-    }
-    canon(meta.sourceAsset, "sourceAsset");
+    // sourceAsset 只是追溯信息，不参与加载；单独归一以免它带着开发机路径进包里
+    ModelLoader::CanonicalizeAssetRef(meta.sourceAsset, assetRoot);
 }
 
 } // namespace GE

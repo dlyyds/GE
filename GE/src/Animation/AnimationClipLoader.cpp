@@ -5,7 +5,9 @@
 
 #include "Animation/AnimationClipLoader.h"
 
+#include "FileSystem/VFS.h"
 #include "Core/Log.h"
+#include "Utils/PlatformUtils.h"
 
 #include <cstring>
 #include <filesystem>
@@ -131,6 +133,14 @@ bool SerializeAnimationClip(const std::string &outPath, const AnimationClip &cli
         }
     }
 
+    if (!PlatformUtils::IsAssetRootWritable()) {
+        if (err) {
+            *err = "资产根只读（Android 上资产在 APK 内），跳过烘焙";
+        }
+        GE_CORE_WARN("[GEAnim] 资产根只读，跳过写出: {0}", outPath);
+        return false;
+    }
+
     std::ofstream fout(outPath, std::ios::binary | std::ios::trunc);
     if (!fout.is_open()) {
         if (err) {
@@ -152,20 +162,16 @@ bool SerializeAnimationClip(const std::string &outPath, const AnimationClip &cli
 // ============================================================================
 
 bool ParseAnimationClip(const std::string &filepath, AnimationClip &out, std::string *err) {
-    std::ifstream fin(filepath, std::ios::binary | std::ios::ate);
-    if (!fin.is_open()) {
-        GE_CORE_ERROR("[GEAnim] 无法打开文件: {0}", filepath);
+    // 读入完整文件（走 VFS：桌面读磁盘、Android 读 APK 内 assets）
+    std::vector<uint8_t> buf;
+    if (!VFS::ReadAll(filepath, buf)) {
+        GE_CORE_ERROR("[GEAnim] 读不到文件: {0}", filepath);
         return false;
     }
-    const std::streamsize fileSize = fin.tellg();
-    if (fileSize <= 0) {
+    if (buf.empty()) {
         GE_CORE_ERROR("[GEAnim] 文件为空: {0}", filepath);
         return false;
     }
-    std::vector<uint8_t> buf(static_cast<size_t>(fileSize));
-    fin.seekg(0, std::ios::beg);
-    fin.read(reinterpret_cast<char *>(buf.data()), fileSize);
-    fin.close();
 
     Reader r(buf);
     char magic[6];
@@ -266,11 +272,13 @@ std::string DeriveAnimationBakePath(const std::string &sourceKey) {
         }
     }
     const std::filesystem::path src(filePath);
+    // **必须用 generic_string()**：.string() 在 Windows 上产出反斜杠，而烘焙路径会
+    // 直接喂给 VFS（canonical 形一律正斜杠）—— 反斜杠在 Android 上必然查不到。
     if (animIdx > 0) {
         return (src.parent_path() /
-                (src.stem().string() + "_" + std::to_string(animIdx) + ".geanim")).string();
+                (src.stem().string() + "_" + std::to_string(animIdx) + ".geanim")).generic_string();
     }
-    return (src.parent_path() / (src.stem().string() + ".geanim")).string();
+    return (src.parent_path() / (src.stem().string() + ".geanim")).generic_string();
 }
 
 } // namespace GE

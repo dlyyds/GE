@@ -65,4 +65,14 @@ std::filesystem::path PlatformUtils::GetUserDataDirectory() {
 #endif
 }
 
+bool PlatformUtils::IsAssetRootWritable() {
+#ifdef GE_PLATFORM_ANDROID
+    // 资产在 APK 内，AAssetManager 只读。运行期烘焙（.gemesh/.geanim）与材质另存为
+    // 在 Android 上必须整体让位 —— 要求资产在打包前（gepack）就烘好。
+    return false;
+#else
+    return true;
+#endif
+}
+
 } // namespace GE

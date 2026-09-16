@@ -100,6 +100,32 @@ public:
                                 const std::filesystem::path &assetRoot = {},
                                 size_t meshIndex = 0);
 
+    /**
+     * @brief 把单个资产引用归一为**规范形**（VFS 路径，正斜杠）。
+     *
+     * `.gemesh` / `.gemat` 这类把引用当字符串存盘的产物，历史上（内嵌引用归一代码
+     * 落地之前烘焙的）存的是开发机**绝对路径**，如 `F:\proj\assets\models\x.png`。
+     * 归一走两段：
+     * 1. 有 `assetRoot` 时精确判定（正常路径，桌面可用）
+     * 2. 失败则**根无关**切分 —— 按 `/<资源根名>/` 段取出候选，用 **VFS 实际能否
+     *    读到**定夺。Android 上不存在资源根的绝对路径（资产在 APK 里），只有这条
+     *    可用；桌面上把 `dist/` 拷到别处跑也走这条。
+     *
+     * 切不出资源根名时不动 `ref`（不猜）。
+     */
+    static void CanonicalizeAssetRef(std::string &ref, const std::filesystem::path &assetRoot);
+
+    /**
+     * @brief 归一 `MeshData` 内嵌的全部贴图槽引用。
+     *
+     * 这是**模型加载的收口点**：各格式解析器（.gemesh 的字符串池、.obj 的 MTL
+     * 纹理名、.glTF 的 image uri）都用相对路径表达贴图，必须在这里压成规范形，
+     * 否则交给 `TextureManager` 的可能是开发机绝对路径 —— 在 Android 上必然读不到，
+     * 现象是"模型发白"而**不报错**。
+     */
+    static void CanonicalizeEmbeddedMaterialRefs(MeshData &data,
+                                                 const std::filesystem::path &assetRoot);
+
 private:
     /**
      * @brief OBJ 格式解析器（tinyobjloader），实现在 OBJLoader.cpp。

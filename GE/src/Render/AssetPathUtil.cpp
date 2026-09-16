@@ -107,7 +107,7 @@ std::optional<std::string> ToCanonical(const std::string &raw,
     }
 
     // 相对路径：剥掉可能的资源根目录名前缀（"assets/textures/x.png" → "textures/x.png"），
-    // 避免 ResolvePath 拼成 "assets/assets/..."。其余按"已相对资源根"处理。
+    // 避免 ResolveCanonical 拼成 "assets/assets/..."。其余按"已相对资源根"处理。
     std::string s = p.lexically_normal().generic_string();
     const std::string rootLeaf = assetRoot.filename().string();
     if (!rootLeaf.empty()) {
@@ -121,6 +121,27 @@ std::optional<std::string> ToCanonical(const std::string &raw,
         return std::nullopt; // 空串或越界到资源根之外
     }
     return s;
+}
+
+std::vector<std::string> CanonicalCandidates(const std::string &raw, std::string_view rootName) {
+    std::vector<std::string> candidates;
+    if (raw.empty() || rootName.empty() || IsPseudoKey(raw)) {
+        return candidates;
+    }
+
+    const std::string s = NormalizeSeparators(raw);
+    const std::string needle = "/" + std::string(rootName) + "/";
+
+    // 逐个扫出每一处 "/<rootName>/"：出现得越早，越可能是真正的资源根
+    for (size_t pos = s.find(needle); pos != std::string::npos; pos = s.find(needle, pos + 1)) {
+        std::string rel = s.substr(pos + needle.size());
+        rel = std::filesystem::path(rel).lexically_normal().generic_string();
+        if (rel.empty() || rel == ".." || StartsWith(rel, "../")) {
+            continue; // 该段之后是越界/空 —— 这个候选没有意义，但后面的段仍可能有效
+        }
+        candidates.push_back(std::move(rel));
+    }
+    return candidates;
 }
 
 } // namespace GE::AssetPathUtil

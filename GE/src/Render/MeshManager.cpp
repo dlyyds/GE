@@ -10,9 +10,12 @@
 #include "Render/AsyncUploadManager.h"
 #include "Render/MaterialManager.h"
 #include "Render/TextureManager.h"
+#include "Render/Renderer.h"
+#include "Render/AssetManager.h"
 
 #include "Render/VulkanBase/VulkanDevice.h"
 #include "Render/VulkanBase/VulkanCommandBuffer.h"
+#include "FileSystem/VFS.h"
 #include "Core/Log.h"
 
 #include <glm/glm.hpp>
@@ -331,7 +334,7 @@ Mesh *MeshManager::Load(const std::string &filepath) {
     // 文件模型：异步加载（后台解析 + GPU 上传，主线程 Poll 回收后置就绪）。
     // 文件不存在直接返回 nullptr，保留同步失败语义（编辑器据此弹窗）；文件存在但
     // 内容非法时返回空壳（后台解析失败后保持未就绪，与纹理失败行为一致）。
-    if (!std::filesystem::exists(filepath)) {
+    if (!VFS::Exists(filepath)) {
         GE_CORE_WARN("MeshManager: 网格文件不存在: {}", filepath);
         return nullptr;
     }
@@ -350,6 +353,10 @@ Mesh *MeshManager::Load(const std::string &filepath) {
         if (!bucket->parsed) {
             return;
         }
+        // 贴图槽引用收口为规范形：.gemesh 把引用当字符串存盘，旧产物里可能是开发机
+        // 绝对路径，不归一的话 Android 上读不到贴图且**不报错**（模型发白）。
+        ModelLoader::CanonicalizeEmbeddedMaterialRefs(
+            bucket->data, Renderer::GetAssetManager().GetAssetRoot());
         // 切线计算（供法线贴图 TBN 使用），与同步路径 Mesh::Create 共用共享装配
         ModelLoader::ComputeTangents(bucket->data);
         GE_CORE_TRACE("网格异步解析完成: {0} ({1} 顶点 / {2} 索引)", filepath,
@@ -427,6 +434,11 @@ Mesh *MeshManager::FinalizeGLTFMesh(const std::string &filepath, size_t meshInde
     if (Mesh *existing = Get(key)) {
         return existing;
     }
+
+    // 贴图槽引用收口为规范形（glTF 的 image uri 若写成绝对路径，resolveTex 会原样
+    // 保留，这里统一压成 VFS 路径）
+    ModelLoader::CanonicalizeEmbeddedMaterialRefs(
+        data, Renderer::GetAssetManager().GetAssetRoot());
 
     auto mesh = Mesh::Create(*m_Device, std::move(data)); // BuildMesh 内部统一 ComputeTangents
     if (!mesh) {

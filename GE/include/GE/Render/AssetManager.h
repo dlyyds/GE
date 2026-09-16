@@ -4,7 +4,7 @@
  *
  * 作为纹理 / 材质 / 网格三个子管理器的门面（Facade），并提供：
  * - 可配置的资源根路径（默认 "assets"），支持统一重定位
- * - 统一的路径解析（ResolvePath），屏蔽硬编码相对路径
+ * - 统一的路径解析（ResolveCanonical），屏蔽硬编码相对路径
  * - 便捷加载入口（LoadTexture / LoadMesh），自动解析路径后委托子管理器
  *
  * 使用方式：
@@ -47,7 +47,7 @@ namespace Audio {
  *
  * 注意：该常量为 constexpr 变量而非字面量，不能直接与字符串字面量拼接。
  * 需用运行时拼接，例如 std::string(AssetPaths::Shaders) + "/sprite.vert.spv"
- * 得到 "shaders/glsl/sprite.vert.spv"，再交由 AssetManager::ResolvePath 解析。
+ * 得到 "shaders/glsl/sprite.vert.spv"，再交由 AssetManager::ResolveCanonical 解析。
  */
 namespace AssetPaths {
     inline constexpr const char *Textures = "textures";       ///< 纹理目录
@@ -55,7 +55,7 @@ namespace AssetPaths {
     inline constexpr const char *Shaders  = "shaders/glsl";   ///< 着色器目录
     inline constexpr const char *Scenes   = "scenes";         ///< 场景目录
     inline constexpr const char *Scripts  = "scripts";        ///< Lua 脚本目录
-    inline constexpr const char *Fonts    = "fonts/opensans"; ///< 字体目录
+    inline constexpr const char *Fonts    = "fonts/OpenSans"; ///< 字体目录（大小写须与磁盘一致：Android 的 AAssetManager 大小写敏感）
     inline constexpr const char *HDRI     = "HDRI";           ///< HDR 环境贴图目录
     inline constexpr const char *Audio    = "audio";          ///< 音频目录
     inline constexpr const char *Materials = "materials";      ///< 材质资产（.gemat）目录
@@ -96,6 +96,10 @@ public:
      * Application 构造时已按"exe 同级 assets → 回退 CWD/assets"决策好并调用，
      * 发行版因此不依赖启动时的工作目录。
      *
+     * **Android 上这个值只是一个虚拟根名**（实际写 `"assets"`）：资产在 APK 里，
+     * 资产访问走 `AAssetManager`（见 `VFS::InitAndroid`），磁盘上并不存在这个目录。
+     * 保留非空值是为了让 `ResolveCanonical` 里"剥掉资源根目录名前缀"那一支继续可用。
+     *
      * @param root 资源根目录路径
      */
     void SetAssetRoot(const std::filesystem::path &root);
@@ -104,22 +108,37 @@ public:
     const std::filesystem::path &GetAssetRoot() const { return m_AssetRoot; }
 
     /**
-     * @brief 统一路径解析。
+     * @brief 资产引用 → **规范形**（`<相对资源根>/<子路径>`，正斜杠）。
+     *
+     * 这是**读路径的唯一入口**，返回值直接交给 `VFS::ReadAll` / `ReadText` /
+     * `Exists`，也用作各资源管理器的缓存键。规范形与物理位置无关，所以桌面
+     * （磁盘散目录）与 Android（APK 内 assets）两种情况共用同一份路径。
      *
      * 规则：
      * - 空路径 → 返回空
-     * - 以 "builtin:" 或 "solid:" 开头（内置几何体 / 纯色纹理伪键）→ 原样返回
-     * - 绝对路径且落在资源根之下 → 先相对化再拼接（历史场景的绝对路径自愈，
-     *   换机器/换安装目录仍可解析）
-     * - 绝对路径且落在资源根之外 → 打错误日志后原样返回（无法随包分发，
-     *   由打包校验拦下；不静默失败）
-     * - 相对路径 → 剥掉可能的资源根目录名前缀（如入参 "assets/textures/foo.png"）
-     *   后拼接到资源根，避免重复拼接
+     * - 以 `builtin:` / `solid:` 开头（内置几何体 / 纯色纹理伪键）→ 原样返回
+     * - 绝对路径且落在资源根之下 → 相对化（历史场景的绝对路径自愈，换机器/换安装
+     *   目录仍有救，只要资产在包内的相对位置一致）
+     * - 相对路径 → 剥掉可能的资源根目录名前缀（如入参 `assets/textures/foo.png`）
+     * - 绝对路径且落在资源根之外 / 越界 `..` → **报错并原样返回**：这种引用无法随包
+     *   分发，应由打包校验拦下；这里不静默失败，让后续 VFS 读取如实报"读不到"
      *
-     * @param path 原始路径
-     * @return 解析后的路径
+     * @param path 原始引用
+     * @return 规范形路径
      */
-    std::filesystem::path ResolvePath(const std::string &path) const;
+    std::string ResolveCanonical(const std::string &path) const;
+
+    /**
+     * @brief 资产引用 → **可写文件系统路径**（`资源根 / 规范形`）。
+     *
+     * 只给"往资产根里写"的少数调用点用（材质另存为、.gemesh/.geanim 烘焙、场景
+     * 序列化）。**Android 上资产根是只读的**（APK 内 assets），调用方必须先确认
+     * 可写再调 —— 见 `PlatformUtils::IsAssetRootWritable()`。
+     *
+     * @param path 原始引用
+     * @return 绝对路径；入参为空或为伪键时返回空
+     */
+    std::filesystem::path ResolveWritePath(const std::string &path) const;
 
     // ========================================================================
     // 子管理器访问

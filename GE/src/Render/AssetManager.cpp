@@ -41,37 +41,34 @@ void AssetManager::SetAssetRoot(const std::filesystem::path &root) {
     GE_CORE_INFO("AssetManager: 资源根目录已设置为 {0}", m_AssetRoot.string());
 }
 
-std::filesystem::path AssetManager::ResolvePath(const std::string &path) const {
+std::string AssetManager::ResolveCanonical(const std::string &path) const {
     if (path.empty()) {
         return {};
     }
 
     // 伪路径（内置几何体 / 纯色纹理键）原样返回，不参与文件解析
     if (AssetPathUtil::IsPseudoKey(path)) {
-        return std::filesystem::path(path);
+        return path;
     }
 
-    const std::filesystem::path p(AssetPathUtil::NormalizeSeparators(path));
-
-    if (p.is_absolute()) {
-        // 根内绝对路径 → 相对化后解析：历史场景写过的绝对路径无需改文件即可加载，
-        // 且换机器/换安装目录仍有救（只要资产在包内的相对位置一致）。
-        if (auto rel = AssetPathUtil::ToCanonical(path, m_AssetRoot)) {
-            return (m_AssetRoot / *rel).lexically_normal();
-        }
-        // 根外绝对路径：无法随包分发，打包校验须拦下。此处报错但原样返回，不静默失败。
-        GE_CORE_ERROR("AssetManager: 资产引用落在资源根之外，无法随包分发: {0}（资源根: {1}）",
-                      path, m_AssetRoot.string());
-        return p.lexically_normal();
-    }
-
-    // 相对路径：归一后拼接。归一同时剥掉可能的资源根目录名前缀（"assets/xxx"），
-    // 避免资源根改为绝对路径后拼成 "assets/assets/xxx"。
     if (auto rel = AssetPathUtil::ToCanonical(path, m_AssetRoot)) {
-        return (m_AssetRoot / *rel).lexically_normal();
+        return *rel;
     }
-    // 归一失败（如越界 ".."）：保守按原相对路径拼接
-    return (m_AssetRoot / p).lexically_normal();
+
+    // 归一失败：根外绝对路径（无法随包分发，打包校验须拦下）或越界 ".."。
+    // 不静默失败、也不猜一个替代路径：报错后原样返回，让后续 VFS 读取如实失败，
+    // 现象是"这个资产读不到"而不是"读到了别的资产"。
+    GE_CORE_ERROR("AssetManager: 资产引用无法归一为规范形，无法随包分发: {0}（资源根: {1}）",
+                  path, m_AssetRoot.string());
+    return AssetPathUtil::NormalizeSeparators(path);
+}
+
+std::filesystem::path AssetManager::ResolveWritePath(const std::string &path) const {
+    const std::string canonical = ResolveCanonical(path);
+    if (canonical.empty() || AssetPathUtil::IsPseudoKey(canonical)) {
+        return {};
+    }
+    return (m_AssetRoot / std::filesystem::path(canonical)).lexically_normal();
 }
 
 TextureManager &AssetManager::GetTextureManager() {
@@ -91,22 +88,19 @@ AsyncUploadManager &AssetManager::GetAsyncUploadManager() {
 }
 
 Texture *AssetManager::LoadTexture(const std::string &path) {
-    const std::filesystem::path resolved = ResolvePath(path);
     // 使用 TextureManager::Load 的默认格式 eR8G8B8A8Unorm 与线性采样
-    return GetTextureManager().Load(resolved.string());
+    return GetTextureManager().Load(ResolveCanonical(path));
 }
 
 Texture *AssetManager::LoadTextureAsync(const std::string &path, vk::Format format) {
-    const std::filesystem::path resolved = ResolvePath(path);
     // 格式必须由调用方按贴图语义给：颜色贴图 sRGB、数据贴图 Unorm。
     // TextureManager::LoadAsync 按路径缓存，格式不一致的第二次请求会被忽略，
     // 于是"谁先加载谁定格式"——不一致就会让另一边拿到错误解码的颜色。
-    return GetTextureManager().LoadAsync(resolved.string(), format);
+    return GetTextureManager().LoadAsync(ResolveCanonical(path), format);
 }
 
 Mesh *AssetManager::LoadMesh(const std::string &path) {
-    const std::filesystem::path resolved = ResolvePath(path);
-    return GetMeshManager().Load(resolved.string());
+    return GetMeshManager().Load(ResolveCanonical(path));
 }
 
 Audio::SoundManager &AssetManager::GetSoundManager() {
@@ -114,22 +108,21 @@ Audio::SoundManager &AssetManager::GetSoundManager() {
 }
 
 Audio::SoundAsset *AssetManager::LoadSound(const std::string &path) {
-    const std::filesystem::path resolved = ResolvePath(path);
-    return GetSoundManager().Load(resolved.string());
+    return GetSoundManager().Load(ResolveCanonical(path));
 }
 
 Material *AssetManager::LoadMaterial(const std::string &path) {
     if (path.empty()) {
         return nullptr;
     }
-    return GetMaterialManager().Load(ResolvePath(path).string());
+    return GetMaterialManager().Load(ResolveCanonical(path));
 }
 
 bool AssetManager::SaveMaterial(Material &mat, const std::string &path) {
     if (path.empty()) {
         return false;
     }
-    return GetMaterialManager().Save(mat, ResolvePath(path).string(), GetAssetRoot().string());
+    return GetMaterialManager().Save(mat, ResolveCanonical(path), GetAssetRoot().string());
 }
 
 int AssetManager::SaveAllDirtyMaterials() {
@@ -137,7 +130,6 @@ int AssetManager::SaveAllDirtyMaterials() {
 }
 
 bool AssetManager::PlayOneShot(const std::string &path, float volume) {
-    const std::filesystem::path resolved = ResolvePath(path);
-    return GetSoundManager().PlayOneShot(resolved.string(), volume);
+    return GetSoundManager().PlayOneShot(ResolveCanonical(path), volume);
 }
 } // namespace GE

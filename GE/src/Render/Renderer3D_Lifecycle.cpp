@@ -43,23 +43,20 @@ Renderer3D::Renderer3D() {
     m_VertShader = &cache.RequestShaderModule(
         vk::ShaderStageFlagBits::eVertex,
         ShaderSource(Renderer::GetAssetManager()
-            .ResolvePath(std::string(AssetPaths::Shaders) + "/mesh.vert.spv")
-            .string()),
+            .ResolveCanonical(std::string(AssetPaths::Shaders) + "/mesh.vert.spv")),
         "main", ShaderVariant{});
 
     m_FragShader = &cache.RequestShaderModule(
         vk::ShaderStageFlagBits::eFragment,
         ShaderSource(Renderer::GetAssetManager()
-            .ResolvePath(std::string(AssetPaths::Shaders) + "/mesh.frag.spv")
-            .string()),
+            .ResolveCanonical(std::string(AssetPaths::Shaders) + "/mesh.frag.spv")),
         "main", ShaderVariant{});
 
     // PBR 片元着色器（Cook-Torrance）。与 Blinn-Phong 并行，由材质类型路由。
     m_FragShaderPBR = &cache.RequestShaderModule(
         vk::ShaderStageFlagBits::eFragment,
         ShaderSource(Renderer::GetAssetManager()
-            .ResolvePath(std::string(AssetPaths::Shaders) + "/mesh_pbr.frag.spv")
-            .string()),
+            .ResolveCanonical(std::string(AssetPaths::Shaders) + "/mesh_pbr.frag.spv")),
         "main", ShaderVariant{});
 
     // ── 3. 请求 PipelineLayout（通过反射自动构建） ─────────────────────
@@ -81,8 +78,7 @@ Renderer3D::Renderer3D() {
     m_FragShaderPBR_IBL = &cache.RequestShaderModule(
         vk::ShaderStageFlagBits::eFragment,
         ShaderSource(Renderer::GetAssetManager()
-            .ResolvePath(std::string(AssetPaths::Shaders) + "/mesh_pbr_ibl.frag.spv")
-            .string()),
+            .ResolveCanonical(std::string(AssetPaths::Shaders) + "/mesh_pbr_ibl.frag.spv")),
         "main", ShaderVariant{});
 
     m_PipelineLayoutPBR_IBL = &cache.RequestPipelineLayout(
@@ -94,15 +90,13 @@ Renderer3D::Renderer3D() {
     m_FragShaderPBR_HDR = &cache.RequestShaderModule(
         vk::ShaderStageFlagBits::eFragment,
         ShaderSource(Renderer::GetAssetManager()
-            .ResolvePath(std::string(AssetPaths::Shaders) + "/mesh_pbr_hdr.frag.spv")
-            .string()),
+            .ResolveCanonical(std::string(AssetPaths::Shaders) + "/mesh_pbr_hdr.frag.spv")),
         "main", ShaderVariant{});
 
     m_FragShaderPBR_IBL_HDR = &cache.RequestShaderModule(
         vk::ShaderStageFlagBits::eFragment,
         ShaderSource(Renderer::GetAssetManager()
-            .ResolvePath(std::string(AssetPaths::Shaders) + "/mesh_pbr_ibl_hdr.frag.spv")
-            .string()),
+            .ResolveCanonical(std::string(AssetPaths::Shaders) + "/mesh_pbr_ibl_hdr.frag.spv")),
         "main", ShaderVariant{});
 
     // ── 3a. 蒙皮肤管线（阶段 C）：mesh_skinned.vert + 三种片元 ─────────
@@ -112,8 +106,7 @@ Renderer3D::Renderer3D() {
     m_VertShaderSkinned = &cache.RequestShaderModule(
         vk::ShaderStageFlagBits::eVertex,
         ShaderSource(Renderer::GetAssetManager()
-            .ResolvePath(std::string(AssetPaths::Shaders) + "/mesh_skinned.vert.spv")
-            .string()),
+            .ResolveCanonical(std::string(AssetPaths::Shaders) + "/mesh_skinned.vert.spv")),
         "main", ShaderVariant{});
 
     m_PipelineLayoutSkinned = &cache.RequestPipelineLayout(
@@ -151,22 +144,19 @@ Renderer3D::Renderer3D() {
     m_VertShaderWater = &cache.RequestShaderModule(
         vk::ShaderStageFlagBits::eVertex,
         ShaderSource(Renderer::GetAssetManager()
-            .ResolvePath(std::string(AssetPaths::Shaders) + "/water.vert.spv")
-            .string()),
+            .ResolveCanonical(std::string(AssetPaths::Shaders) + "/water.vert.spv")),
         "main", ShaderVariant{});
 
     m_FragShaderWater = &cache.RequestShaderModule(
         vk::ShaderStageFlagBits::eFragment,
         ShaderSource(Renderer::GetAssetManager()
-            .ResolvePath(std::string(AssetPaths::Shaders) + "/water.frag.spv")
-            .string()),
+            .ResolveCanonical(std::string(AssetPaths::Shaders) + "/water.frag.spv")),
         "main", ShaderVariant{});
 
     m_FragShaderWaterHDR = &cache.RequestShaderModule(
         vk::ShaderStageFlagBits::eFragment,
         ShaderSource(Renderer::GetAssetManager()
-            .ResolvePath(std::string(AssetPaths::Shaders) + "/water_hdr.frag.spv")
-            .string()),
+            .ResolveCanonical(std::string(AssetPaths::Shaders) + "/water_hdr.frag.spv")),
         "main", ShaderVariant{});
 
     m_WaterLayout = &cache.RequestPipelineLayout(
@@ -183,8 +173,7 @@ Renderer3D::Renderer3D() {
     m_FragShaderGBuffer = &cache.RequestShaderModule(
         vk::ShaderStageFlagBits::eFragment,
         ShaderSource(Renderer::GetAssetManager()
-            .ResolvePath(std::string(AssetPaths::Shaders) + "/mesh_gbuffer.frag.spv")
-            .string()),
+            .ResolveCanonical(std::string(AssetPaths::Shaders) + "/mesh_gbuffer.frag.spv")),
         "main", ShaderVariant{});
 
     m_PipelineLayoutGBuffer = &cache.RequestPipelineLayout(
@@ -201,8 +190,7 @@ Renderer3D::Renderer3D() {
     m_FragShaderDepthOnly = &cache.RequestShaderModule(
         vk::ShaderStageFlagBits::eFragment,
         ShaderSource(Renderer::GetAssetManager()
-            .ResolvePath(std::string(AssetPaths::Shaders) + "/depth_only.frag.spv")
-            .string()),
+            .ResolveCanonical(std::string(AssetPaths::Shaders) + "/depth_only.frag.spv")),
         "main", ShaderVariant{});
 
     m_PipelineLayoutShadow = &cache.RequestPipelineLayout(
@@ -224,15 +212,13 @@ Renderer3D::Renderer3D() {
     m_LightingVert = &cache.RequestShaderModule(
         vk::ShaderStageFlagBits::eVertex,
         ShaderSource(Renderer::GetAssetManager()
-            .ResolvePath(std::string(AssetPaths::Shaders) + "/deferred_lighting.vert.spv")
-            .string()),
+            .ResolveCanonical(std::string(AssetPaths::Shaders) + "/deferred_lighting.vert.spv")),
         "main", ShaderVariant{});
 
     m_LightingFrag = &cache.RequestShaderModule(
         vk::ShaderStageFlagBits::eFragment,
         ShaderSource(Renderer::GetAssetManager()
-            .ResolvePath(std::string(AssetPaths::Shaders) + "/deferred_lighting.frag.spv")
-            .string()),
+            .ResolveCanonical(std::string(AssetPaths::Shaders) + "/deferred_lighting.frag.spv")),
         "main", ShaderVariant{});
 
     m_LightingLayout = &cache.RequestPipelineLayout({m_LightingVert, m_LightingFrag});
@@ -242,14 +228,12 @@ Renderer3D::Renderer3D() {
     m_SceneColorCopyFrag = &cache.RequestShaderModule(
         vk::ShaderStageFlagBits::eFragment,
         ShaderSource(Renderer::GetAssetManager()
-            .ResolvePath(std::string(AssetPaths::Shaders) + "/scene_color_copy.frag.spv")
-            .string()),
+            .ResolveCanonical(std::string(AssetPaths::Shaders) + "/scene_color_copy.frag.spv")),
         "main", ShaderVariant{});
     m_SceneDepthCopyFrag = &cache.RequestShaderModule(
         vk::ShaderStageFlagBits::eFragment,
         ShaderSource(Renderer::GetAssetManager()
-            .ResolvePath(std::string(AssetPaths::Shaders) + "/scene_depth_copy.frag.spv")
-            .string()),
+            .ResolveCanonical(std::string(AssetPaths::Shaders) + "/scene_depth_copy.frag.spv")),
         "main", ShaderVariant{});
     m_SceneColorCopyLayout = &cache.RequestPipelineLayout({m_LightingVert, m_SceneColorCopyFrag});
     m_SceneColorCopyLayout->SetDebugName("SceneColorCopy_PipelineLayout");
@@ -260,15 +244,13 @@ Renderer3D::Renderer3D() {
     m_TonemapVert = &cache.RequestShaderModule(
         vk::ShaderStageFlagBits::eVertex,
         ShaderSource(Renderer::GetAssetManager()
-            .ResolvePath(std::string(AssetPaths::Shaders) + "/tonemap.vert.spv")
-            .string()),
+            .ResolveCanonical(std::string(AssetPaths::Shaders) + "/tonemap.vert.spv")),
         "main", ShaderVariant{});
 
     m_TonemapFrag = &cache.RequestShaderModule(
         vk::ShaderStageFlagBits::eFragment,
         ShaderSource(Renderer::GetAssetManager()
-            .ResolvePath(std::string(AssetPaths::Shaders) + "/tonemap.frag.spv")
-            .string()),
+            .ResolveCanonical(std::string(AssetPaths::Shaders) + "/tonemap.frag.spv")),
         "main", ShaderVariant{});
 
     m_TonemapLayout = &cache.RequestPipelineLayout({m_TonemapVert, m_TonemapFrag});
@@ -278,36 +260,31 @@ Renderer3D::Renderer3D() {
     m_BloomVert = &cache.RequestShaderModule(
         vk::ShaderStageFlagBits::eVertex,
         ShaderSource(Renderer::GetAssetManager()
-            .ResolvePath(std::string(AssetPaths::Shaders) + "/bloom.vert.spv")
-            .string()),
+            .ResolveCanonical(std::string(AssetPaths::Shaders) + "/bloom.vert.spv")),
         "main", ShaderVariant{});
 
     m_BloomExtractFrag = &cache.RequestShaderModule(
         vk::ShaderStageFlagBits::eFragment,
         ShaderSource(Renderer::GetAssetManager()
-            .ResolvePath(std::string(AssetPaths::Shaders) + "/bloom_extract.frag.spv")
-            .string()),
+            .ResolveCanonical(std::string(AssetPaths::Shaders) + "/bloom_extract.frag.spv")),
         "main", ShaderVariant{});
 
     m_BloomDownsampleFrag = &cache.RequestShaderModule(
         vk::ShaderStageFlagBits::eFragment,
         ShaderSource(Renderer::GetAssetManager()
-            .ResolvePath(std::string(AssetPaths::Shaders) + "/bloom_downsample.frag.spv")
-            .string()),
+            .ResolveCanonical(std::string(AssetPaths::Shaders) + "/bloom_downsample.frag.spv")),
         "main", ShaderVariant{});
 
     m_BloomUpsampleFrag = &cache.RequestShaderModule(
         vk::ShaderStageFlagBits::eFragment,
         ShaderSource(Renderer::GetAssetManager()
-            .ResolvePath(std::string(AssetPaths::Shaders) + "/bloom_upsample.frag.spv")
-            .string()),
+            .ResolveCanonical(std::string(AssetPaths::Shaders) + "/bloom_upsample.frag.spv")),
         "main", ShaderVariant{});
 
     m_BloomCompositeFrag = &cache.RequestShaderModule(
         vk::ShaderStageFlagBits::eFragment,
         ShaderSource(Renderer::GetAssetManager()
-            .ResolvePath(std::string(AssetPaths::Shaders) + "/bloom_composite.frag.spv")
-            .string()),
+            .ResolveCanonical(std::string(AssetPaths::Shaders) + "/bloom_composite.frag.spv")),
         "main", ShaderVariant{});
 
     m_BloomExtractLayout = &cache.RequestPipelineLayout(
@@ -331,8 +308,7 @@ Renderer3D::Renderer3D() {
     m_UnderwaterFrag = &cache.RequestShaderModule(
         vk::ShaderStageFlagBits::eFragment,
         ShaderSource(Renderer::GetAssetManager()
-            .ResolvePath(std::string(AssetPaths::Shaders) + "/underwater.frag.spv")
-            .string()),
+            .ResolveCanonical(std::string(AssetPaths::Shaders) + "/underwater.frag.spv")),
         "main", ShaderVariant{});
 
     m_UnderwaterLayout = &cache.RequestPipelineLayout(
@@ -345,15 +321,13 @@ Renderer3D::Renderer3D() {
     m_SkyboxVert = &cache.RequestShaderModule(
         vk::ShaderStageFlagBits::eVertex,
         ShaderSource(Renderer::GetAssetManager()
-            .ResolvePath(std::string(AssetPaths::Shaders) + "/skybox.vert.spv")
-            .string()),
+            .ResolveCanonical(std::string(AssetPaths::Shaders) + "/skybox.vert.spv")),
         "main", ShaderVariant{});
 
     m_SkyboxFrag = &cache.RequestShaderModule(
         vk::ShaderStageFlagBits::eFragment,
         ShaderSource(Renderer::GetAssetManager()
-            .ResolvePath(std::string(AssetPaths::Shaders) + "/skybox.frag.spv")
-            .string()),
+            .ResolveCanonical(std::string(AssetPaths::Shaders) + "/skybox.frag.spv")),
         "main", ShaderVariant{});
 
     m_SkyboxLayout = &cache.RequestPipelineLayout({m_SkyboxVert, m_SkyboxFrag});
@@ -422,7 +396,7 @@ Renderer3D::Renderer3D() {
     //    保证 shader 的 samplerCube 始终可绑定。
     m_DefaultSkyboxTexture = Texture::LoadCubeMapFromFile(
         device, cache,
-        Renderer::GetAssetManager().ResolvePath("environments/_default_cube/skybox.ktx2").string());
+        Renderer::GetAssetManager().ResolveCanonical("environments/_default_cube/skybox.ktx2"));
     if (m_DefaultSkyboxTexture) {
         m_DefaultSkyboxTexture->SetDebugName("DefaultSkyboxTexture");
     } else {
@@ -446,9 +420,9 @@ void Renderer3D::SetEnvironment(const std::string &name) {
     // 不显示，就绪后下帧自动切换
     auto env = EnvironmentMap::LoadFromFilesAsync(
         device, cache, upload,
-        am.ResolvePath(envDir + "skybox.ktx2").string(),
-        am.ResolvePath(envDir + "prefilter.ktx").string(),
-        am.ResolvePath("environments/brdf_lut.png").string());
+        am.ResolveCanonical(envDir + "skybox.ktx2"),
+        am.ResolveCanonical(envDir + "prefilter.ktx"),
+        am.ResolveCanonical("environments/brdf_lut.png"));
     if (!env) {
         GE_CORE_ERROR("Renderer3D: 环境异步加载提交失败: {0}", name);
         m_EnvironmentName.clear(); // 允许下次重试

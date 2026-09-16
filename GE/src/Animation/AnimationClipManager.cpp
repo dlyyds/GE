@@ -11,7 +11,9 @@
 #include "Render/Renderer.h"
 #include "Render/AssetManager.h"
 #include "Animation/AnimationClipLoader.h"
+#include "FileSystem/VFS.h"
 #include "Core/Log.h"
+#include "Utils/PlatformUtils.h"
 
 #include "tinygltf/tiny_gltf.h"
 
@@ -68,8 +70,13 @@ std::shared_ptr<AnimationClip> AnimationClipManager::BuildAndCache(
 }
 
 void AnimationClipManager::BakeIfNotExists(const AnimationClip &clip) {
+    // Android 上资产根只读（APK 内），整个运行期烘焙让位：要求资产在打包前就烘好，
+    // gepack 已有校验能力。在这里跳过而不是让下游每帧写盘失败刷屏。
+    if (!PlatformUtils::IsAssetRootWritable()) {
+        return;
+    }
     const std::string bakePath = DeriveAnimationBakePath(clip.source);
-    if (std::filesystem::exists(bakePath)) {
+    if (VFS::Exists(bakePath)) {
         return; // 已烘焙：跳过（与 .gemesh「产物已存在则跳过」同约定）
     }
     std::string err;
@@ -105,7 +112,7 @@ std::shared_ptr<AnimationClip> AnimationClipManager::Load(const std::string &fil
 
     // 优先读取烘焙小文件：反序列化动画时避免主线程搬整份大 glTF（如 lacrimosa 135MB）
     const std::string bakePath = DeriveAnimationBakePath(key);
-    if (std::filesystem::exists(bakePath)) {
+    if (VFS::Exists(bakePath)) {
         AnimationClip clip;
         std::string err;
         if (ParseAnimationClip(bakePath, clip, &err)) {
@@ -116,8 +123,10 @@ std::shared_ptr<AnimationClip> AnimationClipManager::Load(const std::string &fil
         }
         // 烘焙文件损坏：删掉让下方 BuildAndCache 重烘焙自愈，避免每次都回退读大源文件
         GE_CORE_WARN("[Anim] clip '{}' 烘焙文件损坏，重烘焙: {}", key, err);
-        std::error_code ec;
-        std::filesystem::remove(bakePath, ec);
+        if (PlatformUtils::IsAssetRootWritable()) {
+            std::error_code ec;
+            std::filesystem::remove(Renderer::GetAssetManager().ResolveWritePath(bakePath), ec);
+        }
     }
 
     // 兜底：读源 glTF（一次性；读完后 BuildAndCache 会再次烘焙写盘）
@@ -136,9 +145,9 @@ std::shared_ptr<AnimationClip> AnimationClipManager::LoadByKey(const std::string
     if (!SplitSourceKey(key, filepath, animIdx)) {
         return nullptr;
     }
-    // 源键是资产引用：场景文件里存的是相对资源根的规范形，而本类直接按文件路径读盘
-    // （GLTF::LoadModel 与 .geanim 烘焙产物的落点），故在此统一解析为绝对路径。
-    return Load(Renderer::GetAssetManager().ResolvePath(filepath).string(), animIdx);
+    // 源键是资产引用：场景文件里存的是相对资源根的规范形，本类全程按规范形走
+    // （GLTF::LoadModel 与 .geanim 烘焙产物都经 VFS），故此处只做归一。
+    return Load(Renderer::GetAssetManager().ResolveCanonical(filepath), animIdx);
 }
 
 std::shared_ptr<AnimationClip> AnimationClipManager::Reload(const std::string &filepath,
@@ -160,9 +169,10 @@ std::shared_ptr<AnimationClip> AnimationClipManager::Reload(const std::string &f
     // 但管理器/烘焙此后指向新版本（旧键帧只在持有者内存中留存）。
     m_Clips.erase(key);
     const std::string bakePath = DeriveAnimationBakePath(key);
-    {
+    if (PlatformUtils::IsAssetRootWritable()) {
         std::error_code ec;
-        std::filesystem::remove(bakePath, ec); // 删旧烘焙，让 BuildAndCache 重写新数据
+        // 删旧烘焙，让 BuildAndCache 重写新数据
+        std::filesystem::remove(Renderer::GetAssetManager().ResolveWritePath(bakePath), ec);
     }
     return BuildAndCache(filepath, animIdx, model);
 }

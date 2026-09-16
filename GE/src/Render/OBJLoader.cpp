@@ -8,13 +8,59 @@
 
 #include "Render/ModelLoader.h"
 
+#include "FileSystem/VFS.h"
+#include "Core/Log.h"
+
 #include "tiny_obj_loader.h"
 
-#include <iostream>
+#include <sstream>
 #include <unordered_map>
 #include <filesystem>
 
 namespace GE {
+
+namespace {
+
+/**
+ * @brief tinyobj 的 MTL 读取器，改走 VFS。
+ *
+ * tinyobj 自带的 `MaterialFileReader` 内部用 `std::ifstream` 直接打开文件 —— 在
+ * Android 上读不到 APK 内的资产，MTL 里的贴图会全部变成"无贴图"（模型发白）而
+ * 不报错，属静默失败。这里改成 VFS 读整份文本再灌进 `istringstream`，
+ * 几何解析与材质解析仍全交给 tinyobj。
+ */
+class VfsMaterialReader : public tinyobj::MaterialReader {
+public:
+    explicit VfsMaterialReader(std::string mtlBaseDir) : m_BaseDir(std::move(mtlBaseDir)) {}
+
+    bool operator()(const std::string &matId, std::vector<tinyobj::material_t> *materials,
+                    std::map<std::string, int> *matMap, std::string *warn,
+                    std::string *err) override {
+        // matId 是 mtllib 行里的名字，相对 OBJ 所在目录；先归一（可能含 "../"）
+        std::filesystem::path p(matId);
+        const std::string path =
+            (m_BaseDir.empty() ? p : std::filesystem::path(m_BaseDir) / p)
+                .lexically_normal()
+                .generic_string();
+
+        const std::string text = VFS::ReadText(path);
+        if (text.empty()) {
+            if (warn) {
+                (*warn) += "Material file [ " + path + " ] not found in asset root\n";
+            }
+            return false;
+        }
+
+        std::istringstream mtlStream(text);
+        tinyobj::LoadMtl(matMap, materials, &mtlStream, warn, err);
+        return true;
+    }
+
+private:
+    std::string m_BaseDir;
+};
+
+} // namespace
 
 // ============================================================================
 // OBJ 解析器：tinyobj 解析 + 顶点装配/量化/去重 + 子网格拆分 + MTL → MaterialData
@@ -31,18 +77,27 @@ bool ModelLoader::ParseOBJ(const std::string &filepath, MeshData &out) {
     std::vector<tinyobj::material_t> materials;
     std::string warn, err;
 
-    // 以 OBJ 所在目录作为 MTL 搜索基准目录（默认搜工作目录，会导致模型目录
-    // 下的 .mtl 找不到）。同时用于后续把 MTL 内的相对纹理路径拼成绝对路径。
-    const std::string baseDir = std::filesystem::path(filepath).parent_path().string();
+    // OBJ 本体也走 VFS 读进内存再灌流（tinyobj 的文件重载会自己去 fopen）
+    const std::string objText = VFS::ReadText(filepath);
+    if (objText.empty()) {
+        GE_CORE_ERROR("[Mesh] OBJ 读不到文件: {}", filepath);
+        return false;
+    }
+    std::istringstream objStream(objText);
+
+    // 以 OBJ 所在目录作为 MTL 搜索基准目录（tinyobj 默认搜工作目录，会导致模型目录
+    // 下的 .mtl 找不到）。同时用于后续把 MTL 内的相对纹理路径拼成规范形。
+    const std::string baseDir = std::filesystem::path(filepath).parent_path().generic_string();
+    VfsMaterialReader matReader(baseDir);
+
     bool ret = tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err,
-                                filepath.c_str(),
-                                baseDir.empty() ? nullptr : baseDir.c_str());
+                                &objStream, &matReader);
 
     if (!warn.empty()) {
-        std::cout << "[Mesh] Warning: " << warn << std::endl;
+        GE_CORE_WARN("[Mesh] tinyobj 警告 ({0}): {1}", filepath, warn);
     }
     if (!err.empty()) {
-        std::cerr << "[Mesh] Error loading '" << filepath << "': " << err << std::endl;
+        GE_CORE_ERROR("[Mesh] tinyobj 错误 ({0}): {1}", filepath, err);
     }
     if (!ret) {
         return false;
@@ -139,7 +194,7 @@ bool ModelLoader::ParseOBJ(const std::string &filepath, MeshData &out) {
     }
 
     if (vertices.empty() || indices.empty()) {
-        std::cerr << "[Mesh] Empty mesh loaded from '" << filepath << "'" << std::endl;
+        GE_CORE_ERROR("[Mesh] 空网格: '{0}'", filepath);
         return false;
     }
 
@@ -150,11 +205,12 @@ bool ModelLoader::ParseOBJ(const std::string &filepath, MeshData &out) {
             return {};
         }
         std::filesystem::path p(tex);
+        // generic_string()：结果是**资产的规范形**路径，一律正斜杠
         if (p.is_absolute()) {
-            return p.lexically_normal().string();
+            return p.lexically_normal().generic_string();
         }
         return (std::filesystem::path(filepath).parent_path() / tex)
-            .lexically_normal().string();
+            .lexically_normal().generic_string();
     };
 
     materialData.reserve(materials.size());

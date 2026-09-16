@@ -2,32 +2,82 @@
 
 #include "GE/Core/Log.h"
 #include "GE/Utils/PlatformUtils.h"
+#include "GE/FileSystem/VFS.h"
 
 #include <filesystem>
+#include <fstream>
+#include <sstream>
 
 #include <yaml-cpp/yaml.h>
 
 namespace GE {
 namespace {
 
-/// 定位 game.cfg：exe 同级优先（发行版布局），回退当前工作目录（开发期从仓库根启动）。
-std::filesystem::path FindConfigFile() {
+/// 读一个**真实文件系统**路径的全部内容（用户目录 / exe 同级 —— 这两处可能落在
+/// 资源根之外，所以不能走 VFS）。失败返回空串。
+std::string ReadRealFile(const std::filesystem::path &p) {
+    std::ifstream in(p, std::ios::binary);
+    if (!in) {
+        return {};
+    }
+    std::ostringstream ss;
+    ss << in.rdbuf();
+    return ss.str();
+}
+
+/**
+ * @brief 定位并读取 game.cfg 的文本。
+ *
+ * 查找顺序：
+ * - 桌面：exe 同级 → 当前工作目录。**与引入 VFS 之前逐字一致**（发行版布局优先，
+ *   回退开发期从仓库根启动）。这两处是真实文件路径，可能不在资源根之下。
+ * - Android：用户私有目录（允许玩家覆盖）→ 资产根里的随包 `game.cfg`。
+ *   进程 CWD 是 `/`，前两者之外没有可探索的位置。
+ *
+ * @param outSource 回填来源描述（日志用）；未找到则保持空
+ */
+std::string ReadConfigText(std::string &outSource) {
     std::error_code ec;
-    const std::filesystem::path exeDir = PlatformUtils::GetExecutableDirectory();
-    if (!exeDir.empty()) {
-        const std::filesystem::path beside = exeDir / "game.cfg";
-        if (std::filesystem::exists(beside, ec)) {
-            return beside;
+
+#ifdef GE_PLATFORM_ANDROID
+    if (const std::filesystem::path userDir = PlatformUtils::GetUserDataDirectory();
+        !userDir.empty()) {
+        const std::filesystem::path p = userDir / "game.cfg";
+        if (std::filesystem::exists(p, ec)) {
+            if (std::string text = ReadRealFile(p); !text.empty()) {
+                outSource = p.string();
+                return text;
+            }
         }
     }
-    const std::filesystem::path cwd = std::filesystem::current_path(ec);
-    if (!ec) {
-        const std::filesystem::path local = cwd / "game.cfg";
-        if (std::filesystem::exists(local, ec)) {
-            return local;
+    // 回退：APK 内的资产根（gepack 产出的那份）
+    if (std::string text = VFS::ReadText("game.cfg"); !text.empty()) {
+        outSource = "APK assets/game.cfg";
+        return text;
+    }
+    return {};
+#else
+    if (const std::filesystem::path exeDir = PlatformUtils::GetExecutableDirectory();
+        !exeDir.empty()) {
+        const std::filesystem::path p = exeDir / "game.cfg";
+        if (std::filesystem::exists(p, ec)) {
+            if (std::string text = ReadRealFile(p); !text.empty()) {
+                outSource = p.string();
+                return text;
+            }
+        }
+    }
+    if (const std::filesystem::path cwd = std::filesystem::current_path(ec); !ec) {
+        const std::filesystem::path p = cwd / "game.cfg";
+        if (std::filesystem::exists(p, ec)) {
+            if (std::string text = ReadRealFile(p); !text.empty()) {
+                outSource = p.string();
+                return text;
+            }
         }
     }
     return {};
+#endif
 }
 
 /// 读一个可选 bool：键缺失/非标量/类型不符都返回 nullopt（= 不覆盖默认）。
@@ -60,12 +110,13 @@ void ReadInto(const YAML::Node &node, const char *key, T &out) {
 GameConfig LoadGameConfig(ApplicationCommandLineArgs args) {
     GameConfig cfg;
 
-    const std::filesystem::path path = FindConfigFile();
-    if (path.empty()) {
-        GE_CORE_WARN("未找到 game.cfg（查了 exe 同级与当前工作目录），使用内置默认配置");
+    std::string source;
+    const std::string configText = ReadConfigText(source);
+    if (configText.empty()) {
+        GE_CORE_WARN("未找到 game.cfg（查了用户目录 / exe 同级 / 当前工作目录 / 资产根），使用内置默认配置");
     } else {
         try {
-            const YAML::Node root = YAML::LoadFile(path.string());
+            const YAML::Node root = YAML::Load(configText);
 
             ReadInto(root, "scene", cfg.scene);
 
@@ -90,9 +141,9 @@ GameConfig LoadGameConfig(ApplicationCommandLineArgs args) {
                 }
             }
 
-            GE_CORE_INFO("运行时配置已加载: {0}", path.string());
+            GE_CORE_INFO("运行时配置已加载: {0}", source);
         } catch (const YAML::Exception &e) {
-            GE_CORE_ERROR("game.cfg 解析失败（{0}）：{1}；改用内置默认配置", path.string(), e.what());
+            GE_CORE_ERROR("game.cfg 解析失败（{0}）：{1}；改用内置默认配置", source, e.what());
             cfg = GameConfig{};
         }
     }

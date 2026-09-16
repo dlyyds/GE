@@ -2,6 +2,7 @@
 #include "Core/GEInput.h"
 #include "Core/GEWindow.h"
 #include "Core/Log.h"
+#include "FileSystem/VFS.h"
 
 #include "Core/KeyCodes.h"
 #include "Core/MouseCodes.h"
@@ -59,6 +60,10 @@ Application::Application(const std::string &name, ApplicationCommandLineArgs arg
         GE_CORE_ERROR("Application: 资源根不存在：{0}（相对资源引用将全部加载失败）",
                       assetRoot.string());
     }
+
+    // 资产读取统一走 VFS（只读）。必须在**任何资产读取之前**初始化 —— Renderer 构造
+    // 尾部就会加载 ImGui 字体与内置着色器。
+    VFS::Init(assetRoot);
 
     // 初始化渲染器（内部完成 VulkanContext → RenderContext → Prepare → ImGui 初始化）
     m_Renderer = std::make_unique<Renderer>(*m_Window, assetRoot);

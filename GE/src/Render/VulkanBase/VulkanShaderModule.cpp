@@ -25,10 +25,8 @@
 #include "Render/SPIRVReflection.h"
 #include "Render/VulkanBase/VulkanDevice.h"
 #include "FileSystem/FileSystem.h"
+#include "FileSystem/VFS.h"
 #include "Core/Log.h"
-
-#include <fstream>
-#include <sstream>
 
 namespace GE
 {
@@ -40,15 +38,13 @@ namespace
 
 std::string read_text_file(const std::string &filename)
 {
-    std::ifstream file(filename, std::ios::in);
-    if (!file.is_open())
+    // 走 VFS：filename 是规范形路径，桌面读磁盘、Android 读 APK 内 assets
+    std::string text = VFS::ReadText(filename);
+    if (text.empty())
     {
-        GE_CORE_ERROR("Failed to open text file: {}", filename);
-        return {};
+        GE_CORE_ERROR("Failed to read text file: {}", filename);
     }
-    std::stringstream buffer;
-    buffer << file.rdbuf();
-    return buffer.str();
+    return text;
 }
 
 } // anonymous namespace

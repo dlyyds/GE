@@ -43,7 +43,7 @@ void GameLayer::OnAttach() {
     m_Scene = std::make_unique<Scene>();
 
     const std::string scenePath =
-        Renderer::GetAssetManager().ResolvePath(m_Config.scene).string();
+        Renderer::GetAssetManager().ResolveCanonical(m_Config.scene);
     if (!m_Scene->LoadFromFile(scenePath)) {
         GE_CORE_ERROR("GameLayer: 入口场景加载失败，退出：{0}", scenePath);
         Application::Get().Close();

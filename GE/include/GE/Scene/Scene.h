@@ -40,7 +40,7 @@ public:
      * @brief 从 .scene 文件加载（会先清空当前场景）。
      *
      * 编辑器与运行时共用这一入口，避免两侧各自实现"读场景文件"而演化出差异。
-     * 路径须是规范形或可由 AssetManager::ResolvePath 解析的形态。
+     * 路径须是规范形或可由 AssetManager::ResolveCanonical 解析的形态。
      *
      * @param filepath 场景文件路径
      * @return true 加载成功；false 文件不存在/格式错误（此时场景已清空）

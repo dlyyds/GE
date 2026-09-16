@@ -38,15 +38,13 @@ Renderer2D::Renderer2D() {
     m_VertShader = &cache.RequestShaderModule(
         vk::ShaderStageFlagBits::eVertex,
         ShaderSource(Renderer::GetAssetManager()
-            .ResolvePath(std::string(AssetPaths::Shaders) + "/sprite.vert.spv")
-            .string()),
+            .ResolveCanonical(std::string(AssetPaths::Shaders) + "/sprite.vert.spv")),
         "main", ShaderVariant{});
 
     m_FragShader = &cache.RequestShaderModule(
         vk::ShaderStageFlagBits::eFragment,
         ShaderSource(Renderer::GetAssetManager()
-            .ResolvePath(std::string(AssetPaths::Shaders) + "/sprite.frag.spv")
-            .string()),
+            .ResolveCanonical(std::string(AssetPaths::Shaders) + "/sprite.frag.spv")),
         "main", ShaderVariant{});
 
     // ── 2. 请求 PipelineLayout ─────────────────────────────────────────

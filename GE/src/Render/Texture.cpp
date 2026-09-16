@@ -7,6 +7,7 @@
 #include "Render/VulkanBase/VulkanBuffer.h"
 #include "Render/VulkanBase/VulkanCommandBuffer.h"
 #include "Render/VulkanBase/VulkanImage.h"
+#include "FileSystem/VFS.h"
 #include "Core/Log.h"
 
 #include "stb_image.h"
@@ -66,6 +67,10 @@ bool IsKtxPath(const std::string &filepath) {
  * - 本身已是 .ktx/.ktx2 → 原样返回，不重复寻找
  * - 存在 <原文件名>.ktx2 → 返回 ktx2 路径（忽略原扩展名大小写差异）
  * - 否则原路径返回
+ *
+ * 存在性判断走 `VFS::Exists`：用 `std::filesystem::exists` 的话在 Android 上恒为
+ * 假（资产在 APK 内），"优先 ktx2" 这条策略会**静默失效**、退回读源 png ——
+ * 不报错、只是变慢变糊，属最难定位的一类。
  */
 std::string PreferKtx2(const std::string &filepath) {
     if (filepath.empty()) {
@@ -83,11 +88,27 @@ std::string PreferKtx2(const std::string &filepath) {
 
     const std::filesystem::path p(filepath);
     const std::filesystem::path ktx2 = p.parent_path() / (p.stem().string() + ".ktx2");
-    std::error_code ec;
-    if (std::filesystem::exists(ktx2, ec) && !ec) {
-        return ktx2.lexically_normal().string();
+    if (VFS::Exists(ktx2.generic_string())) {
+        return ktx2.generic_string();
     }
     return filepath;
+}
+
+/**
+ * @brief 经 VFS 读入整份文件后交给 libktx。
+ *
+ * libktx 的 `ktxTexture_CreateFromNamedFile` 内部走 `fopen`/`std::ifstream`，在
+ * Android 上读不到 APK 内的资产 —— 必须自己把字节读进来再 `CreateFromMemory`。
+ * libktx 只在创建期读取缓冲，之后不持有该指针，故局部 `std::vector` 生命周期足够。
+ */
+KTX_error_code CreateKtxFromVfs(const std::string &canonical, ktx_uint32_t createFlags,
+                                ktxTexture **out) {
+    std::vector<uint8_t> bytes;
+    if (!VFS::ReadAll(canonical, bytes)) {
+        *out = nullptr;
+        return KTX_FILE_OPEN_FAILED; // 读不到：与"文件打不开"同一语义，调用方日志够用
+    }
+    return ktxTexture_CreateFromMemory(bytes.data(), bytes.size(), createFlags, out);
 }
 
 /**
@@ -304,10 +325,10 @@ void GenerateMipmapsInCmd(VulkanCommandBuffer &cmd, VulkanImage &image, vk::Exte
 std::unique_ptr<Texture> Texture::LoadFromFileKtx2D(
     VulkanDevice &device, VulkanResourceCache &cache, const std::string &filepath,
     vk::Filter mag_filter, vk::Filter min_filter, bool generate_mipmaps) {
-    // 1. libktx 读取 KTX1/KTX2（含像素与文件自带 mip 链）
+    // 1. libktx 读取 KTX1/KTX2（含像素与文件自带 mip 链）；经 VFS，见 CreateKtxFromVfs
     ktxTexture *ktex = nullptr;
-    KTX_error_code kErr = ktxTexture_CreateFromNamedFile(
-        filepath.c_str(), KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT, &ktex);
+    KTX_error_code kErr = CreateKtxFromVfs(
+        filepath, KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT, &ktex);
     if (kErr != KTX_SUCCESS) {
         GE_CORE_ERROR("2D KTX 加载失败: {0} ({1})", filepath, ktxErrorString(kErr));
         return nullptr;
@@ -380,9 +401,17 @@ std::unique_ptr<Texture> Texture::LoadFromFile(
         return tex;
     }
 
-    // 使用 stb_image 加载文件（强制 RGBA 4 通道）
+    // 使用 stb_image 加载文件（强制 RGBA 4 通道）。先经 VFS 读进内存 ——
+    // stbi_load 按路径走 fopen，在 Android 上读不到 APK 内的资产。
+    std::vector<uint8_t> imageBytes;
+    if (!VFS::ReadAll(loadPath, imageBytes)) {
+        GE_CORE_ERROR("无法加载纹理（读不到资产）：{}", loadPath);
+        return nullptr;
+    }
     int texWidth = 0, texHeight = 0, texChannels = 0;
-    unsigned char *pixels = stbi_load(loadPath.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+    unsigned char *pixels = stbi_load_from_memory(
+        imageBytes.data(), static_cast<int>(imageBytes.size()),
+        &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
 
     if (!pixels) {
         GE_CORE_ERROR("无法加载纹理：{}", filepath);
@@ -416,11 +445,11 @@ std::unique_ptr<Texture> Texture::LoadCubeMapFromFile(
     VulkanResourceCache &cache,
     const std::string &filepath) {
     // 1. 用 libktx 读取 KTX1/KTX2 文件（含像素数据）。
-    //    ktxTexture_CreateFromNamedFile 是通用入口，自动识别 KTX1 与 KTX2，
+    //    ktxTexture_CreateFromMemory 是通用入口，自动识别 KTX1 与 KTX2，
     //    通过 classId 区分；KTX2 用 vkFormat，KTX1 用 glInternalformat。
     ktxTexture *ktex = nullptr;
-    KTX_error_code kErr = ktxTexture_CreateFromNamedFile(
-        filepath.c_str(), KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT, &ktex);
+    KTX_error_code kErr = CreateKtxFromVfs(
+        filepath, KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT, &ktex);
     if (kErr != KTX_SUCCESS) {
         GE_CORE_ERROR("无法加载 cubemap ktx: {0} ({1})", filepath, ktxErrorString(kErr));
         return nullptr;
@@ -556,8 +585,8 @@ std::unique_ptr<Texture> Texture::LoadFromFileAsync(
         // 后台：KTX/KTX2 走 libktx（内嵌 mip / BC 压缩 / Basis 超压缩）
         if (IsKtxPath(bucket->filepath)) {
             ktxTexture *ktex = nullptr;
-            KTX_error_code kErr = ktxTexture_CreateFromNamedFile(
-                bucket->filepath.c_str(), KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT, &ktex);
+            KTX_error_code kErr = CreateKtxFromVfs(
+                bucket->filepath, KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT, &ktex);
             if (kErr != KTX_SUCCESS) {
                 GE_CORE_ERROR("2D KTX 异步解码失败: {0} ({1})",
                               bucket->filepath, ktxErrorString(kErr));
@@ -584,10 +613,16 @@ std::unique_ptr<Texture> Texture::LoadFromFileAsync(
             return;
         }
 
-        // 后台：stb_image 解码为 RGBA8
+        // 后台：stb_image 解码为 RGBA8（先经 VFS 读内存，理由同同步路径）
+        std::vector<uint8_t> imageBytes;
+        if (!VFS::ReadAll(bucket->filepath, imageBytes)) {
+            GE_CORE_ERROR("纹理异步加载失败（读不到资产）：{0}", bucket->filepath);
+            return;
+        }
         int channels = 0;
-        unsigned char *pixels = stbi_load(bucket->filepath.c_str(),
-                                          &bucket->width, &bucket->height, &channels, STBI_rgb_alpha);
+        unsigned char *pixels = stbi_load_from_memory(
+            imageBytes.data(), static_cast<int>(imageBytes.size()),
+            &bucket->width, &bucket->height, &channels, STBI_rgb_alpha);
         if (!pixels) {
             GE_CORE_ERROR("纹理异步加载失败（解码）：{0}", bucket->filepath);
             return;
@@ -806,8 +841,8 @@ std::unique_ptr<Texture> Texture::LoadCubeMapFromFileAsync(
     task.decode = [bucket] {
         // 后台：libktx 读取 KTX1/KTX2（含像素数据）
         ktxTexture *ktex = nullptr;
-        KTX_error_code kErr = ktxTexture_CreateFromNamedFile(
-            bucket->filepath.c_str(), KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT, &ktex);
+        KTX_error_code kErr = CreateKtxFromVfs(
+            bucket->filepath, KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT, &ktex);
         if (kErr != KTX_SUCCESS) {
             GE_CORE_ERROR("cubemap 异步加载失败（解码）：{0} ({1})",
                           bucket->filepath, ktxErrorString(kErr));

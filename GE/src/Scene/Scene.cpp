@@ -279,10 +279,9 @@ Scene::Scene() {
     // 注册角色控制器销毁回调（销毁 Jolt CharacterVirtual）
     m_Registry.on_destroy<CharacterControllerComponent>().connect<&Scene::OnCharacterControllerDestroyed>(this);
 
-    // Lua 脚本引擎：绑定场景 + 注入 API（脚本基准目录跟随资源根，默认即 assets/scripts）
-    const std::string scriptsDir =
-        (Renderer::GetAssetManager().GetAssetRoot() / AssetPaths::Scripts).generic_string();
-    m_ScriptEngine.Init(this, scriptsDir);
+    // Lua 脚本引擎：绑定场景 + 注入 API。脚本基准目录是**规范形**（"scripts"），
+    // 物理位置由 VFS 决定 —— Android 上资产在 APK 内，不存在可拼的绝对路径。
+    m_ScriptEngine.Init(this, AssetPaths::Scripts);
 
     // 注册脚本组件销毁回调（清理 Lua 实例 + 调 OnDestroy）
     m_Registry.on_destroy<ScriptComponent>().connect<&Scene::OnScriptComponentDestroyed>(this);

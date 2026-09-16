@@ -1,5 +1,8 @@
 #pragma once
 
+// 与 KeyCodes.h 同理：自己引入 `<cstdint>`，别指望调用方的 PCH
+#include <cstdint>
+
 namespace GE {
 
 using MouseCode = uint16_t;

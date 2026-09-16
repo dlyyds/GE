@@ -1,5 +1,10 @@
 #pragma once
 
+// 自己引入 `<cstdint>`：本头在命名空间里就用 `uint16_t`，不能指望调用方已经引入
+// （引擎自身的 TU 都带 PCH 把它遮住了，而非 PCH 的调用方 —— 如 GE_Runtime 或
+//  tools/ 下的 CLI —— 会直接报 `unknown type name 'uint16_t'`）。
+#include <cstdint>
+
 namespace GE {
 
 using KeyCode = uint16_t;

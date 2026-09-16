@@ -3,7 +3,9 @@
 #include "Events/ApplicationEvent.h"
 #include "Events/KeyEvent.h"
 #include "Events/MouseEvent.h"
+#include "Events/TouchEvent.h"
 
+#include "Core/Base.h"
 #include "Core/Log.h"
 #include "Platform/SdlWindow.h"
 
@@ -71,6 +73,25 @@ void SdlWindow::Init(const WindowProperties &props) {
 
     if (s_SdlWindowCount == 0) {
         GE_PROFILE_SCOPE("SDL_Init");
+
+#ifdef GE_PLATFORM_ANDROID
+        // **显式关掉"触摸 → 合成鼠标"**（该 hint 默认为开，见 SDL_mouse.c 的
+        // SDL_GetStringBoolean(hint, true)），必须赶在 SDL_Init 之前设置：hint 在
+        // 鼠标子系统初始化时读取一次。
+        //
+        // 为什么不能留着它：SDL 的合成只产生**一个**鼠标指针（事件里以
+        // `which == SDL_TOUCH_MOUSEID` 标记），于是
+        //   ① 多指同时操作不可能 —— 左拇指按摇杆、右拇指拖视角时，合成鼠标只能跟着其中
+        //      一根手指走，另一根被"抢走"；
+        //   ② 每一根手指都会被同时翻译成 FINGER 事件与合成鼠标事件（双投递），自有仲裁
+        //      与它必然打架。
+        // 故引擎改为自己处理 SDL_EVENT_FINGER_*：见 TouchControls。
+        // 代价：ImGui 的 SDL3 后端只认 MOUSE_*、不读 FINGER_*（imgui_impl_sdl3.cpp），
+        // 关掉后 ImGui 收不到触摸 —— 运行时没有任何 ImGui 窗口，暂无影响；日后若要加
+        // 运行时可交互 UI，需要在这里改回 "1" 并补 WantCaptureMouse 门闸。
+        SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
+#endif
+
         if (!SDL_Init(SDL_INIT_VIDEO)) {
             GE_CORE_ERROR("SDL_Init 失败：{0}", SDL_GetError());
             GE_CORE_ASSERT(false, "Could not initialize SDL!");
@@ -241,6 +262,31 @@ void SdlWindow::HandleEvent(const SDL_Event &event) {
     case SDL_EVENT_MOUSE_WHEEL: {
         // SDL3 的 wheel 是浮点增量（且带 direction 表示翻转），x/y 可直接用
         MouseScrolledEvent e(event.wheel.x, event.wheel.y);
+        m_EventCallback(e);
+        break;
+    }
+
+    // ── 触摸 ──
+    // x/y 直接透传：SDL 给的就是归一化到 [0,1] 的坐标（见 TouchEvent.h 为何沿用归一化）。
+    // 这里**只**做翻译、不做任何仲裁：哪根手指算摇杆、哪根算视角由运行时决定
+    // （TouchControls），平台层不该知道游戏的操作方案。
+    case SDL_EVENT_FINGER_DOWN: {
+        TouchPressedEvent e(event.tfinger.fingerID, event.tfinger.x, event.tfinger.y);
+        m_EventCallback(e);
+        break;
+    }
+
+    case SDL_EVENT_FINGER_MOTION: {
+        TouchMovedEvent e(event.tfinger.fingerID, event.tfinger.x, event.tfinger.y);
+        m_EventCallback(e);
+        break;
+    }
+
+    // UP 与 CANCELED 合并处理：系统取消（来电、被系统手势抢走）必须也发 release，
+    // 否则那根手指合成的按键永远收不到抬起 —— 表现是"角色一直朝一个方向走"。
+    case SDL_EVENT_FINGER_UP:
+    case SDL_EVENT_FINGER_CANCELED: {
+        TouchReleasedEvent e(event.tfinger.fingerID, event.tfinger.x, event.tfinger.y);
         m_EventCallback(e);
         break;
     }

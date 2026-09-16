@@ -361,6 +361,7 @@ set(Runtime_SRC
         ${CMAKE_SOURCE_DIR}/GE_Runtime/src/RuntimeApp.cpp
         ${CMAKE_SOURCE_DIR}/GE_Runtime/src/GameLayer.cpp
         ${CMAKE_SOURCE_DIR}/GE_Runtime/src/GameConfig.cpp
+        ${CMAKE_SOURCE_DIR}/GE_Runtime/src/TouchControls.cpp
 )
 
 if (ANDROID)

@@ -6,6 +6,7 @@
 #include "Render/AssetManager.h"
 
 #include "Render/AssetPathUtil.h"
+#include "FileSystem/VFS.h"
 #include "Render/TextureManager.h"
 #include "Render/MeshManager.h"
 #include "Render/MaterialManager.h"
@@ -51,13 +52,13 @@ std::string AssetManager::ResolveCanonical(const std::string &path) const {
         return path;
     }
 
-    if (auto rel = AssetPathUtil::ToCanonical(path, m_AssetRoot)) {
+    // 精确归一 + 根无关兜底（后者专治产物里残留的开发机绝对路径，Android 上尤其需要）
+    if (auto rel = AssetPathUtil::ToCanonicalLenient(path, m_AssetRoot, VFS::Exists)) {
         return *rel;
     }
 
-    // 归一失败：根外绝对路径（无法随包分发，打包校验须拦下）或越界 ".."。
-    // 不静默失败、也不猜一个替代路径：报错后原样返回，让后续 VFS 读取如实失败，
-    // 现象是"这个资产读不到"而不是"读到了别的资产"。
+    // 彻底归不了：报错但原样返回，让后续 VFS 读取如实失败 ——
+    // 现象是"这个资产读不到"而不是"读到了别的资产"
     GE_CORE_ERROR("AssetManager: 资产引用无法归一为规范形，无法随包分发: {0}（资源根: {1}）",
                   path, m_AssetRoot.string());
     return AssetPathUtil::NormalizeSeparators(path);

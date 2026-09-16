@@ -25,40 +25,19 @@ void ModelLoader::CanonicalizeAssetRef(std::string &ref, const std::filesystem::
         return;
     }
 
-    // 第一段：有真实资源根时精确判定（正常路径解析，桌面可用）
-    if (!assetRoot.empty()) {
-        if (auto rel = AssetPathUtil::ToCanonical(ref, assetRoot)) {
-            ref = *rel;
-            return;
+    // 精确判定 + 根无关兜底（后者用 VFS 实际能否读到定夺候选，是地面真值）。
+    // 与 AssetManager::ResolveCanonical 共用同一实现，避免这套微妙的启发式两处各写一份。
+    const std::string original = ref;
+    if (auto rel = AssetPathUtil::ToCanonicalLenient(ref, assetRoot, VFS::Exists)) {
+        if (*rel != original) {
+            GE_CORE_INFO("[Model] 内嵌资产引用归一: {0} → {1}", original, *rel);
         }
-    }
-
-    // 第二段：根无关切分。资源根名取 assetRoot 的目录名；assetRoot 为空
-    // （Android 上就只有虚拟根名，或调用方没给）时退回包布局的约定名 "assets"。
-    std::string rootName = assetRoot.filename().string();
-    if (rootName.empty()) {
-        rootName = "assets";
-    }
-
-    const auto candidates = AssetPathUtil::CanonicalCandidates(ref, rootName);
-    if (candidates.empty()) {
-        // 切不出资源根段：保持原串，由读取方如实报"读不到"，不猜一个替代路径
-        GE_CORE_WARN("[Model] 内嵌资产引用无法归一到资源根，保留原串: {0}", ref);
+        ref = *rel;
         return;
     }
 
-    // 用 VFS 实际能否读到定夺：这是地面真值，比"取第一个/最后一个"的启发式可靠
-    for (const auto &cand : candidates) {
-        if (VFS::Exists(cand)) {
-            ref = cand;
-            return;
-        }
-    }
-
-    // 都读不到：仍取最外层候选（路径形态至少是对的，后续补上该资产即可命中）
-    GE_CORE_WARN("[Model] 内嵌引用的候选规范形均不可读，揣取 {0}（原串 {1}）",
-                 candidates.front(), ref);
-    ref = candidates.front();
+    // 切不出资源根段：保持原串，由读取方如实报"读不到"，不猜一个替代路径
+    GE_CORE_WARN("[Model] 内嵌资产引用无法归一到资源根，保留原串: {0}", ref);
 }
 
 void ModelLoader::CanonicalizeEmbeddedMaterialRefs(MeshData &data,

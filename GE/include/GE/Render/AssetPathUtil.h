@@ -12,6 +12,7 @@
 #pragma once
 
 #include <filesystem>
+#include <functional>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -46,6 +47,34 @@ bool IsUnderRoot(const std::filesystem::path &abs, const std::filesystem::path &
  */
 std::optional<std::string> ToCanonical(const std::string &raw,
                                        const std::filesystem::path &assetRoot);
+
+/**
+ * @brief 路径看着像 Windows 盘符绝对路径（`X:\…` 或 `X:/…`）。
+ *
+ * **不能用 `std::filesystem::path::is_absolute()` 代替**，这是本项目反复踩的一个坑：
+ * 该函数在 POSIX 上只认前导 `/`，于是 `F:\proj\assets\x.png` 在 **Windows 上 is_absolute()
+ * 为真、在 Android 上为假**（已实测确认）。后果是同一份"开发机绝对路径"在桌面上被
+ * 正确识别并按绝对路径处理，在 Android 上却被**当成相对路径原样放行** ——
+ * 归一"成功"、无告警、路径还带着盘符，最后在 VFS 那里静默读不到。
+ * 故绝对性判定必须**按字符串形态做，与宿主平台无关**。
+ */
+bool LooksLikeWindowsDrivePath(const std::string &path);
+
+/**
+ * @brief 宽松归一：精确判定失败时，按 `/<资源根名>/` 段切候选并挑一个真正存在的。
+ *
+ * 专治"产物里残留开发机绝对路径"的历史资产（`.gemesh` / `.gemat` / 老场景）。
+ * 这些路径在**任何**平台上都应当被压回规范形，但精确归一需要资源根的绝对形 ——
+ * Android 上不存在这个锚点（资产在 APK 里），所以只能靠切段 + 存在性判定。
+ *
+ * @param raw       原始引用
+ * @param assetRoot 资源根（其 filename() 作为候选切分的资源根名，为空则用 "assets"）
+ * @param exists    存在性判定（调用方注入 `VFS::Exists`；传空则直接取最外层候选）
+ * @return 规范形；切不出资源根段且精确判定也失败时返回 nullopt（**不猜**）
+ */
+std::optional<std::string> ToCanonicalLenient(
+    const std::string &raw, const std::filesystem::path &assetRoot,
+    const std::function<bool(const std::string &)> &exists);
 
 /**
  * @brief 从"内嵌了资源根目录名的路径"里取出规范形**候选**（根无关，不碰文件系统）。

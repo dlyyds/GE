@@ -110,6 +110,20 @@ GE/third_party/KTX-Software-4.4.2/external/basisu/webgl_videotest/
 GE/third_party/KTX-Software-4.4.2/external/basisu/bin/
 
 # ============================================
+# SDL 开发资料（test/ 与 examples/ 是上游自带的示例与测试程序，
+# 关掉 SDL_TESTS/SDL_EXAMPLES 后不参与构建，17MB 死重不入版本库）
+# 另：上游自带的 CLAUDE.md / AGENTS.md 已重命名为 UPSTREAM-*.disabled ——
+# 那是 SDL 对「向其上游提交代码」的贡献政策，对 vendored 消费方无约束力；
+# 但嵌套的 CLAUDE.md 会被当作项目指令文件自动加载，故改名避免误加载。
+# ============================================
+GE/third_party/SDL/test/
+GE/third_party/SDL/examples/
+GE/third_party/SDL/VisualC/
+GE/third_party/SDL/VisualC-GDK/
+GE/third_party/SDL/Xcode/
+GE/third_party/SDL/UPSTREAM-*
+
+# ============================================
 # 模型 / 材质测试资产（体积大，不入版本库，仅本地保留）
 # ============================================
 assets/models/

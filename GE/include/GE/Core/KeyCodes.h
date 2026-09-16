@@ -4,140 +4,172 @@ namespace GE {
 
 using KeyCode = uint16_t;
 
+/**
+ * @brief 键码 —— 取值与 SDL3 的 `SDL_Scancode` 一一对应。
+ *
+ * ## 为什么是 SDL 布局
+ *
+ * 本枚举原先逐字复制自 glfw3.h（`Space=32, A=65, Escape=256 ...`）。换掉 GLFW 后
+ * 改为直接采用 `SDL_SCANCODE_*` 的数值，理由是：SDL 的 scancode 是与物理键位绑定的
+ * 跨平台稳定值（USB HID usage），桌面与 Android 由 SDL 归一到同一套值，因此
+ * **不再需要 `AKEYCODE_* → GLFW 数字` 那样的平台映射表**。
+ *
+ * ## 名字是 API，数值不是
+ *
+ * 枚举**名**通过 `ScriptEngine.cpp` 的 `kKeyNames` 表注入 Lua 的 `Key` 表，
+ * 是脚本可见的公开 API —— **改名会破坏脚本，改数值不会**。本次重编号保持了
+ * 除 `F25` 外的全部名字（见下）。
+ *
+ * ## 与 GLFW 布局的两处**行为差异**（升级时注意）
+ *
+ * 1. **`F25` 已移除**。SDL 的 scancode 集合只有 F1–F24，没有 F25 —— 保留一个
+ *    永远不可能触发的键名会静默误导（脚本写 `Key.F25` 却永不生效）。故从本枚举
+ *    与 Lua 的 `Key` 表中一并删除；脚本若引用会得到 `nil` 而**显式报错**，比静默
+ *    失效更容易发现。
+ * 2. **`Mouse` 的按钮编号语义变了**，见 `MouseCodes.h`。
+ *
+ * ## 容量约束
+ *
+ * `SDL_SCANCODE_COUNT == 512`，即合法 scancode 为 0..511。`InputState` 的
+ * `kKeyCapacity` 正好是 512，**刚好覆盖、零余量**（索引 511 有效）。又因 SDL 的
+ * 400..500 段是「动态键码」保留区、Android 软键盘可能落在其中，事件翻译层做了
+ * 越界丢弃，见 `SdlWindow` 的按键事件翻译。
+ */
 namespace Key {
 enum : KeyCode {
-    // From glfw3.h
-    Space = 32,
-    Apostrophe = 39, /* ' */
-    Comma = 44, /* , */
-    Minus = 45, /* - */
-    Period = 46, /* . */
-    Slash = 47, /* / */
+    // -- 主键区 --
+    A = 4,
+    B = 5,
+    C = 6,
+    D = 7,
+    E = 8,
+    F = 9,
+    G = 10,
+    H = 11,
+    I = 12,
+    J = 13,
+    K = 14,
+    L = 15,
+    M = 16,
+    N = 17,
+    O = 18,
+    P = 19,
+    Q = 20,
+    R = 21,
+    S = 22,
+    T = 23,
+    U = 24,
+    V = 25,
+    W = 26,
+    X = 27,
+    Y = 28,
+    Z = 29,
 
-    D0 = 48, /* 0 */
-    D1 = 49, /* 1 */
-    D2 = 50, /* 2 */
-    D3 = 51, /* 3 */
-    D4 = 52, /* 4 */
-    D5 = 53, /* 5 */
-    D6 = 54, /* 6 */
-    D7 = 55, /* 7 */
-    D8 = 56, /* 8 */
-    D9 = 57, /* 9 */
+    D1 = 30,
+    D2 = 31,
+    D3 = 32,
+    D4 = 33,
+    D5 = 34,
+    D6 = 35,
+    D7 = 36,
+    D8 = 37,
+    D9 = 38,
+    D0 = 39,
 
-    Semicolon = 59, /* ; */
-    Equal = 61, /* = */
+    Enter = 40,
+    Escape = 41,
+    Backspace = 42,
+    Tab = 43,
+    Space = 44,
 
-    A = 65,
-    B = 66,
-    C = 67,
-    D = 68,
-    E = 69,
-    F = 70,
-    G = 71,
-    H = 72,
-    I = 73,
-    J = 74,
-    K = 75,
-    L = 76,
-    M = 77,
-    N = 78,
-    O = 79,
-    P = 80,
-    Q = 81,
-    R = 82,
-    S = 83,
-    T = 84,
-    U = 85,
-    V = 86,
-    W = 87,
-    X = 88,
-    Y = 89,
-    Z = 90,
+    Minus = 45,
+    Equal = 46,
+    LeftBracket = 47,
+    RightBracket = 48,
+    Backslash = 49,
+    World1 = 50, /* 非 US 键盘的 #1（SDL_SCANCODE_NONUSHASH） */
+    Semicolon = 51,
+    Apostrophe = 52,
+    GraveAccent = 53,
+    Comma = 54,
+    Period = 55,
+    Slash = 56,
+    CapsLock = 57,
 
-    LeftBracket = 91, /* [ */
-    Backslash = 92, /* \ */
-    RightBracket = 93, /* ] */
-    GraveAccent = 96, /* ` */
+    // -- 功能键 --
+    F1 = 58,
+    F2 = 59,
+    F3 = 60,
+    F4 = 61,
+    F5 = 62,
+    F6 = 63,
+    F7 = 64,
+    F8 = 65,
+    F9 = 66,
+    F10 = 67,
+    F11 = 68,
+    F12 = 69,
 
-    World1 = 161, /* non-US #1 */
-    World2 = 162, /* non-US #2 */
+    PrintScreen = 70,
+    ScrollLock = 71,
+    Pause = 72,
+    Insert = 73,
+    Home = 74,
+    PageUp = 75,
+    Delete = 76,
+    End = 77,
+    PageDown = 78,
+    Right = 79,
+    Left = 80,
+    Down = 81,
+    Up = 82,
+    NumLock = 83, /* SDL_SCANCODE_NUMLOCKCLEAR */
 
-    /* Function keys */
-    Escape = 256,
-    Enter = 257,
-    Tab = 258,
-    Backspace = 259,
-    Insert = 260,
-    Delete = 261,
-    Right = 262,
-    Left = 263,
-    Down = 264,
-    Up = 265,
-    PageUp = 266,
-    PageDown = 267,
-    Home = 268,
-    End = 269,
-    CapsLock = 280,
-    ScrollLock = 281,
-    NumLock = 282,
-    PrintScreen = 283,
-    Pause = 284,
-    F1 = 290,
-    F2 = 291,
-    F3 = 292,
-    F4 = 293,
-    F5 = 294,
-    F6 = 295,
-    F7 = 296,
-    F8 = 297,
-    F9 = 298,
-    F10 = 299,
-    F11 = 300,
-    F12 = 301,
-    F13 = 302,
-    F14 = 303,
-    F15 = 304,
-    F16 = 305,
-    F17 = 306,
-    F18 = 307,
-    F19 = 308,
-    F20 = 309,
-    F21 = 310,
-    F22 = 311,
-    F23 = 312,
-    F24 = 313,
-    F25 = 314,
+    // -- 小键盘 --
+    KPDivide = 84,
+    KPMultiply = 85,
+    KPSubtract = 86, /* SDL_SCANCODE_KP_MINUS */
+    KPAdd = 87, /* SDL_SCANCODE_KP_PLUS */
+    KPEnter = 88,
+    KP1 = 89,
+    KP2 = 90,
+    KP3 = 91,
+    KP4 = 92,
+    KP5 = 93,
+    KP6 = 94,
+    KP7 = 95,
+    KP8 = 96,
+    KP9 = 97,
+    KP0 = 98,
+    KPDecimal = 99, /* SDL_SCANCODE_KP_PERIOD */
 
-    /* Keypad */
-    KP0 = 320,
-    KP1 = 321,
-    KP2 = 322,
-    KP3 = 323,
-    KP4 = 324,
-    KP5 = 325,
-    KP6 = 326,
-    KP7 = 327,
-    KP8 = 328,
-    KP9 = 329,
-    KPDecimal = 330,
-    KPDivide = 331,
-    KPMultiply = 332,
-    KPSubtract = 333,
-    KPAdd = 334,
-    KPEnter = 335,
-    KPEqual = 336,
+    World2 = 100, /* 非 US 键盘的 #2（SDL_SCANCODE_NONUSBACKSLASH） */
+    Menu = 101, /* 上下文菜单键（SDL_SCANCODE_APPLICATION） */
+    KPEqual = 103,
 
-    LeftShift = 340,
-    LeftControl = 341,
-    LeftAlt = 342,
-    LeftSuper = 343,
-    RightShift = 344,
-    RightControl = 345,
-    RightAlt = 346,
-    RightSuper = 347,
-    Menu = 348
+    F13 = 104,
+    F14 = 105,
+    F15 = 106,
+    F16 = 107,
+    F17 = 108,
+    F18 = 109,
+    F19 = 110,
+    F20 = 111,
+    F21 = 112,
+    F22 = 113,
+    F23 = 114,
+    F24 = 115,
+
+    // -- 修饰键 --
+    LeftControl = 224,
+    LeftShift = 225,
+    LeftAlt = 226,
+    LeftSuper = 227,
+    RightControl = 228,
+    RightShift = 229,
+    RightAlt = 230,
+    RightSuper = 231
 };
 }
 
-}
+} // namespace GE

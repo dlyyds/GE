@@ -48,7 +48,11 @@ struct Impl {
 namespace {
 
 // ------------------------------------------------------------------
-// 键码/鼠标码 名 → 值（与 Core/KeyCodes.h 的 GLFW 布局一致，注入 Lua 的 Key/Mouse 表）
+// 键码/鼠标码 名 → 值（取自 Core/KeyCodes.h、MouseCodes.h，注入 Lua 的 Key/Mouse 表）
+//
+// 这些**字符串名**才是脚本可见的公开 API。底层枚举的数值布局换库时会变
+// （GLFW → SDL scancode），只要名字不变脚本就不受影响；反之增删名字会。
+// `F25` 已移除：SDL 的 scancode 集合只有 F1–F24，留一个永不触发的键名更易误导。
 // ------------------------------------------------------------------
 struct KeyName { const char *name; int code; };
 constexpr KeyName kKeyNames[] = {
@@ -76,7 +80,7 @@ constexpr KeyName kKeyNames[] = {
     {"F11", Key::F11}, {"F12", Key::F12}, {"F13", Key::F13}, {"F14", Key::F14},
     {"F15", Key::F15}, {"F16", Key::F16}, {"F17", Key::F17}, {"F18", Key::F18},
     {"F19", Key::F19}, {"F20", Key::F20}, {"F21", Key::F21}, {"F22", Key::F22},
-    {"F23", Key::F23}, {"F24", Key::F24}, {"F25", Key::F25},
+    {"F23", Key::F23}, {"F24", Key::F24},
     {"KP0", Key::KP0}, {"KP1", Key::KP1}, {"KP2", Key::KP2}, {"KP3", Key::KP3},
     {"KP4", Key::KP4}, {"KP5", Key::KP5}, {"KP6", Key::KP6}, {"KP7", Key::KP7},
     {"KP8", Key::KP8}, {"KP9", Key::KP9}, {"KPDecimal", Key::KPDecimal},

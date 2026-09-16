@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.15)
+cmake_minimum_required(VERSION 3.16)
 
 set(CMAKE_CXX_STANDARD 20)
 
@@ -33,7 +33,22 @@ endif ()
 
 
 add_subdirectory(GE/third_party/spdlog)
-add_subdirectory(GE/third_party/glfw)
+
+# ==============================================
+# SDL3 —— 跨平台窗口 / 输入 / 生命周期（取代 GLFW）
+# ==============================================
+# 静态链接：与 GE 静态库、BUILD_SHARED_LIBS OFF 一致；关掉上游自带的示例与测试
+# 程序（test/ + examples/ 共 17MB，已同时列入 .gitignore）。
+# 入口点机制：Win32 侧 SDL 提供 main/WinMain（按子系统自动选）并调用被重命名的
+# SDL_main；Android 侧导出 SDL_main 供 SDLActivity 调用。两端共用同一个
+# int main()，见 GE/include/GE/Core/EntryPoint.h。
+set(SDL_SHARED OFF CACHE BOOL "" FORCE)
+set(SDL_STATIC ON CACHE BOOL "" FORCE)
+set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
+set(SDL_TESTS OFF CACHE BOOL "" FORCE)
+set(SDL_EXAMPLES OFF CACHE BOOL "" FORCE)
+add_subdirectory(GE/third_party/SDL)
+
 add_subdirectory(GE/third_party/yaml-cpp)
 add_subdirectory(GE/third_party/imgui)
 add_subdirectory(GE/third_party/ImGuizmo)
@@ -60,7 +75,7 @@ add_subdirectory(GE/third_party/SPIRV-Cross)
 # GE 层 Profiler 开关（控制 GE_PROFILE_* 宏，独立于 Tracy 的 TRACY_ENABLE）
 # ON 时向编译定义传入 GE_PROFILE_ENABLE=1，OFF 时传入 =0。
 # FORCE：改源码行的值即覆盖缓存，开关以源码行为准。
-set(GE_PROFILE_ENABLE OFF CACHE BOOL "Enable GE_PROFILE_* profiling macros" FORCE)
+set(GE_PROFILE_ENABLE ON CACHE BOOL "Enable GE_PROFILE_* profiling macros" FORCE)
 
 find_package(Vulkan REQUIRED)
 
@@ -146,7 +161,6 @@ target_include_directories(${GE_NAME} PUBLIC
         ${CMAKE_SOURCE_DIR}/GE/third_party/entt
         ${CMAKE_SOURCE_DIR}/GE/third_party
         ${CMAKE_SOURCE_DIR}/GE/third_party/vma
-        ${CMAKE_SOURCE_DIR}/GE/third_party/GLFW/include
         ${CMAKE_SOURCE_DIR}/GE/third_party/lua-5.4.8
         ${CMAKE_SOURCE_DIR}/GE/third_party/stb
         ${CMAKE_SOURCE_DIR}/GE/third_party/tinyobjloader
@@ -157,7 +171,6 @@ target_include_directories(${GE_NAME} PUBLIC
 
 target_compile_definitions(${GE_NAME} PUBLIC
         NOMINMAX
-        GLFW_INCLUDE_NONE
         GE_DEBUG
         VK_USE_PLATFORM_WIN32_KHR
         VK_DEBUG
@@ -175,7 +188,7 @@ target_compile_definitions(${GE_NAME} PUBLIC
 
 target_link_libraries(${GE_NAME} PUBLIC
         spdlog::spdlog
-        glfw
+        SDL3::SDL3
         imgui
         imguizmo
         yaml-cpp::yaml-cpp

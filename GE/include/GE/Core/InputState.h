@@ -9,7 +9,11 @@
 
 namespace GE {
 
-/// 键位容量：KeyCode 枚举到 348（GLFW 布局）取 512 宽松；MouseCode 0~7 取 16。
+/// 键位容量：KeyCode 现为 SDL scancode（`SDL_SCANCODE_COUNT == 512`，合法值 0..511），
+/// 故 kKeyCapacity 取 512 —— **刚好覆盖、零余量**（索引 511 有效）。SDL 的 400..500
+/// 是动态键码保留区（Android 软键盘可能落在其中），故按键事件翻译层做了越界丢弃，
+/// 不能让超范围的值到达这里的位集（`std::bitset::operator[]` 越界是 UB）。
+/// MouseCode 0~7 取 16。
 /// 平铺位集换查询 O(1)，开销可忽略；键/鼠位集独立以免混用 KeyCode/MouseCode。
 
 /**
@@ -21,7 +25,7 @@ namespace GE {
  * 设计见 docs/脚本输入系统计划书.md。
  */
 struct InputState {
-    // == 位集容量（KeyCode 枚举到 348，MouseCode 0~7）==
+    // == 位集容量（kKeyCapacity 须覆盖 SDL scancode 上界 RESERVED/COUNT 之下的 511）==
     static constexpr std::size_t kKeyCapacity   = 512; ///< 键位集容量
     static constexpr std::size_t kMouseCapacity = 16;  ///< 鼠标位集容量
 

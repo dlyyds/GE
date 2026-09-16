@@ -18,4 +18,4 @@ target_include_directories(imgui
         ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-target_link_libraries(imgui PUBLIC glfw)
+target_link_libraries(imgui PUBLIC SDL3::SDL3)

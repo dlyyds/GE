@@ -332,7 +332,9 @@ unzip -l app-debug.apk | grep -c "^.*assets/"                                   
 
 # 2) 孤儿字节（AGP 增量打包的坑，见下）
 python -c "import zipfile;z=zipfile.ZipFile('app-debug.apk');print(z.start_dir - sum(i.compress_size for i in z.infolist()))"
-#   非零 = 中央目录不索引的孤儿字节；unzip -l 完全看不出来
+#   解读：这个差值**不是**纯孤儿，它包含本地文件头 + zipalign 对齐填充 + APK 签名块，
+#   干净包实测约 30 KB（本次 30149，其中签名块 4088）。**差到 MB 级才是孤儿字节。**
+#   unzip -l 两者都看不出来（孤儿不被中央目录索引）。
 
 # 3) 非 ASCII 资产名是否原样（aapt2 实测逐字节保留，如 models/shayv/未命名.gemesh）
 
@@ -342,15 +344,18 @@ llvm-nm -C --undefined-only libmain.so | grep AAssetManager_fromJava   # 应有�
 ```
 
 **静默漏收坑（写 build_android.bat 的对账时当场抓到）**：**AGP 的资源合并会忽略下划线开头的
-目录** —— `environments/_default_cube/` 整目录被丢，构建照样成功，APK 里就是少一个文件。
+目录** —— 那个默认环境目录（当时叫 `environments/_default_cube/`，已按本节的结论改名
+`DefaultCube/`）整目录被丢，构建照样成功，APK 里就是少一个文件。
 已做对照实验确定规则边界：下划线开头的**文件**（`_topfile.txt`）**不受影响**，只有**目录**被忽略；
-同一个 280 字节的文件改名为 `default_cube/` 后立刻入包（APK 条目 62 → 63）。
+同一个 280 字节的文件改名为无下划线前缀的目录后立刻入包（APK 条目 62 → 63）。
 症状极具误导性：运行期日志只有一条 `Renderer3D: 加载默认天空盒纹理失败`，很容易被当成
 VFS/路径问题去查 —— 而真因是那个文件**根本不在包里**。**结论：资产目录名一律不要以下划线开头。**
 
-**孤儿字节坑**：`packageDebug` 是增量打包，**某个条目体积缩小时不回收旧空间、也不截断文件**。
-把 192 MB 的 skybox 换成 48 MB 后，APK 实测仍是 245 MB，其中 **144 MB 是孤儿字节**。
-做法：**改动会显著缩小资产时，先删掉旧 APK 再构建**（或 `gradlew clean`）。
+**孤儿字节坑**：`packageDebug` 是增量打包，**某个条目尺寸变了就不回收旧空间、也不截断文件**。
+注意触发条件**不是只有"资产变小"**：实测只重编了一次 `.so`（改了一个 `.cpp`），APK 就从
+142 MB 涨到 183 MB，其中 **41.3 MB 孤儿，正好等于 `lib/x86_64/libmain.so` 的大小** ——
+即**每次改 C++ 都会中招**。另一种更早的踩法是 192 MB 的 skybox 换成 48 MB，留下 144 MB 孤儿。
+做法：**构建前无条件删掉旧 APK**（`build_android.bat` 已经这么做，代价只是重新打包数秒）。
 
 ### 3.8 真机/模拟器上排查原生崩溃
 
